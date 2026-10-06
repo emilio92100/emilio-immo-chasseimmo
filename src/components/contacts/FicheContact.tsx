@@ -750,7 +750,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
       <div className={c.refPied}>{`${principal.lib} · ${x.reference}`}</div>
 
       {action && (
-        <FenetreAction clientId={x.id} prenom={x.prenom || ''} edition={action.edition} typeInitial={action.type}
+        <FenetreAction clientId={x.id} prenom={x.prenom || ''} edition={action.edition} typeInitial={action.type} relanceVisee={ouverture?.relanceId}
           onFermer={() => setAction(null)} onFait={() => { setAction(null); recharger(); }} />
       )}
 

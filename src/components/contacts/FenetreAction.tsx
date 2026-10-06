@@ -7,6 +7,8 @@ import { delaiRelance } from '@/lib/relances';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { ISSUES_APPEL } from '@/components/fiche/FriseSuivi';
 import { Ic } from '@/components/documents/ApercuActe';
+import CloreRelances, { relancesACocher, type RelanceAttente } from '@/components/shared/CloreRelances';
+import { signalerMaj } from '@/lib/intentions';
 import c from './Contacts.module.css';
 
 /* ═══ Noter une action sur un contact qui n'est pas acheteur (V3.23) ════════
@@ -27,7 +29,12 @@ import c from './Contacts.module.css';
    téléphone du client (un clic pour appeler), la recherche de la relance
    (`rechercheId` : la ligne et la prochaine relance restent sur sa
    recherche), et pour le tri d'après l'import, « Il reste » ou « Il ne reste
-   pas » (onFait dit s'il faut l'archiver). */
+   pas » (onFait dit s'il faut l'archiver).
+
+   V3.83 — Depuis la fiche (ni modification, ni « Traiter ») : les relances
+   de ce contact encore en attente, à clore en notant l'action (cochées
+   d'office si elles sont dues, ou si la fiche a été ouverte depuis l'une
+   d'elles : `relanceVisee`). « Traiter » clôt déjà la sienne. */
 
 const TYPES: { v: string; l: string; ic: string }[] = [
   { v: 'appel', l: 'Appel passé', ic: 'telephone' },
@@ -62,7 +69,7 @@ export async function supprimerActionContact(j: { id: string; titre: string; met
 }
 
 export type ContexteRelance = { titre: string; texte?: string | null; telephones?: string[] | null };
-export default function FenetreAction({ clientId, prenom, edition, typeInitial = 'note', onFermer, onFait, rechercheId = null, contexte, titre: titreImpose, libelleValider, proposerArchive = false }: {
+export default function FenetreAction({ clientId, prenom, edition, typeInitial = 'note', onFermer, onFait, rechercheId = null, contexte, titre: titreImpose, libelleValider, proposerArchive = false, relanceVisee = null }: {
   clientId: string; prenom: string;
   /* Une ligne du journal à modifier, ou null pour en créer une. */
   edition: { id: string; type: string; titre: string; description: string | null; metadata?: { relance_id?: string } | null } | null;
@@ -76,6 +83,8 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
   titre?: string;
   libelleValider?: string;
   proposerArchive?: boolean;
+  /* V3.83 : la relance d'où la fiche a été ouverte (page Relances). */
+  relanceVisee?: string | null;
 }) {
   const [f, setF] = useState(() => edition
     ? { type: edition.type || 'note', titre: edition.titre || '', description: edition.description || '', relance: '' }
@@ -86,6 +95,10 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
   const [occupe, setOccupe] = useState(false);
   /* Le tri : il reste dans le fichier (null tant qu'on n'a pas choisi), ou non. */
   const [reste, setReste] = useState<boolean | null>(null);
+  /* V3.83 — Les relances en attente de ce contact, et celles à clore. */
+  const [attente, setAttente] = useState<RelanceAttente[]>([]);
+  const [aClore, setAClore] = useState<string[]>([]);
+  const proposerClore = !edition && !contexte;
   const notes = useRef<HTMLTextAreaElement>(null);
   /* V3.74 — Rien de brutal : la fenêtre monte (les blocs arrivent l'un après
      l'autre), « Valider » passe au vert avec sa coche, puis elle redescend. */
@@ -128,6 +141,18 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
     });
   }, [edition]);
 
+  useEffect(() => {
+    if (!proposerClore) return;
+    let vivant = true;
+    supabase.from('relances').select('id, date_echeance, note').eq('client_id', clientId).eq('statut', 'en_attente')
+      .order('date_echeance', { ascending: true }).then(({ data }) => {
+        if (!vivant || !data) return;
+        setAttente(data);
+        setAClore(relancesACocher(data, relanceVisee));
+      });
+    return () => { vivant = false; };
+  }, [proposerClore, clientId, relanceVisee]);
+
   async function enregistrer() {
     const titre = f.titre.trim() || TITRES_TYPE[f.type] || 'Action';
     const noteRelance = [titre, f.description.trim()].filter(Boolean).join(' — ').slice(0, 300);
@@ -167,6 +192,13 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
         metadata: rid ? { relance_id: rid } : {},
       }));
       if (!ok) { if (rid) await verifie('La relance créée avec l’action', supabase.from('relances').delete().eq('id', rid)); return; }
+      /* L'action est notée : la relance qu'elle règle sort de « Relances ».
+         Un refus s'affiche en rouge, sans défaire l'action. */
+      const aFermer = proposerClore ? aClore.filter(id => attente.some(r => r.id === id)) : [];
+      if (aFermer.length) {
+        await verifie(aFermer.length > 1 ? 'Les relances closes' : 'La relance close', supabase.from('relances').update({ statut: 'cloturee' }).in('id', aFermer).eq('statut', 'en_attente').select('id'));
+      }
+      if (aFermer.length || rid) signalerMaj();
       finir({ archiver: proposerArchive && reste === false });
     } finally {
       setOccupe(false);
@@ -257,6 +289,8 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
               <p key={String(reste)} className={`${c.pied} ${c.actApparait}`} style={{ margin: 0 }}>{reste === false ? 'Il sera archivé : rangé dans « Archivés », ses relances en attente se fermeront.' : reste ? 'Il reste dans ton fichier : pose-lui une prochaine relance si besoin.' : 'Dis s’il reste dans ton fichier, ou s’il faut l’archiver.'}</p>
             </div>
           )}
+
+          {proposerClore && <CloreRelances relances={attente} cochees={aClore} onChange={setAClore} nouvelle={!!f.relance} />}
 
           {!(proposerArchive && reste === false) && <div className={`${c.actRelance} ${c.actApparait}`} data-pose={pose ? 'oui' : 'non'}>
             <span className={c.actRelanceT}><Ic n="alarme" t={14} />{'Prochaine relance'}<em className={c.facult}>{' · facultatif'}</em></span>
