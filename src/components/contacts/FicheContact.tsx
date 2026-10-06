@@ -29,6 +29,7 @@ import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
 import { libelleVisites } from '@/lib/visites';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
+import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import c from './Contacts.module.css';
 
 /* ═══ La fiche d'un contact qui n'est pas acheteur ═════════════════════════
@@ -72,10 +73,13 @@ export default function FicheSelonType({ client, onBack, onNavigate }: { client:
       </div>
     );
   }
-  if (!x) return <div style={{ padding: '40px 24px', color: '#64748b', fontSize: 14 }}>Chargement de la fiche…</div>;
-  return estAcheteur(x)
+  if (!x) return <SqueletteFiche />;
+  /* Lue après coup (depuis la recherche du haut) : elle remplace sa
+     silhouette en fondu (V3.80). */
+  const fiche = estAcheteur(x)
     ? <FicheClient client={x} onBack={onBack} onNavigate={onNavigate} />
     : <FicheContact key={x.id} client={x} onBack={onBack} onNavigate={onNavigate} />;
+  return partiel ? <div className="fiche-entre">{fiche}</div> : fiche;
 }
 
 /* Un vendeur, un propriétaire peuvent être un couple (src/lib/foyer.ts) :
