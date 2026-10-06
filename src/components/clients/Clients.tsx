@@ -31,6 +31,10 @@ import dd from '@/components/documents/Documents.module.css';
 import FiltresAcheteurs, { FILTRES_A_VIDES, correspond, nbFiltresA, type FiltresA } from './FiltresAcheteurs';
 import PageRelances from '@/components/pages/PageRelances';
 import { estTri } from '@/lib/relances';
+import { AvecCase, BarreSelection, ConfirmerLot, STYLE_CHOISI, type Avancement } from '@/components/shared/Selection';
+import { archiverContact, effacerContact, empecheSuppression } from '@/lib/supprimer-contacts';
+import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
+import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 
 const STATUTS = [
   { key: 'tous',        label: 'Tous',       color: '' },
@@ -511,6 +515,12 @@ export default function Clients({ onNavigate, fenetre }: {
      qu'elle vient de créer ou de compléter (« Voir les contacts importés »). */
   const [importOuvert, setImportOuvert] = useState(false);
   const [importes, setImportes] = useState<string[] | null>(null);
+  /* V3.88 — Les contacts cochés, et le geste en lot en cours. */
+  const [choisis, setChoisis] = useState<Set<string>>(() => new Set());
+  const [lotMail, setLotMail] = useState<Client[] | null>(null);
+  const [lot, setLot] = useState<{ quoi: 'supprimer' | 'archiver' | 'desarchiver'; cibles: Client[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null; verifie: boolean } | null>(null);
+  const basculerChoix = useCallback((id: string) => setChoisis(l => { const n = new Set(l); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
+  const viderChoix = useCallback(() => setChoisis(new Set()), []);
   useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
   /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
      place, sans recharger (V3.25). */
@@ -1040,6 +1050,42 @@ export default function Clients({ onNavigate, fenetre }: {
   });
 
   const acheteursCat = clients.filter(c => estAcheteur(c) && !estArchive(c) && (!seulsNonFiltres || sansCriteres(c)));
+
+  /* V3.88 — La sélection : ce qui est affiché (pour « Tout sélectionner »),
+     et les contacts cochés, où qu'ils soient. */
+  const listeVue: Client[] = avecAcheteurs ? ordonne : (seul === 'tri' ? [] : autres);
+  const coches = clients.filter(c => choisis.has(c.id));
+  const modeChoix = coches.length > 0;
+  const enArchives = !avecAcheteurs && seul === 'archives';
+  async function preparerLot(quoi: 'supprimer' | 'archiver' | 'desarchiver') {
+    const l = coches;
+    if (quoi !== 'supprimer') { setLot({ quoi, cibles: l, ignores: [], avancement: null, verifie: true }); return; }
+    /* Avant de supprimer : ce qui l'empêche, contact par contact. */
+    setLot({ quoi, cibles: [], ignores: [], avancement: null, verifie: false });
+    const raisons = await Promise.all(l.map(c => empecheSuppression(c.id)));
+    setLot({ quoi, cibles: l.filter((_, i) => !raisons[i]), ignores: l.map((c, i) => ({ nom: nomFoyer(c) || 'Sans nom', pourquoi: raisons[i] || '' })).filter(x => x.pourquoi), avancement: null, verifie: true });
+  }
+  async function faireLot() {
+    if (!lot) return;
+    const { quoi, cibles } = lot;
+    const av: Avancement = { fait: 0, total: cibles.length, erreurs: [] };
+    setLot(x => (x ? { ...x, avancement: { ...av } } : x));
+    const partis: string[] = [];
+    for (const c of cibles) {
+      try {
+        if (quoi === 'supprimer') await effacerContact(c.id);
+        else await archiverContact(c.id, quoi === 'archiver');
+        av.fait += 1; partis.push(c.id);
+      } catch (e) {
+        av.erreurs.push(`${nomFoyer(c) || 'Sans nom'} : ${(e as Error).message}`);
+      }
+      setLot(x => (x ? { ...x, avancement: { ...av, erreurs: [...av.erreurs] } } : x));
+    }
+    if (quoi === 'supprimer') { setClients(l => l.filter(c => !partis.includes(c.id))); partis.forEach(id => retirerFicheOuverte('contact', id)); }
+    else setClients(l => l.map(c => (partis.includes(c.id) ? { ...c, archive: quoi === 'archiver' } : c)));
+    setChoisis(l => { const n = new Set(l); partis.forEach(id => n.delete(id)); return n; });
+    signalerMaj();
+  }
   const nbParStatut = (s: string) => s === 'tous' ? acheteursCat.length : acheteursCat.filter(c => c.statut === s).length;
 
   /* ═══ NOUVEAU CLIENT ═══════════════════════════════════════════════
@@ -1698,8 +1744,8 @@ export default function Clients({ onNavigate, fenetre }: {
                   return (
                     <div
                       key={client.id}
-                      className={`${styles.ligne} ligne-entre ${ouvert ? styles.ligneOuverte : ''}`}
-                      style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}) }}
+                      className={`${styles.ligne} ligne-entre ${ouvert ? styles.ligneOuverte : ''} sel-ligne`}
+                      style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}), ...(choisis.has(client.id) ? STYLE_CHOISI : {}) }}
                       onClick={() => onNavigate('fiche', client)}
                       onMouseEnter={e => entrer(client.id, e)}
                       onMouseMove={bouger}
@@ -1707,7 +1753,9 @@ export default function Clients({ onNavigate, fenetre }: {
                     >
                       <span className={styles.colClient}>
                         {/* Un petit personnage plutôt qu'une initiale (deux pour un couple). */}
-                        <AvatarContact c={client as never} teinte={t} className={styles.avatar} libre />
+                        <AvecCase on={choisis.has(client.id)} mode={modeChoix} onBasculer={() => basculerChoix(client.id)} titre={choisis.has(client.id) ? `Décocher ${nomFoyer(client)}` : `Cocher ${nomFoyer(client)}`}>
+                          <AvatarContact c={client as never} teinte={t} className={styles.avatar} libre />
+                        </AvecCase>
                         <span style={{ minWidth: 0 }}>
                           <span className={styles.nom} title={nomFoyer(client)} style={clos ? { color: '#6b7a90' } : undefined}>{nomFoyer(client)}</span>
                           <span className={styles.ref}>
@@ -1835,7 +1883,8 @@ export default function Clients({ onNavigate, fenetre }: {
                 </div>
               )}
               <EnteteContacts />
-              {autres.map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })} />)}
+              {autres.map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
+                selection={{ on: choisis.has(c.id), mode: modeChoix, onBasculer: () => basculerChoix(c.id) }} />)}
             </div>
           ) : (
             importes ? (
@@ -1943,6 +1992,39 @@ export default function Clients({ onNavigate, fenetre }: {
 
       {/* La fenêtre « Nouveau contact », bâtie plus haut (fenetreCreation). */}
       {fenetreCreation}
+
+      {/* La barre de la sélection ne cache pas les derniers contacts. */}
+      {modeChoix && <div style={{ height: 120 }} aria-hidden="true" />}
+      {/* V3.88 — Les contacts cochés : la barre, et ses gestes. */}
+      {!lot && !lotMail && (
+        <BarreSelection n={coches.length} un="contact sélectionné" plusieurs="contacts sélectionnés" onVider={viderChoix}
+          toutes={listeVue.length ? { n: listeVue.length + coches.filter(c => !listeVue.includes(c)).length, onClick: () => setChoisis(l => new Set([...l, ...listeVue.map(c => c.id)])) } : null}
+          gestes={[
+            { k: 'mail', lib: 'Envoyer un mail', court: 'Mail', ic: 'mail', principal: true, onClick: () => setLotMail(coches) },
+            enArchives || coches.every(c => estArchive(c))
+              ? { k: 'desarchiver', lib: 'Sortir des archives', court: 'Désarchiver', ic: 'archive', onClick: () => { void preparerLot('desarchiver'); } }
+              : { k: 'archiver', lib: 'Archiver', ic: 'archive', titre: 'Ils quittent la liste, retrouvables dans « Archivés » ; leurs relances en attente se ferment', onClick: () => { void preparerLot('archiver'); } },
+            { k: 'supprimer', lib: 'Supprimer', ic: 'corbeille', danger: true, onClick: () => { void preparerLot('supprimer'); } },
+          ]} />
+      )}
+      {lotMail && (
+        <FenetreMail contacts={lotMail as unknown as ContactMail[]} onFermer={() => setLotMail(null)} onEnvoye={() => { signalerMaj(); }} />
+      )}
+      {lot && (
+        <ConfirmerLot
+          danger={lot.quoi === 'supprimer'}
+          titre={!lot.verifie ? 'Vérification…'
+            : lot.quoi === 'supprimer' ? `Supprimer ${lot.cibles.length > 1 ? `${lot.cibles.length} contacts` : lot.cibles.length ? '1 contact' : 'ces contacts'} ?`
+              : lot.quoi === 'archiver' ? `Archiver ${lot.cibles.length > 1 ? `${lot.cibles.length} contacts` : '1 contact'} ?`
+                : `Sortir ${lot.cibles.length > 1 ? `${lot.cibles.length} contacts` : '1 contact'} des archives ?`}
+          phrase={!lot.verifie ? 'Je regarde ce qui est relié à chacun (biens, documents, ventes).'
+            : lot.quoi === 'supprimer' ? 'C’est définitif : leur fiche, leur historique, leurs relances, leurs recherches et leurs biens proposés partent avec eux. Pour les garder sans les voir, archive-les plutôt.'
+              : lot.quoi === 'archiver' ? 'Ils quittent la liste et se rangent dans « Archivés », où tu les retrouves quand tu veux. Leurs relances en attente se ferment.'
+                : 'Ils reviennent dans la liste des contacts.'}
+          liste={lot.cibles.map(c => nomFoyer(c) || 'Sans nom')} ignores={lot.ignores}
+          libValider={lot.quoi === 'supprimer' ? `Supprimer définitivement (${lot.cibles.length})` : lot.quoi === 'archiver' ? `Archiver (${lot.cibles.length})` : `Sortir des archives (${lot.cibles.length})`}
+          avancement={lot.avancement} onValider={() => { void faireLot(); }} onFermer={() => setLot(null)} />
+      )}
 
       {/* « Importer depuis ImmoFacile » (V3.61). « Voir les contacts importés » :
           la liste ne montre plus qu'eux, « Tout revoir » la rend entière. */}
