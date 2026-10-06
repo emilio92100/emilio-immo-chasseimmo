@@ -813,7 +813,10 @@ async function copieDe(b: BienVente, clientId: string, rechercheId: string, badg
   return { copie: data as Copie, neuve: true };
 }
 
-export async function envoyerDansEspace(b: BienVente, l: Acheteur[]): Promise<{ n: number; erreurs: string[] }> {
+/* V3.89 : `suite: false` (plusieurs biens d'un coup, depuis la liste) : ni
+   relance ni notification ici — une seule par acheteur, posée par l'appelant
+   (suiteEnvoi), au lieu d'une par bien. */
+export async function envoyerDansEspace(b: BienVente, l: Acheteur[], o: { suite?: boolean } = {}): Promise<{ n: number; erreurs: string[] }> {
   const erreurs: string[] = [];
   let n = 0;
   for (const a of l) {
@@ -828,16 +831,72 @@ export async function envoyerDansEspace(b: BienVente, l: Acheteur[]): Promise<{ 
         metadata: { bien_vente_id: b.id },
       });
       if (eJ) signalerEchec('Le bien est présenté, mais l’historique du client', eJ.message);
-      await programmerRelance(a.client.id, a.recherche.id, 1);
-      fetch('/api/notifier', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recherche_id: a.recherche.id }),
-      }).catch(() => { /* sans effet sur l'envoi */ });
+      if (o.suite !== false) await suiteEnvoi(a.client.id, a.recherche.id, 1);
     } catch (e) {
       erreurs.push(`${nomClient(a.client)} : ${(e as Error).message}`);
     }
   }
   return { n, erreurs };
+}
+
+/* Après une présentation : la relance « sans réponse » (une par dossier,
+   jamais une par bien) et la notification sur son téléphone, s'il a
+   installé son espace et l'a acceptée (on n'attend pas la réponse). */
+export async function suiteEnvoi(clientId: string, rechercheId: string, nbBiens: number): Promise<void> {
+  await programmerRelance(clientId, rechercheId, nbBiens);
+  fetch('/api/notifier', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recherche_id: rechercheId }),
+  }).catch(() => { /* sans effet sur l'envoi */ });
+}
+
+/* ══ Le mail d'envoi, pour un acheteur, depuis la liste des biens (V3.89) ══
+   Alexandre coche plusieurs biens, choisit des acheteurs : chacun reçoit UN
+   mail, à son prénom, avec ses biens à lui. Le même chemin que le mail
+   d'envoi de sa fiche (FicheClient, saveEnvoiBien) :
+   · les biens entrent d'abord dans son dossier (mettreEnSelection) ;
+   · /api/send-mail en mode « biens » envoie, remplace {{prénom}}…, et note
+     l'envoi (communications) et la ligne « 📤 Sélection envoyée » du Suivi ;
+   · puis, le mail parti, chaque bien passe « Présenté » (canal mail), une
+     ligne par bien dans son Suivi, la relance et la notification.
+   ⚠️ Si saveEnvoiBien change ce qui suit un envoi, le changer ici aussi.
+   Lève une erreur lisible si le mail ne part pas : rien n'est marqué
+   présenté (les biens restent dans sa sélection). */
+export async function envoyerParMail(l: { bien: BienVente; acheteur: Acheteur }[], mail: { objet: string; corps: string }): Promise<number> {
+  if (!l.length) return 0;
+  const a = l[0].acheteur;
+  const ids: string[] = [];
+  for (const x of l) {
+    const r = await mettreEnSelection(x.bien, [x.acheteur]);
+    const id = r.ids[x.acheteur.recherche.id];
+    if (!id) throw new Error(r.erreurs[0] || 'un bien n’a pas pu entrer dans son dossier');
+    ids.push(id);
+  }
+  const res = await fetch('/api/send-mail', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_ids: [a.client.id], recherche_id: a.recherche.id, objet: mail.objet, corps: mail.corps, biens_ids: ids, mode: 'biens' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    const detail = data.error || (data.results || []).find((r: { success: boolean; error?: string }) => !r.success)?.error || `erreur ${res.status}`;
+    throw new Error(`le mail n’est pas parti (${detail}) ; ${ids.length > 1 ? 'les biens restent' : 'le bien reste'} dans sa sélection`);
+  }
+  if (data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
+  const quand = new Date().toISOString();
+  for (let i = 0; i < l.length; i++) {
+    const { bien: b, acheteur: x } = l[i];
+    const r = await supabase.from('biens').update({ etape: 'presente', envoye_le: quand, canal_envoi: 'mail', badge_retour: 'propose' }).eq('id', ids[i]).select('id');
+    if (r.error || !r.data?.length) signalerEchec(`Mail parti, mais « ${b.titre || titreBien(b.donnees)} » marqué présenté`, r.error?.message || 'aucune ligne modifiée');
+    const { error: eJ } = await supabase.from('journal').insert({
+      client_id: x.client.id, recherche_id: x.recherche.id, bien_id: ids[i], type: 'envoi_bien',
+      titre: 'Bien de l’agence présenté · mail',
+      description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''} · correspondance ${x.corr.note} %`,
+      metadata: { bien_vente_id: b.id },
+    });
+    if (eJ) signalerEchec('Le mail est parti, mais l’historique du client', eJ.message);
+  }
+  await suiteEnvoi(a.client.id, a.recherche.id, l.length);
+  return l.length;
 }
 
 /* Le mettre dans leur sélection (V3.29) : le bien entre dans leur dossier, à

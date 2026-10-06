@@ -1521,6 +1521,8 @@ const RAISONS: Partial<Record<EtapeVente, string[]>> = {
   a_suivre: ['Il veut attendre', 'Il attend son achat', 'Travaux avant la vente', 'Succession en cours'],
   retire: ['Mandat expiré', 'Vendu par un autre', 'Le vendeur renonce', 'Le vendeur loue finalement'],
 };
+/* V3.89 : les mêmes, pour « Changer d'étape » sur plusieurs biens (LotBiens). */
+export const RAISONS_ETAPE = RAISONS;
 export function FenRaison({ bien, etape, titre, sur, prevues = [], offres = [], onFermer, onFait }: {
   bien: BienVente; etape: EtapeVente; titre: string; sur: string; onFermer: () => void; onFait: (b: BienVente) => void; prevues?: VisitePrevue[];
   offres?: SuiviVente[];

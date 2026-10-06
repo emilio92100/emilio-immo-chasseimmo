@@ -16,8 +16,9 @@ import { FenMandat, FenNouveau } from './FenetresBien';
 import ImportBiensIF from './ImportBiensIF';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
-import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, majBien as ecrireBien, MESSAGE_VENDU_SUPPR, type ListeBiens } from './outils';
+import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, ficheClient, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, majBien as ecrireBien, MESSAGE_VENDU_SUPPR, type ListeBiens } from './outils';
 import { BarreSelection, CaseSelection, ConfirmerLot, type Avancement } from '@/components/shared/Selection';
+import { CIBLES_ETAPE, FenEnvoiLot, RaisonEtape, bloqueEtape, passerEtape, type CibleEtape } from './LotBiens';
 import { aererTexte, texteEnBloc } from '@/lib/annonce-texte';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -126,6 +127,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* V3.88 — Cocher plusieurs biens (src/components/shared/Selection.tsx). */
   const [choisis, setChoisis] = useState<Set<string>>(() => new Set());
   const [lot, setLot] = useState<{ quoi: 'supprimer' | 'archiver' | 'desarchiver'; cibles: BienVente[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null } | null>(null);
+  /* V3.89 : « Envoyer à des acheteurs » et « Changer d'étape » (LotBiens.tsx). */
+  const [envoiLot, setEnvoiLot] = useState<BienVente[] | null>(null);
+  const [etapeLot, setEtapeLot] = useState<{ cible: CibleEtape; cibles: BienVente[]; ignores: { nom: string; pourquoi: string }[]; raison: string; avancement: Avancement | null } | null>(null);
   const basculerChoix = useCallback((id: string) => setChoisis(l => { const n = new Set(l); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
   const viderChoix = useCallback(() => setChoisis(new Set()), []);
   useEffect(() => {
@@ -335,6 +339,29 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     signalerMaj();
   }
 
+  /* V3.89 — Changer d'étape : ceux qui y passent d'ici, et les autres avec
+     leur raison (ce qui demande une décision se fait sur leur fiche). */
+  function preparerEtape(cible: CibleEtape) {
+    if (!liste) return;
+    const raisons = coches.map(x => bloqueEtape(x, cible, liste));
+    setEtapeLot({ cible, cibles: coches.filter((_, i) => !raisons[i]), ignores: coches.map((x, i) => ({ nom: nomBien(x), pourquoi: raisons[i] || '' })).filter(x => x.pourquoi), raison: '', avancement: null });
+  }
+  async function faireEtape() {
+    if (!etapeLot) return;
+    const { cible, cibles, raison } = etapeLot;
+    const av: Avancement = { fait: 0, total: cibles.length, erreurs: [] };
+    setEtapeLot(x => (x ? { ...x, avancement: { ...av } } : x));
+    for (const x of cibles) {
+      try { majBien(await passerEtape(x, cible, raison)); av.fait += 1; }
+      catch (e) { av.erreurs.push(`${nomBien(x)} : ${(e as Error).message}`); }
+      setEtapeLot(l => (l ? { ...l, avancement: { ...av, erreurs: [...av.erreurs] } } : l));
+    }
+    void charger();
+  }
+  async function ouvrirClient(id: string) {
+    try { onNavigate('fiche', await ficheClient(id)); } catch (e) { setErreur((e as Error).message); }
+  }
+
   const exclus = actifs.filter(x => EN_COURS.includes(x.etape) && x.mandat_type === 'exclusif').length;
   const honoCompromis = actifs.filter(x => x.etape === 'compromis').reduce((t, x) => t + (honorairesVente(x, (liste?.suivi || []).filter(s2 => s2.bien_id === x.id)) || 0), 0);
   const phrase = [
@@ -487,14 +514,23 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       {modeChoix && <div style={{ height: 120 }} aria-hidden="true" />}
       {editeur}
       {/* V3.88 — Les biens cochés : la barre, et ses gestes. */}
-      {!lot && (
+      {!lot && !etapeLot && !envoiLot && (
         <BarreSelection n={coches.length} un="bien sélectionné" plusieurs="biens sélectionnés" onVider={viderChoix}
           toutes={visibles.length ? { n: visibles.length + coches.filter(x => !visibles.includes(x)).length, onClick: () => setChoisis(l => new Set([...l, ...visibles.map(x => x.id)])) } : null}
           gestes={[
-            coches.every(x => x.archive)
-              ? { k: 'desarchiver', lib: 'Sortir des archives', court: 'Désarchiver', ic: 'archive', onClick: () => preparerLot('desarchiver') }
-              : { k: 'archiver', lib: 'Archiver', ic: 'archive', titre: 'Les biens terminés (vendus, retirés) quittent la liste, retrouvables dans « Archivés »', onClick: () => preparerLot('archiver') },
-            { k: 'supprimer', lib: 'Supprimer', ic: 'corbeille', danger: true, onClick: () => preparerLot('supprimer') },
+            /* V3.89 : trois gestes ; l'étape et le reste dans de petits menus. */
+            { k: 'envoyer', lib: 'Envoyer à des acheteurs', court: 'Envoyer', ic: 'envoyer', principal: true, onClick: () => setEnvoiLot(coches) },
+            { k: 'etape', lib: 'Changer d’étape', court: 'Étape', ic: 'drapeau', menu: CIBLES_ETAPE.map(c => {
+              const ok = liste ? coches.filter(x => !bloqueEtape(x, c.k, liste)).length : 0;
+              return { k: c.k, lib: c.lib, couleur: etapeDe(c.k).c, onClick: () => preparerEtape(c.k),
+                sous: ok === coches.length ? c.sous : ok ? `${ok} sur ${coches.length} peuvent y passer d’ici` : `${coches.length > 1 ? 'Aucun ne peut' : 'Il ne peut pas'} y passer d’ici` };
+            }) },
+            { k: 'plus', lib: 'Autres actions', ic: 'points', icone: true, menu: [
+              coches.every(x => x.archive)
+                ? { k: 'desarchiver', lib: 'Sortir des archives', sous: 'Ils reviennent dans la liste', ic: 'archive', onClick: () => preparerLot('desarchiver') }
+                : { k: 'archiver', lib: 'Archiver', sous: 'Les biens terminés (vendus, retirés) quittent la liste', ic: 'archive', onClick: () => preparerLot('archiver') },
+              { k: 'supprimer', lib: 'Supprimer', sous: 'Définitif : la fiche, ses photos, son suivi', ic: 'corbeille', danger: true, onClick: () => preparerLot('supprimer') },
+            ] },
           ]} />
       )}
       {lot && (
@@ -508,6 +544,22 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           liste={lot.cibles.map(nomBien)} ignores={lot.ignores}
           libValider={lot.quoi === 'supprimer' ? `Supprimer définitivement (${lot.cibles.length})` : lot.quoi === 'archiver' ? `Archiver (${lot.cibles.length})` : `Sortir des archives (${lot.cibles.length})`}
           avancement={lot.avancement} onValider={() => { void faireLot(); }} onFermer={() => setLot(null)} />
+      )}
+      {etapeLot && (
+        <ConfirmerLot ic="drapeau"
+          titre={`Passer ${etapeLot.cibles.length > 1 ? `${etapeLot.cibles.length} biens` : etapeLot.cibles.length ? '1 bien' : 'ces biens'} « ${etapeDe(etapeLot.cible).court} » ?`}
+          phrase={etapeLot.cible === 'retire' ? 'Ils passent « Retiré », gardés dans l’historique. Les demandes des acheteurs sur ces biens se closent.'
+            : etapeLot.cible === 'suspendu' ? 'La vente se met en pause. L’envoi aux acheteurs reprendra avec elle.'
+              : etapeLot.cible === 'a_suivre' ? 'L’estimation est mise en attente : le bien repasse « À suivre », ce qui a été fait reste gardé.'
+                : 'Le bien passe « Estimation ». Le rendez-vous et le montant se posent ensuite depuis sa fiche.'}
+          liste={etapeLot.cibles.map(nomBien)} ignores={etapeLot.ignores}
+          libValider={`Passer « ${etapeDe(etapeLot.cible).court} » (${etapeLot.cibles.length})`}
+          enPlus={etapeLot.cibles.length > 0 && !etapeLot.avancement ? <RaisonEtape cible={etapeLot.cible} v={etapeLot.raison} off={false} onChange={r => setEtapeLot(x => (x ? { ...x, raison: r } : x))} /> : null}
+          avancement={etapeLot.avancement} onValider={() => { void faireEtape(); }} onFermer={() => setEtapeLot(null)} />
+      )}
+      {envoiLot && liste && (
+        <FenEnvoiLot biens={envoiLot} liste={liste} nomBien={nomBien} onFermer={() => setEnvoiLot(null)} onFait={() => { void charger(); }}
+          onFiche={id => { setEnvoiLot(null); void ouvrirClient(id); }} />
       )}
       {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} pour={pour && liste?.clients[pour] ? nomClient(liste.clients[pour]) : ''}
         existants={existantsPour} onOuvrir={id => { setChoixDepart(false); setPour(null); ouvrir(id); }}
