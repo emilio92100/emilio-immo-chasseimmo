@@ -1,0 +1,118 @@
+/* Cocher plusieurs contacts ou biens (V3.88) : voir Selection.tsx. */
+
+/* ── La case : sur l'avatar (elle le recouvre), ou au coin de la photo ── */
+.porte { position: relative; display: inline-flex; flex-shrink: 0; border-radius: 50%; }
+.case {
+  position: absolute; inset: 0; z-index: 2; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+  border-radius: inherit; border: 2px solid #c8d2df; background: rgba(255, 255, 255, .94); color: transparent;
+  opacity: 0; transform: scale(.92); transition: opacity .16s ease, transform .16s ease, background .16s, border-color .16s, color .16s;
+  -webkit-tap-highlight-color: transparent;
+}
+.case svg path { stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset .24s cubic-bezier(.16, 1, .3, 1) .03s; }
+:global(.sel-ligne):hover .case, .case:focus-visible, .case[data-mode='oui'] { opacity: 1; transform: none; }
+.case:hover { border-color: #c9a84c; color: #c9a84c; }
+.case:hover svg path { stroke-dashoffset: 0; opacity: .45; }
+.case[data-on='oui'] { opacity: 1; transform: none; background: #1a2332; border-color: #1a2332; color: #f0dc9c; }
+.case[data-on='oui'] svg path { stroke-dashoffset: 0; opacity: 1; }
+.case:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(201, 168, 76, .35); }
+
+/* Sur la photo d'un bien : une case de 30 px, en haut à gauche. */
+.caseCoin { inset: auto; top: 10px; left: 10px; width: 30px; height: 30px; border-radius: 9px; box-shadow: 0 2px 8px rgba(15, 23, 42, .18); }
+
+/* Au téléphone, pas de survol : une petite case ronde au coin de l'avatar,
+   toujours là ; dès qu'une case est cochée, elles recouvrent les avatars. */
+@media (hover: none) {
+  .case:not(.caseCoin):not([data-mode='oui']) {
+    opacity: 1; transform: none; inset: auto; right: -5px; bottom: -5px; width: 22px; height: 22px; border-radius: 50%;
+    border-width: 1.5px; box-shadow: 0 1px 4px rgba(15, 23, 42, .2);
+  }
+  .caseCoin { opacity: 1; transform: none; }
+}
+
+/* ── La barre, en bas à droite ── */
+.barre {
+  position: fixed; right: 22px; bottom: 22px; z-index: 850; width: min(460px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 12px 16px; border-radius: 18px;
+  background: linear-gradient(152deg, #3a5178 0%, #27395a 60%, #2e4166 100%); color: #fff;
+  box-shadow: 0 24px 48px -18px rgba(15, 23, 42, .55), 0 2px 8px rgba(15, 23, 42, .18);
+  border: 1px solid rgba(232, 201, 106, .22);
+  font-family: 'DM Sans', sans-serif; animation: barreMonte .3s cubic-bezier(.16, 1, .3, 1) both;
+}
+@keyframes barreMonte { from { opacity: 0; transform: translateY(16px) scale(.98); } }
+.barreTete { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.barreN {
+  min-width: 30px; height: 30px; padding: 0 8px; box-sizing: border-box; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center;
+  background: #e8c96a; color: #1a2332; font: 800 14px 'Plus Jakarta Sans', sans-serif;
+}
+.barreLib { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.barreTout { border: none; background: none; padding: 4px 2px; color: #e8c96a; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.barreTout:hover { text-decoration: underline; text-underline-offset: 3px; }
+.barreX {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .8);
+}
+.barreX:hover { background: rgba(255, 255, 255, .18); color: #fff; }
+.barreGestes { display: flex; flex-wrap: wrap; gap: 7px; }
+.geste {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 11px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .08); color: #fff; font: 700 13px 'DM Sans', sans-serif; white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.geste:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .28); }
+.geste[data-principal='oui'] { background: #e8c96a; border-color: #e8c96a; color: #1a2332; }
+.geste[data-principal='oui']:hover { background: #f0d47e; }
+.geste[data-danger='oui'] { color: #fecaca; border-color: rgba(254, 202, 202, .3); }
+.geste[data-danger='oui']:hover { background: rgba(220, 38, 38, .22); border-color: rgba(254, 202, 202, .55); color: #fff; }
+
+.court { display: none; }
+@media (max-width: 900px) {
+  .long { display: none; }
+  .court { display: inline; }
+  /* Au-dessus de la barre d'onglets du téléphone. */
+  .barre { left: 10px; right: 10px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); padding: 11px 11px 11px 13px; }
+  .barreGestes { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+  .geste { justify-content: center; padding: 0 8px; height: 40px; }
+}
+
+/* ── La fenêtre avant un geste en lot ── */
+.voile { position: fixed; inset: 0; z-index: 950; display: flex; align-items: center; justify-content: center; padding: 22px; background: rgba(26, 35, 50, .55); animation: voile .2s ease both; font-family: 'DM Sans', sans-serif; color: #2e4166; }
+@keyframes voile { from { opacity: 0; } }
+.fen { width: min(560px, 100%); max-height: min(88vh, 760px); display: flex; flex-direction: column; background: #fff; border-radius: 20px; box-shadow: 0 40px 80px -30px rgba(15, 23, 42, .6); overflow: hidden; animation: monte .26s cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes monte { from { opacity: 0; transform: translateY(12px) scale(.985); } }
+.fenTete { display: flex; align-items: flex-start; gap: 13px; padding: 18px 20px 12px; }
+.fenIc { width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: #475569; }
+.fenIc[data-danger='oui'] { background: #fef2f2; color: #b91c1c; }
+.fenTx { flex: 1; min-width: 0; }
+.fenTx h2 { margin: 0; font: 800 18px/1.3 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.fenTx p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: #64748b; }
+.fermer { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; border: none; background: #f1f5f9; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.fermer:hover:not(:disabled) { background: #e2e8f0; color: #1a2332; }
+.fenCorps { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 2px 20px 16px; }
+.liste { list-style: none; margin: 0; padding: 8px 10px; border-radius: 12px; border: 1px solid #eef1f6; background: #fbfcfe; display: flex; flex-direction: column; gap: 5px; max-height: 260px; overflow-y: auto; }
+.liste li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1a2332; min-width: 0; }
+.liste li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liste li svg { color: #94a3b8; }
+.ignores { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; }
+.ignores b { font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: #92400e; }
+.ignores ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ignores li { display: flex; flex-direction: column; gap: 1px; font-size: 13px; color: #1a2332; }
+.ignores li small { font-size: 12px; color: #92400e; }
+.avance { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: #334155; }
+.avanceBarre { display: block; height: 6px; border-radius: 99px; background: #eef1f6; overflow: hidden; }
+.avanceBarre i { display: block; height: 100%; background: #c9a84c; border-radius: 99px; transition: width .3s ease; }
+.erreurs { margin: 0; padding-left: 18px; font-size: 12.5px; font-weight: 600; color: #b91c1c; }
+.fenPied { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 20px; border-top: 1px solid #eef1f6; background: #fbfcfe; }
+.btn { height: 40px; padding: 0 16px; border-radius: 11px; border: 1px solid #e3e8f0; background: #fff; color: #1a2332; font: 700 13.5px 'DM Sans', sans-serif; cursor: pointer; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btnPrim { background: #1a2332; border-color: #1a2332; color: #fff; }
+.btnDanger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+.btnDanger:hover:not(:disabled) { background: #991b1b; }
+@media (max-width: 760px) {
+  .voile { padding: 0; align-items: flex-end; }
+  .fen { width: 100%; max-height: calc(100dvh - 10px); border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .fenPied .btn { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .barre, .voile, .fen { animation: none; }
+  .case, .case svg path { transition: none; }
+}
