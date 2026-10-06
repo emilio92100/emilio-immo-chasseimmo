@@ -8,6 +8,16 @@
 
 /* ══ LA LISTE ═══════════════════════════════════════════════════════════ */
 .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+/* V3.88 — Cocher plusieurs biens : la carte (ou la ligne) et sa case au coin
+   de la photo. La pastille d'étape se pousse pour lui laisser la place. */
+.selBien { position: relative; display: grid; min-width: 0; border-radius: 16px; transition: box-shadow .18s; }
+.selBien[data-on='oui'] { box-shadow: 0 0 0 3px #dcc27a; }
+.selBien[data-on='oui'] > .carte, .selBien[data-on='oui'] > .ligneB { border-color: #dcc27a; }
+.selBien .pastille { transition: left .18s ease; }
+.selBien:hover .pastille, .selBien[data-mode='oui'] .pastille { left: 48px; }
+.caseLigne { top: 18px !important; left: 18px !important; width: 26px !important; height: 26px !important; border-radius: 8px !important; }
+@media (hover: none) { .selBien .pastille { left: 48px; } }
+@media (max-width: 760px) { .selBien > button[role='checkbox'] { top: 16px; left: 16px; width: 28px; height: 28px; } }
 .carte {
   display: flex; flex-direction: column; text-align: left; padding: 0; background: white; border: 1px solid #e3e8f0; border-radius: 16px;
   overflow: hidden; cursor: pointer; font-family: inherit; box-shadow: 0 1px 3px rgba(15,23,42,.04);

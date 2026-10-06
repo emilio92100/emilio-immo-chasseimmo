@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { euros } from '@/lib/mandat';
 import { EVT_DEMANDE_VUE, EVT_NOUVEAU_BIEN, annoncerVue, prendreNouveauBien, signalerMaj, vueDemandee } from '@/lib/intentions';
-import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, titreBien, type BienVente, type EtapeVente, type SuiviVente } from '@/lib/biens-vente';
+import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, titreBien, villeAffichee, type BienVente, type EtapeVente, type SuiviVente } from '@/lib/biens-vente';
+/* V3.88 : les étapes d'un bien terminé, qui s'archive (comme sa fiche). */
+const ARCHIVABLES: string[] = ['vendu', 'retire', 'annonce_type'];
 import { issueDe, visitePasseeParis } from '@/lib/visites';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import { Ic } from '@/components/documents/ApercuActe';
@@ -14,7 +16,8 @@ import { FenMandat, FenNouveau } from './FenetresBien';
 import ImportBiensIF from './ImportBiensIF';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 import FiltresBiens, { FILTRES_VIDES, filtrer, trier, type Filtres, type Tri } from './FiltresBiens';
-import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, type ListeBiens } from './outils';
+import { MESSAGE_SQL, SEUIL_CORRESPOND, acheteursPour, brouillonVide, instantPasse, type VisiteRow, chargerListe, creerBien, donneesProprio, mandatsParBien, marquerVendeur, nomClient, poserDansBien, supprimerBien, supprimerBrouillon, majBien as ecrireBien, MESSAGE_VENDU_SUPPR, type ListeBiens } from './outils';
+import { BarreSelection, CaseSelection, ConfirmerLot, type Avancement } from '@/components/shared/Selection';
 import { aererTexte, texteEnBloc } from '@/lib/annonce-texte';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -120,6 +123,11 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
      qui confirme la vente (Alexandre : « qu'on ait l'impression que l'action
      a bien été prise en compte »). Il s'efface seul au bout de 20 s. */
   const [annonce, setAnnonce] = useState<{ id: string; titre: string; texte: string } | null>(null);
+  /* V3.88 — Cocher plusieurs biens (src/components/shared/Selection.tsx). */
+  const [choisis, setChoisis] = useState<Set<string>>(() => new Set());
+  const [lot, setLot] = useState<{ quoi: 'supprimer' | 'archiver' | 'desarchiver'; cibles: BienVente[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null } | null>(null);
+  const basculerChoix = useCallback((id: string) => setChoisis(l => { const n = new Set(l); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
+  const viderChoix = useCallback(() => setChoisis(new Set()), []);
   useEffect(() => {
     if (!annonce) return;
     const t = window.setTimeout(() => setAnnonce(null), 20000);
@@ -293,6 +301,40 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     if (erreurs) setErreur(`${erreurs} annonce${erreurs > 1 ? 's n’ont' : ' n’a'} pas pu être mise${erreurs > 1 ? 's' : ''} en paragraphes : relance « Les mettre en paragraphes ».`);
   }
 
+  /* V3.88 — Les biens cochés (dans n'importe quelle catégorie), et le geste
+     en lot. On archive un bien terminé (vendu, retiré, annonce type) ; on ne
+     supprime pas un bien vendu (ses honoraires comptent). */
+  const coches = biens.filter(x => choisis.has(x.id));
+  const modeChoix = coches.length > 0;
+  const nomBien = (x: BienVente) => [x.titre || titreBien(x.donnees || {}), villeAffichee(x.ville, x.code_postal), x.reference].filter(Boolean).join(' · ');
+  function preparerLot(quoi: 'supprimer' | 'archiver' | 'desarchiver') {
+    const ok = (x: BienVente) => (quoi === 'supprimer' ? x.etape !== 'vendu' : quoi === 'archiver' ? ARCHIVABLES.includes(x.etape) && !x.archive : x.archive);
+    const pourquoi = (x: BienVente) => (quoi === 'supprimer' ? 'Vendu : ses honoraires comptent dans ton chiffre d’affaires. Archive-le plutôt.'
+      : quoi === 'archiver' ? (x.archive ? 'Déjà archivé.' : `En cours (« ${etapeDe(x.etape).lib} ») : on archive un bien terminé. Passe-le « Retiré » d’abord s’il ne se vendra pas.`)
+        : 'Pas archivé.');
+    setLot({ quoi, cibles: coches.filter(ok), ignores: coches.filter(x => !ok(x)).map(x => ({ nom: nomBien(x), pourquoi: pourquoi(x) })), avancement: null });
+  }
+  async function faireLot() {
+    if (!lot) return;
+    const { quoi, cibles } = lot;
+    const av: Avancement = { fait: 0, total: cibles.length, erreurs: [] };
+    setLot(x => (x ? { ...x, avancement: { ...av } } : x));
+    const partis: string[] = [];
+    for (const x of cibles) {
+      try {
+        if (quoi === 'supprimer') { await supprimerBien(x); setListe(l => (l ? { ...l, biens: l.biens.filter(y => y.id !== x.id) } : l)); }
+        else majBien(await ecrireBien(x.id, { archive: quoi === 'archiver' }));
+        av.fait += 1; partis.push(x.id);
+      } catch (e) {
+        const m = (e as Error).message;
+        av.erreurs.push(`${nomBien(x)} : ${m === MESSAGE_VENDU_SUPPR ? 'vendu, archive-le plutôt' : m}`);
+      }
+      setLot(l => (l ? { ...l, avancement: { ...av, erreurs: [...av.erreurs] } } : l));
+    }
+    setChoisis(l => { const n = new Set(l); partis.forEach(id => n.delete(id)); return n; });
+    signalerMaj();
+  }
+
   const exclus = actifs.filter(x => EN_COURS.includes(x.etape) && x.mandat_type === 'exclusif').length;
   const honoCompromis = actifs.filter(x => x.etape === 'compromis').reduce((t, x) => t + (honorairesVente(x, (liste?.suivi || []).filter(s2 => s2.bien_id === x.id)) || 0), 0);
   const phrase = [
@@ -428,15 +470,45 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         <div className={`${vue === 'lignes' ? b.lignesBiens : b.grille} cascade`} key={`${filtre}:${vue}`}>
           {visibles.map(x => {
             const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
+            const on = choisis.has(x.id);
+            /* V3.88 : la case, au coin de la photo (au survol, ou dès qu'un bien est coché). */
             return (
-              <Rendu key={x.id} bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
-                nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbPrevues={parBien[x.id]?.prevues || 0} nbCR={parBien[x.id]?.cr || 0} nbOffres={parBien[x.id]?.offres || 0}
-                mandat={mandats[x.id] || null} onClick={() => ouvrir(x.id)} />
+              <div key={x.id} className={`${b.selBien} sel-ligne`} data-mode={modeChoix ? 'oui' : 'non'} data-on={on ? 'oui' : 'non'}>
+                <Rendu bien={x} suivi={liste.suivi.filter(s2 => s2.bien_id === x.id)} proprio={proprioDe(x)}
+                  nbAcheteurs={parBien[x.id]?.acheteurs || 0} nbVisites={parBien[x.id]?.visites || 0} nbPrevues={parBien[x.id]?.prevues || 0} nbCR={parBien[x.id]?.cr || 0} nbOffres={parBien[x.id]?.offres || 0}
+                  mandat={mandats[x.id] || null} onClick={() => ouvrir(x.id)} />
+                <CaseSelection coin on={on} mode={modeChoix} onBasculer={() => basculerChoix(x.id)} titre={on ? 'Décocher ce bien' : 'Cocher ce bien'} className={vue === 'lignes' ? b.caseLigne : undefined} />
+              </div>
             );
           })}
         </div>
       ))}
+      {/* La barre de la sélection ne cache pas les derniers biens. */}
+      {modeChoix && <div style={{ height: 120 }} aria-hidden="true" />}
       {editeur}
+      {/* V3.88 — Les biens cochés : la barre, et ses gestes. */}
+      {!lot && (
+        <BarreSelection n={coches.length} un="bien sélectionné" plusieurs="biens sélectionnés" onVider={viderChoix}
+          toutes={visibles.length ? { n: visibles.length + coches.filter(x => !visibles.includes(x)).length, onClick: () => setChoisis(l => new Set([...l, ...visibles.map(x => x.id)])) } : null}
+          gestes={[
+            coches.every(x => x.archive)
+              ? { k: 'desarchiver', lib: 'Sortir des archives', court: 'Désarchiver', ic: 'archive', onClick: () => preparerLot('desarchiver') }
+              : { k: 'archiver', lib: 'Archiver', ic: 'archive', titre: 'Les biens terminés (vendus, retirés) quittent la liste, retrouvables dans « Archivés »', onClick: () => preparerLot('archiver') },
+            { k: 'supprimer', lib: 'Supprimer', ic: 'corbeille', danger: true, onClick: () => preparerLot('supprimer') },
+          ]} />
+      )}
+      {lot && (
+        <ConfirmerLot danger={lot.quoi === 'supprimer'}
+          titre={lot.quoi === 'supprimer' ? `Supprimer ${lot.cibles.length > 1 ? `${lot.cibles.length} biens` : lot.cibles.length ? '1 bien' : 'ces biens'} ?`
+            : lot.quoi === 'archiver' ? `Archiver ${lot.cibles.length > 1 ? `${lot.cibles.length} biens` : lot.cibles.length ? '1 bien' : 'ces biens'} ?`
+              : `Sortir ${lot.cibles.length > 1 ? `${lot.cibles.length} biens` : '1 bien'} des archives ?`}
+          phrase={lot.quoi === 'supprimer' ? 'C’est définitif : la fiche, ses photos, son suivi et les pièces de son dossier partent avec. Pour le garder sans le voir, archive-le plutôt (une fois vendu ou retiré).'
+            : lot.quoi === 'archiver' ? 'Ils quittent la liste et se rangent dans « Archivés », sans rien perdre. Une vente reste comptée.'
+              : 'Ils reviennent dans la liste, à leur étape.'}
+          liste={lot.cibles.map(nomBien)} ignores={lot.ignores}
+          libValider={lot.quoi === 'supprimer' ? `Supprimer définitivement (${lot.cibles.length})` : lot.quoi === 'archiver' ? `Archiver (${lot.cibles.length})` : `Sortir des archives (${lot.cibles.length})`}
+          avancement={lot.avancement} onValider={() => { void faireLot(); }} onFermer={() => setLot(null)} />
+      )}
       {choixDepart && <FenNouveau occupe={cree} erreur={erreurDepart} pour={pour && liste?.clients[pour] ? nomClient(liste.clients[pour]) : ''}
         existants={existantsPour} onOuvrir={id => { setChoixDepart(false); setPour(null); ouvrir(id); }}
         onFermer={() => { if (!cree) { setChoixDepart(false); setPour(null); } }} onChoisir={e => { void nouveau(e); }} />}
