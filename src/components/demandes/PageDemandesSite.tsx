@@ -27,9 +27,10 @@ import {
    bien, messages), puis, avec la passerelle SeLoger (context.md §7), les
    demandes de SeLoger, Logic-Immo et Belles Demeures.
 
-   - En haut, les chiffres de la période (ce mois-ci, 3 mois, 12 mois, depuis
-     le début) : reçues, devenues des contacts, la répartition, le bien le
-     plus demandé. Ils suivent la provenance choisie dessous.
+   - En haut, une seule bande (V3.99) : d'où (« Site et portails », en
+     grand), la période (ce mois-ci, 3 mois, 12 mois, depuis le début), le
+     total, la répartition (des puces qui filtrent la liste) et ce qui reste
+     à traiter. Elle suit la provenance choisie dessous.
    - La provenance : Tout / Mon site / Portails, un curseur qui glisse. Mon
      site et Portails ouvrent un tiroir : un formulaire, ou un portail.
    - Le statut (Nouvelles, En cours, Traitées, Archivées, Toutes) ; la
@@ -69,11 +70,12 @@ const provenanceParCle = (k: Provenance) => PROVENANCES.find(x => x.k === k) || 
 type Prov = 'tout' | 'site' | 'portails';
 type Portail = 'tous' | Provenance;
 type Periode = 'mois' | 'trois' | 'an' | 'tout';
-const PERIODES: { k: Periode; lib: string; phrase: string; jours: number | null }[] = [
-  { k: 'mois', lib: 'Ce mois-ci', phrase: 'ce mois-ci', jours: null },
-  { k: 'trois', lib: '3 mois', phrase: 'sur 3 mois', jours: 91 },
-  { k: 'an', lib: '12 mois', phrase: 'sur 12 mois', jours: 365 },
-  { k: 'tout', lib: 'Depuis le début', phrase: 'depuis le début', jours: null },
+/* `court` : au téléphone, les quatre tiennent sur une ligne (V3.99). */
+const PERIODES: { k: Periode; lib: string; court: string; phrase: string; jours: number | null }[] = [
+  { k: 'mois', lib: 'Ce mois-ci', court: 'Ce mois', phrase: 'ce mois-ci', jours: null },
+  { k: 'trois', lib: '3 mois', court: '3 mois', phrase: 'sur 3 mois', jours: 91 },
+  { k: 'an', lib: '12 mois', court: '12 mois', phrase: 'sur 12 mois', jours: 365 },
+  { k: 'tout', lib: 'Depuis le début', court: 'Tout', phrase: 'depuis le début', jours: null },
 ];
 const BLEU = '#22497c';
 
@@ -117,6 +119,8 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   /* Une autre demande s'ouvre en haut de la fenêtre, pas à la hauteur où
      l'on avait laissé la précédente. */
   const cadre = useRef<HTMLDivElement>(null);
+  /* « N à traiter » (V3.99) descend jusqu'à la liste. */
+  const panneau = useRef<HTMLElement>(null);
   useEffect(() => { cadre.current?.scrollTo({ top: 0 }); }, [choisie]);
 
   const charger = useCallback(async () => {
@@ -231,25 +235,31 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   }, [per, maintenant, P.jours]);
   const dansPeriode = demandes.filter(d => dansProv(d) && Date.parse(d.created_at) >= depuisLe && !robot(d));
   const total = dansPeriode.length;
-  const contacts = dansPeriode.filter(d => d.client_id).length;
-  const taux = total ? Math.round((contacts / total) * 100) : 0;
-  const nouvellesPer = dansPeriode.filter(d => !d.archive && statutDe(d.statut).k === 'nouveau').length;
+  /* « N à traiter » : les nouvelles de la provenance, toutes périodes (ce
+     que montre l'onglet « Nouvelles »). */
+  const aTraiter = demandes.filter(d => dansProv(d) && !d.archive && statutDe(d.statut).k === 'nouveau').length;
   /* Tant que tout vient du site, la répartition se fait par formulaire ;
-     dès qu'un portail apparaît, par provenance. */
+     dès qu'un portail apparaît, par provenance. V3.99 (Alexandre : « devenues
+     des contacts, je n'ai même pas compris ; le bien le plus demandé, je ne
+     sais pas ») : une seule bande, et chaque part est une puce qui filtre la
+     liste (le formulaire, ou la provenance). */
   const parFormulaire = prov === 'site' || (prov === 'tout' && dansPeriode.every(d => provenanceDe(d).k === 'site'));
-  const repart: { lib: string; n: number; c: string }[] = parFormulaire
-    ? CATEGORIES.map(c => ({ lib: c.pluriel, n: dansPeriode.filter(d => cleCategorie(d) === c.k).length, c: c.c }))
-    : (prov === 'portails' ? PORTAILS : PROVENANCES).map(x => ({ lib: x.lib, n: dansPeriode.filter(d => provenanceDe(d).k === x.k).length, c: x.c }));
-  const repartN = repart.filter(r => r.n > 0);
-  const titreRepart = prov === 'portails' ? 'Par portail' : parFormulaire ? 'Par formulaire' : 'Par provenance';
-  const parBien = new Map<string, { n: number; titre: string; ref: string }>();
-  for (const d of dansPeriode) {
-    if (cleCategorie(d) !== 'rappel_bien' || !(d.property_title || d.property_ref)) continue;
-    const k = d.property_ref || d.property_title || '';
-    const x = parBien.get(k) || { n: 0, titre: d.property_title || `Bien réf. ${d.property_ref}`, ref: d.property_ref || '' };
-    x.n++; parBien.set(k, x);
-  }
-  const top = [...parBien.values()].sort((a, b2) => b2.n - a.n)[0] || null;
+  type Part = { k: string; lib: string; n: number; teinte: Teinte; ic: string; court: string; on: boolean; choisir: () => void };
+  const repart: Part[] = parFormulaire
+    ? CATEGORIES.map(c => ({
+      k: c.k, lib: c.pluriel, n: dansPeriode.filter(d => cleCategorie(d) === c.k).length, teinte: c, ic: c.ic, court: '',
+      on: cat === c.k, choisir: () => setCat(cat === c.k ? 'toutes' : c.k),
+    }))
+    : (prov === 'portails' ? PORTAILS : PROVENANCES).map(x => ({
+      k: x.k, lib: x.lib, n: dansPeriode.filter(d => provenanceDe(d).k === x.k).length, teinte: x, ic: x.k === 'site' ? 'globe' : '', court: x.court,
+      on: prov === 'portails' && portail === x.k,
+      choisir: () => {
+        if (x.k === 'site') { choisirProv('site'); return; }
+        setProv('portails'); setCat('toutes'); setPortail(prov === 'portails' && portail === x.k ? 'tous' : x.k);
+      },
+    }));
+  /* La plus grosse part d'abord : elle se lit en premier. */
+  const repartN = repart.filter(r => r.n > 0).sort((x, y) => y.n - x.n);
   const scopeLib = prov === 'site' ? 'Mon site' : prov === 'portails' ? (portail === 'tous' ? 'Tous les portails' : provenanceParCle(portail).lib) : 'Site et portails';
   const scopeC = prov === 'portails' && portail !== 'tous' ? provenanceParCle(portail).c : BLEU;
 
@@ -397,51 +407,45 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
         label="Les demandes" actif="" onChoisir={() => {}} tuiles={[]} />
 
       {demandes.length > 0 && (
-        <section className={s.chiffres} aria-label="Les chiffres">
-          <div className={s.chiffresTete}>
-            <span className={s.portee} style={{ ['--c' as string]: scopeC } as CSSProperties}><span className={s.pointStatut} />{scopeLib}</span>
+        <section className={s.bande} aria-label="Les chiffres" style={{ ['--c' as string]: scopeC } as CSSProperties}>
+          <div className={s.bandeTete}>
+            <div className={s.portee}>
+              <span className={s.porteeIc}>{prov === 'site' ? <Ic n="globe" t={19} e={2} /> : prov === 'portails' ? <Ic n="immeuble" t={19} e={2} /> : <PictoBoite taille={19} epaisseur={2} />}</span>
+              <span className={s.porteeTx}><b>{scopeLib}</b><small>{`Ce qui est arrivé ${P.phrase}`}</small></span>
+            </div>
             <div className={s.periodes} role="group" aria-label="Période des chiffres">
               {PERIODES.map(x => (
-                <button key={x.k} type="button" aria-pressed={per === x.k} className={`${s.periode} ${per === x.k ? s.periodeOn : ''}`} onClick={() => setPer(x.k)}>{x.lib}</button>
+                <button key={x.k} type="button" aria-pressed={per === x.k} className={`${s.periode} ${per === x.k ? s.periodeOn : ''}`} onClick={() => setPer(x.k)}><span className={s.perLong}>{x.lib}</span><span className={s.perCourt}>{x.court}</span></button>
               ))}
             </div>
           </div>
-          <div className={s.cartesChiffres}>
-            <div className={`${s.carteChiffre} ${s.carteBleue}`}>
-              <span className={s.ccLib}>{`Demandes reçues ${P.phrase}`}</span>
-              <span className={s.ccGrand}>{total}</span>
-              <span className={s.ccSous}>{nouvellesPer ? `dont ${pluriel(nouvellesPer, 'nouvelle', 'nouvelles')} à traiter` : 'Tout est traité'}</span>
-            </div>
-            <div className={s.carteChiffre}>
-              <span className={s.ccLib}>Devenues des contacts</span>
-              <span className={s.ccLigne}><span className={s.ccGrand}>{contacts}</span><span className={s.ccTaux}>{`${taux} %`}</span></span>
-              <span className={s.ccJauge}><span style={{ width: `${taux}%` }} /></span>
-            </div>
-            <div className={s.carteChiffre}>
-              <span className={s.ccLib}>{titreRepart}</span>
+          <div className={s.bandeCorps}>
+            <div className={s.total}><b>{total}</b><span>{total > 1 ? 'demandes reçues' : 'demande reçue'}</span></div>
+            <div className={s.repart}>
               {repartN.length ? (
                 <>
-                  <span className={s.ccBarre}>{repartN.map(r => <span key={r.lib} style={{ width: `${(r.n / total) * 100}%`, background: r.c }} />)}</span>
-                  <span className={s.ccLegende}>
-                    {repartN.map(r => <span key={r.lib}><i style={{ background: r.c }} /><span>{r.lib}</span><b>{r.n}</b></span>)}
-                  </span>
+                  <span className={s.ccBarre}>{repartN.map(r => <span key={r.k} style={{ width: `${(r.n / total) * 100}%`, background: r.teinte.c }} />)}</span>
+                  <div className={s.parts} role="group" aria-label="Filtrer la liste">
+                    {repartN.map(r => (
+                      <button key={r.k} type="button" aria-pressed={r.on} className={`${s.part} ${r.on ? s.partOn : ''}`} style={teinte(r.teinte)} onClick={r.choisir}>
+                        <span className={s.partIc}>{r.ic ? <Ic n={r.ic} t={13} e={2.3} /> : r.court}</span>
+                        <span>{r.lib}</span><b>{r.n}</b>
+                      </button>
+                    ))}
+                  </div>
                 </>
               ) : <span className={s.ccSous}>{prov === 'portails' ? 'Les demandes des portails arriveront ici avec la passerelle SeLoger.' : 'Aucune demande sur la période.'}</span>}
             </div>
-            <div className={s.carteChiffre}>
-              <span className={s.ccLib}>Le bien le plus demandé</span>
-              {top ? (
-                <span className={s.ccBien}>
-                  <span className={s.ccBienIc}><Ic n="maison" t={22} /></span>
-                  <span style={{ minWidth: 0 }}><b>{top.titre}</b><small>{`${pluriel(top.n, 'demande', 'demandes')}${top.ref ? ` · réf.\u00a0${top.ref}` : ''}`}</small></span>
-                </span>
-              ) : <span className={s.ccSous}>Aucune demande sur un bien précis pour l’instant.</span>}
-            </div>
+            {aTraiter > 0 ? (
+              <button type="button" className={s.aTraiter} onClick={() => { setFiltre('nouveau'); panneau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
+                {`${aTraiter} à traiter`}<em><Ic n="fleche" t={15} e={2.4} /></em>
+              </button>
+            ) : <span className={s.toutTraite}><Ic n="check" t={15} e={2.6} />Tout est traité</span>}
           </div>
         </section>
       )}
 
-      <section className={s.panneau} aria-label="Les demandes">
+      <section ref={panneau} className={s.panneau} aria-label="Les demandes">
         <div className={s.provs} role="tablist" aria-label="Provenance" style={{ ['--i' as string]: String({ tout: 0, site: 1, portails: 2 }[prov]) } as CSSProperties}>
           <span className={s.curseur} aria-hidden="true" />
           {([

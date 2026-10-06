@@ -6,13 +6,25 @@
    couleur d'un portail ou d'un formulaire ne sert qu'à le reconnaître, l'or
    ne souligne que le neuf et l'estimation DVF. Rien n'apparaît d'un coup. */
 
-/* ── Les chiffres du haut ─────────────────────────────────────────────── */
-.chiffres { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.chiffresTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.portee {
-  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 99px;
-  background: white; border: 1px solid #e1e8f2; color: var(--c); font-size: 13px; font-weight: 750; transition: color .3s ease;
+/* ── Le haut : une seule bande (V3.99) ────────────────────────────────────
+   Alexandre : « j'aime pas le haut ; devenues des contacts, je n'ai même pas
+   compris ; site et portails, c'est écrit en petit ». D'où (en grand, avec la
+   couleur de la provenance), la période, le total, la répartition en puces
+   qui filtrent la liste, et ce qui reste à traiter. */
+.bande {
+  background: white; border: 1px solid #e1e8f2; border-radius: 22px; padding: 18px 22px 20px; min-width: 0;
+  display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 40px -34px rgba(26, 35, 50, .35);
+  animation: monte .45s cubic-bezier(.2, .8, .2, 1) backwards;
 }
+.bandeTete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.portee { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.porteeIc {
+  width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--c) 10%, white); color: var(--c); transition: background .3s ease, color .3s ease;
+}
+.porteeTx { display: flex; flex-direction: column; min-width: 0; }
+.porteeTx b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 19px; font-weight: 800; line-height: 1.2; color: var(--c); transition: color .3s ease; }
+.porteeTx small { font-size: 13px; font-weight: 600; color: #64748b; margin-top: 2px; }
 .periodes { display: flex; gap: 3px; padding: 4px; background: white; border: 1px solid #e1e8f2; border-radius: 12px; }
 .periode {
   border: 0; background: transparent; border-radius: 9px; height: 32px; padding: 0 12px; font-family: inherit;
@@ -20,54 +32,49 @@
 }
 .periode:hover { color: #22497c; }
 .periodeOn, .periodeOn:hover { background: #22497c; color: white; box-shadow: 0 6px 14px -8px rgba(34, 73, 124, .8); }
+.perCourt { display: none; }
 
-.cartesChiffres { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.carteChiffre {
-  background: white; border: 1px solid #e1e8f2; border-radius: 20px; padding: 18px 20px; min-width: 0;
-  display: flex; flex-direction: column; gap: 8px; animation: monte .45s cubic-bezier(.2, .8, .2, 1) backwards;
-}
-.carteChiffre:nth-child(2) { animation-delay: .05s; }
-.carteChiffre:nth-child(3) { animation-delay: .1s; }
-.carteChiffre:nth-child(4) { animation-delay: .15s; }
-.carteBleue {
-  background: linear-gradient(150deg, #2b5a96 0%, #22497c 55%, #1c3e6b 100%); border-color: #22497c; color: white;
-  box-shadow: 0 18px 36px -24px rgba(34, 73, 124, .9);
-}
-.ccLib { font-size: 13px; font-weight: 650; color: #5b6475; }
-.ccSous { font-size: 13px; color: #5b6475; line-height: 1.45; }
-.carteBleue .ccLib, .carteBleue .ccSous { color: #d3deef; }
-.ccGrand {
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 40px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05;
+.bandeCorps { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'total repart action'; gap: 26px; align-items: center; }
+.total { grid-area: total; display: flex; flex-direction: column; }
+.total b {
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 46px; font-weight: 800; letter-spacing: -.03em; line-height: 1;
   color: #1a2332; font-variant-numeric: tabular-nums;
 }
-.carteBleue .ccGrand { color: #f0d27a; }
-.ccLigne { display: flex; align-items: baseline; gap: 10px; }
-.ccTaux { font-size: 15px; font-weight: 800; color: #0f7a4f; }
-.ccJauge { display: block; height: 6px; border-radius: 99px; background: #edf1f7; overflow: hidden; margin-top: auto; }
-.ccJauge > span {
-  display: block; height: 100%; background: #0f7a4f; border-radius: 99px; transform-origin: left;
-  transition: width .6s cubic-bezier(.2, .8, .2, 1); animation: pousse .8s cubic-bezier(.2, .8, .2, 1) .2s backwards;
-}
+.total span { font-size: 14px; color: #64748b; margin-top: 5px; white-space: nowrap; }
+.repart { grid-area: repart; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.ccSous { font-size: 13px; color: #5b6475; line-height: 1.45; }
 .ccBarre {
-  display: flex; gap: 2px; height: 10px; border-radius: 99px; overflow: hidden; background: #edf1f7; transform-origin: left;
+  display: flex; gap: 3px; height: 12px; border-radius: 99px; overflow: hidden; background: #edf1f7; transform-origin: left;
   animation: pousse .8s cubic-bezier(.2, .8, .2, 1) .2s backwards;
 }
 .ccBarre > span { display: block; height: 100%; transition: width .6s cubic-bezier(.2, .8, .2, 1); }
-.ccLegende { display: flex; flex-direction: column; gap: 5px; }
-.ccLegende > span { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; min-width: 0; }
-.ccLegende i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
-.ccLegende > span > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ccLegende b { font-weight: 800; color: #1a2332; font-variant-numeric: tabular-nums; }
-.ccBien { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.ccBienIc {
-  width: 48px; height: 48px; border-radius: 14px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  background: #eaf1fa; color: #22497c;
+.parts { display: flex; flex-wrap: wrap; gap: 8px; }
+.part {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px 0 6px; border-radius: 99px; box-sizing: border-box;
+  border: 1.5px solid var(--trait); background: var(--fond); color: #1a2332; font-family: inherit; font-size: 13.5px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: box-shadow .2s ease, border-color .2s ease;
 }
-.ccBien b {
-  font-size: 14.5px; font-weight: 750; color: #1a2332; line-height: 1.3;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+.part:hover { border-color: color-mix(in srgb, var(--c) 55%, white); }
+.part b { color: var(--c); font-weight: 800; font-variant-numeric: tabular-nums; }
+.partOn, .partOn:hover { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 16%, transparent); }
+.partIc {
+  width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--c); color: white; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 9.5px; font-weight: 800;
 }
-.ccBien small { display: block; font-size: 12.5px; font-weight: 700; color: #22497c; margin-top: 3px; }
+.aTraiter {
+  grid-area: action; display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 10px 0 18px; border: none; border-radius: 15px;
+  background: #c9a84c; color: #1a2332; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 12px 24px -14px rgba(160, 124, 40, .9); transition: background .2s ease;
+}
+.aTraiter:hover { background: #d6b75e; }
+.aTraiter em {
+  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: #1a2332; color: #f0d27a; font-style: normal;
+}
+.toutTraite {
+  grid-area: action; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 13px;
+  background: #ecfdf5; color: #0f7a4f; font-size: 14px; font-weight: 800; white-space: nowrap;
+}
 
 /* ── Le panneau : la provenance, son tiroir, le statut, la liste ───────── */
 .panneau {
@@ -544,9 +551,6 @@
 @keyframes annonceEntre { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 /* ═══ Téléphone ═══════════════════════════════════════════════════════════ */
-@media (max-width: 1100px) {
-  .cartesChiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 760px) {
   .cats {
     flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px -12px 0; padding: 2px 12px 4px;
@@ -554,17 +558,21 @@
   .cats::-webkit-scrollbar { display: none; }
   .cat { height: 36px; font-size: 13px; flex: 0 0 auto; }
 
-  /* Les chiffres : les deux premiers côte à côte, les deux autres dessous. */
-  .cartesChiffres { gap: 10px; }
-  .carteChiffre { padding: 14px 15px; border-radius: 18px; gap: 6px; }
-  .carteChiffre:nth-child(n + 3) { grid-column: 1 / -1; }
-  .ccGrand { font-size: 32px; }
-  .ccLib, .ccSous { font-size: 12.5px; }
-  .chiffresTete { flex-direction: column; align-items: stretch; }
-  .portee { align-self: flex-start; }
-  .periodes { overflow-x: auto; scrollbar-width: none; }
-  .periodes::-webkit-scrollbar { display: none; }
-  .periode { flex: 1 0 auto; padding: 0 10px; }
+  /* La bande : le total et « à traiter » côte à côte, la répartition dessous. */
+  .bande { padding: 14px 14px 16px; border-radius: 20px; gap: 14px; }
+  .bandeTete { flex-direction: column; align-items: stretch; }
+  .porteeIc { width: 36px; height: 36px; border-radius: 11px; }
+  .porteeTx b { font-size: 17px; }
+  .periodes { min-width: 0; }
+  .periode { flex: 1 1 0; min-width: 0; padding: 0 6px; font-size: 13px; }
+  .perLong { display: none; }
+  .perCourt { display: inline; }
+  .bandeCorps { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'total action' 'repart repart'; gap: 14px 12px; }
+  .total b { font-size: 38px; }
+  .aTraiter { height: 46px; font-size: 14px; padding: 0 8px 0 14px; }
+  .aTraiter em { width: 28px; height: 28px; }
+  .toutTraite { height: 40px; padding: 0 12px; font-size: 13px; }
+  .part { height: 34px; font-size: 13px; }
 
   /* Le panneau : les trois onglets en colonnes, l'icône sur le nom. */
   .panneau { padding: 8px 8px 12px; border-radius: 20px; }
@@ -619,6 +627,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .carte, .carteChiffre, .tuileProv, .liste, .ccBarre, .ccJauge > span, .modale, .voileModale, .pointNeuf, .pouls { animation: none; }
+  .carte, .bande, .tuileProv, .liste, .ccBarre, .modale, .voileModale, .pointNeuf, .pouls { animation: none; }
   .curseur, .tiroirProv::before, .prov, .carte, .tuileProv { transition: none; }
 }
