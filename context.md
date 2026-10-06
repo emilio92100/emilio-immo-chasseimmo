@@ -1494,6 +1494,28 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.95 — 6 octobre 2026 · Créer un bien depuis l'annonce ImmoFacile ; « Non diffusé » par défaut
+
+Rien à passer dans Supabase.
+
+- **Créer dans le CRM un bien en ligne chez ImmoFacile** qu'aucune fiche ne reprend (le 3 pièces à
+  669 000 €, annonce 56527064, que l'import des fiches avait manqué : son numéro court 312 était
+  aussi celui du 880 000 €). Dans le bandeau de la reprise, chaque annonce « pas dans le CRM » a
+  son bouton « Créer dans le CRM » → **`/api/diffusion/creer`** (derrière le badge) : la fiche est
+  préparée par **`lib/bien-depuis-flux.ts`** (le flux XML : type, adresse, position, surfaces,
+  pièces, étage, intérieur, immeuble, annexes, DPE, copropriété, taxe foncière, prix et honoraires,
+  type et dates du mandat, consignes de visite, annonce, détail des pièces ; le reste aux notes,
+  avec les mêmes traductions que l'import des fiches), créée « En vente » à la référence suivante,
+  photos copiées chez nous, numéro ImmoFacile gardé (même adresse sur le site), publiée sur le site
+  seulement. Le flux ne donne ni le propriétaire ni le numéro de mandat : à relier dans la fiche.
+  Jamais deux fois (un bien qui porte déjà ce numéro est rendu).
+- **La copie des photos d'ImmoFacile** est mise en commun dans `lib/photos-immofacile.ts`
+  (`/api/biens-vente/photos-immofacile` l'utilise aussi ; mêmes garde-fous).
+- **« Non diffusé » par défaut** (Alexandre : « s'ils n'étaient pas dans le flux, autant les mettre
+  sans diffusion ») : à la reprise, un bien en vente, sous offre, sous compromis ou annonce type
+  qu'aucune annonce d'ImmoFacile ne reprend et qui n'a pas de réglage passe en « Non diffusé »
+  (supports par défaut gardés cochés). Plus de « À régler » après la reprise.
+
 ### V3.94 — 6 octobre 2026 · La reprise d'ImmoFacile corrige ses mauvais liens
 
 Rien à passer dans Supabase. Trouvé en comparant, après la première reprise, le flux du CRM pour
