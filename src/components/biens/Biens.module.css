@@ -1604,12 +1604,15 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
 .statutDiff[data-ton='on'] > .diffPoint::after, .statutDiff[data-ton='regler'] > .diffPoint::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--dC); animation: pointRespire 2.2s ease-out infinite; }
 .diffCourt { display: none; }
 /* Les supports où il part : une pastille de leur couleur, l'une sur l'autre. */
-.diffSupports { display: inline-flex; align-items: center; margin-left: 1px; }
-.diffSupports i {
+/* V3.99b : `.diffLogos` (pas `.diffSupports`, le nom de la grille de la
+   fenêtre de diffusion : la reprendre l'avait mise sur une seule ligne,
+   coupée à gauche et à droite). */
+.diffLogos { display: inline-flex; align-items: center; margin-left: 1px; }
+.diffLogos i {
   width: 22px; height: 22px; margin-left: -6px; box-sizing: border-box; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   background: var(--sC); color: #fff; border: 2px solid var(--dF); font: 800 8.5px/1 'Plus Jakarta Sans', sans-serif; font-style: normal; letter-spacing: -.2px;
 }
-.diffSupports i:first-child { margin-left: 0; }
+.diffLogos i:first-child { margin-left: 0; }
 .menuGauche { left: 0; right: auto; }
 /* Les gestes, collés : un bloc, un trait entre chacun. */
 .gestes {
@@ -1654,7 +1657,7 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
 /* Un téléphone : la note reste dans « ⋯ » (« Ajouter une note »), pour
    que l'étape et la diffusion tiennent sur le même rang que les gestes. */
 @media (max-width: 480px) {
-  .diffSupports, .gesteNote { display: none; }
+  .diffLogos, .gesteNote { display: none; }
   .statutEtape { padding: 0 9px; gap: 5px; }
   .statutDiff { margin-left: 9px; padding: 0 10px; gap: 5px; }
   .statutDiff::before { left: -9px; width: 9px; }

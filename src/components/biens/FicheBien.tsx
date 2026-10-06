@@ -1987,7 +1987,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               <span className={b.diffLong} data-dlong="">{diff.ton === 'on' ? 'Diffusion en cours' : diff.ton === 'regler' ? 'Diffusion à régler' : diff.ton === 'pause' ? 'Diffusion en pause' : 'Non diffusé'}</span>
               <span className={b.diffCourt}>{diff.ton === 'on' ? 'En ligne' : diff.ton === 'regler' ? 'À régler' : diff.ton === 'pause' ? 'En pause' : 'Hors ligne'}</span>
               {diff.ton === 'on' && diff.supports.length > 0 && (
-                <span className={b.diffSupports} aria-hidden="true">
+                <span className={b.diffLogos} aria-hidden="true">
                   {diff.supports.map(k => {
                     const x = supportDe(k);
                     return <i key={k} style={{ ['--sC' as string]: x.c } as React.CSSProperties}>{k === 'site' ? <Ic n="globe" t={11} e={2.4} /> : x.court}</i>;
