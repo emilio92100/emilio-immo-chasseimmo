@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
 import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/actes';
@@ -51,7 +51,7 @@ import {
   dateAn, type AVenirBien, type DocOffre, type EvtBien, type InfosCompromis, type MaillonDoc, type NotaireCarte, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
-import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
+import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type PourVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
    Le bandeau (photo, prix, étape), puis sept onglets :
@@ -225,7 +225,9 @@ function exterieurCourt(d: Donnees): string {
   const s2 = (k: string, l: string) => (num(d, k) ? `${l} ${m2(num(d, k) as number)}` : '');
   const avec = [ann.includes('terrasse') && (s2('surfTerrasse', 'Terrasse') || 'Terrasse'), ann.includes('balcon') && (s2('surfBalcon', 'Balcon') || 'Balcon'),
     ann.includes('jardin') && (s2('surfJardin', 'Jardin') || 'Jardin'), ann.includes('loggia') && (s2('surfLoggia', 'Loggia') || 'Loggia')].filter(Boolean) as string[];
-  return avec[0] || (ann.length ? libs(d, 'annexes').slice(0, 2).join(', ') : 'Aucun');
+  /* V3.81 : « Parking +1 » plutôt que « Parking, Cave » coupé en « Parking, Ca… ». */
+  const l = libs(d, 'annexes');
+  return avec[0] || (l.length ? `${l[0]}${l.length > 1 ? ` +${l.length - 1}` : ''}` : 'Aucun');
 }
 /* Le bien en bref : des tuiles à icône, seulement ce qui est rempli.
    V3.80 (Alexandre : « le bien en bref, mettre que sur une seule ligne ») :
@@ -254,7 +256,7 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
   else if (enImm && (n('niveaux') || 0) >= 2) items.push({ ic: 'escalier', ton: 'ardoise', v: n('niveaux') === 2 ? 'Duplex' : n('niveaux') === 3 ? 'Triplex' : `${n('niveaux')} niveaux`, l: `Sur ${n('niveaux')} niveaux` });
   if (!enImm && n('etages')) items.push({ ic: 'escalier', ton: 'ardoise', v: n('etages') === 1 ? 'Plain-pied' : pl(n('etages') as number, 'niveau'), l: n('etages') === 1 ? 'Un seul niveau' : 'Niveaux' });
   if (d.typeBien === 'terrain' && d.constructible) items.push({ ic: 'terrain', ton: 'vert', v: d.constructible === 'oui' ? 'Constructible' : d.constructible === 'partiel' ? 'En partie' : 'Non constructible', l: d.viabilise === 'oui' ? 'Viabilisé' : d.viabilise === 'non' ? 'Non viabilisé' : 'Terrain' });
-  if (ann.length) items.push({ ic: icExt, ton: 'vert', v: exterieurCourt(d), l: 'Extérieur' });
+  if (ann.length) items.push({ ic: icExt, ton: 'vert', v: exterieurCourt(d), l: ['terrasse', 'jardin', 'balcon', 'loggia'].some(x => ann.includes(x)) ? 'Extérieur' : 'Annexes' });
   if (d.expo) items.push({ ic: 'boussole', ton: 'ambre', v: d.expo === 'traversant' ? 'Traversant' : nomExpo(d.expo).replace(/^./, x => x.toUpperCase()), l: 'Exposition' });
   if (d.dpe) items.push({ ic: '', ton: 'ambre', dpe: String(d.dpe), v: n('dpeValeur') ? `${n('dpeValeur')} kWh` : `Classe ${d.dpe}`, l: n('dpeValeur') ? 'DPE, m² par an' : 'DPE' });
   else if (d.dpeStatut === 'vierge') items.push({ ic: 'eclair', ton: 'ambre', v: 'Vierge', l: 'DPE' });
@@ -498,26 +500,27 @@ function CoteMandat({ bien, d, enRoute, onModifier, onDoc, onPreparer, onDejaSig
   );
 }
 
-/* Les indications de visite, en lignes pour la carte « Pour la visite »
-   (V3.31) — les mêmes que le bloc « Les indications de visite ». */
-function visitePourCarte(d: Donnees): { lignes: LigneVisite[]; encarts: { l: string; v: string }[] } {
+/* Les indications de visite pour la carte « Pour la visite » (V3.31,
+   rangées par usage en V3.81 : l'occupation, les codes, la personne sur
+   place, le reste, puis le chemin et les consignes). */
+function visitePourCarte(d: Donnees): PourVisite {
   const cles = [lib(d, 'cles'), d.cles === 'agence' && txt(d, 'trousseau') ? `trousseau ${txt(d, 'trousseau')}` : ''].filter(Boolean).join(', ');
-  const lignes: LigneVisite[] = [
-    { ic: 'porte', l: 'Le bien est', v: [lib(d, 'occupation'), txt(d, 'disponible') ? `disponible ${txt(d, 'disponible')}` : ''].filter(Boolean).join(' · ') },
-    { ic: 'cle', l: 'Clés', v: cles },
+  const occ = typeof d.occupation === 'string' && d.occupation ? { v: d.occupation, l: lib(d, 'occupation') } : null;
+  const codes = [
     { ic: 'clavier', l: 'Digicode', v: txt(d, 'digicode') },
-    /* Le nom, puis le numéro sur sa ligne, cliquable (V3.45) : collés, ils se
-       coupaient en morceaux dans une colonne étroite. */
-    { ic: 'telephone', l: 'Contact sur place', v: txt(d, 'contactNom') || txt(d, 'contactTel'), tel: txt(d, 'contactNom') ? txt(d, 'contactTel') : '' },
-    { ic: 'horloge', l: 'Heures de visite', v: txt(d, 'creneaux') },
-    { ic: 'immeuble', l: 'En bas', v: libs(d, 'accesBas').join(', ').toLowerCase().replace(/^./, x => x.toUpperCase()) },
     { ic: 'interphone', l: 'Interphone', v: txt(d, 'interphone') },
     { ic: 'porte', l: 'Porte', v: txt(d, 'porte') },
-    { ic: 'ascenseur', l: 'En sortant de l’ascenseur', v: d.accesAscenseur === 'aucun' ? '' : lib(d, 'accesAscenseur') },
     { ic: 'cave', l: 'Cave · box', v: txt(d, 'annexesNum') },
   ].filter(x => x.v);
-  const encarts = [{ l: 'Le chemin', v: txt(d, 'itineraire') }, { l: 'Consignes', v: txt(d, 'consignes') }].filter(x => x.v);
-  return { lignes, encarts };
+  const nom = txt(d, 'contactNom'), tel = txt(d, 'contactTel');
+  const infos: LigneVisite[] = [
+    { ic: 'cle', l: 'Les clés', v: cles },
+    { ic: 'horloge', l: 'Heures de visite', v: txt(d, 'creneaux') },
+    { ic: 'immeuble', l: 'En bas', v: libs(d, 'accesBas').join(', ').toLowerCase().replace(/^./, x => x.toUpperCase()) },
+    { ic: 'ascenseur', l: 'En sortant de l’ascenseur', v: d.accesAscenseur === 'aucun' ? '' : lib(d, 'accesAscenseur') },
+  ].filter(x => x.v);
+  const encarts = [{ ic: 'carte', l: 'Le chemin', v: txt(d, 'itineraire') }, { ic: 'info', l: 'Consignes', v: txt(d, 'consignes') }].filter(x => x.v);
+  return { occupation: occ && occ.l ? occ : null, dispo: txt(d, 'disponible'), codes, contact: nom || tel ? { nom, tel } : null, infos, encarts };
 }
 
 /* ── Le parcours de l'estimation (V3.31, maquette B) ──
@@ -635,10 +638,25 @@ function surfacesDe(d: Donnees): SurfacesBien {
    joli, avec des icônes ») : une rangée de sous-onglets en tête — « Tout »
    (la vue d'ensemble d'avant, les cartes en colonnes), puis une carte à la
    fois, en grand, ses lignes sur deux colonnes. Mêmes cartes, même ordre. */
-type SousVue = 'tout' | 'interieur' | 'immeuble' | 'exterieur' | 'quartier' | 'energie' | 'copro' | 'prix';
+export type SousVue = 'tout' | 'interieur' | 'immeuble' | 'exterieur' | 'quartier' | 'energie' | 'copro' | 'prix';
+/* Les sous-onglets, leur icône dans la couleur de leur carte. « Tout » en
+   premier (V3.81). V3.81 : ils vivent dans le tiroir de la barre des
+   rubriques (FicheBien), plus dans l'onglet lui-même. */
+export function vuesDuBien(d: Donnees, avant: boolean): { k: SousVue; l: string; ic: string; c: string }[] {
+  const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
+  return [
+    { k: 'tout', l: 'Tout', ic: 'maison', c: '#c9a84c' },
+    { k: 'interieur', l: 'Intérieur', ic: 'canape', c: '#2d5c8f' },
+    { k: 'immeuble', l: enImm ? 'Immeuble' : 'Maison', ic: enImm ? 'immeuble' : 'maison', c: '#6d28d9' },
+    { k: 'exterieur', l: 'Extérieur', ic: 'terrain', c: '#16a34a' },
+    { k: 'quartier', l: 'Quartier', ic: 'carte', c: '#0891b2' },
+    { k: 'energie', l: 'Énergie', ic: 'eclair', c: '#d97706' },
+    { k: 'copro', l: d.copro === 'non' ? 'Charges et taxes' : 'Copropriété et charges', ic: 'lots', c: '#0d9488' },
+    { k: 'prix', l: avant ? 'Estimation et prix' : 'Prix', ic: 'etiquette', c: '#a9822f' },
+  ];
+}
 const FR_NB = (n: number) => String(n).replace('.', ',');
-export function OngletBien({ bien, onModifier, onSurfaces, onEstimation, onAnnonce }: { bien: BienVente; onModifier: (etape: string) => void; onSurfaces: () => void; onEstimation: () => void; onAnnonce?: (titre: string, texte: string) => void }) {
-  const [vue, setVue] = useState<SousVue>('tout');
+export function OngletBien({ bien, vue = 'tout', onModifier, onSurfaces, onEstimation, onAnnonce }: { bien: BienVente; vue?: SousVue; onModifier: (etape: string) => void; onSurfaces: () => void; onEstimation: () => void; onAnnonce?: (titre: string, texte: string) => void }) {
   const d = bien.donnees || {};
   const a = argentBien(d);
   const enImm = !['maison', 'terrain'].includes(String(d.typeBien || ''));
@@ -815,29 +833,20 @@ export function OngletBien({ bien, onModifier, onSurfaces, onEstimation, onAnnon
     </Famille>
   );
 
-  /* Les sous-onglets : leur icône dans la couleur de leur carte. */
-  /* V3.80 : « Tout » au bout, à droite (comme « Tous » dans les listes),
-     toujours ouvert en premier. */
-  const VUES: { k: SousVue; l: string; ic: string; c: string; cartes: ReactNode[] }[] = [
-    { k: 'interieur', l: 'Intérieur', ic: 'canape', c: '#2d5c8f', cartes: [interieur] },
-    { k: 'immeuble', l: enImm ? 'Immeuble' : 'Maison', ic: enImm ? 'immeuble' : 'maison', c: '#6d28d9', cartes: [immeuble] },
-    { k: 'exterieur', l: 'Extérieur', ic: 'terrain', c: '#16a34a', cartes: [exterieur] },
-    { k: 'quartier', l: 'Quartier', ic: 'carte', c: '#0891b2', cartes: [quartier] },
-    { k: 'energie', l: 'Énergie', ic: 'eclair', c: '#d97706', cartes: [energie] },
-    { k: 'copro', l: d.copro === 'non' ? 'Charges et taxes' : 'Copropriété et charges', ic: 'lots', c: '#0d9488', cartes: [copro, charges] },
-    { k: 'prix', l: avant ? 'Estimation et prix' : 'Prix', ic: 'etiquette', c: '#a9822f', cartes: [prix] },
-    { k: 'tout', l: 'Tout', ic: 'maison', c: '#c9a84c', cartes: [] },
-  ];
-  const choisie = VUES.find(x => x.k === vue) || VUES[VUES.length - 1];
+  /* Les cartes de chaque sous-onglet. */
+  const CARTES: Record<SousVue, ReactNode[]> = {
+    tout: [], interieur: [interieur], immeuble: [immeuble], exterieur: [exterieur], quartier: [quartier],
+    energie: [energie], copro: [copro, charges], prix: [prix],
+  };
+  const ordre = vuesDuBien(d, avant).map(x => x.k);
   return (
     <Col>
-      <BarreOnglets label="Les caractéristiques du bien" className={b.sousOnglets} actif={vue} onChoisir={setVue}
-        onglets={VUES.map(x => ({ k: x.k, l: x.l, ic: <span className={b.sousOngletIc} style={{ ['--sousC' as string]: x.c } as React.CSSProperties}><Ic n={x.ic} t={14} e={2.2} /></span> }))} />
-      <CorpsOnglet k={vue} ordre={VUES.map(x => x.k)}>
+      <CorpsOnglet k={vue} ordre={ordre}>
         {vue === 'tout' ? (
           <Col>
             {/* Plus de bande de photos ici (V3.31) : elles sont dans l'onglet Photos. */}
-            {!avant && <CarteAnnonce titre={txt(d, 'annonceTitre')} texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} mentionsTexte={mentionsAnnonce(d)} onEcrire={M('annonce')} onReformuler={onAnnonce ? x => reformulerAnnonce(d, x) : undefined} onAppliquer={onAnnonce} />}
+            {/* À toutes les étapes (V3.81), l'estimation comprise. */}
+            <CarteAnnonce titre={txt(d, 'annonceTitre')} texte={txt(d, 'annonceTexte')} mentions={controleAnnonce(d)} mentionsTexte={mentionsAnnonce(d)} onEcrire={M('annonce')} onReformuler={onAnnonce ? x => reformulerAnnonce(d, x) : undefined} onAppliquer={onAnnonce} />
             <Familles>
               {interieur}
               {immeuble}
@@ -850,7 +859,7 @@ export function OngletBien({ bien, onModifier, onSurfaces, onEstimation, onAnnon
             </Familles>
           </Col>
         ) : (
-          <div className={b.vueSeule}>{choisie.cartes.filter(Boolean)}</div>
+          <div className={b.vueSeule}>{(CARTES[vue] || []).filter(Boolean)}</div>
         )}
       </CorpsOnglet>
 
@@ -1078,6 +1087,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     const o = typeof window === 'undefined' ? null : lireOngletBien(depart.id);
     return o === 'acheteurs' || o === 'visites' || o === 'historique' || o === 'documents' ? o : 'apercu';
   });
+  /* Le sous-onglet de « Le bien » (V3.81 : il vit dans le tiroir de la
+     barre des rubriques, gardé quand on change de rubrique et qu'on revient). */
+  const [sousVue, setSousVue] = useState<SousVue>('tout');
   useEffect(() => { oublierOngletBien(); }, []);
   const [menu, setMenu] = useState<'etape' | 'plus' | null>(null);
   const [guide, setGuide] = useState<{ titre: string; texte: string; choix: ChoixGuide[] } | null>(null);
@@ -1488,6 +1500,27 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const suivis = cleSuivis && suivisLus.cle === cleSuivis ? suivisLus.s : {};
   const nbPhotos = lirePhotos(d.photos).length;
   const avant = avantMandat(e);
+  /* V3.81 : la pastille du propriétaire et les gestes du bien partagent une
+     ligne. Trop étroite pour tous les boutons (la pastille garde 200 px),
+     Modifier, Visite, Note et Point vendeur passent dans « ⋯ », où ils sont
+     déjà. La largeur des gestes se mesure quand ils sont tous visibles. */
+  const cheval = useRef<HTMLDivElement>(null);
+  const largeurGestes = useRef(0);
+  const [serre, setSerre] = useState(false);
+  useLayoutEffect(() => {
+    const el = cheval.current;
+    if (!el) return;
+    const mesurer = () => {
+      const g = el.querySelector<HTMLElement>('[data-gestes]');
+      if (!g) return;
+      if (!el.dataset.serre) largeurGestes.current = g.scrollWidth;
+      setSerre(largeurGestes.current > el.clientWidth - 212);
+    };
+    mesurer();
+    const ro = new ResizeObserver(mesurer);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [avant, pointVendeur, e]);
   /* L'ordre voulu par Alexandre (V3.30) : Vue d'ensemble, Photos, Le bien,
      Surfaces, puis Acheteurs, Documents, Historique. */
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
@@ -1887,13 +1920,30 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     <div className={b.fiche}>
       <div className={b.ficheBarre}>
         <button type="button" className={b.retour} onClick={onRetour}><Ic n="retour" t={16} />Biens</button>
-        <div className={b.barreActions}>
+      </div>
+
+      {/* V3.53 : à qui est ce bien, sur tous les onglets. La pastille est à
+          cheval sur le haut du bandeau, comme les rubriques sur le bas.
+          V3.81 (Alexandre : « les boutons, il faut les descendre au même
+          niveau que propriétaire, à droite, qu'ils empiètent sur l'encadré
+          bleu ; on ne les trouve pas ») : les gestes du bien la rejoignent, à
+          droite, sur la même ligne. */}
+      <div ref={cheval} className={`${b.chevalHaut} ${serre ? b.chevalSerre : ''}`} data-serre={serre ? 'oui' : undefined}>
+      <div className={b.proprioCheval}>
+        <PastilleProprio nom={nomP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} sous={sousP} plus={plusP} tel={telP} mail={mailP}
+          onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onRenseigner={() => onModifier('proprio')}
+          onCreerFiche={!proprio && p0Saisi ? creerFicheProprioBien : undefined} onRetirer={nomP || proprio ? retirerProprio : undefined} onApres={() => { void apres(); }} />
+      </div>
+        <div className={b.barreActions} data-gestes="">
           <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => onModifier()}><Ic n="crayon" t={15} />Modifier</button>
-          {!avant && e !== 'annonce_type' && <button type="button" className={`${s.btn} ${b.masquable}`} onClick={ouvrirVisite}><Ic n="plus" t={15} e={2.4} />Visite</button>}
-          {/* La note, en un clic : elle était cachée dans « ⋯ ». */}
+          {/* La note, en un clic : elle était cachée dans « ⋯ ». V3.81
+              (Alexandre : « juste Modifier, Note, l'étape et les trois
+              points ») : Visite et Point vendeur sont dans « ⋯ ». */}
           <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'note' })}><Ic n="bulle" t={15} />Note</button>
-          {pointVendeur && <button type="button" className={`${s.btn} ${b.masquable}`} onClick={() => setFen({ k: 'point' })}><Ic n="megaphone" t={15} />Point vendeur</button>}
-          <button type="button" className={b.btnEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}>
+          {/* V3.81 : en blanc, bordé de la couleur de l'étape (« Estimation est
+              de la même couleur que l'encadré bleu »). */}
+          <button type="button" className={b.btnEtape} aria-haspopup="menu" aria-expanded={menu === 'etape'} onClick={() => setMenu(menu === 'etape' ? null : 'etape')}
+            style={{ ['--etC' as string]: et.c } as React.CSSProperties} title={`Étape : ${et.lib}`} aria-label={`Étape : ${et.lib}, changer`}>
             <span className={`${b.point} ${b.pointVivant}`} style={{ background: et.c, ['--halo' as string]: et.c } as React.CSSProperties} /><span className={b.etLong}>{e === 'mandat' && !txt(d, 'mandatDate') ? 'En vente' : et.lib}</span><span className={b.etCourt}>{et.court}</span>{bien.archive ? ' · archivé' : ''}<Ic n="bas" t={14} e={2.6} />
           </button>
           <button type="button" className={s.btn} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
@@ -1924,14 +1974,6 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         </div>
       </div>
 
-      {/* V3.53 : à qui est ce bien, sur tous les onglets. La pastille est à
-          cheval sur le haut du bandeau, comme les rubriques sur le bas. */}
-      <div className={b.proprioCheval}>
-        <PastilleProprio nom={nomP} pluriel={plurielP} personne={proprio} societe={d.qui === 'sci' && !pourP} pour={pourP} sous={sousP} plus={plusP} tel={telP} mail={mailP}
-          onFiche={proprio ? () => ouvrirClient(proprio.id) : undefined} onRenseigner={() => onModifier('proprio')}
-          onCreerFiche={!proprio && p0Saisi ? creerFicheProprioBien : undefined} onRetirer={nomP || proprio ? retirerProprio : undefined} onApres={() => { void apres(); }} />
-      </div>
-
       <Bandeau bien={bien} detail={detail} surCarte={() => onNavigate('carte', { focus: `b:${bien.id}` })}
         cote={avant ? <CoteVisite d={d} onOuvrir={() => setVisite(true)} />
           : ['mandat', 'offre', 'compromis', 'suspendu'].includes(e) ? <CoteMandat bien={bien} d={d} enRoute={mandatEnRoute} onModifier={() => onModifier('prix')}
@@ -1942,8 +1984,20 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {/* Les rubriques, à cheval sur le bas du bandeau : elles en sortent.
           La pastille glisse d'un onglet à l'autre, le contenu arrive en
           fondu (V3.28, src/components/shared/OngletsGlissants.tsx). */}
-      <BarreOnglets label="Rubriques du bien" className={b.ongletsCheval} actif={onglet} onChoisir={setOnglet}
-        onglets={ONGLETS.map(o => ({ k: o.k, l: o.l, n: o.n, ic: <Ic n={o.ic} t={15} /> }))} />
+      {/* V3.81 (Alexandre : « pas la flèche ; un bloc qui devient commun,
+          avec les petites sous-catégories, toujours animé ») : « Le bien »
+          ouvre un tiroir marine sous la barre, dans le même cadre ; l'onglet
+          allumé descend jusqu'à lui, ils ne font qu'un. */}
+      <div className={b.ongletsCheval} data-tiroir={onglet === 'bien' ? 'oui' : undefined}>
+        <BarreOnglets label="Rubriques du bien" className={`${b.ongletsHaut} ${onglet === 'bien' ? b.ongletsAttache : ''}`} actif={onglet} onChoisir={setOnglet}
+          onglets={ONGLETS.map(o => ({ k: o.k, l: o.l, n: o.n, ic: <Ic n={o.ic} t={15} /> }))} />
+        <Depliant ouvert={onglet === 'bien'}>
+          <div className={b.tiroir}>
+            <BarreOnglets label="Les caractéristiques du bien" className={b.sousOnglets} actif={sousVue} onChoisir={setSousVue}
+              onglets={vuesDuBien(d, avant).map(x => ({ k: x.k, l: x.l, ic: <span className={b.sousOngletIc} style={{ ['--sousC' as string]: x.c } as React.CSSProperties}><Ic n={x.ic} t={14} e={2.2} /></span> }))} />
+          </div>
+        </Depliant>
+      </div>
 
       {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
       {erreur && <div className={s.erreur}>{erreur}</div>}
@@ -1992,7 +2046,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         </div>
       )}
 
-      {onglet === 'bien' && <OngletBien bien={bien} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} onEstimation={() => setFen({ k: 'estim' })} onAnnonce={(t, x) => { majDonnees('annonceTitre', t); majDonnees('annonceTexte', x); }} />}
+      {onglet === 'bien' && <OngletBien bien={bien} vue={sousVue} onModifier={onModifier} onSurfaces={() => setOnglet('surfaces')} onEstimation={() => setFen({ k: 'estim' })} onAnnonce={(t, x) => { majDonnees('annonceTitre', t); majDonnees('annonceTexte', x); }} />}
 
       {onglet === 'surfaces' && <OngletSurfaces s={surfacesDe(d)} pieces={lirePieces(d.detailPieces)} onPieces={() => onModifier('pieces')} onBien={() => onModifier('bien:t-surf')} />}
 

@@ -6,7 +6,6 @@
    passé dernièrement. Maquettes validées : « La nouvelle fiche bien ». */
 
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import Depliant from '@/components/shared/Depliant';
 import { Ic } from '@/components/documents/ApercuActe';
 import v from './VueBien.module.css';
 import { jourParis } from '@/lib/mandat';
@@ -105,32 +104,33 @@ export function ParcoursEstimation({ titre, jalons, ensuite, action, onDejaSigne
   );
 }
 
-/* ── Pour la visite (V3.31) : les indications de visite en carte, à côté du
-   propriétaire. Les trois premières lignes, le chemin et les consignes ;
-   « Tout voir » déplie le reste. ── */
+/* ── Pour la visite (V3.31 ; refaite en V3.81) ─────────────────────────
+   Alexandre : « pour la visite, il faut que ce soit bien présenté, mieux mis
+   en avant ; là c'est un peu moche ». Dans l'ordre où on s'en sert devant
+   l'immeuble : l'occupation en pastille de couleur, les codes en grandes
+   tuiles (digicode, interphone, porte, cave), la personne sur place avec
+   son bouton d'appel, les autres indications en petites lignes, puis le
+   chemin et les consignes (trois lignes, « Tout voir » pour le reste). */
 export type LigneVisite = { ic: string; l: string; v: string; tel?: string };
-/* Une ligne longue (un nom et un numéro, un créneau détaillé) prend toute la
-   largeur de la carte (V3.45) : dans une colonne de 100 px, elle se coupait
-   mot à mot. */
-const large = (x: LigneVisite) => x.v.length + (x.tel?.length || 0) > 20;
-function LiVisite({ x }: { x: LigneVisite }) {
-  return (
-    <div className={v.visiteLi} data-large={large(x) ? 'oui' : 'non'}>
-      <Ic n={x.ic} t={14} />
-      <span>
-        <small>{x.l}</small>
-        <b>{x.v}</b>
-        {x.tel && <a className={v.visiteTel} href={`tel:${x.tel.replace(/[\s.]+/g, '')}`}>{x.tel}</a>}
-      </span>
-    </div>
-  );
-}
-export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: LigneVisite[]; encarts: { l: string; v: string }[]; onModifier: () => void }) {
+export type PourVisite = {
+  occupation: { v: string; l: string } | null; dispo: string;
+  codes: { ic: string; l: string; v: string }[];
+  contact: { nom: string; tel: string } | null;
+  infos: LigneVisite[];
+  encarts: { ic: string; l: string; v: string }[];
+};
+/* « 0686262332 » → « 06 86 26 23 32 » ; un autre format reste tel quel. */
+const telLisible = (t: string) => {
+  const c = t.replace(/[\s.-]+/g, '');
+  return /^0\d{9}$/.test(c) ? c.replace(/(\d{2})(?=\d)/g, '$1 ') : t;
+};
+const initialesDe = (n: string) => n.replace(/\(.*?\)/g, ' ').split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0]!.toUpperCase()).join('') || '·';
+export function CartePourLaVisite({ occupation, dispo, codes, contact, infos, encarts, onModifier }: PourVisite & { onModifier: () => void }) {
   const [tout, setTout] = useState(false);
-  const vide = !lignes.length && !encarts.length;
-  const long = lignes.length > 3 || encarts.some(x => x.v.length > (lignes.length ? 110 : 300));
+  const vide = !occupation && !dispo && !codes.length && !contact && !infos.length && !encarts.length;
+  const long = encarts.some(x => x.v.length > 150) || encarts.length > 1;
   return (
-    <div className={`${v.kpi} ${v.kpiBlanc}`}>
+    <div className={`${v.kpi} ${v.kpiBlanc} ${v.pv}`}>
       <div className={v.kpiT} style={{ color: '#1d4ed8' }}>
         <span className={v.kpiIc} style={{ background: '#eff6ff', color: '#2563eb' }}><Ic n="cle" t={17} /></span>
         Pour la visite
@@ -138,26 +138,45 @@ export function CartePourLaVisite({ lignes, encarts, onModifier }: { lignes: Lig
       </div>
       {vide ? <span className={v.kpiSousGris}>Occupé ou libre, clés, codes, contact sur place : à noter dès maintenant, pour ta visite puis celles des acheteurs.</span> : (
         <>
-          {lignes.length > 0 && (
-            <div className={v.visiteL}>
-              {/* Les trois premières côte à côte (V3.32) : la carte ne dépasse
-                  plus ses voisines, plus de grand blanc à côté d'elle. */}
-              <div className={v.visiteGrille}>
-                {lignes.slice(0, 3).map(x => <LiVisite key={x.l} x={x} />)}
-              </div>
-              {/* Le reste glisse à l'ouverture (V3.32). */}
-              {lignes.length > 3 && (
-                <Depliant ouvert={tout} ecart={7}>
-                  <div className={v.visiteL}>
-                    {lignes.slice(3).map(x => <LiVisite key={x.l} x={x} />)}
-                  </div>
-                </Depliant>
-              )}
+          {(occupation || dispo) && (
+            <div className={v.pvEtat}>
+              {occupation && <span className={v.pvOccup} data-occ={occupation.v}><i />{occupation.l}</span>}
+              {dispo && <span className={v.pvDispo}><Ic n="calendrier" t={13} />{`Disponible ${dispo}`}</span>}
             </div>
           )}
-          {/* Le rognage sur la ligne intérieure : sur le cadre, la 3e ligne
-              débordait dans le bas du cadre (V3.32). */}
-          {encarts.map(x => <div key={x.l} className={v.visiteEncart}><span className={tout ? undefined : lignes.length ? v.visiteEncartCourt : v.visiteEncartMoyen}><b>{`${x.l} : `}</b>{x.v}</span></div>)}
+          {codes.length > 0 && (
+            <div className={v.pvCodes}>
+              {codes.map(x => (
+                <div key={x.l} className={v.pvCode}>
+                  <small><Ic n={x.ic} t={12} />{x.l}</small>
+                  <b>{x.v}</b>
+                </div>
+              ))}
+            </div>
+          )}
+          {contact && (
+            <div className={v.pvContact}>
+              <span className={v.pvAv} aria-hidden="true">{initialesDe(contact.nom || 'Contact')}</span>
+              <span className={v.pvContactTx}><small>Sur place</small><b>{contact.nom || 'Contact sur place'}</b></span>
+              {contact.tel && <a className={v.pvAppel} href={`tel:${contact.tel.replace(/[\s.-]+/g, '')}`}><Ic n="telephone" t={14} />{telLisible(contact.tel)}</a>}
+            </div>
+          )}
+          {infos.length > 0 && (
+            <div className={v.pvInfos}>
+              {infos.map(x => (
+                <div key={x.l} className={v.pvInfo}>
+                  <Ic n={x.ic} t={14} />
+                  <span><small>{x.l}</small><b>{x.v}</b></span>
+                </div>
+              ))}
+            </div>
+          )}
+          {encarts.map(x => (
+            <div key={x.l} className={v.pvEncart}>
+              <span className={v.pvEncartIc}><Ic n={x.ic} t={14} /></span>
+              <span className={tout ? undefined : v.pvEncartCourt}><b>{x.l}</b>{x.v}</span>
+            </div>
+          ))}
           {long && <button type="button" className={v.kpiLienBleu} onClick={() => setTout(!tout)}>{tout ? 'Réduire' : 'Tout voir'}</button>}
         </>
       )}

@@ -48,8 +48,11 @@
 .retour { display: inline-flex; align-items: center; gap: 6px; padding: 6px 2px; border: none; background: none; color: var(--emilio); font: 700 14.5px 'DM Sans', sans-serif; cursor: pointer; }
 .retour:hover { text-decoration: underline; text-underline-offset: 3px; }
 .barreActions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; position: relative; }
-.btnEtape { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 11px; border: 1px solid var(--emilio); background: var(--emilio-fond); color: white; font: 700 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
-.btnEtape:hover { background: var(--emilio-clair); }
+/* V3.81 : blanc, bordé de la couleur de l'étape (--etC) : en marine, il se
+   confondait avec le bandeau sur lequel il est maintenant posé. */
+.btnEtape { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 40px; box-sizing: border-box; border-radius: 11px; border: 1.5px solid color-mix(in srgb, var(--etC, #c9a84c) 60%, #fff); background: #fff; color: #1a2332; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.btnEtape:hover, .btnEtape[aria-expanded='true'] { background: color-mix(in srgb, var(--etC, #c9a84c) 9%, #fff); border-color: var(--etC, #c9a84c); }
+.btnEtape > svg { color: color-mix(in srgb, var(--etC, #c9a84c) 70%, #1a2332); }
 .menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: min(340px, calc(100vw - 24px)); background: white; border: 1px solid #e3e8f0; border-radius: 16px; box-shadow: 0 18px 44px rgba(15,23,42,.18); padding: 8px; animation: menuEntre .14s ease; }
 @keyframes menuEntre { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .menuT { padding: 8px 10px 6px; font-size: 10.5px; letter-spacing: 1.3px; font-weight: 800; color: #94a3b8; text-transform: uppercase; }
@@ -152,7 +155,14 @@
 /* La barre des rubriques : src/components/shared/OngletsGlissants.module.css (V3.28). */
 /* À cheval sur le bas du bandeau bleu (fiche d'un bien) : la moitié dessus,
    la moitié dessous, une ombre pour qu'elles flottent. */
-.ongletsCheval { position: relative; z-index: 2; margin: -40px 22px 0; box-shadow: 0 14px 30px -16px rgba(26,35,50,.45), 0 2px 6px rgba(26,35,50,.06); }
+/* V3.81 : le cadre des rubriques (la barre, et le tiroir de « Le bien »). */
+.ongletsCheval { position: relative; z-index: 2; margin: -40px 22px 0; background: #fff; border: 1px solid #e3e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 14px 30px -16px rgba(26,35,50,.45), 0 2px 6px rgba(26,35,50,.06); }
+.ongletsCheval > nav.ongletsHaut { border: none; border-radius: 0; background: transparent; }
+/* La pastille de l'onglet allumé glisse, et descend jusqu'au tiroir quand
+   « Le bien » l'ouvre : l'onglet et le tiroir ne font qu'un bloc. */
+.ongletsHaut > span[aria-hidden="true"] { transition: transform .42s cubic-bezier(.16, 1, .3, 1), width .42s cubic-bezier(.16, 1, .3, 1), bottom .32s cubic-bezier(.16, 1, .3, 1), border-radius .32s ease, background .3s; }
+.ongletsAttache > span[aria-hidden="true"] { bottom: 0; border-radius: 10px 10px 0 0; background: #31466b; box-shadow: none; }
+.tiroir { background: #31466b; padding: 6px 6px 7px; }
 
 .deuxCol { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .deuxEgal { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -1383,6 +1393,19 @@ button.pillRouge svg { color: white !important; }
    écart 12 px). Le panneau s'ouvre dessous, par-dessus le bandeau. */
 .proprioCheval { position: relative; z-index: 3; align-self: flex-start; max-width: calc(100% - 40px); margin: -4px 0 -39px 20px; }
 .proprioCheval + .hero { padding-top: 40px; }
+/* V3.81 : la pastille et les gestes du bien sur une même ligne, à cheval sur
+   le haut du bandeau ; les gestes à droite, posés sur le bord comme elle.
+   La pastille se resserre (nom coupé) avant que les boutons ne débordent ;
+   dans une fiche trop étroite (mesurée par FicheBien), Modifier, Visite, Note
+   et Point vendeur passent dans « ⋯ », où ils sont déjà. */
+.chevalHaut { position: relative; z-index: 4; display: flex; align-items: center; gap: 12px; margin: -4px 20px -39px; min-width: 0; }
+.chevalHaut + .hero { padding-top: 40px; }
+.chevalHaut > .proprioCheval { margin: 0; max-width: none; flex: 0 1 auto; min-width: min(200px, 45%); align-self: center; }
+.chevalHaut .pProprioBtn { max-width: min(360px, 100%); }
+.chevalHaut > .barreActions { margin-left: auto; flex-wrap: nowrap; flex-shrink: 0; }
+.chevalHaut > .barreActions > button { height: 40px; box-sizing: border-box; box-shadow: 0 12px 26px -12px rgba(26, 35, 50, .5), 0 2px 6px rgba(26, 35, 50, .08); }
+.chevalSerre .barreActions .masquable { display: none; }
+.chevalHaut .pProprioTx small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pProprio { position: relative; min-width: 0; }
 .pProprioBtn { display: inline-flex; align-items: center; gap: 10px; height: 46px; max-width: 360px; padding: 0 14px 0 6px; border-radius: 99px; border: 1.5px solid #e3c872; background: #fff; color: #a07c28; cursor: pointer; box-shadow: 0 12px 26px -12px rgba(26, 35, 50, .5), 0 2px 6px rgba(26, 35, 50, .08); font-family: 'DM Sans', sans-serif; }
 .pProprioBtn:hover { border-color: #c9a84c; background: #fffdf7; }
@@ -1425,26 +1448,41 @@ button.pillRouge svg { color: white !important; }
 @media (max-width: 760px) {
   .proprioCheval { max-width: calc(100% - 24px); margin: -2px 0 -34px 12px; }
   .proprioCheval + .hero { padding-top: 34px; }
+  .chevalHaut { margin: -2px 12px -34px; gap: 8px; }
+  .chevalHaut + .hero { padding-top: 34px; }
+  .chevalHaut > .proprioCheval { margin: 0; max-width: none; }
+  .chevalHaut > .barreActions { gap: 6px; }
+  .chevalHaut > .barreActions > button { height: 42px; }
+  .chevalHaut .btnEtape { padding: 0 10px; gap: 6px; font-size: 12.5px; }
+  .chevalHaut .pProprioTx small { letter-spacing: .4px; }
   .pProprioBtn { height: 44px; max-width: 100%; }
   /* Le panneau couvre la largeur du contenu du bandeau, bord à bord. */
   .pProprioPan { width: calc(100vw - 48px); }
   .pProprioAct { height: 42px; }
 }
+/* Sur un téléphone étroit, le bouton d'étape garde son point de couleur et
+   sa flèche (l'étape s'écrit aussi en bas du bandeau) : la pastille du
+   propriétaire a la place de son nom. */
+@media (max-width: 560px) {
+  .chevalHaut .btnEtape .etLong, .chevalHaut .btnEtape .etCourt { display: none; }
+}
 
 /* Les sous-onglets de « Le bien » (V3.79) : la même barre qui glisse que les
    rubriques, en plus discret — un rail gris clair, la pastille blanche, et
    chaque icône dans la couleur de sa carte. Au téléphone, la barre défile. */
-nav.sousOnglets { background: #eef2f7; border-color: transparent; padding: 4px; border-radius: 14px; }
-.sousOnglets > span[aria-hidden="true"] { top: 4px; bottom: 4px; background: #fff; box-shadow: 0 6px 16px -8px rgba(26, 35, 50, .4), 0 1px 2px rgba(26, 35, 50, .08); }
-.sousOnglets button { flex: 1 0 auto; justify-content: center; padding: 7px 13px 7px 8px; font-size: 13px; color: #5b6b80; }
-.sousOnglets button:hover:not([aria-pressed="true"]) { background: rgba(255, 255, 255, .55); color: #1a2332; }
+/* Les sous-catégories, dans le tiroir marine (V3.81) : les libellés en
+   clair, la pastille blanche qui glisse, chaque icône dans la couleur de sa
+   carte. « Tout » en tête, séparé par un trait. Au téléphone, ça défile. */
+nav.sousOnglets { background: transparent; border: none; padding: 0; border-radius: 10px; }
+.sousOnglets > span[aria-hidden="true"] { top: 0; bottom: 0; background: #fff; box-shadow: 0 8px 18px -10px rgba(0, 0, 0, .55); }
+.sousOnglets button { flex: 1 0 auto; justify-content: center; padding: 7px 13px 7px 8px; font-size: 13px; color: rgba(255, 255, 255, .78); }
+.sousOnglets button:hover:not([aria-pressed="true"]) { background: rgba(255, 255, 255, .09); color: #fff; }
 .sousOnglets button[aria-pressed="true"] { color: #1a2332; }
 .sousOnglets:not(:has(> span[aria-hidden="true"])) button[aria-pressed="true"] { background: #fff; }
-/* « Tout » au bout de la rangée, séparé des familles par un trait (V3.80). */
-.sousOnglets button[data-k="tout"] { margin-left: 9px; }
-.sousOnglets button[data-k="tout"]::before { content: ''; position: absolute; left: -7px; top: 9px; bottom: 9px; width: 1px; background: #d3dbe6; }
-.sousOngletIc { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: color-mix(in srgb, var(--sousC) 14%, transparent); transition: background .3s; }
-.sousOnglets .sousOngletIc svg { opacity: 1; color: var(--sousC); transition: color .3s; }
+.sousOnglets button[data-k="tout"] { margin-right: 9px; }
+.sousOnglets button[data-k="tout"]::after { content: ''; position: absolute; right: -7px; top: 9px; bottom: 9px; width: 1px; background: rgba(255, 255, 255, .22); }
+.sousOngletIc { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: rgba(255, 255, 255, .1); transition: background .3s; }
+.sousOnglets .sousOngletIc svg { opacity: 1; color: color-mix(in srgb, var(--sousC) 45%, #fff); transition: color .3s; }
 .sousOnglets button[aria-pressed="true"] .sousOngletIc { background: var(--sousC); }
 .sousOnglets button[aria-pressed="true"] .sousOngletIc svg { color: #fff; }
 /* Un sous-onglet ouvert : sa carte (ou ses deux cartes), en pleine largeur. */
