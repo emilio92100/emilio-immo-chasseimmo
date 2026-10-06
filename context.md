@@ -1461,6 +1461,86 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.79 — 6 octobre 2026 · Biens : la reprise d'ImmoFacile, les sous-onglets de « Le bien », l'annonce
+
+Rien à passer dans Supabase : les nouvelles cases vivent dans `biens_vente.donnees`, les photos dans
+le bucket `photos-vente` (déjà là), la clé de l'IA (`ANTHROPIC_API_KEY`) est déjà sur Vercel.
+
+**Importer les biens d'ImmoFacile** (Biens › « Importer depuis ImmoFacile »). ImmoFacile n'exporte
+pas ses biens : ils ont été lus fiche par fiche dans ImmoFacile (onglets Description, Pièces,
+Images, Vendeur, Historique) et rangés dans un fichier `biens-immofacile.json`
+(`{ biens: [{ ref, champs: [onglet, code, libellé, valeur][], pieces, photos, cree, maj, histo }] }`).
+- `src/lib/import-biens-immofacile.ts` (isomorphe, ne touche pas la base) : chaque case
+  d'ImmoFacile à sa place dans la fiche (la table des codes `C_…` y est commentée) ; une réponse
+  sans choix équivalent dans le CRM n'est jamais devinée : recopiée dans un bloc « Repris
+  d'ImmoFacile (réf. N, statut « … ») » des notes du bien, et comptée dans l'aperçu.
+- **L'étape proposée** (Alexandre, 5 octobre) : Prospection → À suivre ; Estimation →
+  Estimation ; Mandat en cours → Mandat, sauf vendeur archivé dans le CRM → Retiré ; Suspendu →
+  selon le mandat (pas de mandat : Estimation ; échu ou vendeur archivé : Retiré ; encore
+  valable : En pause) ; Sous offre, Compromis, Vendu ; Archivé → Retiré et archivé. L'aperçu la
+  laisse changer bien par bien (« ImmoFacile n'était pas toujours à jour »).
+- **Les fiches au nom de ROGELET** (Alexandre lui-même) : des **annonces type**, sans vendeur ni
+  mandat. Nouvelle étape `annonce_type` (« Annonce type », magenta) : hors du parcours d'une vente,
+  pas de visite ni d'offre (`permisBien`), créable aussi à la main (« Une annonce type »).
+- **Le vendeur** : retrouvé parmi les contacts par le téléphone, puis l'e-mail, puis le nom ;
+  absent du CRM : créé si l'aperçu le laisse coché ; un bien sans vendeur est importé quand même.
+- **Les doublons** : un bien déjà importé (`donnees.refImmofacile`) n'est jamais recréé — l'import
+  se relance sans risque ; le même bien du même vendeur (un « À suivre » de la reprise des
+  contacts, même adresse) est **complété** là où il est vide.
+- **Les photos** : copiées par le serveur (`/api/biens-vente/photos-immofacile`, seulement
+  `https://media.immo-facile.com/…/catalog/images/…`, une vraie image, 15 Mo au plus, aucune
+  redirection) dans `photos-vente/<id du bien>/`, dans l'ordre d'ImmoFacile. Le navigateur ne peut
+  pas les lire lui-même (ImmoFacile ne l'autorise pas depuis une autre adresse).
+- **L'historique** : une ligne « Repris d'ImmoFacile », une ligne d'étape, puis une note par action
+  d'ImmoFacile, à sa date (`donnees.source = 'immofacile'`). Les actions à venir vont aux notes.
+- La fiche garde sa référence d'origine : « ImmoFacile n° 74 » dans le bandeau, et la recherche
+  de la rubrique la retrouve.
+- L'écriture est dans `src/components/biens/import-biens-ecriture.ts` (chaque écriture lue, un
+  bien qui échoue n'arrête pas les autres), l'écran dans `ImportBiensIF.tsx`.
+
+**Nouvelles cases de la fiche** (pour qu'ImmoFacile ait où aller, et Alexandre : « autant
+agrémenter les critères », « en fonction de maison, appartement, immeuble, parking ») — relevées
+sur le formulaire complet d'ImmoFacile (291 cases) et sur les réponses de ses 329 biens :
+titre de l'annonce ; proximité et transports (commerces en km, école, bus, métro, tramway, RER en
+minutes, la situation) ; construction (pierre de taille…), style (haussmannien…), standing, état
+des parties communes, état extérieur et façade ; une maison : mitoyenneté, assainissement
+(tout-à-l'égout, fosse, micro-station) ; fenêtres (vitrage simple, double, triple ; bois, PVC,
+aluminium, bois et alu) ; volets (électriques, roulants, battants, pliants, persiennes, aucun) et
+« Volets en » (bois, PVC, aluminium, métal) ; cuisine semi-ouverte ; chauffage par plafond
+chauffant ou air pulsé ; séjour double, panneaux solaires ; véranda, grenier, sous-sol ; type de
+stationnement ; « dont lots d'habitation » ; le n° ADEME du DPE. Chacune ne s'affiche que pour
+le type de bien qu'elle concerne (`si`).
+
+**Le relevé d'ImmoFacile, le 6 octobre** : 329 biens (Suspendu 172, Estimation 94, Mandat en cours
+29, Vendu 22, Archivé 10, Compromis 2), 1 932 photos, 802 actions d'historique. Trois numéros
+d'ImmoFacile servent à deux biens différents (7, 39, 312) : le second est repris sous « 7-2 »,
+« 39-2 », « 312-2 ». À blanc, les étapes proposées : Estimation 161, Retiré 98, Mandat 29, Vendu
+22, En pause 14, Compromis 2, Annonce type 3 ; les réponses sans équivalent restantes sont rares
+(viager, terrain, diagnostics, valeurs d'expertise) et vont aux notes.
+
+**« Le bien » en sous-onglets** (Alexandre : « des onglets par caractéristique, si on veut
+afficher juste l'élément ; fluide, joli, avec des icônes ») : Tout · Intérieur · Immeuble ·
+Extérieur · Quartier · Énergie · Copropriété et charges · Prix. La même barre qui glisse que les
+rubriques (`OngletsGlissants`), en plus discret : un rail gris clair, la pastille blanche, l'icône
+de chaque onglet dans la couleur de sa carte. « Tout » garde la vue d'avant ; un onglet montre sa
+carte seule, en pleine largeur, ses lignes sur deux colonnes (`Famille large`). Nouvelle carte
+« Le quartier » (ton `ciel`).
+
+**L'annonce** :
+- la carte s'appelle **« Le texte de l'annonce »** ; le texte dans un cadre au liseré doré, son
+  titre en gras au-dessus ; les **mentions obligatoires sous le texte**, en pleine largeur sur
+  plusieurs colonnes (à droite, une colonne haute laissait un grand blanc sous un texte court) ;
+- **2 100 caractères au moins** (`LONGUEUR_ANNONCE`, « pour être bien référencé ») : une jauge sous
+  le texte et dans l'éditeur ; l'anneau ne monte à 100 % qu'une fois les 2 100 atteints ;
+- **« Reformuler l'annonce »** (carte et éditeur), autant de fois qu'on veut, avec « Revenir au
+  texte d'avant » : `faitsAnnonce` (la fiche, sans le propriétaire, l'adresse exacte, les codes ni
+  les notes) part à `/api/biens-vente/annonce` (Claude Sonnet, Haiku en secours) qui écrit un titre
+  et une présentation de 2 200 à 2 900 caractères ; les mentions obligatoires sont ajoutées par le
+  CRM (`mentionsAnnonce`, sorti de `brouillonAnnonce`), jamais par l'IA ;
+- les retours à la ligne sont gardés. Le CRM n'envoie encore aucun flux aux portails (c'est
+  toujours ImmoFacile qui diffuse) : le jour où il le fera, chaque retour à la ligne sera traduit
+  au format du portail.
+
 ### V3.78 — 5 octobre 2026 · Contacts : « Autres types ▾ », « Archivés » toujours visible, recherche dans les villes
 
 Rien à passer dans Supabase.
