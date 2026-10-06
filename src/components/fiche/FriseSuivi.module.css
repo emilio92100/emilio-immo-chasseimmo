@@ -167,6 +167,57 @@
 }
 .voir:hover { text-decoration: underline; text-underline-offset: 3px; }
 
+/* Le mail envoyé, replié (V3.85) : « Voir le mail » le déplie, présenté
+   comme un mail (objet, destinataire, texte, biens joints). */
+.voirMail {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 9px; height: 30px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+  border: 1px solid #cfe5df; background: #f2faf8; color: #0f766e; font: 700 12.5px 'DM Sans', sans-serif;
+  transition: background .15s, border-color .15s;
+}
+.voirMail:hover { background: #e5f4f1; border-color: #a9d6cc; }
+.voirMail > svg:last-child { transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+.voirMail[data-on='oui'] > svg:last-child { transform: rotate(180deg); }
+.mail { margin-top: 10px; border-radius: 12px; border: 1px solid #e3e8f0; background: #fbfcfe; overflow: hidden; }
+.mailTete { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-bottom: 1px solid #eef1f6; background: #f6f8fb; }
+.mailTete > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: 13px; }
+.mailTete span { flex: 0 0 44px; font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #94a3b8; }
+.mailTete b { font-weight: 700; color: #1a2332; overflow-wrap: anywhere; }
+.mailTete em { font-style: normal; color: #52607a; overflow-wrap: anywhere; }
+.mailCorps { margin: 0; padding: 13px 16px 15px; font-size: 13.5px; line-height: 1.65; color: #2b3647; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mailBiens { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 14px; }
+.mailBiens > span { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #94a3b8; margin-right: 2px; }
+.mailBiens em { display: inline-flex; align-items: center; gap: 5px; font-style: normal; padding: 3px 9px; border-radius: 8px; border: 1px solid #eadcb8; background: #fbf6ea; color: #8a6a1f; font-size: 12px; font-weight: 700; }
+
+/* Reporter une relance « À venir » (V3.85) : un petit bouton à côté de
+   l'échéance, et dessous, les jours en un clic, comme la page Relances. */
+.reporter {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 99px; cursor: pointer;
+  border: 1px solid #e6d3a0; background: #fff; color: #8a6a1f; font: 700 12px 'DM Sans', sans-serif; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.reporter:hover { background: #fdf6e3; border-color: #d9bd72; }
+.reporter[data-on='oui'] { background: #1a2332; border-color: #1a2332; color: #f2dfa6; }
+.report {
+  display: flex; flex-direction: column; gap: 9px; margin-top: 10px; padding: 11px 12px 12px; border-radius: 12px;
+  background: #fff; border: 1px solid #f0e2bd;
+}
+.reportT { font-size: 10.5px; font-weight: 800; letter-spacing: .9px; text-transform: uppercase; color: #a07c28; }
+.reportPuces { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.reportPuces > button {
+  height: 32px; padding: 0 12px; border-radius: 99px; cursor: pointer; border: 1px solid #e3d3ab; background: #fff; color: #6b6045;
+  font: 700 12.5px 'DM Sans', sans-serif; transition: background .15s, border-color .15s, color .15s;
+}
+.reportPuces > button:hover { border-color: #cfb877; }
+.reportPuces > button[data-on='oui'] { background: #1a2332; border-color: #1a2332; color: #f2dfa6; }
+.reportPied { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.reportAnnuler { border: none; background: none; padding: 0 4px; cursor: pointer; color: #a08c60; font: 700 12.5px 'DM Sans', sans-serif; }
+.reportOk {
+  height: 34px; padding: 0 15px; border-radius: 10px; border: none; cursor: pointer; background: #1a2332; color: #fff;
+  font: 800 12.5px 'DM Sans', sans-serif; transition: filter .15s, opacity .15s;
+}
+.reportOk:hover:not(:disabled) { filter: brightness(1.15); }
+.reportOk:disabled { opacity: .55; cursor: default; }
+
 /* Rien à afficher */
 .vide { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 34px 16px; text-align: center; color: #94a3b8; font-size: 13px; }
 .vide b { color: var(--emilio, #2e4166); font-size: 14.5px; }
@@ -196,6 +247,8 @@
   .carteTete .heure { order: 5; flex-basis: 100%; margin-left: 0; font-size: 11.5px; }
   .carteTete .actions { margin-left: auto; }
   .voir { order: 6; margin-left: 0; }
+  .reporter { order: 5; }
+  .reportOk { flex: 1 1 auto; height: 40px; }
   .discrete .heure { font-size: 11.5px; }
 }
 @media (prefers-reduced-motion: reduce) {

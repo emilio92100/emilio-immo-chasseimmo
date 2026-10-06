@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
-import { programmerRelance, delaiRelance, echeanceDans, solderRelancesAcheteur, cloreRelancesArchive } from '@/lib/relances';
+import { programmerRelance, delaiRelance, echeanceDans, solderRelancesAcheteur, cloreRelancesArchive, reporterRelance } from '@/lib/relances';
 import { annulerVisites } from '@/lib/annuler-visites';
 import { lireMontant, ecrireMontant } from '@/lib/montant';
 import { visitePassee } from '@/lib/visites';
@@ -3414,6 +3414,12 @@ ${signatureMail()}`,
   }, [client.id]);
 
   useEffect(() => { chargerRelances(); delaiRelance().then(setDelaiJours); }, [chargerRelances]);
+  /* V3.85 — « Reporter » sur une relance « À venir » du Suivi. */
+  const reporterDepuisSuivi = async (id: string, jour: string) => {
+    const ok = await reporterRelance(id, jour);
+    if (ok) { chargerRelances(); signalerMaj(); }
+    return ok;
+  };
 
   const etiquetteRelance = (() => {
     const r = relancesAtt[0];
@@ -5036,6 +5042,7 @@ ${signatureMail()}`,
               onSupprimer={supprimerAction}
               onAjouter={() => nouvelleAction()}
               onAppel={() => nouvelleAction('appel')}
+              onReporter={reporterDepuisSuivi}
             />
           </div>
         )}

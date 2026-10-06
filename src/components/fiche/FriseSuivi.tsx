@@ -1,6 +1,8 @@
 'use client';
 import { Fragment, useState } from 'react';
 import Depliant from '@/components/shared/Depliant';
+import ChoixDate from '@/components/shared/ChoixDate';
+import { delaiRelance } from '@/lib/relances';
 import s from './FriseSuivi.module.css';
 
 /* ═══ Le suivi du dossier, en frise ═══════════════════════════════════════
@@ -124,6 +126,7 @@ const TRAITS: Record<string, string[]> = {
   retour: ['M9 14 4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 0 11H11'],
   loupe: ['c:11,11,7', 'm21 21-4.3-4.3'],
   bas: ['m6 9 6 6 6-6'],
+  report: ['M21 11V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7', 'M16 2v4', 'M8 2v4', 'M3 10h18', 'M15 18h7', 'm19 15 3 3-3 3'],
   point: ['c:12,12,3'],
   cle: ['m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4', 'm21 2-9.6 9.6', 'c:7.5,15.5,5.5'],
   signature: ['m21 17-2.2-1.9a.5.5 0 0 0-.8.4v.5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1c0-2.5-4-4-8.5-4a1 1 0 0 0 0 5c4.2 0 4.7-11.3 5.7-13.5a2.5 2.5 0 1 1 3.3 3.3', 'M3 21h18'],
@@ -156,6 +159,10 @@ function quand(iso: string) {
 const jourCourt = (iso: string) => midi(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
 const delai = (j: number) => (j < 0 ? `en retard de ${-j} j` : j === 0 ? 'aujourd’hui' : j === 1 ? 'demain' : `dans ${j} j`);
 const moisDe = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+/* Le report (V3.85) : un jour à midi, en « aaaa-mm-jj » local. */
+const plusJours = (n: number) => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const dateCourte = (k: string) => (k ? new Date(`${k}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '');
+const REPORTS: [string, number][] = [['Demain', 1], ['Dans 3 j', 3], ['Dans 7 j', 7], ['Dans 15 j', 15], ['Dans 1 mois', 30]];
 
 /* Retrouver l'action d'où vient une relance, et la faire briller. */
 function montrer(id: string) {
@@ -163,6 +170,50 @@ function montrer(id: string) {
   if (!el) return;
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.remove('suivi-surligne'); void el.offsetWidth; el.classList.add('suivi-surligne');
+}
+
+/* ── Le mail envoyé, replié (V3.85) ──
+   Alexandre : « sur le point sur la recherche, je ne vois pas le mail en
+   entier qui a été envoyé ; replié par défaut c'est bien, mais un petit
+   bouton Voir le détail qui affiche ce qui a été envoyé à ce client ». Le
+   texte du mail est gardé avec l'envoi (`envois.corps`) ou dans la ligne du
+   Suivi (« À : … », puis le texte) : un bouton le déplie, comme un mail. */
+function MailPlie({ objet, a, corps, nbBiens = 0, biensJoints = [], ouvert, onBasculer }: {
+  objet: string; a: string; corps: string;
+  /* Les biens joints : leur nombre, et les titres de ceux qu'on connaît ici. */
+  nbBiens?: number; biensJoints?: string[];
+  ouvert: boolean; onBasculer: () => void;
+}) {
+  return (
+    <>
+      <button type="button" className={s.voirMail} data-on={ouvert ? 'oui' : 'non'} aria-expanded={ouvert} onClick={onBasculer}>
+        <IcSuivi n="mail" t={14} e={2.1} />{ouvert ? 'Masquer le mail' : 'Voir le mail'}<IcSuivi n="bas" t={13} e={2.4} />
+      </button>
+      <Depliant ouvert={ouvert}>
+        <div className={s.mail}>
+          <div className={s.mailTete}>
+            {objet && <div><span>Objet</span><b>{objet}</b></div>}
+            {a && <div><span>À</span><em>{a}</em></div>}
+          </div>
+          <p className={s.mailCorps}>{corps}</p>
+          {nbBiens > 0 && (
+            <div className={s.mailBiens}>
+              <span>{nbBiens > 1 ? `${nbBiens} biens joints` : '1 bien joint'}</span>
+              {biensJoints.map((t, i) => <em key={`${t}-${i}`}><IcSuivi n="maison" t={12} />{t}</em>)}
+            </div>
+          )}
+        </div>
+      </Depliant>
+    </>
+  );
+}
+
+/* Une ligne « Mail envoyé » du Suivi : « À : …, … », une ligne vide, puis le
+   texte du mail (src/app/api/mail, send-mail). Le reste reste tel quel. */
+function mailDuJournal(j: { type?: string; description?: string | null }): { a: string; corps: string } | null {
+  if (j.type !== 'mail_envoye' && j.type !== 'envoi_bien') return null;
+  const m = /^À : ([^\n]*)\n+([\s\S]+)$/.exec(String(j.description || '').trim());
+  return m ? { a: m[1].trim(), corps: m[2].trim() } : null;
 }
 
 type Props = {
@@ -182,13 +233,17 @@ type Props = {
   onSupprimer: (j: any) => void;
   onAjouter: () => void;
   onAppel: () => void;
+  /* V3.85 — Reporter une relance « À venir » sans quitter la fiche (Alexandre :
+     « on peut reporter depuis Relances, mais pas depuis le suivi de la
+     fiche »). Rend `true` si c'est enregistré ; la fiche relit ses relances. */
+  onReporter?: (id: string, jour: string) => Promise<boolean>;
   /* La fiche d'un contact qui n'est pas acheteur (V3.23) : « Historique »,
      et seulement les filtres qui ont un sens pour lui. */
   titre?: string;
   filtresVisibles?: string[];
 };
 
-export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
+export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, onReporter, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
   /* L'action d'où vient chaque relance : pour « Voir l'action ». */
   const actionDe = new Map<string, string>();
   for (const it of items) { const rid = it.kind === 'event' ? it.data?.metadata?.relance_id : null; if (rid) actionDe.set(rid, it.data.id); }
@@ -207,6 +262,28 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
   const [issueChoisie, setIssueChoisie] = useState('tout');
   const issue = appels && issueChoisie !== 'tout' && parIssue[issueChoisie] ? issueChoisie : 'tout';
   const vus = issue === 'tout' ? items : items.filter(it => issueDe(it) === issue);
+
+  /* Le report d'une relance « À venir » : laquelle est ouverte, le jour
+     choisi (le délai des Paramètres d'abord, comme la page Relances). */
+  const [reportId, setReportId] = useState<string | null>(null);
+  const [jourReport, setJourReport] = useState('');
+  const [reportEnCours, setReportEnCours] = useState(false);
+  /* Les mails dépliés (V3.85), par ligne. */
+  const [mailsOuverts, setMailsOuverts] = useState<Record<string, boolean>>({});
+  const basculerMail = (cle: string) => setMailsOuverts(m => ({ ...m, [cle]: !m[cle] }));
+  const ouvrirReport = (id: string) => {
+    if (reportId === id) { setReportId(null); return; }
+    setReportId(id);
+    setJourReport(plusJours(5));
+    delaiRelance().then(j => setJourReport(plusJours(j))).catch(() => {});
+  };
+  const validerReport = async (id: string) => {
+    if (!onReporter || !jourReport || reportEnCours) return;
+    setReportEnCours(true);
+    const ok = await onReporter(id, jourReport);
+    setReportEnCours(false);
+    if (ok) setReportId(null);
+  };
 
   /* Mois par mois : un repère sur le trait à chaque changement. */
   let moisCourant = '';
@@ -291,10 +368,35 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                   <div className={s.carteTete}>
                     <span className={s.titre}>{`Relance · ${jourCourt(r.date_echeance)}`}</span>
                     <span className={s.pastille} style={retard ? { color: '#be123c', background: '#fff1f2', borderColor: '#fbd0d6' } : { color: '#8a6a1f', background: '#fff', borderColor: '#efdcae' }}>{delai(j)}</span>
+                    {onReporter && (
+                      <button type="button" className={s.reporter} data-on={reportId === r.id ? 'oui' : 'non'} aria-expanded={reportId === r.id} onClick={() => ouvrirReport(r.id)} title="Reporter cette relance à un autre jour">
+                        <IcSuivi n="report" t={13} e={2.2} />Reporter
+                      </button>
+                    )}
                     {action && <button type="button" className={s.voir} onClick={() => montrer(action)}>Voir l’action<IcSuivi n="bas" t={13} e={2.4} /></button>}
                     <span className={s.actions} aria-hidden="true" data-vide="oui" />
                   </div>
                   {r.note && <p className={s.texte}>{r.note}</p>}
+                  {onReporter && (
+                    <Depliant ouvert={reportId === r.id}>
+                      <div className={s.report}>
+                        <span className={s.reportT}>Reporter au</span>
+                        <div className={s.reportPuces}>
+                          {REPORTS.map(([lib, n]) => {
+                            const d = plusJours(n);
+                            return <button key={lib} type="button" data-on={jourReport === d ? 'oui' : 'non'} onClick={() => setJourReport(d)}>{lib}</button>;
+                          })}
+                          <ChoixDate compact valeur={jourReport} min={plusJours(0)} placeholder="Une autre date" onChange={v => { if (v) setJourReport(v); }} />
+                        </div>
+                        <div className={s.reportPied}>
+                          <button type="button" className={s.reportAnnuler} onClick={() => setReportId(null)} disabled={reportEnCours}>Annuler</button>
+                          <button type="button" className={s.reportOk} onClick={() => validerReport(r.id)} disabled={!jourReport || reportEnCours}>
+                            {reportEnCours ? 'Report…' : `Reporter au ${dateCourte(jourReport)}`}
+                          </button>
+                        </div>
+                      </div>
+                    </Depliant>
+                  )}
                 </div>
               </li>
             );
@@ -332,6 +434,12 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                     {cr && parts.length > 0 && <p className={s.texte} style={{ color: '#15803d', fontWeight: 700 }}>{parts.slice(0, 2).join(' · ')}</p>}
                     {cr && parts.length > 2 && <p className={`${s.texte} ${s.citation}`} style={{ borderColor: '#86d6a8', background: '#f3fbf6' }}>{parts[2]}</p>}
                     {!cr && e.destinataires?.length > 0 && <p className={s.sous}>{`À ${e.destinataires.join(', ')}`}</p>}
+                    {!cr && String(e.corps || '').trim() && (
+                      <MailPlie objet={e.objet || ''} a={(e.destinataires || []).join(', ')} corps={String(e.corps).trim()}
+                        nbBiens={(e.biens_ids || []).length}
+                        biensJoints={((e.biens_ids || []) as string[]).map(id => biens.find(y => y.id === id)).filter(Boolean).map(x => x.titre || `${x.type_bien || 'Bien'} — ${x.ville || ''}`)}
+                        ouvert={!!mailsOuverts[cle]} onBasculer={() => basculerMail(cle)} />
+                    )}
                   </div>
                 </li>
               </Fragment>);
@@ -345,6 +453,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
             const rid = j.metadata?.relance_id as string | undefined;
             const rel = rid ? relancesAtt.find(x => x.id === rid) : null;
             const b = j.bien_id ? biens.find(x => x.id === j.bien_id) : null;
+            const mj = mailDuJournal(j);
             const actions = modifiable(j) ? (
               <span className={s.actions}>
                 <button type="button" onClick={() => onModifier(j)} title="Modifier" aria-label="Modifier cette ligne"><IcSuivi n="crayon" t={14} /></button>
@@ -396,7 +505,13 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                     <span className={s.heure}>{quand(j.created_at)}</span>
                     {place}
                   </div>
-                  {j.description && <p className={`${s.texte} ${famK === 'message' ? s.citation : ''}`}>{j.description}</p>}
+                  {mj ? (
+                    <>
+                      <p className={s.sous}>{`À ${mj.a}`}</p>
+                      <MailPlie objet={String(j.titre || '').split(' — ').slice(1).join(' — ')} a={mj.a} corps={mj.corps}
+                        ouvert={!!mailsOuverts[cle]} onBasculer={() => basculerMail(cle)} />
+                    </>
+                  ) : j.description && <p className={`${s.texte} ${famK === 'message' ? s.citation : ''}`}>{j.description}</p>}
                   {etiquettes}
                 </div>
               </li>
