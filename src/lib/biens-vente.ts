@@ -41,6 +41,25 @@ export const ETAPES_VENTE: { k: EtapeVente; lib: string; court: string; pluriel:
      parcours d'une vente, sans propriétaire, sans visite ni offre. */
   { k: 'annonce_type', lib: 'Annonce type', court: 'Annonce type', pluriel: 'Annonces type', c: '#c026d3' },
 ];
+/* « Paris 16e » plutôt que « Paris » (V3.80, Alexandre : « pour Paris, on
+   n'a pas le détail de l'arrondissement ») : depuis le code postal (75016,
+   75116 pour le 16e nord), de même pour Lyon (69001…) et Marseille (13001…).
+   Une ville qui porte déjà son arrondissement, ou un code postal qui n'en
+   dit rien, reste telle quelle. */
+export function villeAffichee(ville: string | null | undefined, cp: string | null | undefined): string {
+  const v = (ville || '').trim();
+  const c = (cp || '').replace(/\s/g, '');
+  const sans = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const arr = (nom: string, n: number) => `${nom} ${n}${n === 1 ? 'er' : 'e'}`;
+  if (/^75\d{3}$/.test(c) && (!v || sans === 'paris')) {
+    const n = c === '75116' ? 16 : Number(c.slice(3));
+    if (n >= 1 && n <= 20) return arr('Paris', n);
+  }
+  if (/^6900[1-9]$/.test(c) && (!v || sans === 'lyon')) return arr('Lyon', Number(c.slice(3)));
+  if (/^130(0[1-9]|1[0-6])$/.test(c) && (!v || sans === 'marseille')) return arr('Marseille', Number(c.slice(3)));
+  return v;
+}
+
 /* Le fil du bandeau de la fiche : le chemin normal d'une vente. */
 export const PARCOURS: EtapeVente[] = ['a_suivre', 'estimation', 'mandat', 'offre', 'compromis', 'vendu'];
 /* Avant le mandat : pas de mandat, pas d'annonce, pas de visite. */
