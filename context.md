@@ -1498,6 +1498,27 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.120 — 8 octobre 2026 · « Consulter » ouvre le document dans l'onglet, au lieu de le télécharger
+
+Rien à passer dans Supabase.
+
+Alexandre : « quand je fais consulter, ça le télécharge automatiquement, ça n'ouvre pas un onglet…
+l'exemplaire signé et scellé, ça me le télécharge direct, alors que ça devrait juste m'ouvrir l'onglet
+avec le document, et ensuite que j'aie mon choix selon le navigateur pour l'enregistrer ».
+
+- Les écrans ouvraient déjà un onglet (« Consulter », « Voir », « Ouvrir » : pièces du bien, dossier,
+  mandat, compromis, exemplaire signé, documents du client, PDF finalisé…), mais les routes
+  `/api/biens-vente` et `/api/documents` (action `lien`) signaient le lien avec `download: nom` dès
+  qu'un nom était donné, donc toujours : Supabase répondait « à télécharger ». Le lien est désormais
+  « à afficher » ; le téléchargement forcé ne se fait que sur demande (`telecharger: true`, aucun écran
+  ne s'en sert aujourd'hui). Les fichiers sont déposés avec leur vrai type (PDF, JPG, PNG) : le
+  navigateur les affiche.
+- Inchangé : les liens de 7 jours des mails (pièces trop lourdes pour être jointes) et le
+  « Télécharger » du signataire (`/signer`), qui téléchargent, comme voulu ; le « Voir » / « Télécharger »
+  de l'espace client, qui distinguait déjà les deux.
+- À savoir : enregistré depuis l'onglet, le fichier prend le nom qu'il a dans le stockage
+  (« signe-1728….pdf »), plus le joli nom du document.
+
 ### V3.119 — 8 octobre 2026 · La présentation de l'espace : des photos, rien ne défile derrière, plus de petite barre
 
 Rien à passer dans Supabase.
