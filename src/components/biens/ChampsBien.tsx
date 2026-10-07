@@ -19,6 +19,7 @@ import { reformulerAnnonce } from './annonce-ia';
 import { aererTexte, texteEnBloc } from '@/lib/annonce-texte';
 import { ChampActe, manquesEtape } from '@/components/documents/ChampsActe';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
+import { Picto, pictoChoix } from './Pictos';
 import { creerFicheProprio, deposerPhoto, deposerPiece, doublonsContact, marquerVendeur, nomClient, ouvrirPiece, retirerPhoto, retirerPiece, type ClientMini } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -940,8 +941,58 @@ function ChampJournal({ c, v, onChange, off }: { c: Extract<ChampBien, { t: 'jou
   );
 }
 
+/* ── Les vignettes dessinées (V3.108) ──
+   Alexandre a choisi, pour l'éditeur d'un bien, « les vignettes dessinées » :
+   chaque réponse est une petite carte avec son dessin et son nom ; celle qui
+   est retenue a un liseré or et une coche. Les questions à un choix (`choix`)
+   et à plusieurs (`cases`), dans l'éditeur comme dans la visite sur place.
+   Une question n'a ses dessins que si toutes ses réponses en ont un (Pictos) :
+   sinon, chaque réponse garde son petit dessin au trait, dans une pastille. */
+type ChampChoix = Extract<ChampBien, { t: 'choix' | 'cases' }>;
+function ChampVignettes({ c, d, maj, off }: { c: ChampChoix; d: Donnees; maj: Maj; off: boolean }) {
+  if (c.si && !c.si(d)) return null;
+  const v = d[c.cle];
+  const multi = c.t === 'cases';
+  const l = Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  const estOn = (x: string) => (multi ? l.includes(x) : v === x);
+  const dessins = c.options.map(o => pictoChoix(c.cle, o.v));
+  const dessine = dessins.every(Boolean);
+  const avecAide = c.options.some(o => o.aide);
+  const vide = multi ? !l.length : (v === undefined || v === null || v === '');
+  const manque = !!c.requis && vide;
+  const choisir = (x: string) => (multi ? maj(c.cle, estOn(x) ? l.filter(y => y !== x) : [...l, x]) : maj(c.cle, x));
+  return (
+    <div className={`${s.ch} ${s.large} ${b.vq}`} data-champ={c.cle} data-cle={c.cle}>
+      <div className={b.vqT}>
+        <span className={b.vqLib}>{c.lib}{c.requis && <em aria-hidden="true">*</em>}</span>
+        {manque && <span className={b.vqManque}>À compléter</span>}
+        {multi && <span className={b.vqPlus}>plusieurs choix possibles</span>}
+      </div>
+      <div className={`${b.vgn} ${avecAide ? b.vgnLarge : ''}`} role={multi ? 'group' : 'radiogroup'} aria-label={c.lib}>
+        {c.options.map((o, i) => {
+          const on = estOn(o.v);
+          const n = dessins[i];
+          return (
+            <button key={o.v} type="button" role={multi ? 'checkbox' : 'radio'} aria-checked={on} disabled={off}
+              className={`${b.vg} ${on ? b.vgOn : ''} ${manque ? b.vgManque : ''}`} title={!avecAide ? o.aide : undefined} onClick={() => choisir(o.v)}>
+              {dessine && n ? <Picto n={n} t={40} className={b.vgPicto} /> : o.ic ? <span className={b.vgTrait}><Ic n={o.ic} t={20} /></span> : null}
+              <span className={b.vgL}>{o.l}</span>
+              {avecAide && o.aide && <span className={b.vgAide}>{o.aide}</span>}
+              {on && <span className={b.vgCoche} aria-hidden="true"><Ic n="check" t={11} e={3.2} /></span>}
+            </button>
+          );
+        })}
+      </div>
+      {c.aide && <div className={s.chAide}>{c.aide}</div>}
+    </div>
+  );
+}
+
 export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees; maj: Maj; off: boolean; bienId: string }) {
-  if (estChampActe(c)) return <ChampActe c={c} d={d} maj={maj} off={off} />;
+  /* V3.107 : enveloppe transparente (display: contents, la grille ne bouge
+     pas), pour que l'éditeur trouve le champ par sa clé (`data-champ`). */
+  if (c.t === 'choix' || c.t === 'cases') return <ChampVignettes c={c} d={d} maj={maj} off={off} />;
+  if (estChampActe(c)) return <div data-champ={c.cle} style={{ display: 'contents' }}><ChampActe c={c} d={d} maj={maj} off={off} /></div>;
   if (c.si && !c.si(d)) return null;
   let controle: React.ReactNode = null;
   if (c.t === 'lettres') controle = <ChampLettres genre={c.genre} v={d[c.cle]} lib={c.lib} off={off} onChange={x => maj(c.cle, x)} />;
@@ -958,10 +1009,13 @@ export function ChampBien({ c, d, maj, off, bienId }: { c: ChampBien; d: Donnees
   const sansTitre = c.t === 'pieces' || c.t === 'proprio';
   /* Deux compteurs côte à côte ; le reste sur toute la largeur. */
   const large = c.t !== 'compteur';
-  /* Les questions à choisir en petites cartes, comme les choix (V3.16). */
-  const carte = c.t === 'journal' || c.t === 'lettres';
+  /* Les observations en petites cartes (V3.16). V3.108 : plus les lettres du
+     DPE, qui suivent la mise en page des vignettes (sans cadre gris). */
+  const carte = c.t === 'journal';
   return (
-    <div className={`${s.ch} ${large ? s.large : b.chCpt} ${carte ? s.chQ : ''}`}>
+    /* V3.107 : `data-champ`, pour que « Modifier » d'une ligne de la fiche
+       ouvre l'éditeur droit sur ce champ (EditeurBien). */
+    <div className={`${s.ch} ${large ? s.large : b.chCpt} ${carte ? s.chQ : ''}`} data-champ={c.cle}>
       {!sansTitre && <div className={s.chLib}>{c.ic && <span className={s.chIc}><Ic n={c.ic} t={14} /></span>}<span>{c.lib}</span></div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}

@@ -125,15 +125,27 @@ const IC_KV: Record<string, string> = {
   'Commerces': 'sac', 'École': 'livre', 'Bus': 'bus', 'Métro': 'metro', 'RER, train': 'train', 'Tramway': 'train', 'Extérieur, façade': 'immeuble', 'Style': 'colonne', 'Mitoyenneté': 'maison', 'Assainissement': 'eau', 'N° ADEME': 'doc', 'Quartier': 'boussole', 'Situation': 'lieu',
   'Box': 'box', 'Garage': 'voiture', 'Véranda': 'soleil', 'Grenier': 'toit', 'Sous-sol': 'cave', 'Climatisation': 'flocon',
 };
-export function Kv({ l, v, alerte, ic }: { l: string; v: ReactNode; alerte?: boolean; ic?: string }) {
+/* V3.107 — `aller` : la ligne se touche, et l'éditeur s'ouvre droit sur son
+   champ, éclairé un instant (Alexandre : « quand je fais Modifier, ça renvoie
+   sur la partie, mais pas sur la bonne : il faut que je scrolle »). Un petit
+   crayon le dit au survol. */
+export function Kv({ l, v, alerte, ic, aller }: { l: string; v: ReactNode; alerte?: boolean; ic?: string; aller?: () => void }) {
   if (v === '' || v === null || v === undefined || v === false) return null;
   const long = typeof v === 'string' && v.length > 38;
   const picto = ic || IC_KV[l];
-  return (
-    <div className={`${o.kv} ${long ? o.kvLong : ''} ${alerte ? o.kvAlerte : ''}`}>
+  const cls = `${o.kv} ${long ? o.kvLong : ''} ${alerte ? o.kvAlerte : ''}`;
+  const dedans = (
+    <>
       <span className={o.kvL}><i className={o.kvIc} aria-hidden="true">{picto ? <Ic n={picto} t={14} e={2} /> : <em />}</i>{l}</span>
       <b>{v}</b>
-    </div>
+    </>
+  );
+  if (!aller) return <div className={cls}>{dedans}</div>;
+  return (
+    <button type="button" className={`${cls} ${o.kvBtn}`} onClick={aller} title={`Modifier : ${l}`}>
+      {dedans}
+      <span className={o.kvCrayon} aria-hidden="true"><Ic n="crayon" t={12} e={2.2} /></span>
+    </button>
   );
 }
 /* Une petite liste de travaux : le quoi en gras, le quand et le mot dessous. */

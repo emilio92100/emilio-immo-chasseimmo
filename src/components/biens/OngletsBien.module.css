@@ -118,6 +118,14 @@
 .kvAlerte .kvIc { background: #fef2f2; color: #b91c1c; }
 .kv b { color: #1a2332; font-weight: 700; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .kvAlerte b { color: #b91c1c; }
+/* V3.107 : une ligne qui mène à son champ dans l'éditeur. Le crayon apparaît
+   au survol ; la ligne garde sa mise en page (même grille que les autres). */
+.kvBtn { position: relative; width: calc(100% + 16px); margin: -4px -8px; padding: 4px 30px 4px 8px; border: none; border-radius: 10px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background .15s ease; }
+.kvBtn:hover, .kvBtn:focus-visible { background: var(--famFond, #f1f5f9); outline: none; }
+.kvCrayon { position: absolute; right: 8px; top: 50%; margin-top: -11px; width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--fam, #64748b); background: #fff; opacity: 0; transition: opacity .15s ease; }
+.kvBtn:hover .kvCrayon, .kvBtn:focus-visible .kvCrayon { opacity: 1; }
+.kvBtn.kvLong .kvCrayon { top: 6px; margin-top: 0; }
+@media (hover: none) { .kvCrayon { opacity: .55; } }
 .puces { display: flex; gap: 6px; flex-wrap: wrap; }
 .puces span { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: var(--famFond); color: var(--fam); }
 .note { font-size: 13px; line-height: 1.55; color: #475569; }

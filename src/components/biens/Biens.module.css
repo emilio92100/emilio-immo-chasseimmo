@@ -1292,7 +1292,10 @@ button.pillRouge svg { color: white !important; }
 /* V3.45 : la partie ouverte depuis « Modifier » (les surfaces) s'éclaire un instant. */
 .sect[data-eclaire='oui'] { animation: eclaireSect 1.8s ease; }
 @keyframes eclaireSect { 0%, 35% { box-shadow: 0 0 0 3px rgba(201, 168, 76, .55); } 100% { box-shadow: 0 0 0 3px rgba(201, 168, 76, 0); } }
-@media (prefers-reduced-motion: reduce) { .sect[data-eclaire='oui'] { animation: none; } }
+/* V3.107 : le champ ouvert depuis une ligne de la fiche s'éclaire, lui seul. */
+.etape [data-eclaire-champ='oui'] { position: relative; border-radius: 14px; animation: eclaireChamp 2.2s ease; }
+@keyframes eclaireChamp { 0%, 40% { box-shadow: 0 0 0 4px rgba(201, 168, 76, .5), 0 0 0 10px rgba(201, 168, 76, .12); background-color: rgba(253, 246, 227, .7); } 100% { box-shadow: 0 0 0 4px rgba(201, 168, 76, 0), 0 0 0 10px rgba(201, 168, 76, 0); background-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .sect[data-eclaire='oui'], .etape [data-eclaire-champ='oui'] { animation: none; } }
 
 /* ══ La fenêtre du compromis (V3.45) : des rubriques aux couleurs de ce qu'elles portent ══ */
 .fsec { border: 1px solid #e8edf3; border-radius: 16px; background: #fff; padding: 14px 15px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 3px rgba(15, 23, 42, .035); }
@@ -1679,4 +1682,128 @@ nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
 @media (max-width: 760px) {
   .sousOnglets button { min-width: 74px; padding: 8px 9px 7px; font-size: 12px; }
   .sousOnglets .sousOngletIc { width: 30px; height: 30px; }
+}
+
+/* ══ V3.108 — L'ÉDITEUR D'UN BIEN, MAQUETTE « A1 » ══════════════════════
+   Le sommaire à gauche (au téléphone : un menu en haut), les questions au
+   milieu en blocs dessinés et les choix en vignettes, « La fiche, en
+   direct » à droite. Les dessins : Pictos.tsx. */
+@media (min-width: 1101px) {
+  .edCorps.edA1[data-vue] { grid-template-columns: 272px minmax(0, 1fr) minmax(290px, 340px); }
+  .edA1 .edApercu[class] { background: transparent; border-left: none; padding: 20px 20px 60px 0; }
+  .edA1 .edApercu .apercu { max-width: none; }
+}
+.somm { overflow-y: auto; padding: 20px 0 40px 20px; scrollbar-width: thin; }
+@media (max-width: 1100px) { .somm { display: none; } }
+.sommCarte { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 16px 10px 10px; display: flex; flex-direction: column; gap: 12px; }
+.sommTete { display: flex; flex-direction: column; gap: 8px; padding: 0 6px; }
+.sommTitre { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sommTitre b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.sommPct { font-size: 12.5px; font-weight: 700; color: #8a6a1f; white-space: nowrap; }
+.sommJauge { height: 6px; border-radius: 99px; background: #eef1f6; overflow: hidden; }
+.sommJauge i { display: block; height: 100%; border-radius: 99px; background: #c9a84c; transition: width .4s ease; }
+.sommSous { font-size: 12px; color: #5b6678; line-height: 1.4; }
+.sommListe { display: flex; flex-direction: column; gap: 10px; }
+.sommGr { display: flex; flex-direction: column; gap: 2px; }
+.sommGrT { padding: 4px 8px 3px; font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; color: #8d99ab; }
+.sommL { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 8px; border: none; border-radius: 12px; background: transparent; color: #1a2332; font: 600 13.5px 'DM Sans', sans-serif; text-align: left; cursor: pointer; transition: background .15s, color .15s; }
+.sommL:hover { background: #f4f6fa; }
+.sommL[aria-current='step'], .sommL[aria-current='step']:hover { background: #34496e; color: white; font-weight: 700; }
+.sommIc { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sommL[aria-current='step'] .sommIc { background: rgba(255,255,255,.14) !important; color: #f2dfa6 !important; }
+.sommNom { flex: 1 1 auto; min-width: 0; }
+.sommOk { width: 20px; height: 20px; border-radius: 50%; background: #dcfce7; color: #15803d; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sommN { padding: 2px 8px; border-radius: 99px; background: #fff4e5; color: #b45309; font-size: 11.5px; font-weight: 800; flex-shrink: 0; }
+.sommL[aria-current='step'] .sommN { background: #fbbf24; color: #1a2332; }
+.sommVide { font-size: 11.5px; font-weight: 700; color: #8d99ab; flex-shrink: 0; }
+.sommL[aria-current='step'] .sommVide { color: rgba(255,255,255,.72); }
+
+/* Au téléphone et sur une tablette : le sommaire en menu. */
+.sommMenu { display: none; }
+@media (max-width: 1100px) {
+  .sommMenu { display: block; position: relative; z-index: 5; flex-shrink: 0; padding: 8px 12px 10px; background: white; border-bottom: 1px solid #e3e8f0; }
+}
+.sommBtn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 5px 12px 5px 5px; border-radius: 14px; border: 1px solid #d6e3f5; background: #eaf1fa; color: #1f4170; font: 700 14px 'DM Sans', sans-serif; text-align: left; cursor: pointer; }
+.sommBtnImg { width: 38px; height: 38px; border-radius: 11px; background: white; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sommBtnTxt { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sommChev { flex-shrink: 0; transition: transform .2s ease; }
+.sommBtn[aria-expanded='true'] .sommChev { transform: rotate(180deg); }
+.sommBarre { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.sommBarre .sommJauge { flex: 1 1 auto; }
+.sommVoile { position: fixed; inset: 0; z-index: -1; border: none; padding: 0; background: rgba(26,35,50,.28); cursor: default; }
+.sommPanneau { position: absolute; left: 8px; right: 8px; top: calc(100% - 2px); max-height: min(70vh, 560px); overflow-y: auto; background: white; border: 1px solid #e3e8f0; border-radius: 18px; box-shadow: 0 24px 48px -20px rgba(26,35,50,.5); padding: 10px 8px; animation: etapeEntre .22s cubic-bezier(.16, 1, .3, 1) both; }
+
+/* La tête d'une partie : son dessin, en grand. */
+.etapeTeteA1 { display: flex; align-items: center; gap: 16px; padding: 16px 18px; background: white; border: 1px solid #e3e8f0; border-radius: 20px; }
+.etapeImg { flex-shrink: 0; width: 64px; height: 64px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; color: #34496e; }
+.etapeManque { flex-shrink: 0; padding: 5px 11px; border-radius: 99px; background: #fff4e5; color: #b45309; font-size: 12.5px; font-weight: 800; white-space: nowrap; }
+
+/* Un bloc : son dessin dans une pastille douce, son titre. */
+.sect.sectA1 { border-radius: 22px; padding: 18px 18px 20px; gap: 18px; }
+.sectTete { display: flex; align-items: center; gap: 13px; }
+.sectImg { flex-shrink: 0; width: 52px; height: 52px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; color: #34496e; }
+.sectTete b { display: block; font: 800 17px 'Plus Jakarta Sans', sans-serif; color: #1a2332; line-height: 1.25; }
+.sectTete small { display: block; margin-top: 2px; font-size: 12.5px; color: #64748b; line-height: 1.45; }
+
+/* Les vignettes dessinées (ChampsBien, ChampVignettes). */
+.vq { gap: 9px; }
+.vqT { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.vqLib { font-size: 13.5px; font-weight: 700; color: #34496e; }
+.vqLib em { font-style: normal; color: #c9a84c; margin-left: 2px; }
+.vqManque { padding: 2px 8px; border-radius: 99px; background: #fff4e5; color: #b45309; font-size: 11px; font-weight: 800; }
+.vqPlus { font-size: 12px; color: #8d99ab; }
+.vgn { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.vgnLarge { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
+.vgn > * { min-width: 0; }
+.vg { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 96px; padding: 12px 6px 10px; border-radius: 18px; border: 2px solid #edf0f5; background: white; color: #1a2332; font: 700 12.5px 'DM Sans', sans-serif; line-height: 1.25; text-align: center; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
+.vg:hover:not(:disabled) { border-color: #dcc78e; }
+.vg.vgOn, .vg.vgOn:hover:not(:disabled) { border-color: #c9a84c; background: #fdf8ea; box-shadow: 0 10px 20px -12px rgba(160,124,40,.6); }
+.vg.vgManque:not(.vgOn) { border-style: dashed; border-color: #edd3a0; background: #fffcf6; }
+.vg:disabled { opacity: .55; cursor: default; }
+.vg:focus-visible { outline: 3px solid rgba(201,168,76,.45); outline-offset: 2px; }
+.vgPicto { flex-shrink: 0; transition: transform .2s ease; }
+.vg:hover:not(:disabled) .vgPicto { transform: translateY(-1px) scale(1.06); }
+.vgTrait { width: 40px; height: 40px; border-radius: 12px; background: #f1f4f9; color: #34496e; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.vgOn .vgTrait { background: #f6e8bf; color: #8a6a1f; }
+.vgL { max-width: 100%; overflow-wrap: break-word; }
+.vgAide { font-size: 11.5px; font-weight: 500; color: #6b7686; }
+.vgCoche { position: absolute; top: 7px; right: 7px; width: 20px; height: 20px; border-radius: 50%; background: #c9a84c; color: #1a2332; display: inline-flex; align-items: center; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { .vgPicto, .sommChev, .sommJauge i { transition: none; } .sommPanneau { animation: none; } }
+
+/* À droite : « La fiche, en direct », puis ce que l'annonce doit dire. */
+.direct { background: #1f2d45; color: white; border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.directT { font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #c9a84c; }
+.directNom b { display: block; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: white; line-height: 1.3; }
+.directNom span { display: block; margin-top: 2px; font-size: 12.5px; color: rgba(255,255,255,.66); }
+.directPrixL { display: block; font-size: 11.5px; font-weight: 700; color: rgba(255,255,255,.6); }
+.directPrix { font: 800 28px 'Plus Jakarta Sans', sans-serif; color: #f2dfa6; line-height: 1.15; }
+.directSans { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.75); }
+.directHono { margin-top: 4px; font-size: 12.5px; color: rgba(255,255,255,.72); line-height: 1.5; }
+.directFaits { display: flex; flex-wrap: wrap; gap: 6px; }
+.directFaits span { padding: 5px 10px; border-radius: 99px; background: rgba(255,255,255,.1); font-size: 12.5px; font-weight: 700; }
+.directLignes { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.12); }
+.directLignes div { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: rgba(255,255,255,.7); }
+.directLignes b { color: white; white-space: nowrap; }
+.publier { background: white; border: 1px solid #e3e8f0; border-radius: 20px; padding: 16px 16px 8px; display: flex; flex-direction: column; }
+.publierT { margin: 0 0 6px; font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.publierL { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 2px; border-top: 1px solid #f1f4f8; font-size: 13px; color: #34496e; line-height: 1.35; }
+.publierOk, .publierKo { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.publierOk { background: #dcfce7; color: #15803d; }
+.publierKo { background: #fff4e5; color: #b45309; font-size: 12px; font-weight: 800; }
+.publierTxt { flex: 1 1 auto; min-width: 0; }
+.publierLien { flex-shrink: 0; border: none; background: none; padding: 6px 2px; color: #34496e; font: 700 12.5px 'DM Sans', sans-serif; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.publierLien:hover { color: #a07c28; }
+
+@media (max-width: 760px) {
+  .etapeTeteA1 { gap: 12px; padding: 12px 13px; border-radius: 18px; }
+  .etapeImg { width: 52px; height: 52px; border-radius: 15px; }
+  .etapeImg svg { width: 40px; height: 40px; }
+  .etapeManque { display: none; }
+  .sect.sectA1 { padding: 14px 12px 16px; border-radius: 18px; gap: 14px; }
+  .sectImg { width: 44px; height: 44px; border-radius: 14px; }
+  .sectImg svg { width: 32px; height: 32px; }
+  .sectTete b { font-size: 16px; }
+  .vgn { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vgnLarge { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vg { min-height: 90px; padding: 10px 4px 8px; border-radius: 16px; }
 }
