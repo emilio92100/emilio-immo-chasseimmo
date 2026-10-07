@@ -19,6 +19,7 @@ import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi, demanderNouveauBien, demanderOngletBien } from '@/lib/intentions';
+import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
 import CloreRelances, { relancesACocher } from '@/components/shared/CloreRelances';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
 import { nomFoyer, conjointDe } from '@/lib/foyer';
@@ -879,9 +880,14 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
      Suivi, la recherche, et l'action à surligner. Voir src/lib/intentions.ts. */
   const [ouverture] = useState(() => lireOuvertureFiche(init.id));
+  /* V3.121 : sans demande précise, la fiche reprend la rubrique, l'étape,
+     la recherche et la hauteur où on l'avait laissée (lib/place-fiche.ts). */
+  const clePlace = `contact:${init.id}`;
+  const placeLue = usePlace(clePlace);
+  const place = ouverture ? null : placeLue;
   const [client, setClient] = useState<Client>(init);
   const [recherches, setRecherches] = useState<Recherche[]>([]);
-  const [rechercheId, setRechercheId] = useState<string>(ouverture?.rechercheId || '');
+  const [rechercheId, setRechercheId] = useState<string>(ouverture?.rechercheId || (typeof place?.recherche === 'string' ? place.recherche : ''));
   const rechercheActive = recherches.find(r => r.id === rechercheId) || null;
   const cr = rechercheActive || ({ secteurs: [] } as unknown as Recherche);
   /* Deux niveaux depuis la V3.29 : les rubriques de la fiche (Vue
@@ -889,12 +895,17 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      recherche », les étapes du dossier (Veille, Sélection, Présentés,
      Visites, Transaction). `setTab` garde son nom et son usage : choisir une
      étape ouvre « Sa recherche », choisir « suivi » ouvre le Suivi. */
-  const [tab, setTabBrut] = useState<string>(ouverture?.onglet && ouverture.onglet !== 'suivi' ? ouverture.onglet : 'presentes');
+  const [tab, setTabBrut] = useState<string>(ouverture?.onglet && ouverture.onglet !== 'suivi' ? ouverture.onglet : typeof place?.tab === 'string' && place.tab ? place.tab : 'presentes');
   /* Arrivée par défaut : un contact qui n'est qu'acheteur s'ouvre sur « Sa
      recherche » — c'est pour elle qu'on vient. S'il est aussi vendeur,
      propriétaire, etc., sur « Vue d'ensemble ». */
   const seulAcheteur = !((init as unknown as { types?: string[] | null }).types || []).some(t => t !== 'acheteur');
-  const [vue, setVue] = useState<VueFiche>(ouverture?.onglet === 'suivi' ? 'suivi' : ouverture?.onglet ? 'recherche' : seulAcheteur ? 'recherche' : 'ensemble');
+  const [vue, setVue] = useState<VueFiche>(ouverture?.onglet === 'suivi' ? 'suivi' : ouverture?.onglet ? 'recherche'
+    : ORDRE_VUES.includes(place?.vue as VueFiche) ? (place!.vue as VueFiche) : seulAcheteur ? 'recherche' : 'ensemble');
+  useEffect(() => { retenirPlace(clePlace, { vue, tab, ...(rechercheId ? { recherche: rechercheId } : {}) }); }, [clePlace, vue, tab, rechercheId]);
+  /* Sa première lecture faite (load), la hauteur laissée revient. */
+  const [lu, setLu] = useState(false);
+  useHauteur(clePlace, place, lu, !!place && place.vue === vue);
   const setTab = useCallback((t: string) => {
     if (t === 'suivi') { setVue('suivi'); return; }
     setTabBrut(t); setVue('recherche');
@@ -1881,6 +1892,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     const tx = txs.find(x => x.etape_actuelle !== 'finalise') || txs[0] || null;
     setBiens(b||[]); setVisites(v||[]); setTransaction(tx); setEnvois(e||[]); setJournal(j||[]);
     setHistoEvts(h||[]);
+    setLu(true);
     /* Les compteurs de la barre de gauche suivent ce qui vient de changer. */
     signalerMaj();
   }
