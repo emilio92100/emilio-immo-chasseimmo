@@ -9,7 +9,7 @@ import {
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
   useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
   NotesVeille, ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
-  ModalePhotos,
+  ModalePhotos, AvisLien, etatLien,
 } from './ParcoursBien';
 
 /**
@@ -377,6 +377,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         const prixAff = b.prix_acquereur || b.prix_vendeur;
         // BandeauMarche lit `prix` : on lui donne le prix vendeur, celui du marché
         const marche = { ...b, prix: b.prix_vendeur, agence: b.agence_nom, portail: b.source_portail };
+        /* V3.101 : le lien enregistré est-il toujours le bon ? (ok · remplacé · retiré) */
+        const lien = etatLien(marche);
         const atouts: React.ReactNode[] = [];
         if (b.terrasse && !b.surface_exterieur) atouts.push(<Chip key="t" ton="or">Terrasse</Chip>);
         if (b.balcon && !b.surface_exterieur) atouts.push(<Chip key="b">Balcon</Chip>);
@@ -416,7 +418,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                 onOuvrir={() => onFiche(b.id)}
                 actions={
                   <>
-                    {b.url && <BoutonIcone icone="lien" titre="Ouvrir l'annonce d'origine" href={b.url} />}
+                    {b.url && lien.etat !== 'retire' && (
+                      <BoutonIcone icone="lien" href={b.url}
+                        titre={lien.etat === 'remplace' ? 'Ouvrir l’annonce en ligne (lien mis à jour)' : 'Ouvrir l’annonce d’origine'} />
+                    )}
                     {(b.photos || []).length > 0 && <BoutonIcone icone="photos" titre="Réorganiser les photos" onClick={() => setPhotosDe(b)} />}
                     <BoutonIcone icone="crayon" titre="Ouvrir le détail du bien" onClick={() => onFiche(b.id)} />
                     {mode === 'selection'
@@ -534,6 +539,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
             {/* ── caractéristiques, marché, retour ─────────── */}
             <div className="emi-corps-carte" style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+              {/* le lien a bougé : d'où il venait, où il est — avant tout le reste */}
+              <AvisLien p={marche} />
               <Specs p={b} />
               <BandeauMarche p={marche} />
 
@@ -565,7 +572,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
             }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                {b.url && <BoutonLien href={b.url}>↗&nbsp; Annonce d&apos;origine</BoutonLien>}
+                {b.url && lien.etat !== 'retire' && (
+                  <BoutonLien href={b.url}>{lien.etat === 'remplace' ? '↗\u00a0 Annonce en ligne' : '↗\u00a0 Annonce d’origine'}</BoutonLien>
+                )}
+                {lien.etat === 'retire' && (
+                  <span title="Le lien enregistré ne mène plus nulle part"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fffaf0', color: '#b45309', border: '1px solid #f6d89a', borderRadius: 9, padding: '5px 11px', fontSize: 12, fontWeight: 700 }}>
+                    {'Annonce retirée'}
+                  </span>
+                )}
                 <BoutonLien onClick={() => onFiche(b.id)}>✎&nbsp; Détail</BoutonLien>
                 <BoutonLien onClick={() => setFrise(ouvert ? null : b.id)} actif={ouvert}>
                   ◷&nbsp; {ouvert ? 'Masquer le parcours' : 'Parcours du bien'}
