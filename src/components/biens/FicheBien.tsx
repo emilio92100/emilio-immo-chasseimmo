@@ -1473,7 +1473,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     /* V3.112 : avant le mandat, présenter le bien reste possible (comme depuis
        la liste des biens, V3.111) — après un mot sur le prix. */
     if (avant && quoi === 'presenter') {
-      return g('Ce bien n’est pas encore sous mandat', 'Tu peux déjà le présenter à un acheteur : il le verra sans prix tant que le prix n’est pas fixé.',
+      return g('Ce bien n’est pas encore sous mandat', 'Tu peux déjà le présenter à un acheteur : il le verra sans prix (le prix conseillé de l’estimation reste entre toi et le vendeur). Le prix arrivera chez lui à la signature du mandat.',
         [{ ...ch.continuer, l: 'Le présenter quand même', s: 'Dans sa sélection, son espace ou par mail' }, ch.mandat]);
     }
     if (avant) {

@@ -203,7 +203,7 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
           <p className={r.verrou}><Ic n="cadenas" t={14} />{mode === 'pause' ? 'Vente en pause : la liste reste, l’envoi reprend avec elle.' : 'Ce bien n’est plus en vente : la liste reste, en lecture.'}</p>
         )}
         {mode === 'avant' && peutEnvoyer && (
-          <p className={r.info}><Ic n="info" t={14} /><span>{`Pas encore sous mandat : tu peux déjà le présenter. Il partira sans prix tant que le prix n’est pas fixé.`}</span></p>
+          <p className={r.info}><Ic n="info" t={14} /><span>{`Pas encore sous mandat : tu peux déjà le présenter. Il partira sans prix ; le prix arrivera chez l’acheteur à la signature du mandat.`}</span></p>
         )}
       </section>
 

@@ -14,7 +14,7 @@ import { raisonEcart, type RaisonEcart } from '@/lib/ecart-acheteur';
 import { conjointDe } from '@/lib/foyer';
 import { TYPES_CONTACT, acheteurEnCours, colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
-  ETAPES_BIEN, apresReponse, argentBien, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
+  ETAPES_BIEN, apresReponse, argentBien, avantMandat, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
   type BienVente, type Donnees, type EtapeVente, type EtatMandatDoc, type Photo, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -701,7 +701,7 @@ export async function enregistrerBien(id: string, d: Donnees, base?: Donnees | n
   }).eq('id', id).select().single();
   if (error) lever('Le bien n’a pas pu être enregistré', error.message);
   let row = data as BienVente;
-  await repercuterPrix(id, aEcrire);
+  await repercuterPrix(id, aEcrire, row.etape);
   /* V3.48 : un autre propriétaire relié (ou plus personne). */
   const ancien = base && typeof base.clientId === 'string' && base.clientId ? base.clientId : null;
   const nouveau = row.client_id || null;
@@ -773,9 +773,11 @@ async function changementProprio(b: BienVente, ancien: string, nouveau: string |
    son espace et la page /bien/<id> lisent la copie. Sans ceci, une baisse de
    prix restait invisible pour tous ceux qui avaient déjà reçu le bien.
    Ne touche que les copies dont le prix diffère : quand rien n'a changé (la
-   plupart des enregistrements), aucune ligne n'est écrite. */
-export async function repercuterPrix(id: string, d: Donnees): Promise<void> {
-  const p = prixCopie(d);
+   plupart des enregistrements), aucune ligne n'est écrite.
+   V3.113 : `etape` — avant le mandat, les copies n'ont pas de prix
+   (prixCopie) ; le prix leur arrive quand le bien passe sous mandat. */
+export async function repercuterPrix(id: string, d: Donnees, etape?: string | null): Promise<void> {
+  const p = prixCopie(d, etape);
   const differe = (['prix_acquereur', 'prix_vendeur', 'commission_val'] as const)
     .map(c => (p[c] === null || p[c] === undefined ? `${c}.not.is.null` : `${c}.is.null,${c}.neq.${p[c]}`)).join(',');
   const { error } = await supabase.from('biens').update(p).eq('bien_vente_id', id).or(differe);
@@ -891,6 +893,9 @@ export async function changerEtape(b: BienVente, etape: EtapeVente, o: {
   };
   const { data, error } = await supabase.from('biens_vente').update(patch).eq('id', b.id).select().single();
   if (error) lever('L’étape n’a pas pu être changée', error.message);
+  /* V3.113 : le bien passe sous mandat (ou y revient d'avant) : le prix
+     arrive chez les acheteurs qui l'ont reçu sans prix (ou en repart). */
+  if (avantMandat(b.etape) !== avantMandat(etape)) await repercuterPrix(b.id, (data as BienVente).donnees || d, etape);
   const ligne = await ajouterSuivi({
     bien_id: b.id, type: 'etape', statut: etape, commentaire: o.commentaire || null,
     donnees: { de: b.etape, ...(o.infos || {}) },

@@ -373,7 +373,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
               ) : (
                 <>
                   {avantMandat.length > 0 && (
-                    <p className={l.aide}><Ic n="info" t={14} /><span>{`${avantMandat.map(bienCourt).join(', ')} : pas encore sous mandat. ${avantMandat.length > 1 ? 'Ils partent' : 'Il part'} quand même, comme les autres${avantMandat.some(b => !b.prix) ? ', sans prix tant qu’il n’est pas fixé' : ''}.`}</span></p>
+                    <p className={l.aide}><Ic n="info" t={14} /><span>{`${avantMandat.map(bienCourt).join(', ')} : pas encore sous mandat. ${avantMandat.length > 1 ? 'Ils partent' : 'Il part'} quand même, comme les autres, sans prix : il arrivera chez l’acheteur à la signature du mandat.`}</span></p>
                   )}
 
                   {/* Choisir un client soi-même (V3.111). */}
