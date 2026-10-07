@@ -646,6 +646,12 @@ function StylesAgenda() {
       @keyframes agSection{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
       @keyframes agPanneau{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
       .ag-section{animation:agSection .45s cubic-bezier(.2,.9,.3,1) both}
+      /* V3.106 : le client retenu pour le rendez-vous arrive en douceur, sa coche « Retenu » avec un petit rebond. */
+      @keyframes agRetenu{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+      @keyframes agOk{0%{opacity:0;transform:scale(.5)}60%{opacity:1;transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}
+      .ag-retenu{animation:agRetenu .32s cubic-bezier(.2,.9,.3,1) both}
+      .ag-retenu-ok{animation:agOk .38s cubic-bezier(.2,.9,.3,1) .12s both}
+      @media (prefers-reduced-motion: reduce){.ag-retenu,.ag-retenu-ok{animation:none}}
       .ag-panneau{animation:agPanneau .26s cubic-bezier(.2,.9,.3,1) both;transform-origin:top center}
       @keyframes agSoleil{from{transform:rotate(0)}to{transform:rotate(360deg)}}
       @keyframes agBattement{0%,100%{box-shadow:0 0 0 0 rgba(232,115,90,.6)}60%{box-shadow:0 0 0 6px rgba(232,115,90,0)}}
@@ -1510,40 +1516,76 @@ function Puces<T extends string | number>({ options, valeur, onChange }: { optio
 
 /* ══ Le choix du client ════════════════════════════════════════
    Un champ de recherche plutôt qu'un menu déroulant : avec beaucoup de
-   dossiers, on tape trois lettres et on choisit. Sans rien taper, les
-   dossiers les plus récents. */
+   dossiers, on tape trois lettres et on choisit. V3.105 : sans rien taper,
+   plus de liste « Dossiers récents » (Alexandre : « il faut enlever les
+   dossiers récents ; qu'on tape juste le client nous-mêmes ») — pour tous
+   les rendez-vous, visite, signature ou autre. */
 const sansAccent = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 /* Son petit personnage (V3.31), plutôt que ses initiales. */
 function Pastille({ nom, personne, taille = 38 }: { nom: string; personne?: Personne; taille?: number }) {
   return <AvatarContact c={personne || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} taille={taille} />;
 }
 
-function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[]; valeur: string; fige: boolean; onChange: (id: string) => void }) {
+/* V3.106 — Deux chemins, et chacun se voit (Alexandre : « qu'on comprenne
+   qu'on peut choisir un client de la base, ou sinon ajouter un client qui
+   n'est pas de la base ; il ne sera pas ajouté, il sera juste enregistré
+   comme ça »). Un client du fichier choisi, ou un nom gardé pour ce seul
+   rendez-vous (`libre`) : une carte qui dit « Retenu pour ce rendez-vous »,
+   et ce que ça fait. Le nom libre n'existe pas pour une visite (il faut le
+   dossier, pour ses biens) : `onLibre` absent. `onSaisie` dit au formulaire
+   ce qui est tapé et pas encore retenu, pour ne rien perdre à
+   l'enregistrement. */
+function CarteRetenue({ nom, personne, sous, hors, fige, onChanger }: { nom: string; personne?: Personne; sous: string; hors?: boolean; fige?: boolean; onChanger: () => void }) {
+  return (
+    <div className="ag-retenu" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, border: `1.5px solid ${hors ? '#cbd5e1' : OR}`, background: hors ? '#f8fafc' : '#fffaf0' }}>
+      <Pastille nom={nom} personne={personne} />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+          <b style={{ fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{nom}</b>
+          <span className="ag-retenu-ok" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, background: '#dcfce7', color: '#15803d', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>
+            <Ic n="coche" t={11} ep={3} />Retenu pour ce rendez-vous
+          </span>
+        </span>
+        <span style={{ fontSize: 12, color: DOUX, lineHeight: 1.4 }}>{sous}</span>
+      </span>
+      {!fige && (
+        <button type="button" onClick={onChanger}
+          style={{ height: 34, padding: '0 12px', borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Changer</button>
+      )}
+    </div>
+  );
+}
+
+function ChoixDossier({ dossiers, valeur, fige, onChange, libre = '', onLibre, onSaisie }: {
+  dossiers: Dossier[]; valeur: string; fige: boolean; onChange: (id: string) => void;
+  libre?: string; onLibre?: (nom: string) => void; onSaisie?: (q: string) => void;
+}) {
   const [q, setQ] = useState('');
   const [actif, setActif] = useState(0);
   const choisi = dossiers.find(d => d.rechercheId === valeur) || null;
+  const taper = (v: string) => { setQ(v); setActif(0); onSaisie?.(v); };
 
   if (choisi) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, border: `1.5px solid ${OR}`, background: '#fffaf0' }}>
-        <Pastille nom={choisi.nom} personne={choisi.personne} />
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
-          <b style={{ fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{choisi.nom}</b>
-          <span style={{ fontSize: 12, color: DOUX, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[choisi.recherche, choisi.resume].filter(Boolean).join(' · ') || 'Recherche en cours'}</span>
-        </span>
-        {!fige && (
-          <button type="button" onClick={() => { onChange(''); setQ(''); }}
-            style={{ height: 34, padding: '0 12px', borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Changer</button>
-        )}
-      </div>
+      <CarteRetenue nom={choisi.nom} personne={choisi.personne} fige={fige}
+        sous={`Client de ton fichier · ${[choisi.recherche, choisi.resume].filter(Boolean).join(' · ') || 'Recherche en cours'}`}
+        onChanger={() => { onChange(''); taper(''); }} />
+    );
+  }
+  if (onLibre && libre.trim()) {
+    return (
+      <CarteRetenue nom={libre.trim()} hors sous="Pas dans tes contacts : noté seulement sur ce rendez-vous."
+        onChanger={() => { onLibre(''); taper(libre.trim()); }} />
     );
   }
 
   const t = sansAccent(q.trim());
-  const liste = t
-    ? dossiers.filter(d => sansAccent(`${d.nom} ${d.recherche} ${d.resume}`).includes(t)).slice(0, 8)
-    : [...dossiers].sort((a, b) => b.cree.localeCompare(a.cree)).slice(0, 5);
-  const choisir = (d: Dossier) => { onChange(d.rechercheId); setQ(''); };
+  const liste = t ? dossiers.filter(d => sansAccent(`${d.nom} ${d.recherche} ${d.resume}`).includes(t)).slice(0, 8) : [];
+  /* Le nom tapé, à garder tel quel : la dernière ligne de la liste. */
+  const avecLibre = !!onLibre && !!t;
+  const nbOptions = liste.length + (avecLibre ? 1 : 0);
+  const choisir = (d: Dossier) => { onChange(d.rechercheId); taper(''); };
+  const garder = () => { onLibre?.(q.trim()); taper(''); };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1551,18 +1593,27 @@ function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[
         <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: PALE, display: 'flex', pointerEvents: 'none' }}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7" /><path d="m20.5 20.5-4.7-4.7" /></svg>
         </span>
-        <input className="ag-champ" value={q} autoComplete="off" placeholder="Tape le nom du client…" aria-label="Chercher un client"
-          onChange={e => { setQ(e.target.value); setActif(0); }}
+        <input className="ag-champ" value={q} autoComplete="off" placeholder={onLibre ? 'Tape le nom du client…' : 'Tape le nom de l’acheteur…'} aria-label="Chercher un client"
+          onChange={e => taper(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setActif(i => Math.min(liste.length - 1, i + 1)); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActif(i => Math.min(nbOptions - 1, i + 1)); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setActif(i => Math.max(0, i - 1)); }
-            else if (e.key === 'Enter' && liste[actif]) { e.preventDefault(); choisir(liste[actif]); }
+            else if (e.key === 'Enter') {
+              if (liste[actif]) { e.preventDefault(); choisir(liste[actif]); }
+              else if (avecLibre) { e.preventDefault(); garder(); }
+            }
           }}
           style={{ ...CHAMP, paddingLeft: 40 }} />
       </div>
+      {!t && (
+        <span style={{ fontSize: 12, color: PALE, lineHeight: 1.45 }}>
+          {onLibre ? 'Choisis un client de ton fichier, ou garde un nom qui n’y est pas : il sera noté sur ce rendez-vous, sans créer de contact.' : 'Une visite se range dans le dossier d’un acheteur de ton fichier.'}
+        </span>
+      )}
+      {t && (
       <div role="listbox" aria-label="Dossiers" style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${BORD}`, borderRadius: 14, background: 'white', overflow: 'hidden' }}>
-        <span style={{ padding: '8px 12px 4px', fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE }}>{t ? (liste.length ? `${liste.length === 8 ? '8 premiers' : liste.length} résultat${liste.length > 1 ? 's' : ''}` : 'Aucun dossier') : 'Dossiers récents'}</span>
-        {t && liste.length === 0 && <span style={{ padding: '4px 12px 12px', fontSize: 12.5, color: DOUX }}>{`Aucun client ne correspond à « ${q.trim()} ».`}</span>}
+        <span style={{ padding: '8px 12px 4px', fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE }}>{liste.length ? `Dans ton fichier · ${liste.length === 8 ? '8 premiers' : liste.length}` : 'Personne dans ton fichier'}</span>
+        {liste.length === 0 && <span style={{ padding: '2px 12px 10px', fontSize: 12.5, color: DOUX }}>{onLibre ? `Aucun client ne s’appelle « ${q.trim()} ». Tu peux garder ce nom juste pour ce rendez-vous.` : `Aucun acheteur ne correspond à « ${q.trim()} ».`}</span>}
         {liste.map((d, i) => (
           <button key={d.rechercheId} type="button" role="option" aria-selected={i === actif} onClick={() => choisir(d)} onMouseEnter={() => setActif(i)}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 12px', border: 'none', borderTop: i ? `1px solid ${LIGNE}` : 'none', background: i === actif ? '#f6f8fc' : 'white', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: NAVY }}>
@@ -1574,7 +1625,19 @@ function ChoixDossier({ dossiers, valeur, fige, onChange }: { dossiers: Dossier[
             {d.emails.length === 0 && <span title="Pas d’adresse mail" style={{ fontSize: 10.5, fontWeight: 700, color: PALE, flexShrink: 0 }}>sans mail</span>}
           </button>
         ))}
+        {avecLibre && (
+          <button type="button" role="option" aria-selected={actif === liste.length} onClick={garder} onMouseEnter={() => setActif(liste.length)}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 12px', border: 'none', borderTop: `1px dashed ${BORD}`, background: actif === liste.length ? '#f6f8fc' : '#fbfcfe', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: NAVY }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, border: `1.5px dashed #c3ccda`, color: DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="plus" t={15} ep={2.4} /></span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+              <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{`Garder « ${q.trim()} » pour ce rendez-vous`}</b>
+              <span style={{ fontSize: 11.5, color: DOUX }}>Pas ajouté à tes contacts : seulement noté sur le rendez-vous.</span>
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: OR_FONCE, flexShrink: 0 }}>Valider</span>
+          </button>
+        )}
       </div>
+      )}
     </div>
   );
 }
@@ -1796,6 +1859,10 @@ type Formulaire = {
   mode: string; etape: string; proprietaire: string; telephone: string;
   /* V3.50 : une estimation créée ici peut viser un bien de l'agence. */
   bienVenteId: string;
+  /* V3.106 : un nom qui n'est pas dans le fichier, gardé pour ce seul
+     rendez-vous (rendez-vous client, appel, signature) ; écrit dans
+     `details.personne`, aucune fiche créée. */
+  personne: string;
 };
 
 /* Un bien de l'agence qu'on peut estimer (à suivre ou en estimation), pour
@@ -1841,6 +1908,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         contact: ev.contact, notes: ev.notes, rappel, prevenir: false,
         mode: ev.details?.mode || 'tel', etape: ev.details?.etape || 'compromis',
         proprietaire: ev.details?.proprietaire || '', telephone: ev.details?.telephone || '', bienVenteId: '',
+        personne: typeof ev.details?.personne === 'string' ? ev.details.personne : '',
       };
     }
     return {
@@ -1848,6 +1916,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
       date: modale.mode === 'nouveau' ? modale.jour : cleDe(new Date()), heure: modale.mode === 'nouveau' ? modale.heure : '10:00',
       duree: 60, titre: null, lieu: null, contact: null, notes: '',
       rappel: 'veille', prevenir: false, mode: 'tel', etape: 'compromis', proprietaire: '', telephone: '', bienVenteId: '',
+      personne: '',
     };
   }, [ev, modale, relances]);
   const [f, setF] = useState<Formulaire>(init);
@@ -1866,6 +1935,8 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
      besoin. Ouvert d'office pour un rendez-vous dont la durée ne tombe sur
      aucun des choix proposés. */
   const [perso, setPerso] = useState(() => !DUREES.some(d => d.v === init.duree));
+  /* V3.106 : ce qui est tapé dans « Pour quel client » sans avoir été retenu. */
+  const [saisie, setSaisie] = useState('');
 
   const dossier = dossiers.find(d => d.rechercheId === f.rechercheId) || null;
   /* Le client : obligatoire pour une visite (il faut ses biens), facultatif
@@ -1879,6 +1950,10 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   const lie = !!ev && ev.source === 'rdv' && rdvLieAuBien(ev);
   const avecDossier = !lie && f.type !== 'perso' && f.type !== 'estimation' && f.type !== 'libre';
   const dossierObligatoire = !lie && f.type === 'visite';
+  /* V3.106 : un nom hors fichier, sauf pour une visite (il faut le dossier). */
+  const libreOk = avecDossier && f.type !== 'visite';
+  const personneLibre = libreOk && !f.rechercheId ? f.personne.trim() : '';
+  const enAttente = avecDossier && !f.rechercheId && !personneLibre ? saisie.trim() : '';
 
   useEffect(() => {
     if (ev || f.type !== 'estimation' || biensEstim !== null) return;
@@ -1899,17 +1974,23 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   }, [f.rechercheId, f.type]);
 
   const choisis = biens.filter(b => f.choisis[b.id]);
-  const nom = dossier?.nom || '';
-  let titreAuto = '', lieuAuto = '';
-  if (f.type === 'visite') {
-    titreAuto = choisis.length > 1 ? `${choisis.length} visites · ${nom}` : choisis.length === 1 ? `Visite · ${choisis[0].titre || choisis[0].ville || 'bien'}` : (nom ? `Visite · ${nom}` : 'Visite');
-    lieuAuto = choisis.length ? lieuDuBien(choisis[0]) : '';
-  } else if (f.type === 'client') { titreAuto = nom ? `Rendez-vous · ${nom}` : 'Rendez-vous client'; lieuAuto = 'Agence Emilio'; }
-  else if (f.type === 'libre') { titreAuto = 'Rendez-vous'; lieuAuto = ''; }
-  else if (f.type === 'appel') { titreAuto = `${f.mode === 'visio' ? 'Visio' : 'Appel'}${nom ? ` · ${nom}` : ''}`; lieuAuto = f.mode === 'visio' ? 'Visio' : 'Téléphone'; }
-  else if (f.type === 'signature') { titreAuto = `${ETAPES[f.etape]}${nom ? ` · ${nom}` : ''}`; lieuAuto = ''; }
-  else if (f.type === 'estimation') { titreAuto = `Estimation${f.proprietaire ? ` · ${f.proprietaire}` : ''}`; lieuAuto = ''; }
-  else { titreAuto = 'Créneau bloqué'; lieuAuto = ''; }
+  const nom = dossier?.nom || personneLibre;
+  /* Le titre et le lieu proposés, pour un nom donné (V3.106 : aussi à
+     l'enregistrement, quand un nom tapé est gardé à la dernière seconde). */
+  const autoPour = (n: string) => {
+    let titreAuto = '', lieuAuto = '';
+    if (f.type === 'visite') {
+      titreAuto = choisis.length > 1 ? `${choisis.length} visites · ${n}` : choisis.length === 1 ? `Visite · ${choisis[0].titre || choisis[0].ville || 'bien'}` : (n ? `Visite · ${n}` : 'Visite');
+      lieuAuto = choisis.length ? lieuDuBien(choisis[0]) : '';
+    } else if (f.type === 'client') { titreAuto = n ? `Rendez-vous · ${n}` : 'Rendez-vous client'; lieuAuto = 'Agence Emilio'; }
+    else if (f.type === 'libre') { titreAuto = 'Rendez-vous'; lieuAuto = ''; }
+    else if (f.type === 'appel') { titreAuto = `${f.mode === 'visio' ? 'Visio' : 'Appel'}${n ? ` · ${n}` : ''}`; lieuAuto = f.mode === 'visio' ? 'Visio' : 'Téléphone'; }
+    else if (f.type === 'signature') { titreAuto = `${ETAPES[f.etape]}${n ? ` · ${n}` : ''}`; lieuAuto = ''; }
+    else if (f.type === 'estimation') { titreAuto = `Estimation${f.proprietaire ? ` · ${f.proprietaire}` : ''}`; lieuAuto = ''; }
+    else { titreAuto = 'Créneau bloqué'; lieuAuto = ''; }
+    return { titreAuto, lieuAuto };
+  };
+  const { titreAuto, lieuAuto } = autoPour(nom);
   const titre = f.titre !== null ? f.titre : titreAuto;
   const lieu = f.lieu !== null ? f.lieu : lieuAuto;
   const contact = f.contact !== null ? f.contact : (choisis[0]?.agence_nom || '');
@@ -1948,6 +2029,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   else if (f.type === 'visite') effets.push('Visible aussi dans la page Visites et dans l’espace du client.');
   if (bienEstim) effets.push(`La fiche du bien « ${bienEstim.titre} » reçoit la date d’estimation.`);
   if (avecDossier && dossier) effets.push(`Noté dans le suivi du dossier de ${dossier.nom}.`);
+  if (personneLibre) effets.push(`${personneLibre} est noté sur le rendez-vous, sans être ajouté à tes contacts.`);
   /* Le rappel tombe à midi, la veille ou le jour même. Une veille déjà
      passée (rendez-vous pris pour aujourd'hui) devient aujourd'hui : sinon
      il arriverait directement « en retard » dans les Relances. */
@@ -1962,8 +2044,16 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   if (f.prevenir && mail) effets.push(`${dossier!.prenom} reçoit un mail de confirmation.`);
 
   async function enregistrer() {
+    /* V3.106 : un nom tapé, jamais retenu, partait à la poubelle sans un mot.
+       On demande ; gardé, il donne aussi son nom au titre proposé. */
+    let personneFinale = personneLibre;
+    if (enAttente && libreOk) {
+      if (!window.confirm(`« ${enAttente} » n’est pas encore retenu.\n\nOK : le garder pour ce rendez-vous (sans l’ajouter à tes contacts).\nAnnuler : revenir choisir un client de ton fichier.`)) return;
+      personneFinale = enAttente;
+    }
+    const titre = f.titre !== null ? f.titre : autoPour(dossier?.nom || personneFinale).titreAuto;
     if (!f.date || !f.heure) { alert('Indique la date et l’heure.'); return; }
-    if (dossierObligatoire && !dossier && !(ev && ev.source === 'visite')) { alert('Choisis le dossier du client.'); return; }
+    if (dossierObligatoire && !dossier && !(ev && ev.source === 'visite')) { alert(enAttente ? `« ${enAttente} » n’est pas choisi : clique sur le bon dossier dans la liste.` : 'Choisis le dossier du client.'); return; }
     if (f.type === 'visite' && !ev && !choisis.length) { alert('Coche au moins un bien à visiter.'); return; }
     if (!titre.trim()) { alert('Donne un titre au rendez-vous.'); return; }
     if (rdvImpossible) { alert('Lance d’abord le SQL de l’agenda dans Supabase (agenda-rendez-vous.sql).'); return; }
@@ -2097,6 +2187,8 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         details: {
           ...(ev?.details || {}),
           mode: f.type === 'appel' ? f.mode : undefined, etape: f.type === 'signature' ? f.etape : undefined, proprietaire: f.type === 'estimation' ? f.proprietaire || undefined : undefined, telephone: f.type === 'estimation' ? f.telephone || undefined : undefined,
+          /* V3.106 : le nom hors fichier, seulement sans dossier. */
+          personne: !dossier && personneFinale ? personneFinale : undefined,
           ...(bienEstim ? { bien_vente_id: bienEstim.id } : {}),
         },
         relance_id: relanceId,
@@ -2248,7 +2340,9 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
               <Section n={2} ico="personne" titre={dossierObligatoire ? 'Pour quel client' : 'Pour quel client (facultatif)'} rang={1}
                 aide={dossierObligatoire ? 'Le rendez-vous se range dans sa fiche.' : 'Laisse vide pour un rendez-vous sans client. Avec un client, il se range dans sa fiche.'}>
                 <ChoixDossier dossiers={dossiers} valeur={f.rechercheId} fige={!!ev && ev.source === 'visite'}
-                  onChange={id => maj_({ rechercheId: id, choisis: {}, titre: null, lieu: null, contact: null })} />
+                  onChange={id => { setSaisie(''); maj_({ rechercheId: id, personne: '', choisis: {}, titre: null, lieu: null, contact: null }); }}
+                  libre={libreOk ? f.personne : ''} onSaisie={setSaisie}
+                  onLibre={libreOk ? (n => { setSaisie(''); maj_({ personne: n, rechercheId: '', titre: null }); }) : undefined} />
               {f.type === 'visite' && dossier && !ev && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Libelle texte="Biens à visiter" aide={choisis.length ? `${choisis.length} choisi${choisis.length > 1 ? 's' : ''} · Sélection et Présentés` : 'Sélection et Présentés'} />
@@ -2414,7 +2508,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         </div>
 
         <footer className="ag-modale-pied" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 22px', borderTop: `1px solid ${BORD}`, background: '#fbfcfe', flexShrink: 0 }}>
-          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : lie || bienEstim ? 'Rendez-vous lié à un bien.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
+          <span role="status" style={{ fontSize: 12.5, color: retenue ? '#b45309' : DOUX, fontWeight: retenue ? 700 : 400, flex: '1 1 200px' }}>{retenue ? 'Pour fermer sans enregistrer, appuie sur Annuler.' : lie || bienEstim ? 'Rendez-vous lié à un bien.' : avecDossier && dossier ? `Rangé dans le dossier de ${dossier.nom}.` : personneLibre ? `Avec ${personneLibre}, noté sur le rendez-vous (pas dans tes contacts).` : enAttente ? (libreOk ? `« ${enAttente} » n’est pas encore retenu : choisis un client de la liste, ou garde ce nom.` : `« ${enAttente} » n’est pas choisi : clique sur le bon dossier.`) : dossierObligatoire ? 'Choisis le dossier du client.' : 'Rendez-vous sans client.'}</span>
           <button type="button" className="ag-appui" onClick={fermer} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: DOUX, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
           <button type="button" onClick={enregistrer} disabled={envoi}
             style={{ height: 44, padding: '0 22px', borderRadius: 12, border: 'none', background: OR, color: NAVY, fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', opacity: envoi ? .7 : 1, boxShadow: '0 12px 24px -12px rgba(201,168,76,.95)' }}>
