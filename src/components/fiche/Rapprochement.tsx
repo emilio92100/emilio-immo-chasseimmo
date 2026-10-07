@@ -20,16 +20,17 @@
    · « Seulement les nouveautés » : les biens déjà montrés par un rapprochement
      précédent (`vus`, notés au Suivi) sont repliés à part, « Déjà vus » ;
    · le pied dit ce que fait chaque bouton : « Le mettre dans sa sélection »
-     (rien ne part) ou « Le lui envoyer par mail » (il passe dans Présentés). */
+     (rien ne part), « Le mettre dans son espace » (V3.116 : présenté sans
+     mail) ou « Le lui envoyer par mail » (il passe dans Présentés). */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icone } from './ParcoursBien';
 import {
-  compterSources, rapprocher, poserEnSelection, noterRapprochement, PERIODES,
+  compterSources, rapprocher, poserEnSelection, presenterDansEspace, noterRapprochement, PERIODES,
   type SourceRappro, type PeriodeVeille, type Trouve,
 } from '@/lib/rapprochement';
-import { SEUIL_CORRESPOND } from '@/components/biens/outils';
+import { SEUIL_CORRESPOND, suiteEnvoi } from '@/components/biens/outils';
 import s from './Rapprochement.module.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,7 +89,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   onFermer: () => void;
   /* Les biens sont posés dans son dossier : la fiche recharge, puis ouvre la
      Sélection ou le mail d'envoi habituel sur ces biens-là. */
-  onFini: (quoi: 'selection' | 'mail', ids: string[]) => void;
+  onFini: (quoi: 'selection' | 'espace' | 'mail', ids: string[]) => void;
   onFicheBien?: (bienVenteId: string) => void;
   /* Ouvert depuis une alerte (« un acheteur arrive ») : la recherche part
      tout de suite, sur cette source, et ces mandats sont déjà cochés. */
@@ -109,7 +110,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   const [choisis, setChoisis] = useState<Set<string>>(new Set());
   const [filtre, setFiltre] = useState<'tout' | 'mandat' | 'veille'>('tout');
   const [apercu, setApercu] = useState<Trouve | null>(null);
-  const [pose, setPose] = useState<'' | 'selection' | 'mail'>('');
+  const [pose, setPose] = useState<'' | 'selection' | 'espace' | 'mail'>('');
 
   useEffect(() => {
     let vivant = true;
@@ -157,12 +158,18 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
     }
   }
 
-  async function poser(quoi: 'selection' | 'mail') {
+  async function poser(quoi: 'selection' | 'espace' | 'mail') {
     if (!res || !choisis.size || pose) return;
     setPose(quoi);
     const ids: string[] = [], erreurs: string[] = [];
     for (const t of res.trouves.filter(x => choisis.has(x.cle))) {
       try { ids.push(await poserEnSelection(t, client.id, recherche.id)); } catch (e) { erreurs.push((e as Error).message); }
+    }
+    /* V3.116 : dans son espace, sans mail — présentés, une relance, sa notification. */
+    if (quoi === 'espace' && ids.length) {
+      const r = await presenterDansEspace(ids, String(client.id), String(recherche.id));
+      erreurs.push(...r.erreurs);
+      if (r.n) await suiteEnvoi(String(client.id), String(recherche.id), r.n);
     }
     setPose('');
     if (erreurs.length) alert(`${erreurs.length} bien${erreurs.length > 1 ? 's' : ''} n’${erreurs.length > 1 ? 'ont' : 'a'} pas pu être ajouté${erreurs.length > 1 ? 's' : ''} :\n\n${erreurs.join('\n')}`);
@@ -346,7 +353,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
               <div className={s.piedChoix}>
                 <div className={s.piedChoixT}>
                   <span className={s.piedN}><b>{choisis.size}</b>{choisis.size > 1 ? ' biens cochés' : ' bien coché'}</span>
-                  <span className={s.piedQ}>{`Que faire ${pl(choisis.size, 'du bien coché', 'des biens cochés')} ? Dans les deux cas, son Suivi le note.`}</span>
+                  <span className={s.piedQ}>{`Que faire ${pl(choisis.size, 'du bien coché', 'des biens cochés')} ? Dans tous les cas, son Suivi le note.`}</span>
                 </div>
                 <div className={s.opts}>
                   <button type="button" className={s.opt} onClick={() => poser('selection')} disabled={!choisis.size || !!pose}>
@@ -354,6 +361,13 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                     <span className={s.optTx}>
                       <b>{pose === 'selection' ? 'Ajout…' : choisis.size > 1 ? 'Les mettre dans sa sélection' : 'Le mettre dans sa sélection'}</b>
                       <small>{`Onglet Sélection de ${prenom}. Rien ne part : tu l’enverras plus tard, quand tu voudras.`}</small>
+                    </span>
+                  </button>
+                  <button type="button" className={s.opt} onClick={() => poser('espace')} disabled={!choisis.size || !!pose}>
+                    <span className={s.optIc}><Icone nom="maison" taille={19} epaisseur={2.1} /></span>
+                    <span className={s.optTx}>
+                      <b>{pose === 'espace' ? 'Présentation…' : choisis.size > 1 ? 'Les mettre dans son espace' : 'Le mettre dans son espace'}</b>
+                      <small>{`Sans mail : le bien passe dans Présentés et ${prenom} le voit dans son espace. Son téléphone le prévient s’il a accepté les alertes.`}</small>
                     </span>
                   </button>
                   <button type="button" className={`${s.opt} ${s.optOr}`} onClick={() => poser('mail')} disabled={!choisis.size || !!pose}>

@@ -5717,6 +5717,7 @@ ${signatureMail()}`,
             await load();
             setVersionBiens(v => v + 1);
             if (quoi === 'mail') openEnvoiMulti(ids);
+            else if (quoi === 'espace') setTab('presentes');
             else setTab('selection');
           }} />
       )}

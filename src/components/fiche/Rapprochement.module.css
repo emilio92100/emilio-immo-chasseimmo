@@ -203,7 +203,7 @@
 .piedChoixT { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .piedChoixT .piedN { margin-right: 0; }
 .piedQ { font-size: 13px; color: #64748b; }
-.opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .opt {
   display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border-radius: 16px; text-align: left; cursor: pointer; font-family: inherit; color: inherit;
   border: 1.5px solid #e3e8f0; background: #fff; transition: border-color .15s, background .15s;
@@ -257,7 +257,10 @@
 .radios input { width: 17px; height: 17px; margin: 0; accent-color: #1a2332; }
 
 @media (max-width: 720px) {
-  .opts { grid-template-columns: 1fr; }
+  .opts { grid-template-columns: 1fr; gap: 8px; }
+  .opt { padding: 10px 12px; gap: 10px; }
+  .optIc { width: 34px; height: 34px; border-radius: 10px; }
+  .optTx small { font-size: 12px; line-height: 1.4; }
   .piedChoix { padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px)); }
   .piedQ { width: 100%; }
   .guide { padding: 14px; gap: 12px; }
