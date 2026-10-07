@@ -908,7 +908,7 @@ function QuestionContact({ d, onNon, onOui, onRelier }: {
               {pre.tel && <span className={`${s.pastille} ${s.pastilleRobot}`}><Ic n="telephone" t={12} e={2.2} /><span>{pre.tel}</span></span>}
               {pre.email && <span className={`${s.pastille} ${s.pastilleRobot}`}><Ic n="mail" t={12} e={2.2} /><span>{pre.email}</span></span>}
             </div>
-            <div className={s.qSource}>{`Source : site, ${pre.source_detail.charAt(0).toLowerCase()}${pre.source_detail.slice(1)} · la demande va dans ses notes${pre.criteres ? ', ses critères dans sa recherche' : ''}`}</div>
+            <div className={s.qSource}>{`Source : ${pre.origine} · la demande va dans ses notes${pre.criteres ? ', ses critères dans sa recherche' : ''}`}</div>
           </div>
         </div>
 
