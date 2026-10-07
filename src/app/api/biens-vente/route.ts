@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
-import { enveloppeMail } from '@/lib/mail-charte';
+import { enveloppeMail, MAIL as CHARTE } from '@/lib/mail-charte';
+import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
+import { bienPourSite, idSite } from '@/lib/flux-site';
+import { diffuseSur } from '@/lib/diffusion';
+import { avantMandat, type BienVente } from '@/lib/biens-vente';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -25,6 +29,17 @@ export const maxDuration = 60;
  *   POST { action: 'tout', id }              →  { ok, n }     (le bien est supprimé)
  *   POST { action: 'envoyer', id, destinataires, sujet, message, pieces }
  *                                            →  { ok, mode, envoyes, avertissements }
+ *
+ *   POST { action: 'presenter', ids, destinataires, objet, corps }
+ *                                            →  { ok, envoyes, avertissements }
+ *
+ * « presenter » (V3.121) : un ou plusieurs biens envoyés par simple mail à
+ * quelqu'un qui n'a pas d'espace — une personne hors du CRM (Alexandre :
+ * « quelqu'un rencontré dans la rue »), ou un contact sans recherche
+ * ouverte. Chaque bien en carte : sa photo, ce que dit l'annonce, son prix
+ * (pas avant le mandat), et un bouton vers sa page sur emilio-immo.com s'il
+ * y est publié — le seul lien public d'un bien de l'agence. Noté dans
+ * l'historique de chaque bien, et dans le Suivi du contact s'il est au CRM.
  *
  * « envoyer » (V3.30) : des pièces du dossier partent par mail, depuis
  * l'onglet Documents du bien. Un mail par destinataire, au nom d'Alexandre.
@@ -202,6 +217,93 @@ export async function POST(req: NextRequest) {
         }), avertissements);
       }
       return NextResponse.json({ ok: true, mode, envoyes, avertissements });
+    }
+
+    if (action === 'presenter') {
+      const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(x => UUID.test(x)).slice(0, 12);
+      if (!ids.length) return ko('Aucun bien à présenter');
+      const objet = String(body.objet || '').trim().slice(0, 200);
+      const corps = String(body.corps || '').trim().slice(0, 20_000);
+      if (!objet) return ko('L’objet du mail est vide');
+      if (!corps) return ko('Le message est vide');
+      type Dest = { email: string; prenom: string; nom: string; clientId: string | null };
+      const dests: Dest[] = (Array.isArray(body.destinataires) ? body.destinataires : []).slice(0, 10).map((x: unknown) => {
+        const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+        return {
+          email: String(o.email || '').trim().toLowerCase(), prenom: String(o.prenom || '').trim().slice(0, 60), nom: String(o.nom || '').trim().slice(0, 120),
+          clientId: UUID.test(String(o.clientId || '')) ? String(o.clientId) : null,
+        };
+      }).filter((x: Dest, i: number, l: Dest[]) => MAIL.test(x.email) && l.findIndex(y => y.email === x.email) === i);
+      if (!dests.length) return ko('Aucune adresse e-mail valable');
+
+      const { data: lus, error: eB } = await sb.from('biens_vente').select('*').in('id', ids);
+      if (eB) return ko(eB.message, 500);
+      const biens = ids.map(id => ((lus || []) as BienVente[]).find(b => b.id === id)).filter((b): b is BienVente => !!b);
+      if (!biens.length) return ko('Bien introuvable', 404);
+      const { data: ps } = await sb.from('parametres').select('cle, valeur').in('cle', CLES_MAIL);
+      const conseiller = conseillerDe(Object.fromEntries(((ps || []) as { cle: string; valeur: string | null }[]).map(r => [r.cle, r.valeur || ''])));
+
+      /* Ce qu'une annonce peut dire, rien de plus (lib/flux-site.ts). */
+      const fiches = biens.map(b => {
+        const x = bienPourSite(b, null);
+        const prix = !avantMandat(b.etape) && x.price > 0 ? x.price : null;
+        const lien = diffuseSur(b, 'site') ? `https://www.emilio-immo.com/biens/${encodeURIComponent(idSite(b))}` : '';
+        const carac = [x.surface ? `${x.surface} m²` : '', x.rooms ? `${x.rooms} pièce${x.rooms > 1 ? 's' : ''}` : '', x.bedrooms ? `${x.bedrooms} chambre${x.bedrooms > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+        const lieu = [b.quartier, x.city].filter(Boolean).join(', ');
+        return { b, titre: x.title || 'Le bien', photo: x.images[0] || '', prix, lien, carac, lieu };
+      });
+      const eur = (n: number) => `${n.toLocaleString('fr-FR')} €`;
+      const cartes = fiches.map(f => `<div style="margin:18px 0 0;border:1px solid ${CHARTE.trait};border-radius:14px;background:${CHARTE.fond};overflow:hidden">
+        ${f.photo ? `<img src="${echappe(f.photo)}" alt="" width="514" style="width:100%;max-width:514px;height:auto;display:block;border:0" />` : ''}
+        <div style="padding:16px 18px 18px">
+          <div style="font-weight:800;font-size:16px;line-height:1.35;color:${CHARTE.encre}">${echappe(f.titre)}</div>
+          ${f.lieu ? `<div style="color:${CHARTE.plume};margin-top:5px;font-size:13px"><span style="color:${CHARTE.or}">&#9679;</span> ${echappe(f.lieu)}</div>` : ''}
+          ${f.carac ? `<div style="color:${CHARTE.plume};margin-top:4px;font-size:13px">${echappe(f.carac)}</div>` : ''}
+          ${f.prix ? `<div style="font-weight:800;font-size:20px;color:${CHARTE.encre};margin-top:10px">${eur(f.prix)}</div>` : ''}
+          ${f.lien ? `<a href="${echappe(f.lien)}" style="display:inline-block;margin-top:14px;background:${CHARTE.or};color:${CHARTE.encre};text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Voir le bien</a>` : ''}
+        </div>
+      </div>`).join('');
+      const texteBiens = fiches.map(f => [f.titre, [f.lieu, f.carac, f.prix ? eur(f.prix) : ''].filter(Boolean).join(' · '), f.lien].filter(Boolean).join('\n')).join('\n\n');
+
+      const envoyes: string[] = [];
+      const echecs: string[] = [];
+      for (const dst of dests) {
+        /* {{prénom}} : rien pour une adresse hors CRM — « Bonjour, ». */
+        const texte = personnaliser(corps, { prenom: dst.prenom, nom: dst.nom }, conseiller).replace(/Bonjour\s+,/g, 'Bonjour,');
+        /* Les cartes des biens avant la signature (« Cordialement… »), pas après. */
+        const blocs = texte.split(/\n{2,}/);
+        let sig = -1;
+        blocs.forEach((t, k) => { if (/^(cordialement|bien (à|a) vous|bien cordialement|belle journée|bonne journée|à bientôt|a bientot|sincères salutations)/i.test(t.trim())) sig = k; });
+        const para = (t: string) => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`;
+        const avant = (sig > 0 ? blocs.slice(0, sig) : blocs).map(para).join('');
+        const apres = sig > 0 ? `<div style="margin-top:22px">${blocs.slice(sig).map(para).join('')}</div>` : '';
+        const html = enveloppeMail({ corps: `${avant}${cartes}${apres}` });
+        const err = await envoyerMail({ a: dst.email, nomA: [dst.prenom, dst.nom].filter(Boolean).join(' ') || undefined, sujet: personnaliser(objet, { prenom: dst.prenom, nom: dst.nom }, conseiller), texte: `${texte}\n\n${texteBiens}`, html, pj: [] });
+        if (err) echecs.push(`${dst.email} : ${err}`); else envoyes.push(dst.email);
+      }
+      if (!envoyes.length) return ko(`Le mail n’est pas parti. ${echecs.join(' · ')}`, 502);
+
+      /* La trace : l'historique de chaque bien, le Suivi des contacts du CRM. */
+      const avertissements: string[] = [...echecs.map(e => `Pas parti à ${e}`)];
+      const partis = dests.filter(x => envoyes.includes(x.email));
+      const qui = partis.map(x => [x.prenom, x.nom].filter(Boolean).join(' ') || x.email).join(', ');
+      for (const f of fiches) {
+        await ecritServeur('L’historique du bien', sb.from('biens_vente_suivi').insert({
+          bien_id: f.b.id, type: 'envoi', qui, client_id: partis.find(x => x.clientId)?.clientId || null, commentaire: objet,
+          donnees: { a: envoyes, presentation: true, lien: !!f.lien },
+        }), avertissements);
+      }
+      for (const dst of partis.filter(x => x.clientId)) {
+        for (const f of fiches) {
+          await ecritServeur('Le Suivi du contact', sb.from('journal').insert({
+            client_id: dst.clientId, type: 'envoi_bien',
+            titre: 'Bien de l’agence présenté · mail simple',
+            description: `${f.titre}${f.prix ? ` · ${eur(f.prix)}` : ''}\nÀ : ${dst.email}${f.lien ? `\n${f.lien}` : ''}`,
+            metadata: { bien_vente_id: f.b.id },
+          }), avertissements);
+        }
+      }
+      return NextResponse.json({ ok: true, envoyes, avertissements });
     }
 
     /* ── Demander des documents au propriétaire (V3.51) ──
