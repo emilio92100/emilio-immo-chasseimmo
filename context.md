@@ -1498,6 +1498,66 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.115 — 7 octobre 2026 · La présentation de l'espace : une feuille qui monte du bas, six écrans animés
+
+Rien à passer dans Supabase.
+
+Alexandre voulait, à la première visite d'un acheteur, « quelque chose de joli… qui arrive du bas…
+suivant, suivant… la croix pour que ça ne revienne plus », qui fasse comprendre l'intérêt de
+l'espace : « on analyse tout le marché pour vous » chaque jour (sans nommer de site), les biens qui
+arrivent, l'avis qui affine, les critères qu'il change lui-même (« le conseiller est prévenu, la
+recherche se base sur les nouveaux critères »), la carte et les visites. Aux couleurs et à la police
+de son site (emilio-immo.com), pas en marine. Maquettes sur le canevas « Bienvenue dans l'espace
+acheteur » : il a choisi la 1 (la feuille), fond uni gris-bleu clair « comme les cartes » (la 3) —
+ni blanc, ni bandeau bleu, ni halo.
+
+- **`espace/Bienvenue.tsx` (+ `.module.css`)** remplace l'ancienne `Bienvenue` d'EspaceClient (une
+  page de quatre puces). Une couche à part (z-index 75), pas la `feuille` générique de l'espace :
+  au téléphone, une feuille qui monte du bas (max. 480 px de large) ; à partir de 860 px, une
+  fenêtre au centre, l'animation à gauche (« Alexandre, votre conseiller » dessous), le texte à
+  droite. Fond `#F5F8FC`, encre `#13243D`, orange `#E68B23`, Plus Jakarta Sans.
+- **Six écrans** : Bienvenue (la maison, quatre atouts en orbite) · « Nous analysons tout le marché
+  pour vous » (un balayage tourne sur une carte, les biens s'allument ; « Nouvelles annonces »,
+  « Biens en avant-première », « Nos partenaires ») · « Les biens retenus arrivent ici » (la
+  notification tombe) · « Votre avis affine la recherche » (le doigt touche « Ça me plaît », la
+  justesse monte de 46 à 93 %) · « Vos critères, en direct » (le budget glisse, « + Balcon »
+  s'allume, « Votre conseiller est prévenu ») · « Visites et carte, en un geste » (le rendez-vous
+  s'ajoute à l'agenda, les prix sautillent sur la carte ; l'astuce de l'écran d'accueil). Les
+  animations sont dessinées à 342 × 230 et mises à la largeur (`useEchelle`) ; elles s'arrêtent si
+  le téléphone demande moins de mouvement.
+- **Se déplacer** : « Suivant » / « Retour », le doigt qui glisse, les flèches du clavier. Les six
+  barres du haut disent où on en est ; « 6 étapes · 1 minute » au premier écran.
+- **Fermer** : la croix, Échap ou « C'est parti » posent `emilio_bienvenue` (localStorage, comme
+  avant : une fois par appareil). Ouverte d'elle-même, elle laisse un mot neuf secondes : « La
+  présentation est fermée… Vous la retrouvez à tout moment dans « Comment ça marche ? » » (« La
+  revoir », « OK »). « Comment ça marche ? » la rouvre au premier écran (`key`).
+- La visite guidée (un projecteur sur les vrais boutons, variante 2) est restée sur le canevas :
+  plus fragile (la place des boutons change avec l'écran et le nombre de biens), à reprendre
+  peut-être plus tard derrière un lien dans « Comment ça marche ? ».
+
+Vérifié au banc (esbuild + Playwright) en 390 × 844, 375 × 667, 360 × 740 et 1280 × 800 : les six
+écrans tiennent sans défiler, rien ne déborde ; « C'est parti » → le mot de fin → « La revoir » →
+premier écran ; flèche → écran suivant ; Échap → fermé.
+
+### V3.114 — 7 octobre 2026 · Visiter un bien de l'agence ne demande jamais le mandat de recherche
+
+Rien à passer dans Supabase.
+
+Alexandre : « quand ça vient d'un bien de mes mandats, pas besoin [de mandat de recherche pour la]
+visite ». Un acheteur qui demande à visiter un des biens en vente de l'agence n'a pas à signer de
+mandat de recherche : Alexandre y est le mandataire du vendeur.
+
+- **Le serveur** (`/api/espace/[action]`, `retour`) : la vérification « pas de visite sans mandat »
+  ne joue que pour un bien trouvé ailleurs (`!bien.bien_vente_id`). Pour un bien de l'agence, ni
+  409 `mandat` / `mandat_document`, et `pasDeMandat` reste vide : le mail « veut visiter », la
+  relance et le Suivi ne parlent plus de mandat (« Pas de mandat signé… aucun numéro n'était
+  prêt »).
+- **L'espace** : `Bien.agence` (`page.tsx`, `!!bien_vente_id`). `enregistrerAvis` envoie
+  directement la demande d'un bien de l'agence ; `visiteBloquee(id)` rend `false` pour lui (la fiche
+  et « Découvrir », qui passe maintenant l'id du bien). La signature ne s'ouvre plus avant la visite
+  d'un de ces biens.
+- Inchangé : un bien trouvé ailleurs (annonce, partenaire) demande toujours le mandat comme avant.
+
 ### V3.113 — 7 octobre 2026 · Un bien d'avant le mandat part vraiment sans prix ; la trace des envois refusée par la base
 
 ⚠️ **Une requête à passer dans Supabase** : `outils/sql/envois-types.sql` (une fois).
