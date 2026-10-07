@@ -82,7 +82,7 @@ const CHAMPS_FR: Record<string, string> = {
 };
 const net = (t: unknown) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z@.0-9]/g, '');
 const bouton = (href: string, t: string) =>
-  `<a href="${href}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">${t}</a>`;
+  `<a href="${href}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">${t}</a>`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
           texte: `Bonjour ${p.prenom},\n\nVoici votre code pour signer votre mandat de recherche : ${joli}\n\nIl est valable ${CODE_MINUTES} minutes.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message.\n\nAlexandre Rogelet — Emilio Immobilier`,
           html: gabarit('Votre code de signature', `<p>Bonjour ${echappe(p.prenom)},</p>
             <p>Voici votre code pour signer votre mandat de recherche :</p>
-            <div style="margin:16px 0;font-size:32px;font-weight:800;letter-spacing:8px;color:#1a2332">${joli}</div>
+            <div style="margin:16px 0;font-size:32px;font-weight:800;letter-spacing:8px;color:#13243D">${joli}</div>
             <p>Il est valable ${CODE_MINUTES} minutes.</p>`,
             'Si vous n’êtes pas à l’origine de cette demande, ignorez simplement ce message.'),
         });
