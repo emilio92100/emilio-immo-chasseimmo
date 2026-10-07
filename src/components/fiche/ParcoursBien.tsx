@@ -16,6 +16,7 @@ import { HONORAIRES_TAUX } from '@/lib/mandat';
  *  <Specs>          surface / pièces / chambres / séjour… en pictos
  *  <BandeauMarche>  ancienneté, baisses de prix et diffuseurs, en volets dépliants
  *  <diffuseurs>     la liste des agences d'un même bien, dédoublonnée et triée par prix
+ *  <AvisLien>       le lien du bien a changé (annonce retirée, reprise ailleurs) : d'où à où
  *  <Modale>         fenêtre plein écran, rendue hors du conteneur
  *  <Frise>          chronologie d'un bien
  *  <ModaleObservation> / <ModaleEnvoi> / <ModaleScore>
@@ -42,6 +43,10 @@ export function StylesEmilio() {
       @keyframes emiArrivee { from { opacity:0; transform: translateY(16px) } to { opacity:1; transform:none } }
       .emi-arrivee { animation: emiArrivee .52s cubic-bezier(.16,1,.3,1) both }
       @media (prefers-reduced-motion: reduce) { .emi-arrivee { animation-duration: .01ms } }
+      /* V3.101 — le pavé « Lien mis à jour » : sur téléphone, le bouton à la largeur du pouce */
+      .emi-avis-bouton { transition: filter .16s ease, transform .16s ease }
+      .emi-avis-bouton:hover { filter: brightness(1.08) }
+      @media (max-width: 760px) { .emi-avis-bouton { flex: 1 1 100%; justify-content: center; padding-top: 10px !important; padding-bottom: 10px !important } }
       .emi-carte { transition: box-shadow .24s ease, transform .24s ease, border-color .24s ease }
       .emi-carte:hover { box-shadow: 0 2px 4px rgba(16,24,40,.05), 0 20px 44px -24px rgba(16,24,40,.38) }
       .emi-ligne { transition: box-shadow .16s ease, border-color .16s ease }
@@ -1253,14 +1258,44 @@ export function GraphePrix({ points, hauteur = 148 }: { points: PointPrix[]; hau
    `historique_prix`, chaque entrée pouvant porter `agence` et `url`.
    On reconstruit ici la liste, dédoublonnée et triée du moins cher
    au plus cher — c'est le moins cher qu'Alexandre appelle en premier. */
-export type Diffuseur = { agence: string; prix?: number; date?: string; url?: string };
+export type Diffuseur = {
+  agence: string; prix?: number; date?: string; url?: string;
+  /** Le portail où l'annonce était lue (SeLoger, Belles Demeures…). */
+  portail?: string;
+  /** Le téléphone de l'agence, gardé quand l'annonce est retirée. */
+  tel?: string;
+  /** V3.101 — le jour où le lien a été trouvé mort. L'annonce n'est plus en ligne. */
+  retiree_le?: string;
+  /** V3.101 — cette annonce était le lien du bien dans le CRM quand elle a été retirée. */
+  lien_retenu?: boolean;
+};
+
+/* Le nom d'un portail tel qu'on l'écrit. `source_portail` vaut « Veille »
+   pour un bien retenu depuis la veille : ce n'est pas un portail, on le tait. */
+const PORTAILS: Record<string, string> = {
+  seloger: 'SeLoger', leboncoin: 'Leboncoin', bienici: 'Bien’ici', "bien'ici": 'Bien’ici', 'bien’ici': 'Bien’ici',
+  pap: 'PAP', bellesdemeures: 'Belles Demeures', 'belles demeures': 'Belles Demeures', logicimmo: 'Logic-Immo',
+  'logic-immo': 'Logic-Immo', figaro: 'Figaro Immobilier', jinka: 'Jinka', yanport: 'Yanport',
+};
+export function nomPortail(s: any): string | undefined {
+  const t = String(s ?? '').trim();
+  if (!t || /^veille$/i.test(t)) return undefined;
+  return PORTAILS[t.toLowerCase()] || t;
+}
+
+/* « 7 oct. » : la date courte des pastilles. */
+function jourCourt(d: any) {
+  if (!dateConnue(d)) return '—';
+  const x = new Date(d);
+  return `${x.getDate()} ${MOIS[x.getMonth()]}`;
+}
 
 export function diffuseurs(p: any): Diffuseur[] {
   const brut = Array.isArray(p?.historique_prix) ? p.historique_prix : [];
 
   /* Deux sortes de lignes cohabitent dans `historique_prix` :
        — la courbe du prix   { date, prix }
-       — les diffuseurs      { type: 'diffuseur', agence, prix, date, url }
+       — les diffuseurs      { type: 'diffuseur', agence, prix, date, url, portail?, tel?, retiree_le?, lien_retenu? }
      Dès que la veille a marqué les diffuseurs, on ne lit qu'eux : sinon une
      baisse de prix signée d'une agence compterait pour une agence de plus.
      Sans marquage (fiches déposées avant), on retombe sur l'ancienne règle :
@@ -1269,56 +1304,227 @@ export function diffuseurs(p: any): Diffuseur[] {
   const source = marquees.length ? marquees : brut;
   const vus = new Map<string, Diffuseur>();
 
+  /* V3.101 — Une annonce retirée ne disparaît plus : la veille la marque
+     `retiree_le` (le jour où son lien a été trouvé mort) et garde la ligne.
+     Elle ne compte plus parmi les agences qui vendent, n'entre plus dans
+     l'écart de prix et son lien ne s'ouvre plus — il ne mène nulle part.
+     Elle reste en bas de la liste : on sait où était le bien. */
+  const retirees: Diffuseur[] = [];
+
   for (const x of source) {
     const nom = String(x?.agence ?? x?.a ?? '').trim();
     if (!nom) continue;
-    const cle = nom.toLowerCase();
     const prix = Number(x?.prix ?? x?.p);
     const neuf: Diffuseur = {
       agence: nom,
       prix: isFinite(prix) && prix > 0 ? prix : undefined,
       date: x?.date ? String(x.date) : undefined,
       url: x?.url ? String(x.url) : undefined,
+      portail: nomPortail(x?.portail),
+      tel: x?.tel ? String(x.tel) : undefined,
     };
+    if (dateConnue(x?.retiree_le)) {
+      retirees.push({ ...neuf, retiree_le: String(x.retiree_le), lien_retenu: !!x?.lien_retenu });
+      continue;
+    }
+    const cle = nom.toLowerCase();
     const ancien = vus.get(cle);
     vus.set(cle, ancien
-      ? { agence: ancien.agence, prix: neuf.prix ?? ancien.prix, date: ancien.date ?? neuf.date, url: ancien.url ?? neuf.url }
+      ? {
+          agence: ancien.agence, prix: neuf.prix ?? ancien.prix, date: ancien.date ?? neuf.date,
+          url: ancien.url ?? neuf.url, portail: ancien.portail ?? neuf.portail, tel: ancien.tel ?? neuf.tel,
+        }
       : neuf);
   }
 
   /* L'agence de l'annonce retenue, si l'historique ne la cite pas.
      Le champ ne porte pas le même nom des deux côtés : `agence` dans la
      veille, `agence_nom` une fois le bien passé en Sélection. Pareil pour
-     le lien. On accepte les deux, sinon le volet reste vide côté Sélection. */
+     le lien. On accepte les deux, sinon le volet reste vide côté Sélection.
+     Un lien retenu qui est mort ne fait pas revenir son agence parmi celles
+     qui vendent. */
   const mandat = String(p?.agence ?? p?.agence_nom ?? '').trim();
   const lienRetenu = p?.url || p?.lien || undefined;
-  if (mandat && !vus.has(mandat.toLowerCase())) {
+  const mortes = new Set(retirees.map(d => d.url).filter(Boolean));
+  const lienMort = !!lienRetenu && mortes.has(lienRetenu);
+  if (mandat && !vus.has(mandat.toLowerCase()) && !lienMort) {
     vus.set(mandat.toLowerCase(), {
       agence: mandat,
       prix: Number(p?.prix ?? p?.prix_vendeur) > 0 ? Number(p?.prix ?? p?.prix_vendeur) : undefined,
       url: lienRetenu,
+      portail: nomPortail(p?.portail ?? p?.source_portail),
     });
   }
 
   // à défaut d'URL propre, l'agence du mandat renvoie vers l'annonce retenue
   const out = [...vus.values()];
-  if (mandat && lienRetenu) {
+  if (mandat && lienRetenu && !lienMort) {
     const principal = out.find(d => d.agence.toLowerCase() === mandat.toLowerCase());
     if (principal && !principal.url) principal.url = lienRetenu;
   }
 
-  return out.sort((a, b) => (a.prix ?? Number.MAX_SAFE_INTEGER) - (b.prix ?? Number.MAX_SAFE_INTEGER));
+  out.sort((a, b) => (a.prix ?? Number.MAX_SAFE_INTEGER) - (b.prix ?? Number.MAX_SAFE_INTEGER));
+  retirees.sort((a, b) => String(b.retiree_le).localeCompare(String(a.retiree_le)));
+  return [...out, ...retirees];
+}
+
+/* ══ Le lien du bien : en ligne, remplacé, ou retiré ═══════════
+   V3.101 — Quand l'annonce enregistrée meurt, la veille la remplace par
+   une annonce du même bien encore en ligne (même agence qui republie, ou
+   autre agence), et garde l'ancienne en ligne « retirée ». La carte doit
+   alors dire d'un coup d'œil où était le bien et où il est maintenant. */
+export type EtatLien =
+  | { etat: 'ok' }
+  /** l'ancien lien est mort, le bien a été retrouvé en ligne : `actuel` */
+  | { etat: 'remplace'; le: string; anciennes: Diffuseur[]; actuel: Diffuseur }
+  /** le lien enregistré est mort, et rien ne le remplace */
+  | { etat: 'retire'; le: string; ancienne: Diffuseur };
+
+export function etatLien(p: any): EtatLien {
+  const tout = diffuseurs(p);
+  const retirees = tout.filter(d => d.retiree_le);
+  if (!retirees.length) return { etat: 'ok' };
+
+  const lien = String(p?.url || p?.lien || '');
+  const morte = retirees.find(d => d.url && d.url === lien);
+  if (!lien || morte) {
+    const a = morte || retirees[0];
+    return {
+      etat: 'retire', le: String(a.retiree_le),
+      ancienne: { ...a, tel: a.tel || (p?.agence_tel ? String(p.agence_tel) : undefined) },
+    };
+  }
+
+  /* Seules comptent les annonces qui étaient LE lien du bien : qu'une
+     deuxième agence retire la sienne ne change pas le lien. */
+  const anciennes = retirees.filter(d => d.lien_retenu);
+  if (!anciennes.length) return { etat: 'ok' };
+
+  const agence = String(p?.agence ?? p?.agence_nom ?? '').trim();
+  const vivantes = tout.filter(d => !d.retiree_le);
+  const trouve = vivantes.find(d => d.url === lien)
+    || vivantes.find(d => !!agence && d.agence.toLowerCase() === agence.toLowerCase());
+  const actuel: Diffuseur = {
+    agence: trouve?.agence || agence || 'Annonce en ligne',
+    prix: trouve?.prix, date: trouve?.date, url: lien,
+    portail: trouve?.portail || nomPortail(p?.portail ?? p?.source_portail),
+  };
+  return { etat: 'remplace', le: String(anciennes[0].retiree_le), anciennes: [...anciennes].reverse(), actuel };
+}
+
+/* Le pavé posé en haut de la carte d'un bien dont le lien a bougé. Une
+   petite frise, de l'ancienne annonce à celle qui est en ligne : on se
+   situe sans ouvrir le marché. */
+export function AvisLien({ p }: { p: any }) {
+  const e = etatLien(p);
+  if (e.etat === 'ok') return null;
+  const k = (n?: number) => (typeof n === 'number' ? `${n.toLocaleString('fr-FR')} €` : '');
+
+  if (e.etat === 'retire') {
+    const a = e.ancienne;
+    const ou = a.portail ? `${a.agence} sur ${a.portail}` : a.agence;
+    return (
+      <div className="emi-avis-lien" data-etat="retire" style={{
+        display: 'flex', alignItems: 'flex-start', gap: 11, flexWrap: 'wrap',
+        background: '#fffaf0', border: '1px solid #f6d89a', borderRadius: 14, padding: '11px 12px',
+      }}>
+        <span style={{ width: 30, height: 30, borderRadius: 9, background: '#fdecc8', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icone nom="alerte" taille={16} epaisseur={2.1} />
+        </span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: '1 1 220px' }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#92400e', letterSpacing: -.1 }}>{`Annonce retirée le ${jour(e.le)}`}</span>
+          <span style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.5, opacity: .9 }}>
+            {`L’annonce de ${ou} n’est plus en ligne, et le bien n’a été retrouvé chez aucune autre agence : vendu, sous offre ou retiré par le vendeur. À confirmer avec l’agence.`}
+          </span>
+        </span>
+        {a.tel && (
+          <a href={`tel:${a.tel.replace(/\s+/g, '')}`} className="emi-avis-bouton"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, alignSelf: 'center', background: 'white', color: '#92400e', border: '1px solid #f6d89a', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+            <Icone nom="tel" taille={14} epaisseur={2} />
+            <span>{`Appeler · ${a.tel}`}</span>
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  const derniere = e.anciennes[e.anciennes.length - 1];
+  const memeAgence = derniere.agence.toLowerCase() === e.actuel.agence.toLowerCase();
+  const phrase = memeAgence
+    ? `${e.actuel.agence} a remis l’annonce en ligne sous un nouveau lien. L’ancien ne mène plus nulle part.`
+    : `L’annonce de ${derniere.agence} a été retirée. Le bien est toujours en vente chez ${e.actuel.agence}.`;
+  const etapes = e.anciennes.slice(-3);
+
+  return (
+    <div className="emi-avis-lien" data-etat="remplace" style={{
+      border: '1px solid #ecdcb4', borderRadius: 14, overflow: 'hidden',
+      background: 'linear-gradient(180deg, #fffcf3 0%, #ffffff 70%)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap', padding: '11px 12px 10px' }}>
+        <span style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(201,168,76,.18)', color: '#a17d2c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icone nom="lien" taille={16} epaisseur={2.1} />
+        </span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: '1 1 220px' }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: NAVY, letterSpacing: -.1 }}>{`Lien mis à jour le ${jour(e.le)}`}</span>
+          <span style={{ fontSize: 12.5, color: '#7b8798', lineHeight: 1.45 }}>{phrase}</span>
+        </span>
+        <a href={e.actuel.url} target="_blank" rel="noreferrer" className="emi-avis-bouton"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: NAVY, color: 'white', borderRadius: 10, padding: '8px 13px', fontSize: 12.5, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap', boxShadow: '0 6px 14px -8px rgba(52,73,110,.8)' }}>
+          <span>Ouvrir l’annonce en ligne</span>
+          <Icone nom="lien" taille={13} epaisseur={2.2} />
+        </a>
+      </div>
+
+      {/* la frise : de l'ancienne annonce à celle d'aujourd'hui */}
+      <div style={{ borderTop: '1px solid #f3ead2', padding: '10px 14px 11px' }}>
+        {etapes.map((d, i) => (
+          <div key={i} className="emi-avis-etape" style={{ display: 'grid', gridTemplateColumns: '11px minmax(0, 1fr) auto', columnGap: 11, alignItems: 'start', padding: '3px 0 9px' }}>
+            {/* le point, et le trait qui descend jusqu'au point suivant */}
+            <span style={{ position: 'relative', alignSelf: 'stretch' }}>
+              <span style={{ display: 'block', width: 11, height: 11, borderRadius: '50%', background: 'white', border: '2px solid #cbd5e1', marginTop: 4, boxSizing: 'border-box' }} />
+              <span aria-hidden="true" style={{ position: 'absolute', left: 4.5, top: 15, bottom: -16, width: 2, borderRadius: 2, background: 'linear-gradient(180deg, #e2e8f0, #bbf7d0)' }} />
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', lineHeight: 1.4 }}>
+                <span style={{ textDecoration: 'line-through', textDecorationColor: '#cbd5e1' }}>{d.agence}</span>
+                {d.portail ? <span style={{ fontWeight: 600 }}>{` · ${d.portail}`}</span> : null}
+              </span>
+              <span style={{ fontSize: 11.5, color: '#a9b6c8' }}>{`Ancienne annonce${d.prix ? ` · ${k(d.prix)}` : ''} · lien mort`}</span>
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#b42318', background: '#fef3f2', border: '1px solid #fecdca', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap', marginTop: 1 }}>
+              {`retirée le ${jourCourt(d.retiree_le)}`}
+            </span>
+          </div>
+        ))}
+        <div className="emi-avis-etape" style={{ display: 'grid', gridTemplateColumns: '11px minmax(0, 1fr) auto', columnGap: 11, alignItems: 'start', paddingTop: 3 }}>
+          <span style={{ width: 11, height: 11, borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 0 3px #dcfce7', marginTop: 4, position: 'relative', zIndex: 1 }} />
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: NAVY, lineHeight: 1.4 }}>
+              {e.actuel.agence}
+              {e.actuel.portail ? <span style={{ fontWeight: 600, color: '#7b8798' }}>{` · ${e.actuel.portail}`}</span> : null}
+            </span>
+            <span style={{ fontSize: 11.5, color: '#7b8798' }}>{`Annonce en ligne${e.actuel.prix ? ` · ${k(e.actuel.prix)}` : ''} · c’est le lien du bien`}</span>
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap', marginTop: 1 }}>
+            en ligne
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* Une case du tableau de marché : un intitulé, un chiffre qui se lit de
    loin, une précision. Elle s'ouvre sur son détail quand il y en a un. */
 function CaseMarche({ icone, titre, valeur, detail, ton = 'neutre', onClick, ouvert }: {
   icone: string; titre: string; valeur: React.ReactNode; detail?: React.ReactNode;
-  ton?: 'neutre' | 'vert'; onClick?: () => void; ouvert?: boolean;
+  ton?: 'neutre' | 'vert' | 'ambre'; onClick?: () => void; ouvert?: boolean;
 }) {
   const t = ton === 'vert'
     ? { bg: '#f0fdf4', bd: '#bbf7d0', ic: '#16a34a', val: '#15803d', det: '#15803d' }
-    : { bg: 'white', bd: '#e1e8f1', ic: '#8a9ab0', val: NAVY, det: '#8190a5' };
+    : ton === 'ambre'
+      ? { bg: '#fffaf0', bd: '#f6d89a', ic: '#d97706', val: '#b45309', det: '#b45309' }
+      : { bg: 'white', bd: '#e1e8f1', ic: '#8a9ab0', val: NAVY, det: '#8190a5' };
   /* Sur ordinateur, trois cases côte à côte ; sur téléphone, trois lignes
      (crm-mobile.css) : l'intitulé à gauche, le chiffre à droite. */
   const contenu = (
@@ -1360,16 +1566,21 @@ export function BandeauMarche({ p }: { p: any }) {
   const agenceMandat = p.agence ?? p.agence_nom ?? null;
   const portail = p.portail ?? p.source_portail ?? null;
 
-  const liste = diffuseurs(p);
+  const tout = diffuseurs(p);
+  /* V3.101 : les annonces retirées restent dans le volet, en dessous, mais
+     ne comptent plus parmi les agences qui vendent. */
+  const liste = tout.filter(d => !d.retiree_le);
+  const retirees = tout.filter(d => d.retiree_le);
   /* Le chiffre affiché est celui de la liste qui s'ouvre : c'est la seule
      façon de ne jamais promettre « 2 agences » sur un volet qui n'en montre
-     qu'une. `nb_agences` ne sert que tant que la liste est vide. */
-  const nbAgences = liste.length || Number(p.nb_agences) || 0;
+     qu'une. `nb_agences` ne sert que tant que la liste est vide — et pas
+     quand toutes les annonces connues sont retirées. */
+  const nbAgences = liste.length || (retirees.length ? 0 : Number(p.nb_agences) || 0);
   const moinsCher = liste.find(d => typeof d.prix === 'number');
   const ecart = liste.length >= 2 && liste[0].prix && liste[liste.length - 1].prix
     ? Number(liste[liste.length - 1].prix) - Number(liste[0].prix) : 0;
 
-  if (!dateConnue(p.date_publication) && !nbBaisses && !nbAgences && !agenceMandat && !portail) return null;
+  if (!dateConnue(p.date_publication) && !nbBaisses && !nbAgences && !agenceMandat && !portail && !retirees.length) return null;
 
   const bascule = (v: 'date' | 'prix' | 'agences') => setOuvert(o => (o === v ? null : v));
   const k = (n: number) => `${n.toLocaleString('fr-FR')} €`;
@@ -1415,7 +1626,11 @@ export function BandeauMarche({ p }: { p: any }) {
           <CaseMarche icone="maison" titre="Diffusion" ton={nbAgences >= 3 ? 'vert' : 'neutre'}
             valeur={nbAgences === 1 ? 'Exclusivité' : `${nbAgences} agences`}
             detail={ecart > 0 ? `${k(ecart)} d'écart` : nbAgences === 1 && agenceMandat ? String(agenceMandat) : undefined}
-            onClick={liste.length ? () => bascule('agences') : undefined} ouvert={ouvert === 'agences'} />
+            onClick={tout.length ? () => bascule('agences') : undefined} ouvert={ouvert === 'agences'} />
+        ) : retirees.length ? (
+          <CaseMarche icone="maison" titre="Diffusion" ton="ambre" valeur="Hors ligne"
+            detail={`retirée le ${jourCourt(retirees[0].retiree_le)}`}
+            onClick={() => bascule('agences')} ouvert={ouvert === 'agences'} />
         ) : (
           <CaseMarche icone="maison" titre="Diffusion" valeur="—" detail={portail ? `vu sur ${portail}` : 'agence inconnue'} />
         )}
@@ -1425,8 +1640,13 @@ export function BandeauMarche({ p }: { p: any }) {
       <div className="emi-volet" data-ouvert={ouvert === 'agences'}>
         <div>
           <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '10px 14px 8px' }}>
-            {liste.length ? (
+            {tout.length ? (
               <>
+                {!liste.length && (
+                  <div style={{ fontSize: 13, color: '#92400e', padding: '4px 0 8px', lineHeight: 1.5 }}>
+                    {'Plus aucune annonce en ligne pour ce bien.'}
+                  </div>
+                )}
                 {liste.map((d, i) => {
                   const estMandat = agenceMandat && d.agence.toLowerCase() === String(agenceMandat).toLowerCase();
                   const estMoinsCher = liste.length >= 2 && moinsCher && d.agence === moinsCher.agence;
@@ -1458,6 +1678,37 @@ export function BandeauMarche({ p }: { p: any }) {
                     ? <a key={i} className="emi-diff" href={d.url} target="_blank" rel="noreferrer" style={{ ...style, cursor: 'pointer' }}>{corps}</a>
                     : <div key={i} className="emi-diff" style={style} title="Lien non renseigné par la veille">{corps}</div>;
                 })}
+                {/* V3.101 : les annonces retirées, sous les agences qui vendent.
+                    Pas de lien : il ne mène nulle part. */}
+                {retirees.length > 0 && (
+                  <div style={{ marginTop: liste.length ? 4 : 0, paddingTop: liste.length ? 9 : 2, borderTop: liste.length ? `1px dashed ${BORD}` : 'none' }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 2 }}>
+                      {retirees.length > 1 ? 'Annonces retirées' : 'Annonce retirée'}
+                    </div>
+                    {retirees.map((d, i) => (
+                      <div key={'r' + i} className="emi-diff" title="Annonce retirée : son lien ne mène plus nulle part"
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap', rowGap: 3, padding: '8px 4px', fontSize: 13, borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+                        <span className="emi-diff-pt" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'white', border: '2px solid #cbd5e1', boxSizing: 'border-box' }} />
+                        <span className="emi-diff-nom" style={{ fontWeight: 700, color: '#94a3b8', flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
+                          <span style={{ textDecoration: 'line-through', textDecorationColor: '#cbd5e1' }}>{d.agence}</span>
+                          {d.portail ? <span style={{ fontWeight: 600, fontSize: 11.5 }}>{` · ${d.portail}`}</span> : null}
+                          {d.lien_retenu ? <span style={{ fontWeight: 700, fontSize: 11, color: '#b6c1d1' }}>{' · ancien lien du bien'}</span> : null}
+                        </span>
+                        {typeof d.prix === 'number' && (
+                          <span className="emi-diff-prix" style={{ fontWeight: 700, color: '#a9b6c8', minWidth: 104, textAlign: 'right' }}>
+                            {`${d.prix.toLocaleString('fr-FR')} €`}
+                          </span>
+                        )}
+                        <span className="emi-diff-date" style={{ color: '#b45309', fontSize: 12, fontWeight: 700, minWidth: 96, textAlign: 'right' }}>
+                          {`retirée le ${jourCourt(d.retiree_le)}`}
+                        </span>
+                        <span className="emi-diff-lien" style={{ color: '#e2e8f0', display: 'flex', flexShrink: 0 }}>
+                          <Icone nom="lien" taille={14} epaisseur={2} />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {ecart > 0 && (
                   <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
@@ -1466,9 +1717,9 @@ export function BandeauMarche({ p }: { p: any }) {
                     <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>{ecart.toLocaleString('fr-FR')} €</span>
                   </div>
                 )}
-                {portail && (
+                {nomPortail(portail) && (
                   <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>
-                    Annonce retenue trouvée sur {portail}
+                    {`Annonce retenue trouvée sur ${nomPortail(portail)}`}
                   </div>
                 )}
               </>
@@ -1607,6 +1858,8 @@ const PUCES: Record<string, { c: string; l: string; i: string }> = {
   offre_faite: { c: '#ef4444', l: 'Offre', i: '✍️' },
   espace_fiche: { c: '#3b82f6', l: 'Fiche consultée', i: '👁️' },
   espace_partage: { c: '#0ea5e9', l: 'Fiche partagée', i: '↗️' },
+  /* V3.101 : écrite par la veille (majLienBien), sous le type « bien_modifie » */
+  lien_maj: { c: OR, l: 'Lien mis à jour', i: '🔗' },
 };
 
 export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: number }) {
@@ -1648,7 +1901,7 @@ export function Frise({ bienId, rafraichir }: { bienId: string; rafraichir?: num
     <div style={{ position: 'relative', paddingLeft: 26 }}>
       <div style={{ position: 'absolute', left: 10, top: 10, bottom: 10, width: 2, background: BORD, borderRadius: 2 }} />
       {lignes.map((l, n) => {
-        const p = PUCES[l.type] || { c: '#cbd5e1', l: l.type, i: '•' };
+        const p = (l.metadata?.lien_maj ? PUCES.lien_maj : PUCES[l.type]) || { c: '#cbd5e1', l: l.type, i: '•' };
         const d = new Date(l.created_at);
         return (
           <div key={l.id} style={{ position: 'relative', paddingBottom: n === lignes.length - 1 ? 2 : 16 }}>
