@@ -6,7 +6,7 @@ import { toutLire } from '@/lib/registre';
 import styles from './Topbar.module.css';
 import { EVT_MAJ, demanderNouveauClient, demanderNouveauMail, demanderNouveauRdv } from '@/lib/intentions';
 import { Icone } from '@/components/fiche/ParcoursBien';
-import { estAcheteur, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
+import { estAcheteur, estArchive, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
 import { conjointDe } from '@/lib/foyer';
 import { etapeDe, titreBien, villeAffichee, type Donnees } from '@/lib/biens-vente';
 import { euros } from '@/lib/mandat';
@@ -86,8 +86,12 @@ function chercher(ix: { clients: any[] }, mots: string[]) {
       else if (trouve?.[0] === 'tel') raison = `📞 ${tels.find((t: string) => mots.some(m => chiffres(t).includes(chiffres(m)) && chiffres(m).length > 1)) || ''}`;
     }
     return { genre: 'client', c, raison };
-  }).filter(Boolean).slice(0, 8) as any[];
-  return clients;
+  }).filter(Boolean) as any[];
+
+  /* V3.103 : les archivés restent trouvables (qu'il rappelle dans deux ans,
+     son histoire est là), mais passent après les contacts en cours : ils ne
+     prennent pas la place d'un actif parmi les huit résultats. */
+  return [...clients.filter(r => !estArchive(r.c)), ...clients.filter(r => estArchive(r.c))].slice(0, 8);
 }
 
 /* Sur téléphone, la barre du haut garde l'essentiel : le menu ☰ à gauche, la
@@ -175,7 +179,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
       /* Par pages de 1 000 (V3.43) : au-delà, Supabase s'arrête sans rien dire,
          et la recherche ne trouvait plus les derniers contacts. */
       const lire = (cols: string) => toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select(cols).order('id').range(de, a));
-      let c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro, civilite, couple, conjoint');
+      let c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones, types, pro, civilite, couple, conjoint, archive');
       if (c.erreur) c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
       if (c.erreur) { chargement.current = null; return; }
       /* Les biens (V3.86) : s'ils ne se lisent pas, la recherche des contacts marche quand même. */
@@ -296,12 +300,22 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                 {lesClients.length > 0 && <div className={styles.searchSection}>{`Contacts · ${lesClients.length}`}</div>}
                 {lesClients.map(({ c, raison }, i) => {
                   const sesBiens = index.current?.biens[c.id] || [];
+                  /* V3.103 : un contact archivé le dit, à côté de son nom. */
+                  const arch = estArchive(c);
                   return (
                   <div key={c.id} className={styles.searchBloc}>
-                  <div className={styles.searchItem} onClick={() => selectClient(c)} style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
+                  <div className={`${styles.searchItem} ${arch ? styles.searchArchive : ''}`} onClick={() => selectClient(c)} style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
                     <AvatarContact c={c} teinte={teinteDe(c)} className={styles.searchAv} libre />
                     <div className={styles.searchInfo}>
-                      <div className={styles.searchName}><Surligne texte={`${c.prenom || ''} ${c.nom || ''}`.trim()} mots={motsTapes} /></div>
+                      <div className={styles.searchName}>
+                        <Surligne texte={`${c.prenom || ''} ${c.nom || ''}`.trim()} mots={motsTapes} />
+                        {arch && (
+                          <span className={styles.searchTagArchive} title="Contact archivé : il n’apparaît plus dans les listes, seulement dans « Archivés »">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h17v4h-17z" /><path d="M5 8.5v10.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></svg>
+                            Archivé
+                          </span>
+                        )}
+                      </div>
                       <div className={styles.searchMeta}>{c.reference}</div>
                       {/* Ce qui a été trouvé, quand ce n'est pas le nom : sur sa
                           propre ligne, pour qu'une adresse se lise en entier. */}
