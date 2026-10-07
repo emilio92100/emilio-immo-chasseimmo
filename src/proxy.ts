@@ -22,6 +22,8 @@ import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
  *                                   plan pour Google : seulement ce que les fiches publient — V3.92)
  *  - /api/diffusion/portails       (l'envoi aux portails : le cron de Vercel n'a pas le cookie ; la
  *                                   route demande elle-même le badge ou CRON_SECRET — V3.97)
+ *  - /api/seloger/contacts         (les demandes des portails : le cron et AVIV n'ont pas le cookie ;
+ *                                   la route demande le badge, CRON_SECRET ou sa clé — V3.100)
  *  - les fichiers statiques
  */
 
@@ -30,7 +32,7 @@ const COOKIE = COOKIE_BADGE;
 // Chemins accessibles sans code
 /* /api/point-auto/envoi : l'envoi quotidien du point automatique, appelé par
    Vercel qui n'a pas le cookie. Sa serrure à lui, c'est CRON_SECRET. */
-const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier', '/api/flux-site', '/api/flux-site/sitemap', '/api/diffusion/portails'];
+const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier', '/api/flux-site', '/api/flux-site/sitemap', '/api/diffusion/portails', '/api/seloger/contacts'];
 const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/'];
 
 /* Le sous-domaine de l'espace acheteur. Tout le monde vit sur le même projet
