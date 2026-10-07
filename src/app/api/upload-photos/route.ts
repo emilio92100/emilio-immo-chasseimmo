@@ -20,7 +20,15 @@ import { isIP } from 'net';
    illisible, au-delà de 40 photos) garde son adresse d'origine, comme avant :
    le serveur ne va simplement pas la chercher.
    Une entrée = une sortie, dans le même ordre : la fiche d'un bien (FicheClient)
-   apparie les deux listes par leur rang. */
+   apparie les deux listes par leur rang.
+
+   V3.107 : une photo peut aussi arriver toute faite, en « data URI »
+   (data:image/jpeg;base64,…) — c'est le cas d'une photo recadrée dans le
+   navigateur ou débarrassée d'un logo par la veille. Depuis la V3.43, ces
+   photos étaient renvoyées telles quelles, sans être rangées (constaté le
+   2 octobre). Elles passent maintenant les mêmes contrôles qu'une photo
+   téléchargée : une vraie image, reconnue à ses premiers octets, de 15 Mo au
+   plus. Rien n'est téléchargé pour elles : aucune adresse n'est suivie. */
 
 export const maxDuration = 60;
 
@@ -114,6 +122,27 @@ async function lireAuPlus(res: Response, max: number): Promise<Uint8Array | null
   return out;
 }
 
+/* Une image envoyée toute faite : data:image/<type>;base64,<données>.
+   Seuls les types d'image sont acceptés ; les octets sont revérifiés ensuite
+   par typeImage(), comme pour une photo téléchargée. */
+const DATA_URI = /^data:image\/(jpeg|jpg|png|webp|gif|avif);base64,([A-Za-z0-9+/=\s]+)$/i;
+
+function decoderDataUri(u: string): { octets: Uint8Array } | 'refuse' | null {
+  if (!u.startsWith('data:')) return null;
+  const m = DATA_URI.exec(u);
+  if (!m) return 'refuse';
+  const b64 = m[2].replace(/\s+/g, '');
+  /* 4 caractères base64 = 3 octets : on refuse avant de décoder si c'est trop gros. */
+  if (Math.floor(b64.length * 3 / 4) > MAX_OCTETS) return 'refuse';
+  try {
+    const octets = new Uint8Array(Buffer.from(b64, 'base64'));
+    if (!octets.length || octets.length > MAX_OCTETS) return 'refuse';
+    return { octets };
+  } catch {
+    return 'refuse';
+  }
+}
+
 /* Télécharger, en revérifiant l'adresse à chaque redirection. */
 async function telecharger(u: string): Promise<{ octets: Uint8Array } | 'refuse' | 'illisible'> {
   let adresse = u;
@@ -158,7 +187,9 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        const r = await telecharger(photoUrl);
+        /* Une image toute faite (data URI) : décodée ici, jamais téléchargée.
+           Refusée (pas une image, trop grosse), elle reste telle quelle. */
+        const r = decoderDataUri(photoUrl) ?? await telecharger(photoUrl);
         /* Refusée (interne, piégée, nom introuvable) ou illisible : pas
            téléchargée, elle garde son adresse d'origine. */
         if (r === 'refuse' || r === 'illisible') { uploadedUrls.push(photoUrl); continue; }
