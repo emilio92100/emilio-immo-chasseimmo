@@ -9,6 +9,7 @@ import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } f
 import ChoixDate from '@/components/shared/ChoixDate';
 import FenetreAction from '@/components/contacts/FenetreAction';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
+import { signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
 
 /*
  * Les relances : qui recontacter, et quand.
@@ -32,6 +33,14 @@ import EnteteRubrique from '@/components/shared/EnteteRubrique';
  * (FenetreAction : appel passé, a répondu ou messagerie, les détails, une
  * prochaine relance). Valider écrit la ligne dans le Suivi du client, clôt la
  * relance, et la ligne s'efface ; on passe à la suivante.
+ *
+ * V3.102 — Revenir d'une fiche. « Ouvrir la fiche » pose un bloc « Relances »
+ * dans la barre des fiches ouvertes, et retient la tuile choisie et la
+ * relance ouverte (sessionStorage, CLE_RETOUR). Fermer la fiche, son bouton
+ * retour, ce bloc ou le retour du navigateur ramènent ici (`?retour=1`) : la
+ * même tuile, la liste relue, et la page posée sur cette relance — ou sur la
+ * suivante, si elle vient d'être traitée depuis la fiche. Le menu de gauche,
+ * lui, ouvre toujours sur « À faire ».
  */
 
 const NAVY = '#34496e', OR = '#c9a84c', OR_FONCE = '#8a6a1f', BORD = '#e3e8f0', LIGNE = '#eef1f6';
@@ -138,6 +147,34 @@ type Filtre = 'afaire' | 'retard' | 'aujourdhui' | 'semaine' | 'plusloin';
 /* Voir plus loin que la semaine (V3.71). */
 type Periode = { k: '30' | '60' | 'date' | 'entre'; du: string; au: string };
 
+/* V3.102 — Ce qu'on retrouve en revenant d'une fiche : la tuile, la période,
+   la relance ouverte et celles qui la suivaient à l'écran (si elle a été
+   traitée depuis la fiche, on se pose sur la suivante). La recherche n'est
+   pas reprise : elle servait le plus souvent à trouver ce contact-là, et
+   revenir sur « Aucune relance ne correspond » obligerait à l'effacer. */
+const CLE_RETOUR = 'relances.retour';
+type Retour = { filtre: Filtre; periode: Periode | null; rel: string | null; suite: string[] };
+const FILTRES: Filtre[] = ['afaire', 'retard', 'aujourdhui', 'semaine', 'plusloin'];
+const LIB_FILTRE: Record<Filtre, string> = { afaire: 'À faire', retard: 'En retard', aujourdhui: 'Aujourd’hui', semaine: 'Cette semaine', plusloin: 'Plus loin' };
+/* Lu à l'arrivée, seulement quand AppLayout a marqué un retour (`?retour=1`) :
+   arrivé par le menu, Relances s'ouvre sur « À faire » comme avant. */
+function lireRetour(): Retour | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('page') !== 'relances' || p.get('retour') !== '1') return null;
+    const r = JSON.parse(sessionStorage.getItem(CLE_RETOUR) || 'null');
+    if (!r || typeof r !== 'object' || !FILTRES.includes(r.filtre)) return null;
+    const per = r.periode && typeof r.periode === 'object' && typeof r.periode.du === 'string' && typeof r.periode.au === 'string' ? r.periode as Periode : null;
+    return {
+      filtre: r.filtre,
+      periode: r.filtre === 'plusloin' ? per : null,
+      rel: typeof r.rel === 'string' ? r.rel : null,
+      suite: Array.isArray(r.suite) ? r.suite.filter((x: unknown) => typeof x === 'string').slice(0, 60) : [],
+    };
+  } catch { return null; }
+}
+
 /* V3.76 — Le bloc « Tri à faire » seul (`seulTri`), dans la page Contacts : la
    même liste, les mêmes boutons, sans le reste des relances. Contacts suit
    ce qu'il en reste (`onTri`) pour sa tuile, qui disparaît quand le tri est
@@ -153,8 +190,14 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   const [relances, setRelances] = useState<any[]>([]);
   const [liens, setLiens] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [filtre, setFiltre] = useState<Filtre>('afaire');
-  const [periode, setPeriode] = useState<Periode | null>(null);
+  /* V3.102 : de retour d'une fiche, la tuile et la période laissées. */
+  const [retour] = useState<Retour | null>(() => (seulTri ? null : lireRetour()));
+  const [filtre, setFiltre] = useState<Filtre>(retour?.filtre || 'afaire');
+  const [periode, setPeriode] = useState<Periode | null>(retour?.periode || null);
+  /* La relance où l'on se pose au retour : un liseré or, le temps de la voir. */
+  const [repere, setRepere] = useState('');
+  const reprise = useRef(retour);
+  const racine = useRef<HTMLDivElement | null>(null);
   /* V3.82 : chercher une relance (nom, téléphone, mail, note). */
   const [q, setQ] = useState('');
   /* Reporter posait une date toute faite sans rien demander : on choisit
@@ -186,6 +229,34 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   useEffect(() => { charger(); }, []);
   useEffect(() => { if (!seulTri) chargerAlertesRappro().then(setAlertes).catch(() => setAlertes([])); }, [seulTri]);
   useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
+  /* V3.102 — Le retour lu, l'adresse redevient « ?page=relances » (un F5 ne
+     rejoue pas le retour). Puis, la liste relue, on se pose sur la relance
+     ouverte, ou sur la première qui la suivait encore à l'écran : elle est
+     amenée au milieu si elle n'est pas en vue. */
+  useEffect(() => {
+    if (!retour) return;
+    try { window.history.replaceState(null, '', `${window.location.pathname}?page=relances`); } catch { /* l'adresse garde son ?retour=1 */ }
+  }, [retour]);
+  useEffect(() => {
+    const r = reprise.current;
+    if (loading || !r) return;
+    reprise.current = null;
+    const el = racine.current;
+    if (!el) return;
+    const ids = [r.rel, ...r.suite].filter((x): x is string => !!x);
+    const cible = ids.map(id => el.querySelector<HTMLElement>(`[data-rel="${CSS.escape(id)}"]`)).find(Boolean);
+    if (!cible) return;
+    setRepere(cible.dataset.rel || '');
+    requestAnimationFrame(() => {
+      const b = cible.getBoundingClientRect();
+      if (b.top < 90 || b.bottom > window.innerHeight - 110) cible.scrollIntoView({ block: 'center' });
+    });
+  }, [loading]);
+  useEffect(() => {
+    if (!repere) return;
+    const t = setTimeout(() => setRepere(''), 2900);
+    return () => clearTimeout(t);
+  }, [repere]);
   /* V3.76 : les contacts qui restent à trier, une fois la liste lue, puis à
      chaque ligne qui s'en va (traitée, archivée, ou revenue par « Annuler »). */
   useEffect(() => {
@@ -344,6 +415,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     setAlerteEnCours(a.cle);
     if (a.k === 'mandat') {
       await mandatVu(a, true);
+      quitterPour(null);
       demanderOngletBien(a.bien.id, 'acheteurs');
       onNavigate('biens', { bien: a.bien.id });
       return;
@@ -351,12 +423,31 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     const { data, error } = await supabase.from('clients').select('*').eq('id', a.client.id).maybeSingle();
     setAlerteEnCours('');
     if (error || !data) { alert(`La fiche n'a pas pu être ouverte.${error ? `\n\n${error.message}` : ''}`); return; }
+    quitterPour(null);
     demanderOuvertureFiche({ clientId: a.client.id, onglet: 'selection', rechercheId: a.recherche.id, rappro: { source: 'mandats', cocher: a.mandats.map(m => m.id) } });
     onNavigate('fiche', data);
   }
 
+  /* V3.102 — Quitter Relances pour une fiche : la page prend place dans la
+     barre des fiches ouvertes (comme la carte) et retient où l'on en était.
+     L'adresse de la page devient « ?retour=1 » avant que la fiche ne
+     s'empile dessus : le retour du navigateur (le geste retour d'Android)
+     ramène lui aussi sur la tuile laissée. Pas dans Contacts (`seulTri`) :
+     là, fermer la fiche ramène déjà à Contacts. */
+  function quitterPour(rel: string | null) {
+    if (seulTri) return;
+    const ordre = Array.from(racine.current?.querySelectorAll<HTMLElement>('[data-rel]:not([data-partante])') || []).map(x => x.dataset.rel || '');
+    const i = rel ? ordre.indexOf(rel) : -1;
+    const memo: Retour = { filtre, periode, rel, suite: i >= 0 ? ordre.slice(i + 1, i + 61) : [] };
+    try { sessionStorage.setItem(CLE_RETOUR, JSON.stringify(memo)); } catch { /* sans mémoire : on reviendra sur « À faire » */ }
+    try { window.history.replaceState(null, '', `${window.location.pathname}?page=relances&retour=1`); } catch { /* rien */ }
+    const sous = filtre === 'plusloin' && periode ? PERIODES.find(x => x.k === periode.k)?.lib : LIB_FILTRE[filtre];
+    signalerFicheOuverte({ k: 'relances', id: 'relances', titre: 'Relances', sous });
+  }
+
   function ouvrirFiche(r: any) {
     if (!r.clients) return;
+    quitterPour(r.id);
     demanderOuvertureFiche(ouvertureDepuisRelance(r, liens[r.id]));
     onNavigate('fiche', r.clients);
   }
@@ -474,9 +565,9 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     const pre = prefixeDe(r.note);
     const texte = !r.note || r.note === o.lib ? '' : enTri ? sansNom(String(r.note).slice(NOTE_TRI.length), nom) : pre ? sansNom(String(r.note).slice(pre.debut.length), nom) : r.note;
     return (
-      <div key={r.id} className="rl-entre rl-pli" data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + Math.min(rang++, 12) * 45}ms` }}>
+      <div key={r.id} className="rl-entre rl-pli" data-rel={r.id} data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + Math.min(rang++, 12) * 45}ms` }}>
         <div className="rl-pli-in">
-        <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined} data-urg={urg} data-ouvert={ouvert ? '' : undefined}>
+        <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined} data-urg={urg} data-ouvert={ouvert ? '' : undefined} data-repere={repere === r.id ? '' : undefined}>
           <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 42, height: 42, borderRadius: 13, flexShrink: 0 }} />
           <span className="rl-texte">
             <span className="rl-l1">
@@ -546,7 +637,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   };
 
   return (
-    <div className={seulTri ? 'rl-seul' : 'rl-page'} style={{ padding: seulTri ? 0 : '28px 28px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
+    <div ref={racine} className={seulTri ? 'rl-seul' : 'rl-page'} style={{ padding: seulTri ? 0 : '28px 28px 40px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
       <style>{`
         @keyframes rlEntre{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
         @keyframes rlToastCourt{0%{opacity:0;transform:translate(-50%,18px) scale(.96)}8%{opacity:1;transform:translate(-50%,0) scale(1)}91%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,12px)}}
@@ -557,6 +648,10 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         /* V3.82 : la carte d'une relance. */
         .rl-ligne{position:relative;display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid #e6ebf2;box-shadow:0 1px 2px rgba(16,24,40,.03);overflow:hidden;transition:box-shadow .25s ease,border-color .25s ease,background-color .25s ease,transform .2s ease}
         .rl-ligne[data-ouvert]{border-color:#ecdcae}
+        /* V3.102 : la relance où l'on revient d'une fiche — un liseré or qui
+           s'allume puis s'éteint, le temps de se repérer. */
+        @keyframes rlRepere{0%{box-shadow:0 0 0 0 rgba(201,168,76,0)}22%{box-shadow:0 0 0 5px rgba(201,168,76,.4)}100%{box-shadow:0 0 0 5px rgba(201,168,76,0)}}
+        .rl-ligne[data-repere]{border-color:#e2c77e;animation:rlRepere 2.2s ease-out .45s both}
         /* L'avatar cerclé de la couleur de l'échéance. */
         .rl-ligne .rl-av{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--uc,#cbd5e1);margin:4px}
         .rl-ligne[data-urg=retard]{--uc:#ef4444;--uf:#fef2f2;--ut:#b91c1c}
@@ -637,7 +732,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         .rl-al-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center}
         .rl-al-ping{animation:rlPing 2s ease-out infinite}
         @keyframes rlPing{0%{box-shadow:0 0 0 0 rgba(201,168,76,.5)}80%,100%{box-shadow:0 0 0 10px rgba(201,168,76,0)}}
-        @media (prefers-reduced-motion: reduce){.rl-entre,.rl-ok,.rl-toast,.rl-toast-ok{animation:none !important}.rl-pli,.rl-pli .rl-ligne{transition:none !important}}
+        @media (prefers-reduced-motion: reduce){.rl-entre,.rl-ok,.rl-toast,.rl-toast-ok,.rl-ligne[data-repere]{animation:none !important}.rl-pli,.rl-pli .rl-ligne{transition:none !important}}
         @media (max-width: 760px){
           .rl-page{padding:16px 12px 96px !important;gap:16px !important}
           .rl-ligne{flex-wrap:wrap !important}
