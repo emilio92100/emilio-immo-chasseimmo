@@ -22,9 +22,9 @@
  * ce qui sert vraiment : de quoi joindre son conseiller.
  */
 
-const ENCRE = '#1a2332';
-const OR_CLAIR = '#dcc271';
-const OR_FONCE = '#b8923a';
+const ENCRE = '#13243D';
+const OR_CLAIR = '#F2B266';
+const OR_FONCE = '#C8710F';
 
 const TEL = '06 58 95 76 32';
 const TEL_URL = '+33658957632';

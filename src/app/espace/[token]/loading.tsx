@@ -14,9 +14,9 @@
  * « Chargement en cours… », à la demande d'Alexandre.
  */
 
-const FOND = '#f4f6fa';
+const FOND = '#F5F8FC';
 const ENCRE = '#1b365d';
-const OR = '#c9a84c';
+const OR = '#E68B23';
 
 export default function Ouverture() {
   return (
