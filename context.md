@@ -1544,6 +1544,9 @@ Les liens de la V3.107 (une ligne d'une carte → son champ) marchent toujours :
 
 Rien à passer dans Supabase.
 
+Deux V3.107 le même soir, faites en parallèle : celle-ci (l'éditeur d'un bien) et, juste en
+dessous, « Photos : une image envoyée toute faite est de nouveau rangée ». Les deux sont en place.
+
 Alexandre : sur la fiche d'un bien, « Modifier » du quartier « va dans le bien toujours, ça ne va
 pas directement sur le quartier » ; pour le prix, il arrivait sur l'onglet « Prix et mandat »
 mais pas « sur la partie prix » : il fallait descendre à la main.
@@ -1568,6 +1571,23 @@ mais pas « sur la partie prix » : il fallait descendre à la main.
 En parallèle, trois maquettes de l'éditeur (sommaire à gauche / une page à parties dépliables /
 les cartes de la fiche avec un panneau), toutes sans « la carte dans la liste » à droite : en
 attente du choix d'Alexandre, rien n'est construit.
+
+### V3.107 — 7 octobre 2026 · Photos : une image envoyée toute faite est de nouveau rangée
+
+Rien à passer dans Supabase.
+
+Constaté pendant la veille de Didier Orlik : depuis la V3.43 (30 septembre), `/api/upload-photos` ne
+téléchargeait que des adresses http(s). Une photo recadrée dans le navigateur, ou débarrassée d'un
+logo par ChatGPT, arrive en « data URI » (`data:image/jpeg;base64,…`) : elle était renvoyée telle
+quelle, sans être rangée dans `photos-biens` (signalé dans le skill de veille le 2 octobre).
+
+- **`decoderDataUri()`** (`src/app/api/upload-photos/route.ts`) : une data URI d'image (JPEG, PNG,
+  WebP, GIF, AVIF) est décodée sur place, sans rien télécharger, puis passe les mêmes contrôles
+  qu'une photo téléchargée : `typeImage()` sur les premiers octets, 15 Mo au plus. Un autre type
+  (`data:image/svg+xml`, `data:text/html`…) est refusé et garde sa valeur, comme une adresse refusée.
+- Rien d'autre ne change : les adresses web suivent le même chemin qu'avant.
+- La limite de Vercel sur le corps d'une requête (environ 4,5 Mo) reste la vraie limite d'une photo
+  envoyée ainsi.
 
 ### V3.106 — 7 octobre 2026 · Nouveau rendez-vous : un client du fichier, ou un nom gardé pour ce rendez-vous
 
