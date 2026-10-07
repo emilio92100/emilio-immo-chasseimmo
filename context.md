@@ -650,7 +650,7 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/extract-bien` | portail | URL d'annonce → Claude → JSON (repli regex) | `ANTHROPIC_API_KEY` facultative |
 | `POST /api/parse-texte-bien` | portail | Texte collé → Claude → JSON. **Prix = prix affiché en gros**, jamais le « hors honoraires » | idem |
 | `POST /api/reformuler-bien` | portail | Réécrit la description : retire confrère, téléphone, formules commerciales. Ne touche pas au prix | `ANTHROPIC_API_KEY` |
-| `POST /api/send-mail` | portail | Envoi Mailjet. `mode` : `libre` · `biens` · **`bienvenue`** | Mailjet |
+| `POST /api/send-mail` | portail | Envoi Mailjet. `mode` : `libre` · `biens` · **`bienvenue`** · `lien` (le lien de l'espace renvoyé, V3.110) | Mailjet |
 | `POST /api/espace/push` | **publique** | Abonnement/désabonnement aux notifications | Supabase |
 | `POST /api/espace/push/contenu` | **publique** | Le texte de la notification, calculé à la seconde par `public/sw.js`. La serrure est l'adresse de poussée | Supabase |
 | `GET /espace/<token>/manifeste` | **publique** | Le manifeste PWA du dossier. `start_url` porte **le jeton du client** | Supabase |
@@ -1496,6 +1496,76 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.111 — 7 octobre 2026 · Envoyer des biens cochés à un client qu'on choisit ; le rapprochement écarte aussi les annonces
+
+Rien à passer dans Supabase.
+
+Alexandre, devant « Envoyer ce bien à des acheteurs » et « Aucune recherche active ne correspond à
+ces biens » : « on ne peut pas choisir un client… ou peut-être qu'il faut le sélectionner avant… il
+n'y a rien qui explique » ; « même quand c'est en mandat en cours, ou même quand c'est en
+estimation ».
+
+- **Choisir un client par son nom** (`biens/LotBiens.tsx`, `FenEnvoiLot`) : en haut de la fenêtre,
+  « À qui l'envoyer ? » (ou « Un autre client ? » quand la note en propose) et « Cherche un client
+  par son nom » (prénom, nom ou e-mail, sans accents). Chaque recherche ouverte du client est une
+  ligne (« Recherche principale · Appartement · jusqu'à 700 000 € ») ; « Ajouter » le met sous
+  « Choisi par toi », coché. Lui reçoit **tous** les biens cochés, sans seuil ni écart (sauf le sien
+  s'il en est le propriétaire) ; « Retirer » l'enlève. Un client sans recherche ouverte sort grisé :
+  « Pas de recherche ouverte : ouvre-lui une recherche depuis sa fiche » et « Sa fiche » — tout se
+  range sous une recherche (AGENTS.md §3.1). Les trois gestes du pied (sélection, espace, mail)
+  marchent pareil pour lui.
+- **Sa note** (`outils.ts`, `acheteurChoisi`) : calculée quand elle se calcule (le bon type de bien,
+  trois critères comparables), sinon `SANS_NOTE` (-1) : la pastille n'a pas de pourcentage, et
+  l'historique n'écrit pas « correspondance -1 % » (`noteJournal`, dans les trois lignes de journal
+  de `mettreEnSelection`, `envoyerDansEspace`, `envoyerParMail`).
+- **Les biens à suivre ou en estimation partent aussi** (ils étaient « laissés de côté : l'envoi
+  s'ouvre au mandat »), avec une ligne : « Saint-Cloud · 6 p. : pas encore sous mandat. Il part quand
+  même, comme les autres, sans prix tant qu'il n'est pas fixé. » La note les propose aussi. Seuls
+  ceux en pause, vendus ou retirés restent de côté. ⚠️ L'onglet Acheteurs de la fiche d'un bien en
+  estimation reste en lecture (« L'envoi s'ouvre au mandat ») : à refaire avec la nouvelle
+  présentation de cet onglet (maquettes en cours).
+- **Quand la note ne propose personne** : « Aucun acheteur ne correspond à ce bien. La note regarde
+  les clients actifs dont la recherche dit son budget et son secteur. Pour l'envoyer à quelqu'un
+  d'autre, cherche-le juste au-dessus. »
+- **Le rapprochement, côté annonces de veille** (`src/lib/rapprochement.ts`) : la règle qui écarte
+  (`raisonEcart` : budget dépassé de plus de 10 %, ville hors de ses secteurs, trop petit, pas assez
+  de chambres) ne valait que pour les mandats ; une annonce bien trop chère sortait « en partie ».
+  Elle vaut maintenant pour les deux. Le critère « indispensable » n'écarte pas une annonce : ses
+  équipements ne sont pas sûrs (une case vide n'est pas un « non »).
+
+Vérifié au banc, 1280 et 390 px : quatre biens cochés (un en vente, un en estimation sans prix, un
+en pause, un autre en vente) ; le bien en pause de côté, la ligne « pas encore sous mandat » ;
+« paul » → Paul Dupont ajouté (75 %, une maison sans note, 75 %) ; « claire » → sans recherche,
+« Sa fiche » ; « Dans leur espace » écrit les trois copies de Paul et la maison pour Hugo Bernard,
+journal sans pourcentage pour la maison. Un seul bien sans acheteur : la fenêtre explique et propose
+la recherche.
+
+### V3.110 — 7 octobre 2026 · « Renvoyer le lien » de l'espace
+
+Rien à passer dans Supabase.
+
+Alexandre : « le mail de bienvenue, on ne peut plus le renvoyer, il est bloqué ; avoir un bouton à
+côté, renvoyer le lien, si un client me dit : je ne l'ai pas reçu ».
+
+- **Le mail** (`/api/send-mail`, mode `lien`) : « Le lien de votre espace », court — « Voici de
+  nouveau le lien de votre espace personnel. C'est toujours le même », le bouton « Ouvrir mon
+  espace », le rappel pour l'ajouter à l'écran d'accueil du téléphone, « Un souci pour l'ouvrir ?
+  Répondez simplement à ce message, ou appelez-moi ». Le lien est celui du client
+  (`clients.token_espace`, AGENTS.md §3.3), jamais celui d'une recherche. Il ne touche pas à
+  `bienvenue_envoye_le`. Pas deux fois en deux minutes (un double clic) : le serveur regarde les
+  `envois` de cet objet et refuse avec une phrase claire. Noté dans `envois` et au Suivi :
+  « 🔗 Lien de l'espace renvoyé ».
+- **Les boutons** (`FicheClient.tsx`) : « 🔗 Renvoyer le lien » à côté de « ✓ Bienvenue envoyée »
+  (barre des critères de la recherche), et dans la carte « Le mail de bienvenue » de l'onglet Son
+  espace (« Il ne retrouve plus son lien, ou dit ne pas l'avoir reçu ? Renvoie-le-lui : un mail
+  court, avec le même lien. »). Ils n'apparaissent qu'une fois le lien reçu (une des recherches a
+  `bienvenue_envoye_le`). Une confirmation dit à quelle adresse ; puis « ✓ Lien renvoyé » cinq
+  secondes. Le bouton grisé « ✓ Bienvenue envoyée » dit au survol : « S'il ne l'a pas reçu :
+  « Renvoyer le lien », juste à côté. »
+
+Vérifié au banc, 1280 et 390 px : les deux boutons, la confirmation, l'appel `mode: 'lien'` sur la
+bonne recherche, « ✓ Lien renvoyé ».
 
 ### V3.109 — 7 octobre 2026 · « Modifier » d'une carte, en « tout sur une page » : la page descend de nouveau
 
