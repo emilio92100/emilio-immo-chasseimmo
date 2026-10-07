@@ -31,7 +31,11 @@
   display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0}
 .croix:hover{background:#DCE3EC}
 
-.corps{flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column}
+.corps{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; display:flex; flex-direction:column;
+  scrollbar-width:none}
+/* V3.119 : plus de petite barre qui passe à droite à chaque écran (l'entrée
+   du texte, qui glisse de 12 px, débordait un instant). */
+.corps::-webkit-scrollbar{display:none}
 .versD{animation:droite .45s cubic-bezier(.22,.8,.24,1) both}
 .versG{animation:gauche .45s cubic-bezier(.22,.8,.24,1) both}
 .illuCol{flex:0 0 auto; display:flex; justify-content:center}
@@ -159,12 +163,17 @@
 
 .s2{position:absolute; inset:0; background:#E8EFF8}
 .carteFond{position:absolute; left:50%; top:66px; width:196px; height:150px; margin-left:-88px; border-radius:16px;
-  background:#DCE3EC; transform:rotate(5deg); animation:carteIn .7s .1s cubic-bezier(.22,.8,.24,1) both}
+  background:#DCE3EC; transform:rotate(5deg); overflow:hidden; box-shadow:0 14px 28px -18px rgba(19,36,61,.5);
+  animation:carteIn .7s .1s cubic-bezier(.22,.8,.24,1) both}
+.carteFond > img{opacity:.85}
 .carteBien{position:absolute; left:50%; top:58px; width:206px; height:160px; margin-left:-114px; border-radius:16px;
   background:#fff; box-shadow:0 20px 34px -18px rgba(19,36,61,.55); overflow:hidden; display:flex; flex-direction:column;
   animation:carteIn .7s .35s cubic-bezier(.22,.8,.24,1) both}
-.photo{position:relative; height:96px; background:linear-gradient(135deg,#C9D5E6 0%,#E8EFF8 100%); display:flex;
-  align-items:center; justify-content:center}
+.photo{position:relative; height:96px; background:#C9D5E6; overflow:hidden}
+.photoImg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block}
+/* La photo vit : un zoom lent, qui va et vient. */
+.zoom{animation:zoom 7s ease-in-out infinite alternate; transform-origin:60% 50%}
+.vignette{position:relative; width:64px; height:46px; flex:0 0 auto; border-radius:10px; overflow:hidden; background:#C9D5E6}
 .pastille{position:absolute; display:inline-flex; align-items:center; border-radius:99px; font-size:10px; font-weight:800}
 .prixL{font-size:15px; font-weight:800}
 .petit{font-size:11px; color:#5B6B80}
@@ -267,4 +276,5 @@
 @keyframes puce{0%,40%{background:#fff;color:#5B6B80;border-color:#DCE3EC}48%,86%{background:#FDEBD3;color:#A95808;border-color:#F2B266}96%,100%{background:#fff;color:#5B6B80;border-color:#DCE3EC}}
 @keyframes toastIl{0%,50%{opacity:0;transform:translateY(14px)}58%,88%{opacity:1;transform:none}96%,100%{opacity:0;transform:translateY(8px)}}
 @keyframes trace{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
+@keyframes zoom{from{transform:scale(1)}to{transform:scale(1.14)}}
 @keyframes rebond{0%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}50%{transform:translateY(0)}65%{transform:translateY(-3px)}80%{transform:translateY(0)}}

@@ -30,6 +30,10 @@ const ecransPour = (prenom: string): Ecran[] => [
     astuce: 'Astuce\u00a0: ajoutez l’espace à l’écran d’accueil de votre téléphone.' },
 ];
 const NB = 6;
+/* Deux photos du site emilio-immo.com (public/bienvenue/) : un bien, c'est
+   d'abord une photo (Alexandre : « pour rendre plus vivante l'animation »). */
+const PHOTO_1 = '/bienvenue/bien-1.webp';
+const PHOTO_2 = '/bienvenue/bien-2.webp';
 
 /* L'animation est dessinée à 342 × 230 et mise à la largeur de sa place. */
 function useEchelle(base: number) {
@@ -133,10 +137,10 @@ function Scene1() {
 function Scene2() {
   return (
     <div className={s.s2}>
-      <div className={s.carteFond} />
+      <div className={s.carteFond}><img src={PHOTO_2} alt="" className={s.photoImg} /></div>
       <div className={s.carteBien}>
         <div className={s.photo}>
-          <Svg d={D.maison} t={34} w={1.7} style={{ color: '#8FA3BF' }} />
+          <img src={PHOTO_1} alt="" className={`${s.photoImg} ${s.zoom}`} />
           <span className={s.pastille} style={{ left: 8, top: 8, height: 20, padding: '0 8px', background: '#E68B23', color: '#fff' }}>Nouveau</span>
           <span className={s.pastille} style={{ right: 8, bottom: 8, height: 22, padding: '0 8px', background: 'rgba(255,255,255,.95)', color: '#13243D' }}>96 % pour vous</span>
         </div>
@@ -161,7 +165,7 @@ function Scene3() {
   return (
     <div className={s.s3}>
       <div className={`${s.ligneBien} ${s.monte}`} style={{ animationDelay: '.05s' }}>
-        <span style={{ width: 64, height: 46, borderRadius: 10, background: 'linear-gradient(135deg,#C9D5E6,#E8EFF8)', flexShrink: 0 }} />
+        <span className={s.vignette}><img src={PHOTO_1} alt="" className={`${s.photoImg} ${s.zoom}`} /></span>
         <span style={{ display: 'flex', flexDirection: 'column' }}><b style={{ fontSize: 13.5, fontWeight: 800 }}>895 000 €</b><span className={s.petit}>5 pièces · Clamart</span></span>
         <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: '#A95808' }}>{'Qu’en pensez-vous\u00a0?'}</span>
       </div>
@@ -298,6 +302,31 @@ export default function Bienvenue({ prenom, conseiller, auto, onVu, onFini }: {
     setDir(-1); setI(i - 1);
   }, [i]);
 
+  /* Rien ne défile derrière tant que la feuille est là (Alexandre : « quand on
+     scrolle, ça scrolle derrière »). L'espace met html et body en
+     overflow:auto !important : la serrure doit l'être aussi. Au doigt, seul
+     le texte de la feuille peut défiler (s'il est trop long). */
+  const couche = useRef<HTMLDivElement>(null);
+  const corps = useRef<HTMLDivElement>(null);
+  const verrou = phase !== 'note';
+  useEffect(() => {
+    if (!verrou) return;
+    const els = [document.documentElement, document.body];
+    const avant = els.map(el => [el.style.getPropertyValue('overflow'), el.style.getPropertyPriority('overflow')] as const);
+    els.forEach(el => el.style.setProperty('overflow', 'hidden', 'important'));
+    const c = couche.current;
+    const bloque = (ev: globalThis.TouchEvent) => {
+      const k = corps.current;
+      if (k && ev.target instanceof Node && k.contains(ev.target) && k.scrollHeight > k.clientHeight) return;
+      ev.preventDefault();
+    };
+    c?.addEventListener('touchmove', bloque, { passive: false });
+    return () => {
+      els.forEach((el, i) => { if (avant[i][0]) el.style.setProperty('overflow', avant[i][0], avant[i][1]); else el.style.removeProperty('overflow'); });
+      c?.removeEventListener('touchmove', bloque);
+    };
+  }, [verrou]);
+
   /* Au clavier, sur ordinateur : les flèches, et Échap pour fermer. */
   useEffect(() => {
     if (phase !== 'ouvert') return;
@@ -351,7 +380,7 @@ export default function Bienvenue({ prenom, conseiller, auto, onVu, onFini }: {
   const sens = dir > 0 ? s.versD : s.versG;
   const icone = (d: string): ReactNode => <Svg d={d} t={17} w={2.2} />;
   return (
-    <div className={`${s.couche}${phase === 'part' ? ' ' + s.part : ''}`}>
+    <div ref={couche} className={`${s.couche}${phase === 'part' ? ' ' + s.part : ''}`}>
       <div className={s.voile} />
       <div ref={fenetre} tabIndex={-1} className={s.feuille} role="dialog" aria-modal="true" aria-label="Bienvenue dans votre espace"
         onTouchStart={debutTouche} onTouchEnd={finTouche}>
@@ -364,7 +393,7 @@ export default function Bienvenue({ prenom, conseiller, auto, onVu, onFini }: {
           </div>
           <button type="button" className={s.croix} aria-label="Fermer la présentation" onClick={fermer}><Svg d={D.croix} t={15} w={2.6} /></button>
         </div>
-        <div className={s.corps} key={i}>
+        <div ref={corps} className={s.corps} key={i}>
           <div className={s.illuCol}>
             <div className={`${s.illuAnim} ${sens}`}><Illustration n={i} /></div>
             <span className={s.conseiller}><span>{(conseiller || 'A').charAt(0).toUpperCase()}</span>{`${conseiller || 'Alexandre'}, votre conseiller`}</span>
