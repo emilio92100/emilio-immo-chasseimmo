@@ -665,6 +665,133 @@ Alexandre ROGELET — Emilio Immobilier
 }
 
 
+/* ══ Le lien, renvoyé (V3.110) ══
+   Alexandre : « le mail de bienvenue, on ne peut plus le renvoyer ; avoir un
+   bouton à côté, renvoyer le lien, si un client me dit : je ne l'ai pas
+   reçu ». Un mot court : le même lien qu'avant, et le rappel pour le poser
+   sur l'écran d'accueil du téléphone. Ni biens, ni présentation de l'espace :
+   le client le connaît déjà, ou il a seulement perdu le mail. Il ne touche
+   pas à la date du mail de bienvenue. */
+const OBJET_LIEN = 'Le lien de votre espace';
+function buildLien(opts: { prenom: string; token: string }): string {
+  const prenom = escapeHtml(opts.prenom);
+  const lien = lienEspace(opts.token, SITE_URL);
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Emilio Immobilier</title>
+<style>
+  @media only screen and (max-width:600px) {
+    .sheet  { width:100% !important; }
+    .cadre  { padding:0 !important; }
+    .carte  { border-radius:0 !important; border-left:0 !important; border-right:0 !important; }
+    .bord   { padding-left:18px !important; padding-right:18px !important; }
+    .etroit { padding-left:18px !important; padding-right:18px !important; }
+    .accroche { font-size:21px !important; }
+    .pied-nom, .pied-tel { display:block !important; width:100% !important; text-align:left !important; }
+    .pied-tel { padding-top:12px !important; font-size:17px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+    <tr><td align="center" class="cadre" style="padding:26px 12px;">
+
+      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+
+        <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
+          <table role="presentation" width="100%"><tr>
+            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td class="bord" align="center" style="padding:32px 34px 0;">
+          <div class="accroche" style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:${BLEU};line-height:1.3;">Bonjour ${prenom},</div>
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
+            Voici de nouveau le lien de votre espace personnel. C&#39;est toujours le même&nbsp;:
+            vous pouvez garder ce message pour le retrouver facilement.
+          </div>
+        </td></tr>
+
+        <tr><td class="bord" align="center" style="padding:26px 28px 6px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td align="center" style="background:${DORE};border-radius:12px;">
+              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
+            </td>
+          </tr></table>
+          <div style="font-size:12px;color:#9aa6ba;margin-top:11px;word-break:break-all;">${lien}</div>
+        </td></tr>
+
+        <tr><td class="bord" style="padding:22px 28px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #ecdcb4;border-radius:14px;">
+            <tr><td style="padding:14px 16px;">
+              <div style="font-size:14px;font-weight:700;color:${BLEU};line-height:1.3;">Pour être prévenu sur votre téléphone</div>
+              <div style="font-size:13.5px;color:#5a6b80;line-height:1.7;margin-top:6px;">
+                Ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d&#39;accueil
+                (le menu du navigateur, «&nbsp;Ajouter à l&#39;écran d&#39;accueil&nbsp;»). Vous serez
+                prévenu dès qu&#39;un bien vous est proposé.
+              </div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td class="etroit" align="center" style="padding:24px 40px 28px;">
+          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
+            Un souci pour l&#39;ouvrir&nbsp;?<br/>Répondez simplement à ce message, ou appelez-moi.
+          </div>
+        </td></tr>
+
+        <tr><td class="bord" style="background:${BLEU};padding:20px 28px;">
+          <table role="presentation" width="100%"><tr>
+            <td class="pied-nom">
+              <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
+              <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
+              <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
+            </td>
+            <td align="right" class="pied-tel" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+          </tr></table>
+        </td></tr>
+
+      </table>
+
+      <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+        <tr><td class="bord" align="center" style="padding:16px 28px 6px;">
+          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+            Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
+              lienFin(opts.token)
+                ? `<br/><a href="${lienFin(opts.token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                : ''
+            }
+          </div>
+        </td></tr>
+      </table>
+
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function texteLien(prenom: string, token: string): string {
+  const lien = lienEspace(token, SITE_URL);
+  return `Bonjour ${prenom},
+
+Voici de nouveau le lien de votre espace personnel. C'est toujours le même : vous pouvez garder ce message pour le retrouver facilement.
+
+Ouvrir mon espace : ${lien}
+
+Pour être prévenu sur votre téléphone : ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d'accueil (le menu du navigateur, « Ajouter à l'écran d'accueil »). Vous serez prévenu dès qu'un bien vous est proposé.
+
+Un souci pour l'ouvrir ? Répondez simplement à ce message, ou appelez-moi.
+
+Alexandre ROGELET — Emilio Immobilier
+06 58 95 76 32${lienFin(token) ? `\n\n---\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(token)}` : ''}`;
+}
+
+
 /* ══ Le mail « vos visites » ═══════════════════════════════════════════
    Un rappel (ou une confirmation) pour une ou plusieurs visites du même
    client : l'heure, la photo, l'adresse, un lien vers le bien dans son
@@ -817,17 +944,19 @@ export async function POST(req: NextRequest) {
       corps: string;
       biens_ids?: string[];           // Optionnel : si fourni, on n'envoie que ces biens
       destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
-      mode?: 'libre' | 'biens' | 'bienvenue' | 'visites' | 'mandat'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'visites' = rappel de visites, 'mandat' = mandat prêt à signer, 'biens' = défaut
+      mode?: 'libre' | 'biens' | 'bienvenue' | 'lien' | 'visites' | 'mandat'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'lien' = le lien de l'espace renvoyé (V3.110), 'visites' = rappel de visites, 'mandat' = mandat prêt à signer, 'biens' = défaut
       visites_ids?: string[];         // mode 'visites' : les visites à annoncer
     };
     /* Le mail de bienvenue s'écrit tout seul : ni objet ni corps à saisir,
        et surtout aucun bien. On le traite donc avant les contrôles. */
     const bienvenue = mode === 'bienvenue';
+    /* V3.110 : le lien de l'espace, renvoyé. Lui aussi s'écrit tout seul. */
+    const lienSeul = mode === 'lien';
 
     if (!Array.isArray(client_ids) || client_ids.length === 0) {
       return NextResponse.json({ error: 'Aucun destinataire' }, { status: 400 });
     }
-    if (!bienvenue && mode !== 'mandat' && !objet?.trim()) {
+    if (!bienvenue && !lienSeul && mode !== 'mandat' && !objet?.trim()) {
       return NextResponse.json({ error: "L'objet est obligatoire" }, { status: 400 });
     }
     if ((bienvenue || mode === 'mandat') && !recherche_id) {
@@ -1087,7 +1216,7 @@ export async function POST(req: NextRequest) {
 
     // Récupère les biens UNIQUEMENT si mode != 'libre'
     let tousBiens: (BienLite & { client_id: string })[] = [];
-    if (mode !== 'libre' && !bienvenue) {
+    if (mode !== 'libre' && !bienvenue && !lienSeul) {
       let query = supabase
         .from('biens')
         .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, badge_retour, score')
@@ -1126,16 +1255,25 @@ export async function POST(req: NextRequest) {
          qu'en secours, pour les dossiers pas encore repris. */
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const jeton = ((client as any).token_espace as string) || tokenEspace;
+      /* V3.110 : renvoyer le lien. Sans lien, rien à envoyer ; et pas deux
+         fois en deux minutes (un double clic, un autre onglet). */
+      if (lienSeul) {
+        if (!jeton) { results.push({ client_id: client.id, success: false, error: 'ce client n’a pas encore de lien d’espace' }); continue; }
+        const { data: recent, error: eRecent } = await supabase.from('envois').select('id')
+          .eq('client_id', client.id).eq('objet', OBJET_LIEN).gte('created_at', new Date(Date.now() - 2 * 60_000).toISOString()).limit(1);
+        if (eRecent) { results.push({ client_id: client.id, success: false, error: `le dernier envoi n’a pas pu être vérifié : ${eRecent.message}` }); continue; }
+        if (recent && recent.length) { results.push({ client_id: client.id, success: false, error: 'ce mail est parti il y a moins de deux minutes (un double clic ?) : il est sûrement déjà dans sa boîte' }); continue; }
+      }
 
-      const corpsPerso = bienvenue
+      const corpsPerso = lienSeul && jeton ? texteLien(client.prenom, jeton) : bienvenue
         ? (nouvelleRecherche
           ? texteNouvelle(client.prenom, nomRecherche, jeton, totalRecherches)
           : texteBienvenue(client.prenom, jeton))
         : personnaliser(corps || '', client, conseiller);
-      const objetFinal = bienvenue
+      const objetFinal = lienSeul ? OBJET_LIEN : bienvenue
         ? (nouvelleRecherche ? 'Votre nouvelle recherche est ouverte' : 'Votre espace de recherche est ouvert')
         : personnaliser(objet, client, conseiller);
-      const html = bienvenue
+      const html = lienSeul && jeton ? buildLien({ prenom: client.prenom, token: jeton }) : bienvenue
         ? (nouvelleRecherche
           ? buildNouvelle({ prenom: client.prenom, recherche: nomRecherche, token: jeton, total: totalRecherches })
           : buildBienvenue({ prenom: client.prenom, token: jeton }))
@@ -1174,7 +1312,7 @@ export async function POST(req: NextRequest) {
               From: { Email: FROM_EMAIL, Name: FROM_NAME },
               To: emails.map((e: string) => ({ Email: e, Name: `${client.prenom} ${client.nom}` })),
               Subject: objetFinal,
-              TextPart: bienvenue ? corpsPerso : text,
+              TextPart: bienvenue || lienSeul ? corpsPerso : text,
               HTMLPart: html,
               CustomID: `chasse-${client.id}-${Date.now()}`,
               TrackOpens: 'disabled',
@@ -1214,7 +1352,7 @@ export async function POST(req: NextRequest) {
           /* V3.50 : le serveur est le seul à écrire cette ligne (la fiche
              l'écrivait aussi : elle apparaissait deux fois). Une recherche
              qui s'ajoute garde son titre à elle. */
-          const titreJournal = bienvenue
+          const titreJournal = lienSeul ? '🔗 Lien de l’espace renvoyé' : bienvenue
             ? (nouvelleRecherche ? `✉️ Nouvelle recherche annoncée — ${String(recherche?.nom || nomRecherche)}` : '👋 Mail de bienvenue envoyé')
             : biensClient.length === 0
             ? `✉️ Mail envoyé — ${objetFinal}`
