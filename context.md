@@ -186,6 +186,8 @@ prix vendeur / commission / prix acquéreur, photos, plans (`plans`, rangés à 
 agence source.
 Marché (rempli par la veille) : `date_publication`, `prix_initial`, `nb_baisses`, `nb_agences`,
 `historique_prix`, `date_derniere_baisse`, `score`, `points_forts`, `points_attention`.
+`historique_prix` mêle la courbe (`{date, prix}`) et les diffuseurs (`{type:'diffuseur', agence,
+prix, date, url, portail?, tel?, retiree_le?, lien_retenu?}`) — une annonce retirée y reste (V3.101).
 PDF : `pdf_statut`, `pdf_demande_le`, `pdf_pret_le`, `pdf_url`, `pdf_message`.
 Divers : `url` (clé de tous les contrôles de doublon), `canal_envoi`, `source_portail`,
 `est_particulier`, `adresse_probable`, `situation`, `nb_lots`, `nb_parking`, `surface_exterieur`.
@@ -1494,6 +1496,39 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.101 — 7 octobre 2026 · Un lien mort sur un bien retenu : remplacé, et la trace gardée
+
+Rien à passer dans Supabase : tout tient dans `biens.historique_prix`.
+
+Alexandre : « si je clique sur le lien, ça arrive nulle part ». Des agences republient tous les
+deux ou trois jours, d'autres reprennent un bien après une première : le lien enregistré meurt,
+le bien reste en vente. Il veut le nouveau lien, l'ancienne agence, et se situer d'un coup d'œil
+en arrivant sur la carte d'un bien présenté.
+
+- **La donnée** : une ligne « diffuseur » de `historique_prix` peut porter `retiree_le` (le jour
+  où le lien a été trouvé mort), `lien_retenu` (c'était le lien du bien dans le CRM), `portail`
+  et `tel`. Rien n'est effacé.
+- **`window.majLienBien(bienId, { url, agence, agence_tel, portail, prix, date, retiree_le,
+  apercu })`** sur `/veille/import` : marque l'ancienne annonce retirée (recopiée en « diffuseur »
+  si l'historique ne la citait pas), ajoute ou met à jour la nouvelle, remplace `url` (et
+  `source_portail`), change `agence_nom` / `agence_tel` si l'agence change (l'ancien téléphone
+  reste sur la ligne retirée), et écrit une ligne au parcours du bien (type `bien_modifie`,
+  `metadata.lien_maj`). **Le prix vendeur n'est jamais touché** (c'est celui que le client a
+  reçu) : un prix différent revient dans `prix_change`. Sans `url` : l'annonce est retirée et rien
+  ne la remplace. `apercu: true` rend ce qui serait écrit sans rien écrire.
+- **`veilleLire`** rend désormais `bien_id`, `agence` et `portail` sur chaque bien retenu de
+  `deja_vus`, et les liens retirés comme des connus de plus (`motif: 'lien retiré le …'`).
+- **La carte** (Sélection, Présentés) : `AvisLien` en haut du corps de carte. « Lien mis à jour
+  le … » avec une petite frise (ancienne annonce barrée, « retirée le … » → annonce en ligne,
+  bouton « Ouvrir l'annonce en ligne ») ; ou, en ambre, « Annonce retirée le … » quand rien ne la
+  remplace, avec le téléphone de l'agence. Le bouton du pied devient « Annonce en ligne », ou
+  « Annonce retirée » sans lien. En ligne compacte, l'icône de lien disparaît si le lien est mort.
+- **Le marché** : les annonces retirées ne comptent plus parmi les agences ni dans l'écart ; elles
+  restent en bas du volet Diffusion, grisées, sans lien. Toutes retirées : la case dit « Hors
+  ligne ». `nomPortail()` écrit les portails proprement (« SeLoger », plus « seloger » ; « Veille »
+  n'est pas un portail).
+- La frise « Parcours du bien » montre ces lignes avec leur pastille (« Lien mis à jour »).
 
 ### V3.100 — 7 octobre 2026 · Les demandes SeLoger dans « Demandes Internet » ; la position des biens vérifiée (Jinka)
 
