@@ -996,22 +996,23 @@ export function texteEstimation(x: { basse: number | null; haute: number | null;
 /* ══ L'annonce : ce qui est obligatoire, ce qui manque ═══════════════════
    Les mentions qu'une annonce de vente doit porter (loi ALUR, arrêté du
    10 janvier 2017 sur les honoraires, DPE depuis 2022). */
-export function controleAnnonce(d: Donnees): { ok: boolean; l: string; aide?: string }[] {
+/* `ou` (V3.108) : la partie de l'éditeur où ça se remplit. */
+export function controleAnnonce(d: Donnees): { ok: boolean; l: string; aide?: string; ou?: string }[] {
   const a = argentBien(d);
   const copro = d.copro === 'oui';
   const dpeFait = d.dpeStatut !== 'vierge' && d.dpeStatut !== 'non';
-  const out: { ok: boolean; l: string; aide?: string }[] = [
-    { ok: !!a.prix, l: 'Le prix affiché' },
-    { ok: !a.acq || (a.prix !== null && a.net !== null), l: 'Les honoraires et le prix hors honoraires', aide: 'À la charge de l’acquéreur : le % du prix net vendeur et le prix hors honoraires' },
-    { ok: !!num(d, 'surface') || estTerrain(d), l: 'La surface habitable' },
-    ...(copro && enImmeuble(d) ? [{ ok: !!num(d, 'carrez'), l: 'La surface loi Carrez' }] : []),
-    { ok: !dpeFait || (!!d.dpe && !!d.ges), l: 'Les classes DPE et GES' },
-    { ok: !dpeFait || (!!num(d, 'dpeValeur') && !!num(d, 'gesValeur')), l: 'Les valeurs du DPE et du GES' },
-    { ok: !dpeFait || (!!num(d, 'coutMin') && !!num(d, 'coutMax')), l: 'Les dépenses d’énergie estimées (DPE)' },
+  const out: { ok: boolean; l: string; aide?: string; ou?: string }[] = [
+    { ok: !!a.prix, l: 'Le prix affiché', ou: 'prix' },
+    { ok: !a.acq || (a.prix !== null && a.net !== null), l: 'Les honoraires et le prix hors honoraires', aide: 'À la charge de l’acquéreur : le % du prix net vendeur et le prix hors honoraires', ou: 'prix' },
+    { ok: !!num(d, 'surface') || estTerrain(d), l: 'La surface habitable', ou: 'bien' },
+    ...(copro && enImmeuble(d) ? [{ ok: !!num(d, 'carrez'), l: 'La surface loi Carrez', ou: 'bien' }] : []),
+    { ok: !dpeFait || (!!d.dpe && !!d.ges), l: 'Les classes DPE et GES', ou: 'energie' },
+    { ok: !dpeFait || (!!num(d, 'dpeValeur') && !!num(d, 'gesValeur')), l: 'Les valeurs du DPE et du GES', ou: 'energie' },
+    { ok: !dpeFait || (!!num(d, 'coutMin') && !!num(d, 'coutMax')), l: 'Les dépenses d’énergie estimées (DPE)', ou: 'energie' },
     ...(copro ? [
-      { ok: !!num(d, 'lots'), l: 'Le nombre de lots de la copropriété' },
-      { ok: !!num(d, 'chargesAn'), l: 'Les charges annuelles de copropriété' },
-      { ok: d.procedure === 'oui' || d.procedure === 'non', l: 'Une procédure en cours ou non' },
+      { ok: !!num(d, 'lots'), l: 'Le nombre de lots de la copropriété', ou: 'copro' },
+      { ok: !!num(d, 'chargesAn'), l: 'Les charges annuelles de copropriété', ou: 'copro' },
+      { ok: d.procedure === 'oui' || d.procedure === 'non', l: 'Une procédure en cours ou non', ou: 'copro' },
     ] : []),
   ];
   return out;
