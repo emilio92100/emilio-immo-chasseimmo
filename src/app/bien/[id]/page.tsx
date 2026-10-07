@@ -31,18 +31,20 @@ const supabase = createClient(
 );
 
 /* Les jetons de l'espace acheteur, repris à l'identique. */
-const ENCRE = '#1a2332';
-const ENCRE_NUIT = '#131b27';
-const OR = '#c9a84c';
-const OR_FONCE = '#a9822f';
-const OR_FOND = '#fdfaf1';
-const OR_TRAIT = '#ecdcb4';
-const FOND = '#f4f6fa';
+const ENCRE = '#13243D';
+const ENCRE_NUIT = '#1B3D6B';
+/* V3.116 : les aplats sombres en bleu de la marque, comme le site emilio-immo.com. */
+const MARQUE = '#22497D';
+const OR = '#E68B23';
+const OR_FONCE = '#A95808';
+const OR_FOND = '#FFF6EC';
+const OR_TRAIT = '#F7D5B0';
+const FOND = '#F5F8FC';
 const CARTE = '#ffffff';
-const TRAIT = '#e3e8f0';
-const PLUME = '#64748b';
-const PLUME_CLAIR = '#98a4b6';
-const OMBRE = '0 1px 2px rgba(16,24,40,.04), 0 10px 26px -20px rgba(16,24,40,.3)';
+const TRAIT = '#E8EDF3';
+const PLUME = '#5B6B80';
+const PLUME_CLAIR = '#8FA3BF';
+const OMBRE = '0 1px 2px rgba(19,36,61,.04), 0 10px 26px -20px rgba(19,36,61,.3)';
 
 const DPEC: Record<string, string> = {
   A: '#319834', B: '#4ab84a', C: '#a8d84a', D: '#f7e017',
@@ -91,7 +93,7 @@ const T: Record<string, string[]> = {
    s'affichait ici comme disponible, prix et « Sélection privée » compris. */
 type Etat = 'vendu' | 'compromis' | 'retire';
 const BANDEAU: Record<Etat, { titre: string; sous: string; ic: string; c: string; fond: string; trait: string }> = {
-  vendu: { titre: 'Ce bien a été vendu', sous: 'Il n’est plus disponible.', ic: 'cle', c: ENCRE, fond: '#eef2f8', trait: '#d3dcea' },
+  vendu: { titre: 'Ce bien a été vendu', sous: 'Il n’est plus disponible.', ic: 'cle', c: ENCRE, fond: '#E8EFF8', trait: '#C9D5E6' },
   compromis: { titre: 'Sous compromis', sous: 'Une promesse de vente est signée : il n’est plus disponible pour l’instant.', ic: 'cle', c: OR_FONCE, fond: OR_FOND, trait: OR_TRAIT },
   retire: { titre: 'Ce bien n’est plus en vente', sous: 'Il n’est plus proposé pour l’instant.', ic: 'maison', c: PLUME, fond: FOND, trait: TRAIT },
 };
@@ -221,7 +223,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: FOND, color: ENCRE, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: FOND, color: ENCRE, fontFamily: "system-ui, sans-serif" }}>
       <style>{`
         html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important}
         .fb-grille{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:9px}
@@ -231,7 +233,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         @media(max-width:600px){ .fb-h1{font-size:23px!important} .fb-corps{padding:0 16px 44px} }
       `}</style>
 
-      <header style={{ background: ENCRE, padding: '16px 0', borderBottom: `2px solid ${OR}` }}>
+      <header style={{ background: MARQUE, padding: '16px 0', borderBottom: `2px solid ${OR}` }}>
         <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
           <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={280} height={64} style={{ height: 46, width: 'auto' }} priority />
           {!bandeau && <div style={{ color: OR, fontSize: 10, letterSpacing: 2.4, fontWeight: 700 }}>SÉLECTION PRIVÉE</div>}
@@ -239,7 +241,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
       </header>
 
       {/* Les photos, bord à bord comme dans l'espace */}
-      <div style={{ background: ENCRE }}>
+      <div style={{ background: MARQUE }}>
         <div style={{ maxWidth: 760, margin: '0 auto' }}>
           <PhotoCarousel photos={photos} />
         </div>
@@ -377,7 +379,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
                   </div>
                   <div style={{ fontFamily: JAKARTA, fontWeight: 800, fontSize: 18, marginTop: 8, lineHeight: 1.2 }}>
                     {c.v}
-                    {c.u ? <span style={{ display: 'block', fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: PLUME_CLAIR, fontWeight: 700, marginTop: 3, letterSpacing: .3 }}>{c.u}</span> : null}
+                    {c.u ? <span style={{ display: 'block', fontFamily: "sans-serif", fontSize: 11, color: PLUME_CLAIR, fontWeight: 700, marginTop: 3, letterSpacing: .3 }}>{c.u}</span> : null}
                   </div>
                 </div>
               ))}
@@ -392,9 +394,9 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
         {/* Celui qui reçoit ce lien ne peut pas répondre dans l'application :
             on lui donne de quoi appeler, et c'est tout ce qu'on lui demande. */}
-        <section style={{ background: ENCRE, borderRadius: 22, padding: '32px 24px', color: '#fff', textAlign: 'center', marginTop: 30 }}>
+        <section style={{ background: MARQUE, borderRadius: 22, padding: '32px 24px', color: '#fff', textAlign: 'center', marginTop: 30 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 18 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(201,168,76,.15)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: JAKARTA, fontWeight: 800, fontSize: 15, border: `1px solid rgba(201,168,76,.4)` }}>AR</div>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(230,139,35,.15)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: JAKARTA, fontWeight: 800, fontSize: 15, border: `1px solid rgba(230,139,35,.4)` }}>AR</div>
             <div style={{ textAlign: 'left' }}>
               <div style={{ fontFamily: JAKARTA, fontSize: 15, fontWeight: 800 }}>Alexandre Rogelet</div>
               <div style={{ fontSize: 12, color: OR }}>Emilio Immobilier</div>
@@ -424,7 +426,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      <footer style={{ background: ENCRE_NUIT, padding: '24px 20px', borderTop: '1px solid rgba(201,168,76,.2)' }}>
+      <footer style={{ background: ENCRE_NUIT, padding: '24px 20px', borderTop: '1px solid rgba(230,139,35,.2)' }}>
         <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <Image src="/logo_high_resolution_white.png" alt="Emilio Immobilier" width={220} height={50} style={{ height: 38, width: 'auto' }} />
           <div style={{ color: 'rgba(255,255,255,.55)', fontSize: 11.5, lineHeight: 1.7 }}>
