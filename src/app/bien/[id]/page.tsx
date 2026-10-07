@@ -261,13 +261,14 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
         {/* Le prix d'abord : c'est la première question de celui qui reçoit le lien */}
         <div className="fb-prix" style={{ padding: '20px 0 2px' }}>
           <span style={{ fontFamily: JAKARTA, fontSize: 30, fontWeight: 800, color: OR_FONCE, letterSpacing: -.8 }}>
-            {fmt(prix) || '—'} €
+            {prix ? `${fmt(prix)} €` : 'Prix à venir'}
           </span>
           {prixM2 ? (
             <span style={{ fontSize: 13.5, color: PLUME_CLAIR, fontWeight: 700 }}>{fmt(prixM2)} €/m²</span>
           ) : null}
         </div>
-        <div style={{ fontSize: 11.5, color: OR, fontWeight: 700, marginBottom: 14 }}>{labelPrix}</div>
+        {/* V3.113 : sans prix (un bien de l'agence avant le mandat), pas de mention sous « Prix à venir ». */}
+        <div style={{ fontSize: 11.5, color: OR, fontWeight: 700, marginBottom: 14 }}>{prix ? labelPrix : ''}</div>
 
         <h1 className="fb-h1" style={{ fontFamily: JAKARTA, fontSize: 25, fontWeight: 800, letterSpacing: -.5, lineHeight: 1.25, margin: '0 0 6px' }}>
           {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` — ${bien.surface} m²` : ''}`}
