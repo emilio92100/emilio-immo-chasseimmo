@@ -1497,6 +1497,31 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.104 — 7 octobre 2026 · « Sa recherche » : les critères en cartes, rangées selon ce qui est rempli
+
+Rien à passer dans Supabase.
+
+Alexandre : « quand il n'y a pas beaucoup de critères, on voit la case du logement qui prend
+l'entièreté de l'écran » (la surface à gauche, le métrage tout à droite) ; mettre les secteurs à
+côté. Puis : « critères souhaités et critères indispensables, comme ça on voit les choses à côté »,
+plutôt que « En doré : indispensable » ; et « mettre le secteur à la fin, à droite, quand tout est
+rempli ».
+
+- **Tout en cartes** (`FicheClient`, onglet Sa recherche, sous le bandeau du budget) : les familles
+  (Le logement, L'immeuble, Les transports), puis **Souhaités** (en-tête clair, puces vertes,
+  « un plus »), **Indispensables** (en-tête marine, puces marine et or, « sinon, pas d'envoi ») et
+  **Secteurs recherchés** (en-tête doré), au bout à droite. La ligne « Critères importants » et sa
+  légende en doré sont parties.
+- **Les rangées** : trois cartes ou moins, une seule rangée (logement + secteurs côte à côte).
+  Au-delà, les familles en haut, le reste dessous (6 = 3 + 3) ; jamais une carte seule sur sa
+  rangée quand l'autre peut en céder une : un logement seul garde les secteurs à côté de lui
+  (2 + 2), des secteurs seuls dessous prennent les transports avec eux (2 + 2). Au téléphone, une
+  colonne (`.fc-familles`, crm-mobile.css).
+- **Les secteurs** (`SecteursListe`, au niveau du module) : la ville, puis ses quartiers dessous, en
+  retrait et un peu plus petits (deux par ligne dans un tiers de largeur) ; « Toute la ville » reste
+  sur la ligne de la ville.
+- Les précisions restent dessous, sur toute la largeur, sans changement.
+
 ### V3.103 — 7 octobre 2026 · La recherche du haut signale un contact archivé
 
 Rien à passer dans Supabase.
