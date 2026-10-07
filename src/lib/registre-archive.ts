@@ -58,7 +58,7 @@ export async function archiverRegistre(sb: SupabaseClient, o: { mensuelle?: bool
       `<p>Ton registre des mandats, tel qu’il était le <b>${echappe(quand)}</b> : ${lignes.length} mandat${lignes.length > 1 ? 's' : ''} inscrit${lignes.length > 1 ? 's' : ''}.</p>
        <p style="color:${ok ? '#166534' : '#b91c1c'}"><b>${echappe(etat)}</b></p>
        <p>Garde ce mail : il date la photo de ton registre, hors du CRM. En cas de contrôle ou de litige, il prouve que rien n’a été réécrit depuis.</p>
-       <a href="${CRM()}/?page=registre" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le registre</a>`),
+       <a href="${CRM()}/?page=registre" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le registre</a>`),
   });
   return { ok: true, chemin, lignes: lignes.length, problemes: problemes.length, mail };
 }

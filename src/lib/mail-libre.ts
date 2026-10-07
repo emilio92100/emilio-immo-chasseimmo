@@ -20,6 +20,7 @@
 
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { conseillerDe, personnaliser, type PourMail } from './mail-variables';
+import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
 
 export type StyleMail = 'simple' | 'emilio';
 
@@ -49,8 +50,8 @@ const STYLE: Record<string, string> = {
   ul: 'margin:4px 0 12px;padding-left:22px',
   ol: 'margin:4px 0 12px;padding-left:22px',
   li: 'margin:0 0 4px',
-  a: 'color:#1d4ed8;text-decoration:underline',
-  blockquote: 'margin:0 0 12px;padding-left:12px;border-left:3px solid #e3d8c4;color:#5a6a85',
+  a: 'color:#22497D;text-decoration:underline',
+  blockquote: 'margin:0 0 12px;padding-left:12px;border-left:3px solid #DCE3EC;color:#5B6B80',
 };
 
 /* L'adresse d'un lien : http(s), mailto ou tel ; « www.… » devient https. */
@@ -174,9 +175,9 @@ export type LienPiece = { nom: string; url: string; taille: number };
 const tailleFr = (o: number) => (o >= 1_000_000 ? `${String(Math.round(o / 100_000) / 10).replace('.', ',')} Mo` : `${Math.max(1, Math.round(o / 1000))} ko`);
 function blocLiens(liens: LienPiece[], jours: number): string {
   if (!liens.length) return '';
-  return `<div style="margin:18px 0 6px;padding:14px 16px;border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc">
-  <div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#7a5d1c;margin-bottom:8px">DOCUMENTS À TÉLÉCHARGER · LIENS VALABLES ${jours} JOURS</div>
-  ${liens.map(l => `<div style="margin:6px 0"><a href="${esc(l.url)}" style="color:#1a2332;font-weight:700">${esc(l.nom)}</a> <span style="color:#94a3b8;font-size:12px">· ${tailleFr(l.taille)}</span></div>`).join('')}
+  return `<div style="margin:18px 0 6px;padding:14px 16px;border:1px solid #E8EDF3;border-radius:12px;background:#F5F8FC">
+  <div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#A95808;margin-bottom:8px">DOCUMENTS À TÉLÉCHARGER · LIENS VALABLES ${jours} JOURS</div>
+  ${liens.map(l => `<div style="margin:6px 0"><a href="${esc(l.url)}" style="color:#13243D;font-weight:700">${esc(l.nom)}</a> <span style="color:#8FA3BF;font-size:12px">· ${tailleFr(l.taille)}</span></div>`).join('')}
 </div>`;
 }
 export const texteLiens = (liens: LienPiece[], jours: number) => (liens.length
@@ -186,31 +187,31 @@ export const texteLiens = (liens: LienPiece[], jours: number) => (liens.length
 /* ── Le mail entier ── */
 export function mailLibreHtml(o: { style: StyleMail; corps: string; h: Habillage; liens?: LienPiece[]; jours?: number }): string {
   const corps = `${o.corps}${blocLiens(o.liens || [], o.jours || 7)}`;
-  const tete = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title></head>';
+  const tete = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title>${LIEN_POLICE_MAIL}</head>`;
   if (o.style === 'simple') {
     return `${tete}<body style="margin:0;padding:0;background:#ffffff;">
-<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#1f2937;max-width:640px;padding:6px 4px;">${corps}</div>
+<div style="font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#13243D;max-width:640px;padding:6px 4px;">${corps}</div>
 </body></html>`;
   }
   const h = o.h;
-  return `${tete}<body style="margin:0;padding:0;background:#efeae0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#efeae0;">
+  return `${tete}<body style="margin:0;padding:0;background:#E6EDF6;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E6EDF6;">
   <tr><td align="center" style="padding:24px 10px;">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:16px;overflow:hidden;">
-      <tr><td style="background:#1a2332;border-bottom:3px solid #c9a84c;padding:18px 26px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #DCE3EC;border-radius:16px;overflow:hidden;">
+      <tr><td style="background:#22497D;border-bottom:3px solid #E68B23;padding:18px 26px;">
         <img src="${esc(h.logo)}" alt="${esc(h.agence)}" height="30" style="height:30px;width:auto;display:block;border:0;color:#ffffff;font-weight:700;font-size:16px;" />
       </td></tr>
       <tr><td style="padding:26px 26px 22px;">
-        <div style="font-size:14.5px;line-height:1.7;color:#3a4a5f;">${corps}</div>
+        <div style="font-size:14.5px;line-height:1.7;color:#46566B;">${corps}</div>
       </td></tr>
-      <tr><td style="background:#1a2332;padding:16px 26px;">
+      <tr><td style="background:#22497D;padding:16px 26px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
           <td style="font-size:14px;font-weight:700;color:#ffffff;">${esc(h.conseiller)}<div style="font-size:11px;font-weight:400;color:rgba(255,255,255,.6);margin-top:3px;">${esc(h.agence)} · Paris &amp; Hauts-de-Seine</div></td>
-          <td align="right" style="font-size:15px;font-weight:700;color:#c9a84c;white-space:nowrap;"><a href="tel:${esc(h.telephone.replace(/[^+0-9]/g, ''))}" style="color:#c9a84c;text-decoration:none;">${esc(h.telephone)}</a></td>
+          <td align="right" style="font-size:15px;font-weight:700;color:#F2B266;white-space:nowrap;"><a href="tel:${esc(h.telephone.replace(/[^+0-9]/g, ''))}" style="color:#F2B266;text-decoration:none;">${esc(h.telephone)}</a></td>
         </tr></table>
       </td></tr>
     </table>
-    <div style="max-width:600px;margin:12px auto 0;font-size:11px;line-height:1.6;color:#9aa6ba;text-align:center;">${esc(h.mentions)}</div>
+    <div style="max-width:600px;margin:12px auto 0;font-size:11px;line-height:1.6;color:#8FA3BF;text-align:center;">${esc(h.mentions)}</div>
   </td></tr>
 </table>
 </body></html>`;

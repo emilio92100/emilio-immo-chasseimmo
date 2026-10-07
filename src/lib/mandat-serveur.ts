@@ -33,6 +33,7 @@ import {
 } from './documents-espace';
 import { alerteMailActive } from './alertes';
 import { lireDepart } from './registre';
+import { enveloppeMail } from '@/lib/mail-charte';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
 export const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -310,18 +311,11 @@ export async function envoyerMail(o: {
   }
 }
 
-/* Le gabarit commun : la bande marine, puis le texte. */
+/* Le gabarit commun des mails courts (codes, mandat, signatures, alertes).
+   V3.118 : l'enveloppe de la charte (src/lib/mail-charte.ts) — la bande bleue
+   au logo Emilio, un filet orange, le titre, puis le texte. */
 export function gabarit(titre: string, corpsHtml: string, pied = '') {
-  return `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
-  <div style="background:#1a2332;padding:18px 22px;border-radius:14px 14px 0 0">
-    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:11px">EMILIO IMMOBILIER</div>
-    <div style="color:#ffffff;font-weight:800;font-size:18px;margin-top:6px">${echappe(titre)}</div>
-  </div>
-  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px;font-size:14px;line-height:1.65">
-    ${corpsHtml}
-    ${pied ? `<div style="margin-top:18px;font-size:12px;color:#94a3b8">${pied}</div>` : ''}
-  </div>
-</div>`;
+  return enveloppeMail({ titre: echappe(titre), corps: corpsHtml, pied });
 }
 
 export const ALERTES = () => process.env.ALERTES_EMAIL || FROM_EMAIL;
@@ -432,7 +426,7 @@ export async function alerteHorsMandat(sb: SupabaseClient, o: {
     html: gabarit(`${nom} : sa recherche dépasse son mandat`, `<p><b>${echappe(nom)}</b> vient de modifier ses critères depuis son espace. Son mandat <b>n° ${echappe(String(sig.numero))}</b>, signé le ${signeLe}, ne couvre peut-être plus toute sa recherche :</p>
       ${neufs.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
       <p>Appelle-le : s’il vise vraiment plus haut ou ailleurs, prépare-lui un avenant depuis sa fiche (Mandat de recherche › Préparer l’avenant) : ce qui a changé y est déjà coché.</p>
-      <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+      <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
   });
   if (eM) console.error('[mandat] alerte hors mandat, mail', eM);
 }

@@ -8,6 +8,7 @@ import {
   categorieDe, emailUtile, joliTel, presenter, telUtile,
   type DemandeSite,
 } from '@/lib/demandes-site';
+import { logoMail } from '@/lib/mail-charte';
 
 /* L'heure de Paris : le serveur (Vercel) compte en UTC, et un mail qui dit
    « 10:26 » pour une demande arrivée à 12:26 ferait douter du reste. */
@@ -63,22 +64,23 @@ export function mailDemande(d: DemandeSite): { sujet: string; html: string; text
     '',
     `L'ouvrir dans le CRM : ${lien}`,
   ].join('\n');
-  const corps = `<!doctype html><html lang="fr"><body style="margin:0;padding:24px 12px;background:#f3f5f9;font-family:Arial,Helvetica,sans-serif;color:#1f2d44">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e3e8f0">
-<tr><td style="background:#2e4166;padding:20px 24px;color:#ffffff">
-<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#e8c96a;font-weight:bold">Nouvelle demande du site · ${echapper(cat.lib)}</div>
+  const corps = `<!doctype html><html lang="fr"><body style="margin:0;padding:24px 12px;background:#F5F8FC;font-family:'Plus Jakarta Sans',Arial,Helvetica,sans-serif;color:#1B3D6B">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #E8EDF3">
+<tr><td style="background:#22497D;padding:20px 24px;color:#ffffff;border-bottom:3px solid #E68B23">
+${logoMail('CRM')}
+<div style="margin-top:12px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#F2B266;font-weight:bold">Nouvelle demande du site · ${echapper(cat.lib)}</div>
 <div style="font-size:22px;font-weight:bold;margin-top:6px">${echapper(d.name || 'Sans nom')}</div>
-<div style="font-size:13px;color:#c9d3e3;margin-top:4px">Reçue le ${echapper(dateParis(d.created_at))}</div>
+<div style="font-size:13px;color:#C9D5E6;margin-top:4px">Reçue le ${echapper(dateParis(d.created_at))}</div>
 </td></tr>
 <tr><td style="padding:18px 24px 6px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;border-collapse:collapse">
-${lignes.map(([l, v]) => `<tr><td style="padding:7px 0;color:#8896a8;width:40%;vertical-align:top;border-bottom:1px solid #f1f4f8">${echapper(l)}</td><td style="padding:7px 0;font-weight:bold;vertical-align:top;border-bottom:1px solid #f1f4f8">${html(v)}</td></tr>`).join('\n')}
+${lignes.map(([l, v]) => `<tr><td style="padding:7px 0;color:#8FA3BF;width:40%;vertical-align:top;border-bottom:1px solid #F5F8FC">${echapper(l)}</td><td style="padding:7px 0;font-weight:bold;vertical-align:top;border-bottom:1px solid #F5F8FC">${html(v)}</td></tr>`).join('\n')}
 </table>
-${p.message ? `<div style="margin-top:14px;padding:12px 14px;background:#f8fafc;border-left:3px solid #c9a84c;border-radius:8px;font-size:14px;line-height:1.55">${html(p.message)}</div>` : ''}
+${p.message ? `<div style="margin-top:14px;padding:12px 14px;background:#F5F8FC;border-left:3px solid #E68B23;border-radius:8px;font-size:14px;line-height:1.55">${html(p.message)}</div>` : ''}
 </td></tr>
 <tr><td style="padding:14px 24px 24px">
-<a href="${echapper(lien)}" style="display:inline-block;background:#2e4166;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 18px;border-radius:10px">Ouvrir dans le CRM</a>
-${tel ? `<a href="tel:${echapper(tel.replace(/\s/g, ''))}" style="display:inline-block;margin-left:8px;background:#c9a84c;color:#1a2332;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 18px;border-radius:10px">Appeler</a>` : ''}
+<a href="${echapper(lien)}" style="display:inline-block;background:#22497D;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 18px;border-radius:10px">Ouvrir dans le CRM</a>
+${tel ? `<a href="tel:${echapper(tel.replace(/\s/g, ''))}" style="display:inline-block;margin-left:8px;background:#E68B23;color:#13243D;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 18px;border-radius:10px">Appeler</a>` : ''}
 </td></tr>
 </table></body></html>`;
   return { sujet, html: corps, texte };

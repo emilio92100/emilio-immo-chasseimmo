@@ -41,6 +41,7 @@
 
 import { lienEspace } from '@/lib/jeton';
 import { acheteurEnCours, colonneContactAbsente, estAcheteur, estArchive, reventePossible } from '@/lib/contacts';
+import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Base = any;
@@ -247,8 +248,12 @@ export async function calculerCandidats(sb: Base, reglages: Reglages, opts: { cl
 
 /* ══ Le mail ════════════════════════════════════════════════════════════ */
 
-const BLEU = '#1a2332';
-const DORE = '#c9a84c';
+/* V3.118 : les couleurs du site emilio-immo.com (src/lib/mail-charte.ts). */
+const BLEU = '#22497D';
+const DORE = '#E68B23';
+const ENCRE = '#13243D';
+const DORE_TEXTE = '#A95808';
+const DORE_CLAIR = '#F2B266';
 
 const echappe = (t: unknown) => String(t ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -351,11 +356,11 @@ export function mailPoint(o: { prenom: string; recherche: any; tokenClient: stri
   const lien = (x: Reponse) => lienReponse(tokenClient, recherche.id, x, site);
 
   const lignesHtml = res.lignes.map((l) => `
-            <tr><td style="padding:11px 16px;border-top:1px solid #eef1f6;vertical-align:top;width:104px;font-size:12px;font-weight:700;color:#94a3b8;">${echappe(l.cle)}</td>
-                <td style="padding:11px 16px 11px 0;border-top:1px solid #eef1f6;vertical-align:top;font-size:14.5px;font-weight:700;color:${BLEU};line-height:1.45;">${echappe(l.valeur)}${l.sous ? `<div style="font-size:12.5px;font-weight:500;color:#64748b;margin-top:3px;">${echappe(l.sous)}</div>` : ''}</td></tr>`).join('');
+            <tr><td style="padding:11px 16px;border-top:1px solid #F2F5F9;vertical-align:top;width:104px;font-size:12px;font-weight:700;color:#8FA3BF;">${echappe(l.cle)}</td>
+                <td style="padding:11px 16px 11px 0;border-top:1px solid #F2F5F9;vertical-align:top;font-size:14.5px;font-weight:700;color:${BLEU};line-height:1.45;">${echappe(l.valeur)}${l.sous ? `<div style="font-size:12.5px;font-weight:500;color:#5B6B80;margin-top:3px;">${echappe(l.sous)}</div>` : ''}</td></tr>`).join('');
   const pointsHtml = res.points.length ? `
-            <tr><td style="padding:11px 16px;border-top:1px solid #eef1f6;vertical-align:top;width:104px;font-size:12px;font-weight:700;color:#94a3b8;">Ce qui compte</td>
-                <td style="padding:9px 16px 7px 0;border-top:1px solid #eef1f6;vertical-align:top;">${res.points.map((p) => `<span style="display:inline-block;margin:0 5px 5px 0;padding:3px 10px;border-radius:99px;font-size:12.5px;font-weight:700;${p.fort ? `background:#fdf8ea;border:1px solid #e7d6a3;color:#7a611b;` : `background:#ffffff;border:1px solid #e3e8f0;color:#334155;`}">${echappe(p.texte)}</span>`).join('')}</td></tr>` : '';
+            <tr><td style="padding:11px 16px;border-top:1px solid #F2F5F9;vertical-align:top;width:104px;font-size:12px;font-weight:700;color:#8FA3BF;">Ce qui compte</td>
+                <td style="padding:9px 16px 7px 0;border-top:1px solid #F2F5F9;vertical-align:top;">${res.points.map((p) => `<span style="display:inline-block;margin:0 5px 5px 0;padding:3px 10px;border-radius:99px;font-size:12.5px;font-weight:700;${p.fort ? `background:#FFF6EC;border:1px solid #F2B266;color:#A95808;` : `background:#ffffff;border:1px solid #E8EDF3;color:#13243D;`}">${echappe(p.texte)}</span>`).join('')}</td></tr>` : '';
 
   const bouton = (x: Reponse, texte: string, style: string) => `
           <tr><td style="padding:0 0 9px;"><a href="${echappe(lien(x))}" style="display:block;text-align:center;text-decoration:none;border-radius:12px;padding:14px 12px;font-size:15px;font-weight:700;${style}">${texte}</a></td></tr>`;
@@ -366,6 +371,7 @@ export function mailPoint(o: { prenom: string; recherche: any; tokenClient: stri
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Où en est votre recherche ?</title>
+${LIEN_POLICE_MAIL}
 <style>
   @media only screen and (max-width:600px) {
     .sheet { width:100% !important; }
@@ -377,27 +383,27 @@ export function mailPoint(o: { prenom: string; recherche: any; tokenClient: stri
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+<body style="margin:0;padding:0;background:#E6EDF6;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E6EDF6;">
     <tr><td align="center" class="cadre" style="padding:26px 12px;">
-      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #DCE3EC;border-radius:18px;overflow:hidden;">
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
             <td><img src="${site}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
-            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE RECHERCHE</td>
+            <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE RECHERCHE</td>
           </tr></table>
         </td></tr>
 
-        <tr><td class="bord" style="padding:26px 28px 6px;font-size:14.5px;color:#3a4a5f;line-height:1.7;">
+        <tr><td class="bord" style="padding:26px 28px 6px;font-size:14.5px;color:#46566B;line-height:1.7;">
           <p style="margin:0 0 14px;">Bonjour ${prenom},</p>
           <p style="margin:0 0 18px;">Cela fait quelques semaines que nous n'avons pas fait le point ensemble. Voici la recherche que nous menons pour vous aujourd'hui&nbsp;:</p>
 
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e6ebf2;border-radius:14px;border-collapse:separate;overflow:hidden;">
-            <tr><td colspan="2" style="background:#f4f7fb;padding:11px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E8EDF3;border-radius:14px;border-collapse:separate;overflow:hidden;">
+            <tr><td colspan="2" style="background:#F5F8FC;padding:11px 16px;">
               <table role="presentation" width="100%"><tr>
-                <td style="font-size:11px;font-weight:800;letter-spacing:1px;color:#1f3f75;">VOTRE RECHERCHE AUJOURD'HUI</td>
-                ${res.depuis ? `<td align="right" style="font-size:11.5px;color:#94a3b8;font-weight:600;">depuis le ${echappe(res.depuis)}</td>` : ''}
+                <td style="font-size:11px;font-weight:800;letter-spacing:1px;color:#22497D;">VOTRE RECHERCHE AUJOURD'HUI</td>
+                ${res.depuis ? `<td align="right" style="font-size:11.5px;color:#8FA3BF;font-weight:600;">depuis le ${echappe(res.depuis)}</td>` : ''}
               </tr></table>
             </td></tr>${lignesHtml}${pointsHtml}
           </table>
@@ -408,9 +414,9 @@ export function mailPoint(o: { prenom: string; recherche: any; tokenClient: stri
           }${
             bouton('criteres', 'Mes critères ont changé', `background:#ffffff;color:${BLEU};border:1.5px solid ${BLEU};`)
           }${
-            bouton('trouve', 'J’ai trouvé mon bien', `background:${DORE};color:${BLEU};border:1.5px solid ${DORE};`)
+            bouton('trouve', 'J’ai trouvé mon bien', `background:${DORE};color:${ENCRE};border:1.5px solid ${DORE};`)
           }${
-            bouton('pause', 'J’ai mis ma recherche en pause ou arrêtée', `background:#ffffff;color:#64748b;border:1.5px solid #d5dde8;`)
+            bouton('pause', 'J’ai mis ma recherche en pause ou arrêtée', `background:#ffffff;color:#5B6B80;border:1.5px solid #DCE3EC;`)
           }
           </table>
           <p style="margin:10px 0 22px;">Bonne journée,<br />Alexandre</p>
@@ -422,14 +428,14 @@ export function mailPoint(o: { prenom: string; recherche: any; tokenClient: stri
               <div style="font-size:14px;font-weight:700;color:#ffffff;">Alexandre Rogelet</div>
               <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
-            <td align="right" class="pied-tel" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+            <td align="right" class="pied-tel" style="color:${DORE_CLAIR};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
           </tr></table>
         </td></tr>
       </table>
 
       <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
         <tr><td class="bord" align="center" style="padding:16px 28px 6px;">
-          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+          <div style="font-size:11.5px;color:#8FA3BF;line-height:1.7;">
             Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.<br />Chaque bouton ouvre votre espace personnel, au bon endroit.
           </div>
         </td></tr>

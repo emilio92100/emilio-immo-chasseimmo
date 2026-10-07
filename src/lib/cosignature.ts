@@ -91,7 +91,7 @@ export function finRetractationDe(l: Pick<LigneMandat, 'signe_le'>, cos: Co[], q
 /* ── Les mails ─────────────────────────────────────────────────────────── */
 
 const bouton = (href: string, texte: string) =>
-  `<a href="${href}" style="display:inline-block;margin:6px 0 4px;background:#c9a84c;color:#ffffff;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:800;font-size:15px">${echappe(texte)}</a>`;
+  `<a href="${href}" style="display:inline-block;margin:6px 0 4px;background:#E68B23;color:#13243D;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:800;font-size:15px">${echappe(texte)}</a>`;
 
 /* L'invitation, et ses deux rappels (2 et 7 jours). Ton simple : c'est
    Alexandre qui écrit, de la part de quelqu'un qu'elle connaît. */
@@ -130,7 +130,7 @@ export function mailInvitation(o: { co: Mandant; premier: Mandant; premierLe: st
       ${intro}
       <p>Vous pourrez le relire en entier, vérifier vos informations et signer, en deux minutes&nbsp;:</p>
       <p>${bouton(lien, 'Relire et signer le mandat')}</p>
-      <p style="font-size:13px;color:#64748b">Ce lien est personnel${echappe(valable)}. Le code de signature ne vous est envoyé que lorsque vous le demandez, et il est valable 15 minutes.</p>`,
+      <p style="font-size:13px;color:#5B6B80">Ce lien est personnel${echappe(valable)}. Le code de signature ne vous est envoyé que lorsque vous le demandez, et il est valable 15 minutes.</p>`,
       `Vous n’êtes pas ${concerne} par cet achat ? Ouvrez le lien et choisissez « Je ne suis pas ${concerne} » : ${echappe(p)} et Alexandre seront prévenus.`),
   };
 }
