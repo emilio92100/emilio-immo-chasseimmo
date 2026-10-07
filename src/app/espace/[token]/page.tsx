@@ -287,6 +287,9 @@ export default async function PageEspace({ params, searchParams }: {
     etat: ETAT(b),
     vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || null,
     offre: (b.bien_vente_id && offreParBien.get(b.bien_vente_id)) || null,
+    /* V3.114 : un bien de l'agence. Le visiter ne demande jamais de mandat
+       de recherche (visiteBloquee, /api/espace/retour). */
+    agence: !!b.bien_vente_id,
   }));
 
   /* Les rendez-vous à venir, et eux seuls. Une visite passée n'est plus « votre
