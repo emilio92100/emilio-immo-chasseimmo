@@ -499,6 +499,25 @@ export function acheteursTries(b: BienVente, recherches: RechercheMini[], client
 export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): Acheteur[] {
   return acheteursTries(b, recherches, clients, copies).retenus.filter(fiable);
 }
+/* V3.111 — Un client choisi à la main, dans l'envoi de plusieurs biens
+   (Alexandre : « on ne peut pas choisir un client… il n'y a rien qui
+   explique »). Ni seuil ni écart : c'est lui qui choisit. Sa note quand elle
+   se calcule (le bon type de bien, trois critères comparables), sinon
+   SANS_NOTE : l'écran n'affiche alors pas de pourcentage, l'historique non
+   plus (noteJournal). */
+export const SANS_NOTE = -1;
+export function acheteurChoisi(b: BienVente, r: RechercheMini, c: ClientMini, copies: Copie[]): Acheteur {
+  const corr = typeCompatible(b.donnees?.typeBien, r.type_bien) ? correspondance(versCorrespondance(b), criteresDepuisRecherche(r)) : null;
+  const manque = manqueRecherche(r);
+  return {
+    recherche: r, client: c, corr: corr || { note: SANS_NOTE, lignes: [] },
+    copie: copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null,
+    rang: c.statut === 'prospect' ? 'prospect' : manque.length ? 'incomplet' : 'ok', manque,
+  };
+}
+/* « · correspondance 82 % » dans l'historique du client ; rien sans note. */
+export const noteJournal = (n: number) => (n >= 0 ? ` · correspondance ${n} %` : '');
+
 /* « 4 autres recherches ne sont pas montrées : budget trop court (2), autre secteur (2). » */
 export function phraseEcartes(l: Ecarte[]): string {
   const parListe = l.filter(x => x.acheteur.corr.note >= SEUIL_LISTE);
@@ -848,7 +867,7 @@ export async function envoyerDansEspace(b: BienVente, l: Acheteur[], o: { suite?
       const { error: eJ } = await supabase.from('journal').insert({
         client_id: a.client.id, bien_id: copie.id, recherche_id: a.recherche.id, type: 'envoi_bien',
         titre: 'Bien de l’agence présenté · dans son espace',
-        description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''} · correspondance ${a.corr.note} %`,
+        description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''}${noteJournal(a.corr.note)}`,
         metadata: { bien_vente_id: b.id },
       });
       if (eJ) signalerEchec('Le bien est présenté, mais l’historique du client', eJ.message);
@@ -911,7 +930,7 @@ export async function envoyerParMail(l: { bien: BienVente; acheteur: Acheteur }[
     const { error: eJ } = await supabase.from('journal').insert({
       client_id: x.client.id, recherche_id: x.recherche.id, bien_id: ids[i], type: 'envoi_bien',
       titre: 'Bien de l’agence présenté · mail',
-      description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''} · correspondance ${x.corr.note} %`,
+      description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''}${noteJournal(x.corr.note)}`,
       metadata: { bien_vente_id: b.id },
     });
     if (eJ) signalerEchec('Le mail est parti, mais l’historique du client', eJ.message);
@@ -945,7 +964,7 @@ export async function mettreEnSelection(b: BienVente, l: Acheteur[]): Promise<{ 
       const { error: eJ } = await supabase.from('journal').insert({
         client_id: a.client.id, recherche_id: a.recherche.id, bien_id: id, type: 'rapprochement_bien',
         titre: 'Mis en sélection · un de vos mandats',
-        description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''} · correspondance ${a.corr.note} %`,
+        description: `${b.titre || titreBien(b.donnees)}${b.prix ? ` · ${b.prix.toLocaleString('fr-FR')} €` : ''}${noteJournal(a.corr.note)}`,
         metadata: { bien_vente_id: b.id },
       });
       if (eJ) signalerEchec('Le bien est dans sa sélection, mais l’historique du client', eJ.message);

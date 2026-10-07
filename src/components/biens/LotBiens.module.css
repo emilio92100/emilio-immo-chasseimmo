@@ -61,6 +61,45 @@
 .ignores li { display: flex; flex-direction: column; gap: 1px; }
 .ignores li small, .ignores > span { font-size: 12.5px; color: #92400e; }
 
+/* V3.111 — Choisir un client par son nom. */
+.choix { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 15px; background: #fbfcfe; border: 1px solid #eef1f6; }
+.choixT { display: flex; flex-direction: column; gap: 2px; cursor: default; }
+.choixT b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.choixT span { font-size: 12.5px; line-height: 1.45; color: #64748b; }
+.cherche { position: relative; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 10px 0 12px; border-radius: 11px; border: 1.5px solid #e3e8f0; background: #fff; color: #94a3b8; box-sizing: border-box; }
+.cherche:focus-within { border-color: #c9a84c; color: #a07c28; }
+.chercheIn { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: none; padding: 0; font: 14px 'DM Sans', sans-serif; color: #1a2332; }
+.chercheIn::placeholder { color: #94a3b8; }
+.chercheX { width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; border: none; background: #f1f5f9; color: #64748b; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.chercheX:hover { background: #e2e8f0; color: #1a2332; }
+.res { display: flex; flex-direction: column; gap: 2px; }
+.resL {
+  display: flex; align-items: center; gap: 11px; width: 100%; padding: 7px 8px; border-radius: 12px; border: none; background: none; cursor: pointer; text-align: left;
+  font-family: 'DM Sans', sans-serif; color: #1a2332; animation: entre .25s cubic-bezier(.16, 1, .3, 1) backwards;
+}
+.resL:hover:not(:disabled) { background: #fffcf4; }
+.resL:disabled { cursor: default; opacity: .6; }
+.resAv { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.resTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.resTx b { display: flex; align-items: center; gap: 7px; font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.resTx small { font-size: 12.5px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resAct { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 12.5px; font-weight: 800; color: #a07c28; }
+.resL:disabled .resAct { color: #94a3b8; }
+.resPlus { padding: 4px 8px; font-size: 12.5px; color: #64748b; }
+.resSans { display: flex; align-items: center; gap: 11px; padding: 7px 8px; border-radius: 12px; background: #f8fafc; }
+.resSans .resTx b { color: #64748b; }
+.resSans .resTx small { white-space: normal; }
+.resFiche { flex-shrink: 0; height: 30px; padding: 0 11px; border-radius: 9px; border: 1px solid #e3e8f0; background: #fff; color: #1a2332; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
+.resFiche:hover { border-color: #cfd7e3; }
+.tag { display: inline-flex; align-items: center; height: 19px; padding: 0 7px; border-radius: 99px; background: #f1f5f9; color: #64748b; font: 700 11px 'DM Sans', sans-serif; font-style: normal; white-space: nowrap; }
+.sousT { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 0 12px; }
+.sousT b { font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.sousT span { font-size: 12.5px; color: #64748b; }
+.retirer { margin-left: auto; border: none; background: none; padding: 0; cursor: pointer; font: 700 12px 'DM Sans', sans-serif; color: #94a3b8; }
+.retirer:hover { color: #b91c1c; text-decoration: underline; text-underline-offset: 3px; }
+.pastille[data-ton='libre'] { background: #fff; }
+.pastilleVide { font-size: 12.5px; color: #94a3b8; }
+
 /* Le mail. */
 .champ { display: flex; flex-direction: column; gap: 5px; }
 .champ > span { font-size: 12px; font-weight: 700; color: #4a5568; }
@@ -115,7 +154,9 @@
   .pied { padding: 11px 14px; }
   .piedTx { width: 100%; }
   .pied .btn { flex: 1 1 auto; padding: 0 10px; }
-  .in { font-size: 16px; }
+  .in, .chercheIn { font-size: 16px; }
+  .resTx small { white-space: normal; }
+  .choix { padding: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .voile, .fen, .ligne { animation: none; }

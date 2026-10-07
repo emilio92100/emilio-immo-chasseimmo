@@ -18,6 +18,13 @@
          relu avant de partir (envoyerParMail, le chemin du mail de sa fiche).
      Chacun reçoit les biens qui lui correspondent (70 % et plus, ou dès
      50 % si on coche « en partie ») et qu'il n'a pas déjà reçus.
+     V3.111 (Alexandre : « on ne peut pas choisir un client… il n'y a rien
+     qui explique ») : en haut, « Cherche un client par son nom » — n'importe
+     quel client qui a une recherche ouverte, même si la note ne le propose
+     pas. Lui reçoit TOUS les biens cochés (sauf le sien), sans seuil : c'est
+     Alexandre qui choisit. Les biens à suivre ou en estimation partent aussi
+     (« même quand c'est en estimation »), avec une ligne qui le rappelle ;
+     seuls ceux en pause, vendus ou retirés restent de côté.
    · Changer d'étape : les mêmes passages que le menu d'étape de la fiche,
      ceux qui ne demandent qu'une raison (FenRaison) — À suivre, Estimation,
      En pause, Retiré. Un bien qui demande une décision (une offre en cours,
@@ -34,11 +41,12 @@ import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
 import { visitePasseeParis } from '@/lib/visites';
 import { avantMandat, etapeDe, titreBien, villeAffichee, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import { CaseLigne, type Avancement } from '@/components/shared/Selection';
-import { Avatar, modeAcheteurs } from './AcheteursBien';
+import AvatarContact from '@/components/contacts/AvatarContact';
+import { Avatar, modeAcheteurs, teinte } from './AcheteursBien';
 import { RAISONS_ETAPE, avantRdv } from './FenetresBien';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursPour, changerEtape, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
-  instantPasse, mettreEnSelection, nomClient, solderDemandesDuBien, suiteEnvoi, type Acheteur, type Copie, type ListeBiens,
+  SEUIL_CORRESPOND, SEUIL_LISTE, acheteurChoisi, acheteursPour, changerEtape, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
+  instantPasse, mettreEnSelection, nomClient, solderDemandesDuBien, suiteEnvoi, type Acheteur, type ClientMini, type Copie, type ListeBiens, type RechercheMini,
 } from './outils';
 import l from './LotBiens.module.css';
 
@@ -56,15 +64,29 @@ const presente = (c: Copie | null) => !!c && c.etape !== 'selection';
 const mailDe = (a: Acheteur) => (a.client.emails || []).find(x => !!x && x.includes('@')) || '';
 
 type Item = { bien: BienVente; acheteur: Acheteur };
-type Ligne = { cle: string; acheteur: Acheteur; items: Item[] };
+/* `manuel` : un client choisi par son nom (V3.111), pas proposé par la note. */
+type Ligne = { cle: string; acheteur: Acheteur; items: Item[]; manuel?: boolean };
 type Quoi = 'selection' | 'espace' | 'mail';
 
 /* Ce que cet acheteur recevrait. Sélection : ce qui n'est pas encore dans
-   son dossier ; espace et mail : ce qu'il n'a pas encore reçu. */
+   son dossier ; espace et mail : ce qu'il n'a pas encore reçu. Un client
+   choisi à la main reçoit tout, sans seuil. */
 function aEnvoyer(x: Ligne, quoi: Quoi, partiels: boolean): Item[] {
   const seuil = partiels ? SEUIL_LISTE : SEUIL_CORRESPOND;
-  return x.items.filter(i => i.acheteur.corr.note >= seuil && (quoi === 'selection' ? !i.acheteur.copie : !presente(i.acheteur.copie)));
+  return x.items.filter(i => (x.manuel || i.acheteur.corr.note >= seuil) && (quoi === 'selection' ? !i.acheteur.copie : !presente(i.acheteur.copie)));
 }
+
+/* La recherche d'un client par son nom : sans accents ni majuscules. */
+const plat = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const STATUT_COURT: Record<string, string> = { prospect: 'Prospect', suspendu: 'En pause', bien_trouve: 'Bien trouvé', perdu: 'Perdu', offre_ecrite: 'Offre écrite' };
+/* « Recherche principale · jusqu'à 650 000 € » : de quoi reconnaître une recherche. */
+function recherchePhrase(r: RechercheMini, plusieurs: boolean): string {
+  const nom = String(r.nom || '').trim();
+  return [plusieurs || nom ? nom || 'Une recherche' : '', r.type_bien ? String(r.type_bien) : '', r.budget_max ? `jusqu’à ${euros(r.budget_max)}` : 'sans budget'].filter(Boolean).join(' · ');
+}
+
+/* Un pourcentage, ou rien quand la note ne se calcule pas (client choisi à la main). */
+const pct = (n: number) => (n >= 0 ? `${n} %` : '');
 
 /* Le texte du mail : le modèle « Sélection de biens » des Paramètres s'il est
    rempli, sinon un texte qui convient à un bien comme à plusieurs. Les
@@ -96,18 +118,24 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   onFait: () => void;
   onFiche: (clientId: string) => void;
 }) {
-  const enVente = useMemo(() => biens.filter(b => modeAcheteurs(b.etape) === 'vente'), [biens]);
-  const ecartes = biens.filter(b => !enVente.includes(b)).map(b => {
-    const m = modeAcheteurs(b.etape);
-    return { nom: nomBien(b), pourquoi: m === 'avant' ? `${etapeDe(b.etape).lib} : l’envoi s’ouvre au mandat.` : m === 'pause' ? 'Vente en pause : l’envoi reprend avec elle.' : 'Il n’est plus en vente.' };
-  });
+  /* En vente, mais aussi à suivre ou en estimation (V3.111) ; en pause, vendu,
+     retiré : de côté. */
+  const envoyables = useMemo(() => biens.filter(b => ['vente', 'avant'].includes(modeAcheteurs(b.etape))), [biens]);
+  const avantMandat = envoyables.filter(b => modeAcheteurs(b.etape) === 'avant');
+  const ecartes = biens.filter(b => !envoyables.includes(b)).map(b => ({
+    nom: nomBien(b), pourquoi: modeAcheteurs(b.etape) === 'pause' ? 'Vente en pause : l’envoi reprend avec elle.' : 'Il n’est plus en vente.',
+  }));
+  /* Les clients choisis par leur nom (des recherches), le dernier en tête. */
+  const [manuels, setManuels] = useState<string[]>([]);
+  const [q, setQ] = useState('');
+
   /* Un acheteur (une recherche) par ligne, et les biens qui lui correspondent. */
   const lignes = useMemo(() => {
     const m = new Map<string, Ligne>();
-    for (const b of enVente) {
+    for (const b of envoyables) {
       const copies = liste.copies.filter(c => c.bien_vente_id === b.id);
       for (const a of acheteursPour(b, liste.recherches, liste.clients, copies)) {
-        if (a.corr.note < SEUIL_LISTE) continue;
+        if (a.corr.note < SEUIL_LISTE || manuels.includes(a.recherche.id)) continue;
         const x = m.get(a.recherche.id) || { cle: a.recherche.id, acheteur: a, items: [] };
         x.items.push({ bien: b, acheteur: a });
         m.set(a.recherche.id, x);
@@ -115,8 +143,44 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     }
     const bons = (x: Ligne) => x.items.filter(i => i.acheteur.corr.note >= SEUIL_CORRESPOND).length;
     const meilleure = (x: Ligne) => Math.max(...x.items.map(i => i.acheteur.corr.note));
-    return [...m.values()].sort((p, q) => bons(q) - bons(p) || meilleure(q) - meilleure(p));
-  }, [enVente, liste]);
+    return [...m.values()].sort((p, q2) => bons(q2) - bons(p) || meilleure(q2) - meilleure(p));
+  }, [envoyables, liste, manuels]);
+
+  /* Ceux qu'Alexandre a choisis : tous les biens, sauf le sien s'il en est le propriétaire. */
+  const choisisMain = useMemo(() => manuels.map(id => {
+    const r = liste.recherches.find(x => x.id === id);
+    const c = r ? liste.clients[r.client_id] : undefined;
+    if (!r || !c || !envoyables.length) return null;
+    const items = envoyables.filter(b => b.client_id !== c.id).map(b => ({ bien: b, acheteur: acheteurChoisi(b, r, c, liste.copies.filter(y => y.bien_vente_id === b.id)) }));
+    return { cle: id, acheteur: items[0]?.acheteur || acheteurChoisi(envoyables[0], r, c, []), items, manuel: true } as Ligne;
+  }).filter((x): x is Ligne => !!x), [manuels, liste, envoyables]);
+
+  /* Les clients qui ont une recherche ouverte, pour la recherche par nom. */
+  const parClient = useMemo(() => {
+    const m = new Map<string, RechercheMini[]>();
+    for (const r of liste.recherches) {
+      if (r.active === false) continue;
+      m.set(r.client_id, [...(m.get(r.client_id) || []), r]);
+    }
+    return m;
+  }, [liste.recherches]);
+  const trouves = useMemo(() => {
+    const mots = plat(q.trim()).split(/\s+/).filter(Boolean);
+    if (!mots.length) return null;
+    const avec: { r: RechercheMini; c: ClientMini; n: number }[] = [];
+    const sans: ClientMini[] = [];
+    for (const c of Object.values(liste.clients)) {
+      const foin = plat(`${c.prenom || ''} ${c.nom || ''} ${(c.emails || []).join(' ')}`);
+      if (!mots.every(x => foin.includes(x))) continue;
+      const rs = parClient.get(c.id) || [];
+      if (rs.length) rs.forEach(r => avec.push({ r, c, n: rs.length }));
+      else sans.push(c);
+    }
+    const nom = (c: ClientMini) => plat(nomClient(c));
+    avec.sort((a, b) => nom(a.c).localeCompare(nom(b.c), 'fr'));
+    sans.sort((a, b) => nom(a).localeCompare(nom(b), 'fr'));
+    return { avec: avec.slice(0, 6), deplus: Math.max(0, avec.length - 6), sans: sans.slice(0, 3) };
+  }, [q, liste.clients, parClient]);
 
   const [partiels, setPartiels] = useState(false);
   const [choisis, setChoisis] = useState<Set<string>>(() => new Set(lignes.filter(x => aEnvoyer(x, 'mail', false).length).map(x => x.cle)));
@@ -126,17 +190,28 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const [avance, setAvance] = useState<Avancement | null>(null);
   const [bilan, setBilan] = useState('');
 
-  const vues = lignes.filter(x => partiels || x.items.some(i => i.acheteur.corr.note >= SEUIL_CORRESPOND));
+  const auto = lignes.filter(x => partiels || x.items.some(i => i.acheteur.corr.note >= SEUIL_CORRESPOND));
+  const vues = [...choisisMain, ...auto];
   /* Des biens qui ne correspondent qu'en partie (50 à 69 %) : la case pour les ajouter. */
   const aPartiels = lignes.some(x => x.items.some(i => i.acheteur.corr.note < SEUIL_CORRESPOND));
   const coches = vues.filter(x => choisis.has(x.cle));
   const pour = (quoi: Quoi) => coches.filter(x => aEnvoyer(x, quoi, partiels).length);
   const total = (quoi: Quoi) => pour(quoi).reduce((t, x) => t + aEnvoyer(x, quoi, partiels).length, 0);
   const basculer = (k: string) => setChoisis(c => { const n = new Set(c); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-  const possibles = vues.filter(x => aEnvoyer(x, 'selection', partiels).length || aEnvoyer(x, 'mail', partiels).length);
+  const possibles = auto.filter(x => aEnvoyer(x, 'selection', partiels).length || aEnvoyer(x, 'mail', partiels).length);
   const tous = possibles.length > 0 && possibles.every(x => choisis.has(x.cle));
   const fini = !!avance && avance.fait + avance.erreurs.length >= avance.total;
   const occupe = !!en && !fini;
+
+  function prendre(id: string) {
+    setManuels(m => [id, ...m.filter(x => x !== id)]);
+    setChoisis(c => new Set(c).add(id));
+    setQ('');
+  }
+  function lacher(id: string) {
+    setManuels(m => m.filter(x => x !== id));
+    setChoisis(c => { const n = new Set(c); n.delete(id); return n; });
+  }
 
   /* Le texte du mail : les réglages des Paramètres, lus une fois. */
   useEffect(() => {
@@ -194,9 +269,47 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     if (av.fait) onFait();
   }
 
-  const titre = enVente.length > 1 || (!enVente.length && biens.length > 1) ? `Envoyer ${enVente.length || biens.length} biens à des acheteurs` : 'Envoyer ce bien à des acheteurs';
+  const titre = envoyables.length > 1 || (!envoyables.length && biens.length > 1) ? `Envoyer ${envoyables.length || biens.length} biens à des acheteurs` : 'Envoyer ce bien à des acheteurs';
   const sansMail = pour('mail').filter(x => !mailDe(x.acheteur));
   const avecMail = pour('mail').filter(x => mailDe(x.acheteur));
+
+  /* Une ligne d'acheteur : proposé par la note, ou choisi par son nom. */
+  const ligneDe = (x: Ligne, rang: number) => {
+    const items = x.manuel || partiels ? x.items : x.items.filter(i => i.acheteur.corr.note >= SEUIL_CORRESPOND);
+    const n = aEnvoyer(x, 'mail', partiels).length;
+    const nSel = aEnvoyer(x, 'selection', partiels).length;
+    const rien = !n && !nSel;
+    const on = choisis.has(x.cle) && !rien;
+    const a = x.acheteur;
+    const statut = STATUT_COURT[String(a.client.statut || '')];
+    return (
+      <div key={x.cle} className={l.ligne} data-on={on ? 'oui' : 'non'} data-rien={rien ? 'oui' : undefined} style={{ animationDelay: `${Math.min(rang, 8) * 0.035}s` }}>
+        {rien ? <span className={l.caseVide} title={x.items.length ? 'Il a déjà tous ces biens' : 'C’est son bien'} /> : <CaseLigne on={on} onBasculer={() => basculer(x.cle)} titre={on ? `Décocher ${nomClient(a.client)}` : `Cocher ${nomClient(a.client)}`} />}
+        <Avatar acheteur={a} />
+        <div className={l.qui}>
+          <div className={l.quiL1}>
+            <button type="button" className={l.nom} onClick={() => onFiche(a.client.id)}>{nomClient(a.client)}</button>
+            {statut && <span className={l.tag}>{statut}</span>}
+            {a.recherche.budget_max ? <span className={l.budget}>{`jusqu’à ${euros(a.recherche.budget_max)}`}</span> : null}
+            {x.manuel && <button type="button" className={l.retirer} onClick={() => lacher(x.cle)} title="Le retirer de la liste">Retirer</button>}
+          </div>
+          <div className={l.pastilles}>
+            {items.length ? items.map(i => {
+              const note = i.acheteur.corr.note;
+              const deja = presente(i.acheteur.copie);
+              return (
+                <span key={i.bien.id} className={l.pastille} data-ton={deja ? 'deja' : note >= SEUIL_CORRESPOND ? 'bon' : note >= SEUIL_LISTE ? 'partiel' : 'libre'}
+                  title={deja ? 'Il l’a déjà reçu' : i.acheteur.copie ? 'Déjà dans sa sélection, pas encore envoyé' : note >= 0 ? `Correspond à ${note} % de sa recherche` : 'Pas de note : sa recherche ne se compare pas à ce bien'}>
+                  {pct(note) ? <b>{pct(note)}</b> : null}{bienCourt(i.bien)}{deja ? ' · déjà reçu' : i.acheteur.copie ? ' · en sélection' : ''}
+                </span>
+              );
+            }) : <span className={l.pastilleVide}>{'C’est le propriétaire : rien à lui envoyer.'}</span>}
+          </div>
+        </div>
+        <span className={l.combien}>{rien ? (x.items.length ? 'Déjà reçu' : '—') : n ? (n > 1 ? `${n} biens` : '1 bien') : 'En sélection'}</span>
+      </div>
+    );
+  };
 
   const fen = (
     <div className={l.voile} onMouseDown={e => { if (e.target === e.currentTarget && !occupe) onFermer(); }}>
@@ -205,7 +318,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
           <span className={l.teteIc}><Ic n={etape === 'mail' ? 'mail' : 'envoyer'} t={20} /></span>
           <div className={l.teteTx}>
             <h2>{etape === 'mail' && !avance ? (avecMail.length > 1 ? `${avecMail.length} mails, un par acheteur` : 'Le mail') : titre}</h2>
-            <p>{enVente.map(bienCourt).join(' · ') || 'Aucun bien en vente dans la sélection.'}</p>
+            <p>{envoyables.map(bienCourt).join(' · ') || 'Aucun bien à envoyer dans la sélection.'}</p>
           </div>
           <button type="button" className={l.fermer} aria-label="Fermer" disabled={occupe} onClick={onFermer}><Ic n="croix" t={15} e={2.3} /></button>
         </div>
@@ -251,55 +364,95 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                   <ul>{ecartes.map((x, i) => <li key={i}><span>{x.nom}</span><small>{x.pourquoi}</small></li>)}</ul>
                 </div>
               )}
-              {lignes.length === 0 ? (
+              {!envoyables.length ? (
                 <div className={l.vide}>
                   <span className={l.videIc}><Ic n="groupe" t={24} /></span>
-                  <b>{enVente.length ? 'Aucune recherche active ne correspond à ces biens.' : 'Aucun de ces biens n’est en vente.'}</b>
-                  <span>{enVente.length ? 'La liste se remplit dès qu’un acheteur est suivi, ou que le prix change.' : 'L’envoi aux acheteurs s’ouvre au mandat.'}</span>
+                  <b>{'Aucun de ces biens n’est à envoyer.'}</b>
+                  <span>{'Un bien en pause, vendu ou retiré ne part plus chez les acheteurs.'}</span>
                 </div>
               ) : (
                 <>
-                  <div className={l.barreHaut}>
-                    <CaseLigne on={tous} onBasculer={() => setChoisis(tous ? new Set() : new Set(possibles.map(x => x.cle)))} titre={tous ? 'Tout décocher' : 'Tout cocher'} />
-                    <span className={l.barreHautTx}><b>{vues.length}</b>{vues.length > 1 ? ' acheteurs correspondent' : ' acheteur correspond'}</span>
-                    {aPartiels && (
-                      <label className={l.partiels}>
-                        <input type="checkbox" checked={partiels} onChange={e => setPartiels(e.target.checked)} />
-                        <span>{'Aussi « en partie » (50 à 69 %)'}</span>
-                      </label>
+                  {avantMandat.length > 0 && (
+                    <p className={l.aide}><Ic n="info" t={14} /><span>{`${avantMandat.map(bienCourt).join(', ')} : pas encore sous mandat. ${avantMandat.length > 1 ? 'Ils partent' : 'Il part'} quand même, comme les autres${avantMandat.some(b => !b.prix) ? ', sans prix tant qu’il n’est pas fixé' : ''}.`}</span></p>
+                  )}
+
+                  {/* Choisir un client soi-même (V3.111). */}
+                  <div className={l.choix}>
+                    <label className={l.choixT} htmlFor="lot-client">
+                      <b>{lignes.length ? 'Un autre client ?' : 'À qui l’envoyer ?'}</b>
+                      <span>{'N’importe quel client qui a une recherche ouverte, même si sa note ne le propose pas.'}</span>
+                    </label>
+                    <div className={l.cherche}>
+                      <Ic n="loupe" t={16} />
+                      <input id="lot-client" className={l.chercheIn} value={q} placeholder="Cherche un client par son nom" autoComplete="off" spellCheck={false}
+                        onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && q) { e.stopPropagation(); setQ(''); } }} />
+                      {q && <button type="button" className={l.chercheX} aria-label="Effacer" onClick={() => setQ('')}><Ic n="croix" t={12} e={2.4} /></button>}
+                    </div>
+                    {trouves && (
+                      <div className={l.res}>
+                        {trouves.avec.map(({ r, c, n }) => {
+                          const pris = manuels.includes(r.id);
+                          const proprio = envoyables.every(b => b.client_id === c.id);
+                          const statut = STATUT_COURT[String(c.statut || '')];
+                          const tt = teinte(c.id);
+                          return (
+                            <button key={r.id} type="button" className={l.resL} disabled={pris || proprio} onClick={() => prendre(r.id)}>
+                              <AvatarContact c={c} teinte={{ bg: tt.f, fg: tt.t }} className={l.resAv} libre />
+                              <span className={l.resTx}>
+                                <b>{nomClient(c)}{statut ? <i className={l.tag}>{statut}</i> : null}</b>
+                                <small>{proprio ? 'C’est le propriétaire de ce bien.' : recherchePhrase(r, n > 1)}</small>
+                              </span>
+                              <span className={l.resAct}>{pris ? 'Ajouté' : proprio ? '' : <><Ic n="plus" t={14} e={2.4} />{'Ajouter'}</>}</span>
+                            </button>
+                          );
+                        })}
+                        {trouves.deplus > 0 && <span className={l.resPlus}>{`Et ${trouves.deplus} de plus : précise le nom.`}</span>}
+                        {trouves.sans.map(c => (
+                          <div key={c.id} className={l.resSans}>
+                            <span className={l.resTx}>
+                              <b>{nomClient(c)}</b>
+                              <small>{'Pas de recherche ouverte : ouvre-lui une recherche depuis sa fiche, puis reviens ici.'}</small>
+                            </span>
+                            <button type="button" className={l.resFiche} onClick={() => onFiche(c.id)}>Sa fiche</button>
+                          </div>
+                        ))}
+                        {!trouves.avec.length && !trouves.sans.length && <span className={l.resPlus}>{`Personne à ce nom.`}</span>}
+                      </div>
                     )}
                   </div>
-                  <div className={l.lignes}>
-                    {vues.map((x, rang) => {
-                      const items = partiels ? x.items : x.items.filter(i => i.acheteur.corr.note >= SEUIL_CORRESPOND);
-                      const n = aEnvoyer(x, 'mail', partiels).length;
-                      const nSel = aEnvoyer(x, 'selection', partiels).length;
-                      const rien = !n && !nSel;
-                      const on = choisis.has(x.cle) && !rien;
-                      const a = x.acheteur;
-                      return (
-                        <div key={x.cle} className={l.ligne} data-on={on ? 'oui' : 'non'} data-rien={rien ? 'oui' : undefined} style={{ animationDelay: `${Math.min(rang, 8) * 0.035}s` }}>
-                          {rien ? <span className={l.caseVide} title="Il a déjà tous ces biens" /> : <CaseLigne on={on} onBasculer={() => basculer(x.cle)} titre={on ? `Décocher ${nomClient(a.client)}` : `Cocher ${nomClient(a.client)}`} />}
-                          <Avatar acheteur={a} />
-                          <div className={l.qui}>
-                            <div className={l.quiL1}>
-                              <button type="button" className={l.nom} onClick={() => onFiche(a.client.id)}>{nomClient(a.client)}</button>
-                              {a.recherche.budget_max ? <span className={l.budget}>{`jusqu’à ${euros(a.recherche.budget_max)}`}</span> : null}
-                            </div>
-                            <div className={l.pastilles}>
-                              {items.map(i => (
-                                <span key={i.bien.id} className={l.pastille} data-ton={presente(i.acheteur.copie) ? 'deja' : i.acheteur.corr.note >= SEUIL_CORRESPOND ? 'bon' : 'partiel'}
-                                  title={presente(i.acheteur.copie) ? 'Il l’a déjà reçu' : i.acheteur.copie ? 'Déjà dans sa sélection, pas encore envoyé' : `Correspond à ${i.acheteur.corr.note} %`}>
-                                  <b>{`${i.acheteur.corr.note} %`}</b>{bienCourt(i.bien)}{presente(i.acheteur.copie) ? ' · déjà reçu' : i.acheteur.copie ? ' · en sélection' : ''}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <span className={l.combien}>{rien ? 'Déjà reçu' : n ? (n > 1 ? `${n} biens` : '1 bien') : 'En sélection'}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+
+                  {choisisMain.length > 0 && (
+                    <>
+                      <div className={l.sousT}><b>{choisisMain.length > 1 ? 'Choisis par toi' : 'Choisi par toi'}</b><span>{'Tous les biens lui partent, sans regarder la note.'}</span></div>
+                      <div className={l.lignes}>{choisisMain.map((x, i) => ligneDe(x, i))}</div>
+                    </>
+                  )}
+
+                  {lignes.length === 0 ? (
+                    choisisMain.length ? (
+                      <p className={l.aide}><Ic n="info" t={14} /><span>{`Aucun autre acheteur ne correspond à ${envoyables.length > 1 ? 'ces biens' : 'ce bien'}.`}</span></p>
+                    ) : (
+                      <div className={l.vide}>
+                        <span className={l.videIc}><Ic n="groupe" t={24} /></span>
+                        <b>{`Aucun acheteur ne correspond à ${envoyables.length > 1 ? 'ces biens' : 'ce bien'}.`}</b>
+                        <span>{'La note regarde les clients actifs dont la recherche dit son budget et son secteur. Pour l’envoyer à quelqu’un d’autre, cherche-le juste au-dessus.'}</span>
+                      </div>
+                    )
+                  ) : (
+                    <>
+                      <div className={l.barreHaut}>
+                        <CaseLigne on={tous} onBasculer={() => setChoisis(c => { const n = new Set(c); for (const x of possibles) { if (tous) n.delete(x.cle); else n.add(x.cle); } return n; })} titre={tous ? 'Tout décocher' : 'Tout cocher'} />
+                        <span className={l.barreHautTx}><b>{auto.length}</b>{auto.length > 1 ? ' acheteurs correspondent' : ' acheteur correspond'}</span>
+                        {aPartiels && (
+                          <label className={l.partiels}>
+                            <input type="checkbox" checked={partiels} onChange={e => setPartiels(e.target.checked)} />
+                            <span>{'Aussi « en partie » (50 à 69 %)'}</span>
+                          </label>
+                        )}
+                      </div>
+                      <div className={l.lignes}>{auto.map((x, i) => ligneDe(x, i))}</div>
+                    </>
+                  )}
                 </>
               )}
             </>
@@ -320,7 +473,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
             </>
           ) : (
             <>
-              <span className={l.piedTx}>{coches.length ? `${coches.length > 1 ? `${coches.length} acheteurs choisis` : '1 acheteur choisi'}` : 'Coche les acheteurs'}</span>
+              <span className={l.piedTx}>{coches.length ? `${coches.length > 1 ? `${coches.length} acheteurs choisis` : '1 acheteur choisi'}` : !envoyables.length ? '' : lignes.length ? 'Coche les acheteurs' : 'Cherche un client'}</span>
               <button type="button" className={l.btn} disabled={!total('selection')} onClick={() => { void lancer('selection'); }}
                 title="Les biens entrent dans leur dossier, à l’étape Sélection. Rien ne part : ils ne les voient pas encore.">
                 <Ic n="liste" t={15} />Mettre en sélection
