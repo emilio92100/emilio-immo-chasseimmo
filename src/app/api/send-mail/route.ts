@@ -5,6 +5,7 @@ import { nommerRecherche } from '@/lib/espace';
 import { tauxDe, forfaitDe, honorairesCourt, honorairesDuPrix, DUREE, RETRACTATION_JOURS, type Honoraires } from '@/lib/mandat';
 import { ecritServeur } from '@/lib/ecritures';
 import { personnaliser, conseillerDe } from '@/lib/mail-variables';
+import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,9 +19,13 @@ const FROM_EMAIL = process.env.MAILJET_FROM_EMAIL || 'arogelet@emilio-immo.com';
 const FROM_NAME = process.env.MAILJET_FROM_NAME || 'Alexandre ROGELET — Emilio Immobilier';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://emilio-immo-chasseimmo.vercel.app';
 
-const BLEU = '#1a2332';
-const DORE = '#c9a84c';
-const FOND = '#f5f1ea';
+/* V3.118 : les couleurs du site emilio-immo.com (src/lib/mail-charte.ts). */
+const BLEU = '#22497D';
+const DORE = '#E68B23';
+const ENCRE = '#13243D';
+const DORE_TEXTE = '#A95808';
+const DORE_CLAIR = '#F2B266';
+const FOND = '#FFF6EC';
 
 interface BienLite {
   id: string;
@@ -120,7 +125,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
     return '';
   };
 
-  const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #eee5d6;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
+  const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #E8EDF3;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
 
   function singleBloc(b: BienLite): string {
     const photo = photoOf(b);
@@ -132,16 +137,16 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
     if (b.nb_pieces) cells.push({ v: `${b.nb_pieces}`, l: b.nb_pieces > 1 ? 'Pièces' : 'Pièce' });
     if (b.nb_chambres) cells.push({ v: `${b.nb_chambres}`, l: b.nb_chambres > 1 ? 'Chambres' : 'Chambre' });
     if (etageTxt) cells.push({ v: etageTxt, l: 'Étage' });
-    const statsRow = cells.map((c, i) => `${i > 0 ? '<td width="1" style="background:#f0ece3;"></td>' : ''}<td align="center" style="padding:10px 6px;"><div style="font-size:17px;font-weight:700;color:${BLEU};">${c.v}</div><div style="font-size:11px;color:#9aa6ba;margin-top:2px;">${c.l}</div></td>`).join('');
+    const statsRow = cells.map((c, i) => `${i > 0 ? '<td width="1" style="background:#E8EDF3;"></td>' : ''}<td align="center" style="padding:10px 6px;"><div style="font-size:17px;font-weight:700;color:${BLEU};">${c.v}</div><div style="font-size:11px;color:#8FA3BF;margin-top:2px;">${c.l}</div></td>`).join('');
     return `
       ${photo ? `<tr><td style="padding:0;"><img src="${escapeHtml(photo)}" alt="" width="600" style="width:100%;max-width:600px;height:auto;display:block;border:0;" /></td></tr>` : ''}
       <tr><td class="bord" style="padding:24px 28px 8px;">
         <div style="font-size:20px;font-weight:700;color:${BLEU};line-height:1.3;margin-bottom:6px;">${escapeHtml(titreOf(b))}</div>
-        ${loc ? `<div style="font-size:13px;color:#7a879b;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
+        ${loc ? `<div style="font-size:13px;color:#8FA3BF;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
       </td></tr>
-      ${statsRow ? `<tr><td class="bord" style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0ece3;border-bottom:1px solid #f0ece3;"><tr>${statsRow}</tr></table></td></tr>` : ''}
+      ${statsRow ? `<tr><td class="bord" style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E8EDF3;border-bottom:1px solid #E8EDF3;"><tr>${statsRow}</tr></table></td></tr>` : ''}
       <tr><td class="bord" style="padding:18px 28px 6px;">
-        ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE};font-weight:600;margin:6px 0 18px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
+        ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE_TEXTE};font-weight:600;margin:6px 0 18px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
         <a href="${lienBien(b, token, rech)}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
       </td></tr>`;
   }
@@ -160,10 +165,10 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
           </td>
           <td class="mibody" style="vertical-align:top;padding-left:16px;">
             <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:3px;">${escapeHtml(titreOf(b))}</div>
-            ${loc ? `<div style="font-size:12px;color:#7a879b;margin-bottom:6px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
-            ${carac ? `<div style="font-size:12px;color:#5a6a85;margin-bottom:8px;">${escapeHtml(carac)}</div>` : ''}
+            ${loc ? `<div style="font-size:12px;color:#8FA3BF;margin-bottom:6px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
+            ${carac ? `<div style="font-size:12px;color:#5B6B80;margin-bottom:8px;">${escapeHtml(carac)}</div>` : ''}
             ${prix ? `<div style="font-size:17px;font-weight:800;color:${BLEU};margin-bottom:8px;">${fmt(prix)} €</div>` : ''}
-            <a href="${lienBien(b, token, rech)}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
+            <a href="${lienBien(b, token, rech)}" style="color:${DORE_TEXTE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
           </td>
         </tr></table>
       </td></tr>
@@ -182,22 +187,22 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
         : `<div style="width:60px;height:46px;background:${BLEU};border-radius:8px;"></div>`}</td>`;
     }).join('');
     const plus = n > 4
-      ? `<td width="60"><div style="width:60px;height:46px;line-height:46px;text-align:center;background:#efe7d6;color:${BLEU};border-radius:8px;font-size:14px;font-weight:800;">+${n - 4}</div></td>`
+      ? `<td width="60"><div style="width:60px;height:46px;line-height:46px;text-align:center;background:#E8EFF8;color:${BLEU};border-radius:8px;font-size:14px;font-weight:800;">+${n - 4}</div></td>`
       : '';
     /* Sans lien d'espace (dossier pas encore repris), on liste les suivants
        avec leur fiche publique : le client ne perd aucun bien. */
     const sansEspace = lien ? '' : reste.map(b => {
       const prix = prixOf(b);
-      return `<div style="font-size:13px;color:#3a4a5f;margin-top:8px;"><a href="${lienBienPublic(b.id)}" style="color:${BLEU};font-weight:700;text-decoration:none;">${escapeHtml(titreOf(b))}</a>${prix ? ` · ${fmt(prix)} €` : ''}</div>`;
+      return `<div style="font-size:13px;color:#46566B;margin-top:8px;"><a href="${lienBienPublic(b.id)}" style="color:${BLEU};font-weight:700;text-decoration:none;">${escapeHtml(titreOf(b))}</a>${prix ? ` · ${fmt(prix)} €` : ''}</div>`;
     }).join('');
     return `
       ${hairline}
       <tr><td class="bord" style="padding:20px 28px 26px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fbf8f2;border:1px solid #ecdcb4;border-radius:14px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F8FC;border:1px solid #F7D5B0;border-radius:14px;">
           <tr><td style="padding:18px 20px 20px;">
-            <div style="font-size:10.5px;letter-spacing:2px;color:${DORE};font-weight:700;">DANS VOTRE ESPACE</div>
+            <div style="font-size:10.5px;letter-spacing:2px;color:${DORE_TEXTE};font-weight:700;">DANS VOTRE ESPACE</div>
             <div style="font-size:18px;font-weight:800;color:${BLEU};margin-top:6px;line-height:1.3;">${n === 1 ? 'Un autre bien vous attend' : `${n} autres biens vous attendent`}</div>
-            <div style="font-size:13px;color:#5a6a85;line-height:1.6;margin-top:5px;">Pour que ce message reste agréable à lire, les ${BIENS_PAR_MAIL} premiers sont ci-dessus. ${n === 1 ? 'Le suivant est' : 'Les suivants sont'} dans votre espace, avec toutes leurs photos et leur fiche complète.</div>
+            <div style="font-size:13px;color:#5B6B80;line-height:1.6;margin-top:5px;">Pour que ce message reste agréable à lire, les ${BIENS_PAR_MAIL} premiers sont ci-dessus. ${n === 1 ? 'Le suivant est' : 'Les suivants sont'} dans votre espace, avec toutes leurs photos et leur fiche complète.</div>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;"><tr>${vignettes}${plus}</tr></table>
             ${lien
               ? `<a href="${lien}" style="display:block;margin-top:16px;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:14px;border-radius:11px;font-size:15px;font-weight:700;">${n === 1 ? 'Découvrir l’autre bien' : `Découvrir les ${n} autres biens`} &rarr;</a>`
@@ -231,6 +236,7 @@ function coque(o: { etiquette: string; corpsHtml: string; contenu: string; token
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Emilio Immobilier</title>
+${LIEN_POLICE_MAIL}
 <style>
   @media only screen and (max-width:600px) {
     .sheet { width:100% !important; }
@@ -248,24 +254,24 @@ function coque(o: { etiquette: string; corpsHtml: string; contenu: string; token
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+<body style="margin:0;padding:0;background:#E6EDF6;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E6EDF6;">
     <tr><td align="center" class="cadre" style="padding:26px 12px;">
 
       <!-- FEUILLE UNIQUE -->
-      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #DCE3EC;border-radius:18px;overflow:hidden;">
 
         <!-- En-tête -->
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
             <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
-            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">${etiquette}</td>
+            <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">${etiquette}</td>
           </tr></table>
         </td></tr>
 
         <!-- Message -->
         <tr><td class="bord" style="padding:26px 28px 4px;">
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.7;">${corpsHtml}</div>
+          <div style="font-size:14.5px;color:#46566B;line-height:1.7;">${corpsHtml}</div>
         </td></tr>
 
         ${contenu ? softDivider : ''}
@@ -281,7 +287,7 @@ function coque(o: { etiquette: string; corpsHtml: string; contenu: string; token
               <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
               <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
-            <td align="right" class="pied-tel" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+            <td align="right" class="pied-tel" style="color:${DORE_CLAIR};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
           </tr></table>
         </td></tr>
 
@@ -293,10 +299,10 @@ function coque(o: { etiquette: string; corpsHtml: string; contenu: string; token
            tout. Mieux vaut qu'il le dise, et qu'Alexandre l'apprenne. -->
       <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
         <tr><td class="bord" align="center" style="padding:16px 28px 6px;">
-          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+          <div style="font-size:11.5px;color:#8FA3BF;line-height:1.7;">
             Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
               lienFin(token)
-                ? `<br/><a href="${lienFin(token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                ? `<br/><a href="${lienFin(token)}" style="color:#8FA3BF;text-decoration:underline;">Je ne suis plus en recherche</a>`
                 : ''
             }
           </div>
@@ -334,7 +340,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
   /* L'emoji posé dans le même rond ivoire bordé d'or que dans l'espace. */
   const rond = (e: string, t = 44, police = 20) => `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td align="center" valign="middle" width="${t}" height="${t}" style="width:${t}px;height:${t}px;background:#fdfaf1;border:1px solid #ecdcb4;border-radius:${Math.round(t / 2)}px;text-align:center;line-height:${t}px;"><span style="font-size:${police}px;line-height:${t}px;">${e}</span></td>
+      <td align="center" valign="middle" width="${t}" height="${t}" style="width:${t}px;height:${t}px;background:#FFF6EC;border:1px solid #F7D5B0;border-radius:${Math.round(t / 2)}px;text-align:center;line-height:${t}px;"><span style="font-size:${police}px;line-height:${t}px;">${e}</span></td>
     </tr></table>`;
 
   /* Les trois lignes restent alignées à gauche : ce sont des listes, elles se
@@ -345,7 +351,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
         <td width="56" class="vign" valign="top">${rond(e)}</td>
         <td valign="top" style="padding-left:2px;">
           <div style="font-size:14.5px;font-weight:700;color:${BLEU};line-height:1.35;padding-top:6px;">${titre}</div>
-          <div style="font-size:13.5px;color:#6b7b90;line-height:1.65;margin-top:4px;">${texte}</div>
+          <div style="font-size:13.5px;color:#5B6B80;line-height:1.65;margin-top:4px;">${texte}</div>
         </td></tr></table></td></tr>`;
 
   return `<!DOCTYPE html>
@@ -354,6 +360,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Emilio Immobilier</title>
+${LIEN_POLICE_MAIL}
 <style>
   /* ── Sur un téléphone ──
      Le liseré beige autour de la carte mangeait une bande de chaque côté, et
@@ -375,24 +382,24 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+<body style="margin:0;padding:0;background:#E6EDF6;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E6EDF6;">
     <tr><td align="center" class="cadre" style="padding:26px 12px;">
 
-      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #DCE3EC;border-radius:18px;overflow:hidden;">
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
             <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
-            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
+            <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
           </tr></table>
         </td></tr>
 
         <!-- L'accueil, centré : c'est la seule partie du mail qui doit se lire
              comme une parole, pas comme une fiche. -->
         <tr><td class="bord" align="center" style="padding:32px 34px 0;">
-          <div class="accroche" style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:${BLEU};line-height:1.3;">Bienvenue, ${prenom}.</div>
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
+          <div class="accroche" style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.3px;color:${BLEU};line-height:1.3;">Bienvenue, ${prenom}.</div>
+          <div style="font-size:14.5px;color:#46566B;line-height:1.75;margin-top:12px;">
             Ravi de commencer cette recherche avec vous. Elle est enregistrée&nbsp;: j&#39;ai maintenant
             ce qu&#39;il me faut pour parcourir le marché, et je vous ai ouvert un espace personnel
             où tout se retrouve au même endroit.
@@ -402,10 +409,10 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
         <tr><td class="bord" align="center" style="padding:26px 28px 6px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
             <td align="center" style="background:${DORE};border-radius:12px;">
-              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
+              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${ENCRE};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
             </td>
           </tr></table>
-          <div style="font-size:12px;color:#9aa6ba;margin-top:11px;">Ce lien est le vôtre, il ne change pas.</div>
+          <div style="font-size:12px;color:#8FA3BF;margin-top:11px;">Ce lien est le vôtre, il ne change pas.</div>
         </td></tr>
 
         <tr><td class="bord" style="padding:26px 28px 0;">
@@ -420,7 +427,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
              pose l'espace sur son écran d'accueil reçoit les biens en
              notification, les autres les découvrent trois jours plus tard. -->
         <tr><td class="bord" style="padding:8px 28px 0;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #ecdcb4;border-radius:14px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #F7D5B0;border-radius:14px;">
             <!-- L'icône et le titre sur une ligne ; la phrase EN DESSOUS, sur
                  toute la largeur du bloc.
                  Avant, la phrase partageait sa ligne avec l'icône : sur un
@@ -437,7 +444,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
             </tr>
             <tr>
               <td colspan="2" style="padding:10px 16px 16px;">
-                <div style="font-size:13.5px;color:#5a6b80;line-height:1.7;">
+                <div style="font-size:13.5px;color:#5B6B80;line-height:1.7;">
                   Ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d&#39;accueil
                   (le menu du navigateur, «&nbsp;Ajouter à l&#39;écran d&#39;accueil&nbsp;»). Vous serez
                   prévenu dès qu&#39;un bien vous est proposé, sans avoir à guetter vos mails —
@@ -450,7 +457,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
 
         <!-- Coupée en deux lignes : un bloc centré de longueurs inégales tient mal. -->
         <tr><td class="etroit" align="center" style="padding:24px 40px 28px;">
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
+          <div style="font-size:14.5px;color:#46566B;line-height:1.75;">
             Une question, une précision à me donner&nbsp;?<br/>Répondez simplement à ce message, ou appelez-moi.
           </div>
         </td></tr>
@@ -462,7 +469,7 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
               <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
               <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
-            <td align="right" class="pied-tel" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+            <td align="right" class="pied-tel" style="color:${DORE_CLAIR};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
           </tr></table>
         </td></tr>
 
@@ -470,10 +477,10 @@ function buildBienvenue(opts: { prenom: string; token?: string | null }): string
 
       <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
         <tr><td class="bord" align="center" style="padding:16px 28px 6px;">
-          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+          <div style="font-size:11.5px;color:#8FA3BF;line-height:1.7;">
             Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
               lienFin(token)
-                ? `<br/><a href="${lienFin(token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                ? `<br/><a href="${lienFin(token)}" style="color:#8FA3BF;text-decoration:underline;">Je ne suis plus en recherche</a>`
                 : ''
             }
           </div>
@@ -529,7 +536,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
 
   const rond = (e: string, t = 44, police = 20) => `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td align="center" valign="middle" width="${t}" height="${t}" style="width:${t}px;height:${t}px;background:#fdfaf1;border:1px solid #ecdcb4;border-radius:${Math.round(t / 2)}px;text-align:center;line-height:${t}px;"><span style="font-size:${police}px;line-height:${t}px;">${e}</span></td>
+      <td align="center" valign="middle" width="${t}" height="${t}" style="width:${t}px;height:${t}px;background:#FFF6EC;border:1px solid #F7D5B0;border-radius:${Math.round(t / 2)}px;text-align:center;line-height:${t}px;"><span style="font-size:${police}px;line-height:${t}px;">${e}</span></td>
     </tr></table>`;
 
   const puce = (e: string, titre: string, texte: string) => `
@@ -538,7 +545,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
         <td width="56" class="vign" valign="top">${rond(e)}</td>
         <td valign="top" style="padding-left:2px;">
           <div style="font-size:14.5px;font-weight:700;color:${BLEU};line-height:1.35;padding-top:6px;">${titre}</div>
-          <div style="font-size:13.5px;color:#6b7b90;line-height:1.65;margin-top:4px;">${texte}</div>
+          <div style="font-size:13.5px;color:#5B6B80;line-height:1.65;margin-top:4px;">${texte}</div>
         </td></tr></table></td></tr>`;
 
   return `<!DOCTYPE html>
@@ -547,6 +554,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Emilio Immobilier</title>
+${LIEN_POLICE_MAIL}
 <style>
   /* ── Sur un téléphone ──
      Le liseré beige autour de la carte mangeait une bande de chaque côté, et
@@ -568,22 +576,22 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+<body style="margin:0;padding:0;background:#E6EDF6;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E6EDF6;">
     <tr><td align="center" class="cadre" style="padding:26px 12px;">
 
-      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #DCE3EC;border-radius:18px;overflow:hidden;">
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
             <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
-            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
+            <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
           </tr></table>
         </td></tr>
 
         <tr><td class="bord" align="center" style="padding:32px 34px 0;">
-          <div class="accroche" style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:${BLEU};line-height:1.3;">${deux ? 'Une deuxième recherche' : 'Une nouvelle recherche'}, ${prenom}.</div>
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
+          <div class="accroche" style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.3px;color:${BLEU};line-height:1.3;">${deux ? 'Une deuxième recherche' : 'Une nouvelle recherche'}, ${prenom}.</div>
+          <div style="font-size:14.5px;color:#46566B;line-height:1.75;margin-top:12px;">
             <b style="color:${BLEU};">${recherche}</b> est enregistrée. Elle s&#39;ajoute à votre espace,
             à côté ${deux ? 'de la première' : 'des précédentes'}&nbsp;: vous n&#39;avez rien de nouveau
             à installer, c&#39;est le même endroit et le même lien qu&#39;avant.
@@ -593,7 +601,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
         <tr><td class="bord" align="center" style="padding:26px 28px 6px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
             <td align="center" style="background:${DORE};border-radius:12px;">
-              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
+              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${ENCRE};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
             </td>
           </tr></table>
         </td></tr>
@@ -610,7 +618,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
         </td></tr>
 
         <tr><td class="etroit" align="center" style="padding:14px 40px 28px;">
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
+          <div style="font-size:14.5px;color:#46566B;line-height:1.75;">
             Une question, une précision à me donner&nbsp;?<br/>Répondez simplement à ce message, ou appelez-moi.
           </div>
         </td></tr>
@@ -622,7 +630,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
               <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
               <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
-            <td align="right" class="pied-tel" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+            <td align="right" class="pied-tel" style="color:${DORE_CLAIR};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
           </tr></table>
         </td></tr>
 
@@ -630,10 +638,10 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
 
       <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
         <tr><td class="bord" align="center" style="padding:16px 28px 6px;">
-          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+          <div style="font-size:11.5px;color:#8FA3BF;line-height:1.7;">
             Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
               lienFin(token)
-                ? `<br/><a href="${lienFin(token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                ? `<br/><a href="${lienFin(token)}" style="color:#8FA3BF;text-decoration:underline;">Je ne suis plus en recherche</a>`
                 : ''
             }
           </div>
@@ -682,6 +690,7 @@ function buildLien(opts: { prenom: string; token: string }): string {
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Emilio Immobilier</title>
+${LIEN_POLICE_MAIL}
 <style>
   @media only screen and (max-width:600px) {
     .sheet  { width:100% !important; }
@@ -695,22 +704,22 @@ function buildLien(opts: { prenom: string; token: string }): string {
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e7e1d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e7e1d4;">
+<body style="margin:0;padding:0;background:#E6EDF6;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E6EDF6;">
     <tr><td align="center" class="cadre" style="padding:26px 12px;">
 
-      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3d8c4;border-radius:18px;overflow:hidden;">
+      <table role="presentation" width="600" class="sheet carte" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #DCE3EC;border-radius:18px;overflow:hidden;">
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
             <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
-            <td align="right" style="font-size:10px;color:${DORE};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
+            <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
           </tr></table>
         </td></tr>
 
         <tr><td class="bord" align="center" style="padding:32px 34px 0;">
-          <div class="accroche" style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:${BLEU};line-height:1.3;">Bonjour ${prenom},</div>
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;margin-top:12px;">
+          <div class="accroche" style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.3px;color:${BLEU};line-height:1.3;">Bonjour ${prenom},</div>
+          <div style="font-size:14.5px;color:#46566B;line-height:1.75;margin-top:12px;">
             Voici de nouveau le lien de votre espace personnel. C&#39;est toujours le même&nbsp;:
             vous pouvez garder ce message pour le retrouver facilement.
           </div>
@@ -719,17 +728,17 @@ function buildLien(opts: { prenom: string; token: string }): string {
         <tr><td class="bord" align="center" style="padding:26px 28px 6px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
             <td align="center" style="background:${DORE};border-radius:12px;">
-              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${BLEU};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
+              <a href="${lien}" style="display:inline-block;padding:15px 32px;font-size:15.5px;font-weight:700;color:${ENCRE};text-decoration:none;">&#128273;&nbsp;&nbsp;Ouvrir mon espace</a>
             </td>
           </tr></table>
-          <div style="font-size:12px;color:#9aa6ba;margin-top:11px;word-break:break-all;">${lien}</div>
+          <div style="font-size:12px;color:#8FA3BF;margin-top:11px;word-break:break-all;">${lien}</div>
         </td></tr>
 
         <tr><td class="bord" style="padding:22px 28px 0;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #ecdcb4;border-radius:14px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${FOND};border:1px solid #F7D5B0;border-radius:14px;">
             <tr><td style="padding:14px 16px;">
               <div style="font-size:14px;font-weight:700;color:${BLEU};line-height:1.3;">Pour être prévenu sur votre téléphone</div>
-              <div style="font-size:13.5px;color:#5a6b80;line-height:1.7;margin-top:6px;">
+              <div style="font-size:13.5px;color:#5B6B80;line-height:1.7;margin-top:6px;">
                 Ouvrez ce lien depuis votre téléphone, puis ajoutez-le à votre écran d&#39;accueil
                 (le menu du navigateur, «&nbsp;Ajouter à l&#39;écran d&#39;accueil&nbsp;»). Vous serez
                 prévenu dès qu&#39;un bien vous est proposé.
@@ -739,7 +748,7 @@ function buildLien(opts: { prenom: string; token: string }): string {
         </td></tr>
 
         <tr><td class="etroit" align="center" style="padding:24px 40px 28px;">
-          <div style="font-size:14.5px;color:#3a4a5f;line-height:1.75;">
+          <div style="font-size:14.5px;color:#46566B;line-height:1.75;">
             Un souci pour l&#39;ouvrir&nbsp;?<br/>Répondez simplement à ce message, ou appelez-moi.
           </div>
         </td></tr>
@@ -751,7 +760,7 @@ function buildLien(opts: { prenom: string; token: string }): string {
               <!-- ⚠️ Jamais « chasse » ni « chasseur » dans un texte que le client lit. -->
               <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:3px;">Recherche immobilière sur mesure · Paris &amp; Hauts-de-Seine</div>
             </td>
-            <td align="right" class="pied-tel" style="color:${DORE};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
+            <td align="right" class="pied-tel" style="color:${DORE_CLAIR};font-size:15px;font-weight:700;white-space:nowrap;">06 58 95 76 32</td>
           </tr></table>
         </td></tr>
 
@@ -759,10 +768,10 @@ function buildLien(opts: { prenom: string; token: string }): string {
 
       <table role="presentation" width="600" class="sheet" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
         <tr><td class="bord" align="center" style="padding:16px 28px 6px;">
-          <div style="font-size:11.5px;color:#9aa6ba;line-height:1.7;">
+          <div style="font-size:11.5px;color:#8FA3BF;line-height:1.7;">
             Vous recevez ce message parce que votre recherche est en cours avec Emilio Immobilier.${
               lienFin(opts.token)
-                ? `<br/><a href="${lienFin(opts.token)}" style="color:#7a879b;text-decoration:underline;">Je ne suis plus en recherche</a>`
+                ? `<br/><a href="${lienFin(opts.token)}" style="color:#8FA3BF;text-decoration:underline;">Je ne suis plus en recherche</a>`
                 : ''
             }
           </div>
@@ -828,7 +837,7 @@ function quandMail(l: LigneVisite, plusieursJours: boolean): string {
 function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string | null; recherche?: string | null }): string {
   const corpsHtml = escapeHtml(o.corps).replace(/\n/g, '<br/>');
   const plusieursJours = new Set(o.lignes.map(l => (l.date_visite || '').slice(0, 10))).size > 1;
-  const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #eee5d6;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
+  const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #E8EDF3;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
   const rows = o.lignes.map((l, i) => {
     const b = l.bien;
     const photo = b && Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null;
@@ -836,9 +845,9 @@ function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string 
     const adresse = lieuMail(b);
     const itineraire = adresse ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}` : '';
     const liens = [
-      b ? `<a href="${lienBien(b, o.token, o.recherche)}" style="color:${DORE};text-decoration:none;font-size:13px;font-weight:700;">Revoir le bien &rarr;</a>` : '',
+      b ? `<a href="${lienBien(b, o.token, o.recherche)}" style="color:${DORE_TEXTE};text-decoration:none;font-size:13px;font-weight:700;">Revoir le bien &rarr;</a>` : '',
       itineraire ? `<a href="${itineraire}" style="color:${BLEU};text-decoration:none;font-size:13px;font-weight:700;">Itinéraire &rarr;</a>` : '',
-    ].filter(Boolean).join('<span style="color:#d8cfbd;">&nbsp;&nbsp;·&nbsp;&nbsp;</span>');
+    ].filter(Boolean).join('<span style="color:#DCE3EC;">&nbsp;&nbsp;·&nbsp;&nbsp;</span>');
     return `
       <tr><td class="bord" style="padding:${i === 0 ? '20' : '18'}px 28px 18px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -848,7 +857,7 @@ function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string 
           <td class="mibody" style="vertical-align:top;padding-left:16px;">
             <div style="display:inline-block;background:${BLEU};color:#ffffff;font-size:13px;font-weight:800;padding:5px 11px;border-radius:8px;margin-bottom:9px;">${escapeHtml(quandMail(l, plusieursJours))}</div>
             <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:4px;line-height:1.35;">${escapeHtml(titre)}</div>
-            ${adresse ? `<div style="font-size:13px;color:#5a6a85;margin-bottom:9px;line-height:1.5;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(adresse)}</div>` : ''}
+            ${adresse ? `<div style="font-size:13px;color:#5B6B80;margin-bottom:9px;line-height:1.5;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(adresse)}</div>` : ''}
             ${liens ? `<div>${liens}</div>` : ''}
           </td>
         </tr></table>
@@ -870,10 +879,10 @@ function lienMandat(token?: string | null, recherche?: string | null): string {
 function buildMandatPret(o: { prenom: string; hono: Honoraires; token?: string | null; recherche?: string | null }): string {
   const corpsHtml = `Bonjour ${escapeHtml(o.prenom)},<br/><br/>Comme convenu, votre <b>mandat de recherche</b> est prêt dans votre espace. Il se lit et se signe en deux minutes, avec un code reçu par e-mail.`;
   const ligne = (t: string, v: string, d: string) => `
-    <tr><td style="padding:10px 0;border-top:1px solid #eee5d6;">
-      <div style="font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:#a07c28;">${t}</div>
+    <tr><td style="padding:10px 0;border-top:1px solid #E8EDF3;">
+      <div style="font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:#A95808;">${t}</div>
       <div style="font-size:15px;font-weight:700;color:${BLEU};margin-top:3px;">${v}</div>
-      <div style="font-size:12.5px;color:#5a6a85;margin-top:2px;">${d}</div>
+      <div style="font-size:12.5px;color:#5B6B80;margin-top:2px;">${d}</div>
     </td></tr>`;
   const lien = lienMandat(o.token, o.recherche);
   const contenu = `
@@ -885,8 +894,8 @@ function buildMandatPret(o: { prenom: string; hono: Honoraires; token?: string |
       </table>
     </td></tr>
     ${lien ? `<tr><td class="bord" align="center" style="padding:14px 28px 26px;">
-      <a href="${lien}" style="display:inline-block;background:${DORE};color:${BLEU};text-decoration:none;font-size:15px;font-weight:800;padding:14px 26px;border-radius:12px;">Lire et signer mon mandat</a>
-      <div style="font-size:12px;color:#7a879b;margin-top:12px;line-height:1.6;">Une question avant de signer&nbsp;? Répondez simplement à ce message.</div>
+      <a href="${lien}" style="display:inline-block;background:${DORE};color:${ENCRE};text-decoration:none;font-size:15px;font-weight:800;padding:14px 26px;border-radius:12px;">Lire et signer mon mandat</a>
+      <div style="font-size:12px;color:#8FA3BF;margin-top:12px;line-height:1.6;">Une question avant de signer&nbsp;? Répondez simplement à ce message.</div>
     </td></tr>` : ''}`;
   return coque({ etiquette: 'VOTRE MANDAT', corpsHtml, contenu, token: o.token });
 }
