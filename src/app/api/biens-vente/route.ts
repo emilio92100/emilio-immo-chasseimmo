@@ -84,8 +84,12 @@ export async function POST(req: NextRequest) {
       if (!CHEMIN.test(chemin)) return ko('Chemin refusé');
       const nom = String(body.nom || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100);
+      /* V3.120 : « Consulter », « Voir » ouvrent le fichier dans l'onglet (le
+         navigateur l'affiche, et propose de l'enregistrer). Le lien ne force
+         le téléchargement que si on le demande (`telecharger`). Avant, le nom
+         du fichier suffisait à le télécharger d'office. */
       const { data, error } = await sb.storage.from(BUCKET)
-        .createSignedUrl(chemin, 300, nom ? { download: nom } : undefined);
+        .createSignedUrl(chemin, 300, nom && body.telecharger === true ? { download: nom } : undefined);
       if (error || !data) return ko(error?.message || 'Fichier introuvable', 404);
       return NextResponse.json({ ok: true, url: data.signedUrl });
     }
