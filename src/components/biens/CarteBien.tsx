@@ -80,10 +80,12 @@ type PropsCarte = {
 /* Les puces de l'état (V3.42) : une par chose, avec son dessin, au lieu de
    « 1 visite faite · aucune offre » en gris, calé à droite. Un zéro reste
    pâle. Avant la vente, le mandat en route (« Mandat en préparation »),
-   s'il y en a un ; après, les visites et les offres ; et les acheteurs qui
-   correspondent. */
-function Puces({ bien, mandat, nbAcheteurs, nbVisites, nbPrevues, nbCR = 0, nbOffres, long }: {
-  bien: BienVente; mandat?: EtatMandatDoc | null; nbAcheteurs: number; nbVisites: number; nbPrevues: number; nbCR?: number; nbOffres: number; long?: boolean;
+   s'il y en a un ; après, les visites et les offres.
+   V3.121 (Alexandre : « un acheteur pour ce bien… il ne faut pas le mettre,
+   il y a trop d'infos sur la première page ») : plus de pastille des
+   acheteurs qui correspondent. Ils se voient dans le Rapprochement du bien. */
+function Puces({ bien, mandat, nbVisites, nbPrevues, nbCR = 0, nbOffres }: {
+  bien: BienVente; mandat?: EtatMandatDoc | null; nbVisites: number; nbPrevues: number; nbCR?: number; nbOffres: number;
 }) {
   const avant = avantMandat(bien.etape);
   const enVente = ['mandat', 'suspendu', 'offre'].includes(bien.etape);
@@ -97,7 +99,6 @@ function Puces({ bien, mandat, nbAcheteurs, nbVisites, nbPrevues, nbCR = 0, nbOf
     if (nbPrevues) l.push({ cle: 'p', ic: 'calendrier', t: `${pl(nbPrevues, 'visite')} prévue${nbPrevues > 1 ? 's' : ''}` });
     l.push({ cle: 'o', ic: 'euro', t: nbOffres ? pl(nbOffres, 'offre') : 'Aucune offre', ton: nbOffres ? undefined : 'vide' });
   }
-  if (!['vendu', 'retire'].includes(bien.etape) && nbAcheteurs > 0) l.push({ cle: 'a', ic: 'cible', t: `${pl(nbAcheteurs, 'acheteur')}${long ? ' pour ce bien' : ''}`, ton: 'or' });
   if (!l.length) return null;
   return (
     <span className={b.puces}>
@@ -108,7 +109,7 @@ function Puces({ bien, mandat, nbAcheteurs, nbVisites, nbPrevues, nbCR = 0, nbOf
 
 /* La liste en lignes (V3.17) : la même information qu'une carte, sur une
    ligne, la photo en petit. Au téléphone, deux étages. */
-export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbCR = 0, nbOffres, mandat: mandatDoc = null, proprio, onClick }: PropsCarte) {
+export function LigneBien({ bien, suivi, nbVisites, nbPrevues = 0, nbCR = 0, nbOffres, mandat: mandatDoc = null, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
@@ -140,14 +141,14 @@ export function LigneBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, 
       </span>
       <span className={b.ligneEtat}>
         <span className={`${b.ligneEtatT} ${etat.ton === 'alerte' ? b.ligneAlerte : etat.ton === 'ok' ? b.ligneOk : ''}`}><Ic n={etat.ic} t={15} /><span>{etat.t}</span></span>
-        <Puces bien={bien} mandat={mandatDoc} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbCR={nbCR} nbOffres={nbOffres} />
+        <Puces bien={bien} mandat={mandatDoc} nbVisites={nbVisites} nbPrevues={nbPrevues} nbCR={nbCR} nbOffres={nbOffres} />
       </span>
       <span className={b.ligneFleche}><Ic n="droite" t={16} e={2.4} /></span>
     </button>
   );
 }
 
-export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevues = 0, nbCR = 0, nbOffres, mandat: mandatDoc = null, proprio, onClick }: PropsCarte) {
+export default function CarteBien({ bien, suivi, nbVisites, nbPrevues = 0, nbCR = 0, nbOffres, mandat: mandatDoc = null, proprio, onClick }: PropsCarte) {
   const d = bien.donnees || {};
   const e = etapeDe(bien.etape);
   const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
@@ -187,7 +188,7 @@ export default function CarteBien({ bien, suivi, nbAcheteurs, nbVisites, nbPrevu
       <div className={b.cartePied}>
         {motHono
           ? <span className={b.compteurs}>{motHono}</span>
-          : <Puces bien={bien} mandat={mandatDoc} nbAcheteurs={nbAcheteurs} nbVisites={nbVisites} nbPrevues={nbPrevues} nbCR={nbCR} nbOffres={nbOffres} long />}
+          : <Puces bien={bien} mandat={mandatDoc} nbVisites={nbVisites} nbPrevues={nbPrevues} nbCR={nbCR} nbOffres={nbOffres} />}
       </div>
     </Tag>
   );

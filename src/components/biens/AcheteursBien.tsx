@@ -9,7 +9,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Ic } from '@/components/documents/ApercuActe';
-import { dateCourte, titreBien, type BienVente } from '@/lib/biens-vente';
+import { dateCourte, lirePhotos, specsBien, titreBien, villeAffichee, type BienVente } from '@/lib/biens-vente';
+import { prixCarte } from './CarteBien';
 import { demanderOuvertureFiche } from '@/lib/intentions';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, envoyerDansEspace, fiable, mettreEnSelection, nomClient,
@@ -183,31 +184,63 @@ export function FenEnvoiAcheteurs({ bien, choisis, onFermer, onFait, onFiche }: 
     onFiche(seul.client.id);
   }
 
+  /* V3.121 (Alexandre : « une autre petite présentation, avec la photo du
+     bien, pour que ce soit plus joli ») : le bien en tête, avec sa photo,
+     puis à qui il part, puis les trois choix — chacun dit en un mot ce qui
+     se passe (« Rien ne part », « Tout de suite », « Tu relis avant »). */
+  const d = bien.donnees || {};
+  const photo = bien.photo || lirePhotos(d.photos)[0]?.url || '';
+  const prix = prixCarte(bien);
+  const lieu = villeAffichee(bien.ville || String(d.ville || ''), bien.code_postal || String(d.cp || ''));
+  /* Ce que le titre ne dit pas déjà (« Appartement 4 pièces · 92 m² »). */
+  const bas = titre.toLowerCase();
+  const specs = [...specsBien(d).split(' · ').filter(x => x && !bas.includes(x.toLowerCase())), lieu].filter(Boolean).join(' · ');
+  const pourQui = seul
+    ? (seul.horsListe ? `pas proposé d’office (${seul.horsListe}), tu le lui proposes quand même` : seul.corr.note >= 0 ? `correspond à ${seul.corr.note} % de sa recherche` : 'choisi par toi')
+    : '';
+
   const fen = (
     <div className={a.voile} onMouseDown={e => { if (e.target === e.currentTarget && !en) onFermer(); }}>
-      <div className={a.fen} role="dialog" aria-modal="true" aria-label="Sélection ou envoi">
-        <div className={a.fenTete}>
-          <span className={a.fenIc}><Ic n="envoyer" t={20} /></span>
-          <div className={a.fenTx}>
-            <h2>{seul ? `${titre} pour ${nom}` : `${titre} pour ${choisis.length} acheteurs`}</h2>
-            <p>{seul ? (seul.horsListe ? `Pas proposé d’office (${seul.horsListe}) : tu le lui proposes quand même.` : seul.corr.note >= 0 ? `Correspond à ${seul.corr.note} % de sa recherche.` : 'Choisi par toi : sa recherche ne se compare pas à ce bien.') : choisis.map(x => nomClient(x.client)).join(', ')}</p>
+      <div className={a.fen} role="dialog" aria-modal="true" aria-label={`Envoyer ${titre}`}>
+        <div className={a.bienTete}>
+          <span className={a.bienPhoto}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {photo ? <img src={photo} alt="" /> : <Ic n="photo" t={24} />}
+          </span>
+          <div className={a.bienTx}>
+            <span className={a.bienSur}>{'Envoyer ce bien'}</span>
+            <h2>{titre}</h2>
+            {specs && <p>{specs}</p>}
+            <b className={prix.vide ? a.bienPrixVide : a.bienPrix}>{prix.t}</b>
           </div>
           <button type="button" className={a.fermer} aria-label="Fermer" disabled={!!en} onClick={onFermer}><Ic n="croix" t={16} e={2.2} /></button>
         </div>
+
+        <div className={a.pour}>
+          <span className={a.pourAv}>
+            {choisis.slice(0, 3).map(x => <Avatar key={x.recherche.id} acheteur={x} petit />)}
+            {choisis.length > 3 && <span className={a.pourPlus}>{`+${choisis.length - 3}`}</span>}
+          </span>
+          <span className={a.pourTx}>
+            <b>{seul ? `Pour ${nom}` : `Pour ${choisis.length} acheteurs`}</b>
+            <small>{seul ? pourQui : choisis.map(x => nomClient(x.client)).join(', ')}</small>
+          </span>
+        </div>
+
         <div className={a.choix}>
           <button type="button" className={a.option} disabled={!pourSelection.length || !!en} onClick={selection}>
             <span className={a.optIc}><Ic n="liste" t={20} /></span>
             <span className={a.optTx}>
-              <b>{en === 'selection' ? 'Ajout…' : seul ? 'Mettre dans sa sélection' : 'Mettre dans leur sélection'}</b>
+              <span className={a.optL1}><b>{en === 'selection' ? 'Ajout…' : seul ? 'Mettre dans sa sélection' : 'Mettre dans leur sélection'}</b><i className={a.optMot}>{'Rien ne part'}</i></span>
               <small>{!pourSelection.length
                 ? (seul ? 'Il est déjà dans son dossier.' : 'Ils l’ont déjà tous dans leur dossier.')
-                : `Le bien entre dans ${seul ? 'son' : 'leur'} dossier, à l’étape Sélection. Rien ne part : ${seul ? 'il' : 'ils'} ne le ${seul ? 'voit' : 'voient'} pas encore.${!seul && pourSelection.length < choisis.length ? ` ${choisis.length - pourSelection.length} l’ont déjà.` : ''}`}</small>
+                : `Le bien entre dans ${seul ? 'son' : 'leur'} dossier, à l’étape Sélection. ${seul ? 'Il ne le voit' : 'Ils ne le voient'} pas encore : c’est toi qui ${seul ? 'le lui envoies' : 'le leur envoies'} ensuite, depuis ${seul ? 'sa fiche' : 'leur fiche'}.${!seul && pourSelection.length < choisis.length ? ` ${choisis.length - pourSelection.length} l’ont déjà.` : ''}`}</small>
             </span>
           </button>
           <button type="button" className={`${a.option} ${a.optionOr}`} disabled={!pourEspace.length || !!en} onClick={espace}>
             <span className={a.optIc}><Ic n="envoyer" t={20} /></span>
             <span className={a.optTx}>
-              <b>{en === 'espace' ? 'Envoi…' : seul ? 'Envoyer dans son espace' : 'Envoyer dans leur espace'}</b>
+              <span className={a.optL1}><b>{en === 'espace' ? 'Envoi…' : seul ? 'Envoyer dans son espace' : 'Envoyer dans leur espace'}</b><i className={`${a.optMot} ${a.optMotOr}`}>{'Tout de suite'}</i></span>
               <small>{!pourEspace.length
                 ? 'Déjà dans son espace.'
                 : `Il passe dans « Présentés » et y arrive tout de suite, avec la note de correspondance. ${seul ? 'Il est prévenu' : 'Ils sont prévenus'} sur ${seul ? 'son' : 'leur'} téléphone s’${seul ? 'il l’a' : 'ils l’ont'} accepté.${seul && !seul.recherche.bienvenue_envoye_le ? ' Son lien d’espace ne lui a pas encore été envoyé : par mail, il le verra tout de suite.' : ''}`}</small>
@@ -217,7 +250,7 @@ export function FenEnvoiAcheteurs({ bien, choisis, onFermer, onFait, onFiche }: 
             <button type="button" className={a.option} disabled={!!en || !mailDe(seul)} onClick={mail}>
               <span className={a.optIc}><Ic n="mail" t={20} /></span>
               <span className={a.optTx}>
-                <b>{en === 'mail' ? 'Ouverture…' : 'Envoyer par mail…'}</b>
+                <span className={a.optL1}><b>{en === 'mail' ? 'Ouverture…' : 'Envoyer par mail…'}</b><i className={a.optMot}>{'Tu relis avant'}</i></span>
                 <small>{mailDe(seul) ? 'Sa fiche s’ouvre sur le mail d’envoi habituel, ce bien déjà choisi. Tu relis, il part, et le bien passe dans « Présentés ».' : 'Pas d’adresse mail sur sa fiche.'}</small>
               </span>
             </button>

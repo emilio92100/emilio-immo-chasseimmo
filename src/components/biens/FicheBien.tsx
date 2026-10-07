@@ -38,6 +38,7 @@ import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/Fic
 import { lirePro, lireStructure } from '@/lib/contacts';
 import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
+import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
 import { CarteAcheteurs, FenEnvoiAcheteurs, modeAcheteurs } from './AcheteursBien';
 import { RapprochementBien } from './RapprochementBien';
 import { FenEnvoiLot } from './LotBiens';
@@ -1003,6 +1004,12 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       const projet = d.projet === true;
       /* V3.51 : une demande de documents (sans pièce jointe). */
       const demandes = Array.isArray(d.demandes) ? (d.demandes as unknown[]).map(String) : [];
+      /* V3.121 : le bien présenté par simple mail (hors du CRM, ou un contact sans recherche). */
+      if (d.presentation === true) {
+        l.push({ cle: x.id, le: x.le, ic: 'mail', ton: 'ic_or', genre: 'acheteurs', titre: `Présenté par mail à ${x.qui || 'un contact'}`,
+          detail: d.lien === true ? 'Avec le lien de sa page sur le site' : 'Avec sa photo et sa description', puce: { l: 'Mail simple', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
+        continue;
+      }
       if (d.demande === true) {
         l.push({ cle: x.id, le: x.le, ic: 'liste', ton: 'ic_or', genre: 'documents', titre: `Documents demandés à ${x.qui || 'un contact'}`,
           detail: demandes.join(', '), puce: { l: `${demandes.length} document${demandes.length > 1 ? 's' : ''}`, c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
@@ -1102,15 +1109,23 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   }, [bien.id]);
   const [detail, setDetail] = useState<DetailBien | null>(null);
   const [erreur, setErreur] = useState('');
-  /* « Voir les acheteurs » depuis une alerte : la fiche s'ouvre sur l'onglet (V3.29). */
+  /* « Voir les acheteurs » depuis une alerte : la fiche s'ouvre sur l'onglet (V3.29).
+     V3.121 (Alexandre : « quand je retourne sur le bien, il se remet dans
+     Vue d'ensemble ») : sinon, elle reprend l'onglet et la hauteur où on
+     l'avait laissée (lib/place-fiche.ts). */
+  const clePlace = `bien:${depart.id}`;
+  const place = usePlace(clePlace);
+  const [demande] = useState(() => (typeof window === 'undefined' ? null : lireOngletBien(depart.id)));
   const [onglet, setOnglet] = useState<Onglet>(() => {
-    const o = typeof window === 'undefined' ? null : lireOngletBien(depart.id);
-    return o === 'acheteurs' || o === 'visites' || o === 'historique' || o === 'documents' ? o : 'apercu';
+    if (demande === 'acheteurs' || demande === 'visites' || demande === 'historique' || demande === 'documents') return demande;
+    const p = String(place?.onglet || '');
+    return (['photos', 'bien', 'visites', 'acheteurs', 'documents', 'historique'] as string[]).includes(p) ? (p as Onglet) : 'apercu';
   });
   /* Le sous-onglet de « Le bien » (V3.81 : il vit dans le tiroir de la
      barre des rubriques, gardé quand on change de rubrique et qu'on revient). */
-  const [sousVue, setSousVue] = useState<SousVue>('tout');
+  const [sousVue, setSousVue] = useState<SousVue>(() => (!demande && typeof place?.sous === 'string' && place.sous ? (place.sous as SousVue) : 'tout'));
   useEffect(() => { oublierOngletBien(); }, []);
+  useEffect(() => { retenirPlace(clePlace, { onglet, sous: sousVue }); }, [clePlace, onglet, sousVue]);
   const [menu, setMenu] = useState<'etape' | 'plus' | null>(null);
   const [guide, setGuide] = useState<{ titre: string; texte: string; choix: ChoixGuide[] } | null>(null);
   const [fen, setFen] = useState<Fen | null>(null);
@@ -1139,6 +1154,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const charger = useCallback(async () => {
     try { setDetail(await chargerFiche(bien)); setErreur(''); } catch (e) { setErreur((e as Error).message); }
   }, [bien]);
+  /* La hauteur laissée : rendue une fois la fiche lue, sur le même onglet. */
+  useHauteur(clePlace, place, !!detail, !demande && !!place && String(place.onglet || 'apercu') === onglet);
   const premier = useRef(false);
   useEffect(() => {
     if (premier.current) return;

@@ -19,7 +19,8 @@
    Les prospects correspondent comme les actifs (V3.112) : leur statut
    s'affiche à côté du nom. Avant le mandat, l'envoi est ouvert (V3.111). */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { lirePlace, retenirPlace } from '@/lib/place-fiche';
 import { Ic } from '@/components/documents/ApercuActe';
 import { euros } from '@/lib/mandat';
 import type { BienVente } from '@/lib/biens-vente';
@@ -68,12 +69,27 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
     return t === 'maison' ? 'cette maison' : t === 'appartement' || t === 'studio' || t === 'duplex' || t === 'loft' ? 'cet appartement' : t === 'terrain' ? 'ce terrain' : 'ce bien';
   })();
   const [aide, setAide] = useState(false);
-  const [ouverts, setOuverts] = useState<Set<string>>(new Set());
-  const [choisis, setChoisis] = useState<string[]>(() => (peutEnvoyer ? tri.bons.filter(x => !x.copie).slice(0, 3).map(x => x.recherche.id) : []));
+  /* V3.121 : de retour d'une fiche client, les rubriques dépliées et les
+     cases cochées sont celles qu'on avait laissées (lib/place-fiche.ts) —
+     tant que rien n'est parti entre-temps : un envoi change les copies, et
+     l'onglet repart de zéro, comme avant. */
+  const cleCopies = copies.map(c => `${c.id}${c.etape || ''}`).join();
+  const [memoire] = useState(() => {
+    const m = lirePlace(`bien:${bien.id}`)?.rappro as { cle?: string; ouverts?: string[]; choisis?: string[] } | undefined;
+    return m && m.cle === cleCopies && Array.isArray(m.ouverts) && Array.isArray(m.choisis) ? m : null;
+  });
+  const [ouverts, setOuverts] = useState<Set<string>>(() => new Set(memoire?.ouverts || []));
+  const [choisis, setChoisis] = useState<string[]>(() => (memoire ? memoire.choisis || [] : peutEnvoyer ? tri.bons.filter(x => !x.copie).slice(0, 3).map(x => x.recherche.id) : []));
+  /* Retenu seulement après un geste d'Alexandre : l'onglet monté une
+     première fois sans les copies (la fiche se lit encore) n'efface rien. */
+  const touche = useRef(false);
+  useEffect(() => {
+    if (touche.current) retenirPlace(`bien:${bien.id}`, { rappro: { cle: cleCopies, ouverts: [...ouverts], choisis } });
+  }, [bien.id, cleCopies, ouverts, choisis]);
   const tous = useMemo(() => [...tri.bons, ...tri.partiels, ...tri.incomplets], [tri]);
   const coches = tous.filter(x => choisis.includes(x.recherche.id) && !presente(x.copie));
-  const basculer = (id: string) => setChoisis(c => (c.includes(id) ? c.filter(y => y !== id) : [...c, id]));
-  const ouvrir = (k: string) => setOuverts(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const basculer = (id: string) => { touche.current = true; setChoisis(c => (c.includes(id) ? c.filter(y => y !== id) : [...c, id])); };
+  const ouvrir = (k: string) => { touche.current = true; setOuverts(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; }); };
   const aller = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   /* Les pas montrés, par raison : la plus nombreuse d'abord. */
