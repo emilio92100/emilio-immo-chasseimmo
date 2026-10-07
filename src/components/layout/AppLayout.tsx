@@ -110,6 +110,11 @@ export default function AppLayout() {
   const zoneBarre = useRef<HTMLDivElement>(null);
   const contenu = useRef<HTMLElement>(null);
 
+  /* L'écran qu'on quitte, lu au moment d'ouvrir une fiche : de Relances, la
+     fiche y ramènera (V3.102). handleNavigate ne se recrée pas, d'où le ref. */
+  const pageRef = useRef(activePage);
+  useEffect(() => { pageRef.current = activePage; }, [activePage]);
+
   /* La classe « crm » sur <html> : les règles du téléphone s'appliquent au
      CRM et à ses fenêtres (posées sur <body>), jamais à l'espace client. */
   useEffect(() => {
@@ -212,8 +217,16 @@ export default function AppLayout() {
     setSens(page === 'fiche' || focusCarte ? 'avant' : 'arriere');
     if (page === 'fiche' && data) {
       const c = data as Client;
+      /* V3.102 — D'où vient la fiche. Ouverte depuis Relances (« Ouvrir la
+         fiche », ou un bloc de la barre cliqué sur Relances), la fermer y
+         ramène. Ouverte d'ailleurs, l'origine s'efface (la clé est posée,
+         vide, pour écraser une ancienne). D'une fiche à l'autre, chacune
+         garde la sienne. */
+      const f = ficheDeContact(c);
+      const de = pageRef.current;
+      if (de !== 'fiche') f.depuis = de === 'relances' ? 'relances' : undefined;
       setFicheClient(c);
-      setFiches(l => ajouterFiche(l, ficheDeContact(c)));
+      setFiches(l => ajouterFiche(l, f));
       setChargeFiche(false);
       setActivePage('fiche');
       ecrireUrl('fiche', c.id);
@@ -223,6 +236,13 @@ export default function AppLayout() {
     setActivePage(page);
     setNavN(n => n + 1);
     ecrireUrl(page, null);
+    /* V3.102 — Le retour sur Relances (fiche fermée, bouton retour, bloc
+       « Relances » de la barre) : la page reprend la tuile et la relance
+       qu'on avait laissées. Le menu de gauche, lui, l'ouvre comme toujours
+       sur « À faire » (V3.85). */
+    if (page === 'relances' && data && typeof data === 'object' && (data as { retour?: boolean }).retour) {
+      window.history.replaceState(null, '', `${window.location.pathname}?page=relances&retour=1`);
+    }
     /* « Mes vendeurs », « Mes estimations »… (le menu de gauche, V3.24) : la
        rubrique s'ouvre sur cette catégorie. */
     const vue = (page === 'clients' || page === 'biens') && data && typeof data === 'object' ? (data as { vue?: string }).vue : undefined;
@@ -243,6 +263,9 @@ export default function AppLayout() {
     /* La carte (V3.27) : elle se rouvre là où on l'avait laissée (PageCarte
        relit sa vue et le repère choisi). */
     if (f.k === 'carte') { handleNavigate('carte'); return; }
+    /* Relances (V3.102) : rouverte sur la tuile et la relance laissées. Déjà
+       à l'écran, le bloc ne la recharge pas. */
+    if (f.k === 'relances') { if (pageRef.current !== 'relances') handleNavigate('relances', { retour: true }); return; }
     const { data, error } = await supabase.from('clients').select('*').eq('id', f.id).maybeSingle();
     if (error) { signalerEchec('L’ouverture de la fiche', error.message); return; }
     if (!data) { setFiches(l => l.filter(x => !(x.k === 'contact' && x.id === f.id))); return; }
@@ -270,17 +293,27 @@ export default function AppLayout() {
   /* Fermer (×) dans la barre des fiches ouvertes la fiche qu'on regarde :
      on revient à sa liste — Contacts pour un contact, Biens pour un bien
      (V3.35 ; avant, la fiche restait à l'écran, sortie de la barre). Fermer
-     une autre fiche ne change pas d'écran. */
+     une autre fiche ne change pas d'écran.
+     V3.102 — Un contact ouvert depuis Relances ramène à Relances, sur la
+     tuile laissée (Alexandre : « quand je ferme la fiche, ça me remet dans
+     mes contacts ; je dois rappuyer sur Relances, puis sur Aujourd'hui »).
+     Le bouton retour de la fiche (seul moyen d'en sortir sur téléphone, où
+     la barre n'est pas) fait de même. */
+  const fermerContact = useCallback((f?: FicheOuverte) => {
+    if (f?.depuis === 'relances') handleNavigate('relances', { retour: true });
+    else handleNavigate('clients');
+  }, [handleNavigate]);
+  const ficheAffichee = ficheClient ? fiches.find(x => x.k === 'contact' && x.id === ficheClient.id) : undefined;
   const fermerFiche = useCallback((f: FicheOuverte) => {
     setFiches(l => l.filter(x => !(x.k === f.k && x.id === f.id)));
-    if (f.k === 'contact' && activePage === 'fiche' && ficheClient?.id === f.id) handleNavigate('clients');
+    if (f.k === 'contact' && activePage === 'fiche' && ficheClient?.id === f.id) fermerContact(f);
     else if (f.k === 'bien' && activePage === 'biens' && bienActif === f.id) handleNavigate('biens');
-  }, [activePage, ficheClient?.id, bienActif, handleNavigate]);
+  }, [activePage, ficheClient?.id, bienActif, handleNavigate, fermerContact]);
   const toutFermer = useCallback(() => {
     setFiches([]);
-    if (activePage === 'fiche' && ficheClient) handleNavigate('clients');
+    if (activePage === 'fiche' && ficheClient) fermerContact(ficheAffichee);
     else if (activePage === 'biens' && bienActif) handleNavigate('biens');
-  }, [activePage, ficheClient, bienActif, handleNavigate]);
+  }, [activePage, ficheClient, ficheAffichee, bienActif, handleNavigate, fermerContact]);
 
   const renderPage = () => {
     if (activePage === 'fiche') {
@@ -290,7 +323,8 @@ export default function AppLayout() {
         return (
           <FicheSelonType
             client={ficheClient}
-            onBack={() => handleNavigate('clients')}
+            onBack={() => fermerContact(ficheAffichee)}
+            retourVers={ficheAffichee?.depuis}
             onNavigate={handleNavigate}
           />
         );
@@ -334,7 +368,7 @@ export default function AppLayout() {
         </main>
         {/* Les fiches ouvertes : on passe d'un contact ou d'un bien à l'autre. */}
         <FichesOuvertes fiches={fiches}
-          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : null}
+          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : activePage === 'relances' ? { k: 'relances', id: 'relances' } : null}
           onOuvrir={ouvrirFiche}
           onRanger={setFiches}
           onFermer={fermerFiche}
