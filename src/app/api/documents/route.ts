@@ -5,6 +5,7 @@ import { lireIdentiteAgence } from '@/lib/agence';
 import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
+import { enveloppeMail } from '@/lib/mail-charte';
 
 /**
  * Les fichiers des documents juridiques (Documents juridiques, dans le CRM).
@@ -162,7 +163,8 @@ export async function POST(req: NextRequest) {
       for (const dst of dests) {
         const texte = texteDe(dst);
         const paras = texte.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('');
-        const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2f3c52;max-width:600px">${paras}</div>`;
+        /* V3.118 : dans l'enveloppe de la charte, le logo Emilio en tête. */
+        const html = enveloppeMail({ corps: paras });
         const err = await envoyerMail({ a: dst.email, nomA: dst.nom || undefined, sujet, texte, html, pj });
         if (err) echecs.push(`${dst.email} (${err})`); else envoyes.push(dst);
       }
