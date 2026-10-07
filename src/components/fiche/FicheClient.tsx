@@ -408,7 +408,9 @@ function finSRU(jour: string): string | null {
   return new Date(d.getTime() + 10 * 86400000).toISOString().slice(0, 10);
 }
 
-interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; }
+/* V3.102 — `retourVers` : ouverte depuis Relances, le bouton retour y ramène
+   et le dit (« ← Relances »). */
+interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; retourVers?: 'relances'; }
 
 function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: any; setBienForm: any; prixAcq: number; styles: any }) {
   const set = (key: string, value: any) => setBienForm((f: any) => ({ ...f, [key]: value }));
@@ -839,7 +841,7 @@ function dureeSuivi(j: number): string {
 type VueFiche = 'ensemble' | 'recherche' | 'rapprochement' | 'espace' | 'documents' | 'suivi';
 const ORDRE_VUES: VueFiche[] = ['ensemble', 'recherche', 'rapprochement', 'espace', 'documents', 'suivi'];
 
-export default function FicheClient({ client: init, onBack, onNavigate }: Props) {
+export default function FicheClient({ client: init, onBack, onNavigate, retourVers }: Props) {
   /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
      Suivi, la recherche, et l'action à surligner. Voir src/lib/intentions.ts. */
   const [ouverture] = useState(() => lireOuvertureFiche(init.id));
@@ -3488,8 +3490,8 @@ ${signatureMail()}`,
 
       <div className={styles.pageHeader}>
         <div className={styles.fil} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className={styles.backBtn} onClick={onBack} aria-label="Retour aux contacts">
-            <span className={styles.surBureau}>← Contacts</span>
+          <button className={styles.backBtn} onClick={onBack} aria-label={retourVers === 'relances' ? 'Retour aux relances' : 'Retour aux contacts'}>
+            <span className={styles.surBureau}>{retourVers === 'relances' ? '← Relances' : '← Contacts'}</span>
             <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
           </button>
           <span className={styles.filSep} style={{ color: '#94a3b8' }}>/</span>
