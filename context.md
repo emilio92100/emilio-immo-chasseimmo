@@ -1497,6 +1497,19 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.103 — 7 octobre 2026 · La recherche du haut signale un contact archivé
+
+Rien à passer dans Supabase.
+
+Alexandre, sur un vendeur qui a vendu ailleurs et qu'il archive : il le retrouve toujours dans la
+recherche du haut (voulu : s'il rappelle, son histoire est là), mais rien ne dit qu'il est archivé.
+
+- **L'étiquette** (`Topbar`, `.searchTagArchive`) : « Archivé », grise avec la petite boîte, juste
+  après le nom ; l'avatar, le nom et l'étiquette de type pâlissent (`.searchArchive`). La recherche
+  lit maintenant `clients.archive` avec le reste du fichier (`chargerIndex`).
+- **L'ordre** (`chercher`) : les archivés passent après les contacts en cours, avant la coupe à huit
+  résultats : un « Martin » archivé ne prend plus la place d'un « Martin » actif.
+
 ### V3.102 — 7 octobre 2026 · Une fiche ouverte depuis Relances ramène à Relances
 
 Rien à passer dans Supabase.
