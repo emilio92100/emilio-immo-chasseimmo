@@ -1191,7 +1191,15 @@ export function typeCompatible(v: unknown, typesRecherche: string | null | undef
    copie dit toujours ce que paie l'acheteur : à la charge de l'acquéreur, le
    net + les honoraires ; à la charge du vendeur, le prix entier, sans
    commission (les honoraires ne le regardent pas). */
-export function prixCopie(d: Donnees) {
+/* V3.113 : `etape`, l'étape du bien en vente. Avant le mandat (à suivre,
+   estimation), le prix de la fiche est le prix CONSEILLÉ de l'estimation,
+   pas un prix affiché : il reste entre Alexandre et le vendeur. La copie part
+   donc sans prix (l'espace dit « Prix à venir », le mail n'en met pas), et
+   le prix arrive chez l'acheteur à la signature du mandat (changerEtape,
+   mandatSigneSurBien). Avant, l'avertissement disait « sans prix » et
+   l'acheteur voyait le prix conseillé. Sans `etape` : le prix, comme avant. */
+export function prixCopie(d: Donnees, etape?: string | null) {
+  if (avantMandat(etape)) return { prix_vendeur: null, commission_type: 'fixe', commission_val: 0, prix_acquereur: null };
   const a = argentBien(d);
   return a.acq
     ? { prix_vendeur: a.net ?? a.prix, commission_type: 'fixe', commission_val: a.hono || 0, prix_acquereur: a.prix }
@@ -1226,7 +1234,7 @@ export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheI
     surface_balcon: nb(d, 'surfBalcon'), surface_terrasse: nb(d, 'surfTerrasse') ?? nb(d, 'surfLoggia'),
     etat_general: typeof d.etat === 'string' && d.etat ? d.etat : null,
     description: txt(d, 'annonceTexte') || brouillonAnnonce(d),
-    ...prixCopie(d),
+    ...prixCopie(d, b.etape),
     charges_trimestrielles: chargesAn ? Math.round(chargesAn / 4) : null, taxe_fonciere: nb(d, 'taxeFonciere'),
     photos, source_portail: 'Emilio Immobilier', agence_nom: 'Emilio Immobilier', agence_tel: null,
   };

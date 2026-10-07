@@ -61,9 +61,12 @@ export async function bienDuMandat(sb: SupabaseClient, doc: DocMandat): Promise<
 /* Le prix suit chez les acheteurs qui ont reçu le bien (comme
    repercuterPrix, biens/outils.ts). Rend un message, ou null. Exporté en
    V3.50 pour l'avenant signé (documents-avenant-bien.ts). */
-export async function prixChezAcheteurs(sb: SupabaseClient, bienId: string, avant: Donnees, apres: Donnees): Promise<string | null> {
-  const p = prixCopie(apres);
-  if (JSON.stringify(prixCopie(avant)) === JSON.stringify(p)) return null;
+/* V3.113 : `etapes` — l'étape du bien avant et après. Avant le mandat, les
+   copies n'ont pas de prix (prixCopie) : signé, le prix leur arrive ;
+   retiré (retour à l'estimation), il en repart. */
+export async function prixChezAcheteurs(sb: SupabaseClient, bienId: string, avant: Donnees, apres: Donnees, etapes: { avant?: string | null; apres?: string | null } = {}): Promise<string | null> {
+  const p = prixCopie(apres, etapes.apres);
+  if (JSON.stringify(prixCopie(avant, etapes.avant)) === JSON.stringify(p)) return null;
   const { error } = await sb.from('biens').update(p).eq('bien_vente_id', bienId);
   return error && !/bien_vente_id/.test(error.message) ? 'le nouveau prix chez les acheteurs qui ont reçu le bien : ' + error.message : null;
 }
@@ -119,7 +122,7 @@ export async function mandatSigneSurBien(sb: SupabaseClient, doc: DocMandat, jou
     const r = await sb.from('relances').update({ statut: 'cloturee' }).in('id', relances).eq('statut', 'en_attente');
     if (r.error) eRel = 'les relances de l’estimation : ' + r.error.message;
   }
-  const pbs = [e2 ? 'la ligne de l’historique : ' + e2.message : null, await prixChezAcheteurs(sb, b.id, bd, d), eRel].filter(Boolean);
+  const pbs = [e2 ? 'la ligne de l’historique : ' + e2.message : null, await prixChezAcheteurs(sb, b.id, bd, d, { avant: b.etape, apres: passe ? 'mandat' : b.etape }), eRel].filter(Boolean);
   return pbs.length ? `Le mandat est signé et noté sur la fiche du bien, mais ${pbs.join(' ; ')}.` : null;
 }
 
@@ -153,7 +156,7 @@ export async function retirerMandatDuBien(sb: SupabaseClient, b: BienVente, o: R
     bien_id: b.id, type: 'etape', statut: o.vers, le: maintenant, commentaire: o.raison.trim() || null,
     donnees: { de: b.etape, annule: true, ...(numero ? { numero } : {}), ...(o.document ? { document: o.document } : {}) },
   });
-  const pbs = [e2 ? 'la ligne de l’historique : ' + e2.message : null, await prixChezAcheteurs(sb, b.id, avant, d)].filter(Boolean);
+  const pbs = [e2 ? 'la ligne de l’historique : ' + e2.message : null, await prixChezAcheteurs(sb, b.id, avant, d, { avant: b.etape, apres: o.vers })].filter(Boolean);
   return { bien: data as BienVente, avertissement: pbs.length ? `Le mandat est retiré de la fiche, mais ${pbs.join(' ; ')}.` : null };
 }
 
