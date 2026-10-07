@@ -1497,6 +1497,40 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.106 — 7 octobre 2026 · Nouveau rendez-vous : un client du fichier, ou un nom gardé pour ce rendez-vous
+
+Rien à passer dans Supabase : le nom libre va dans `rendez_vous.details` (JSON), clé `personne`.
+
+Alexandre : « quand on met le nom, j'ai l'impression que ça s'enregistre, mais on ne sait pas
+trop » ; « qu'on comprenne qu'on peut choisir un client de la base, ou sinon ajouter un client qui
+n'est pas de la base ; il ne sera pas ajouté, il sera juste enregistré comme ça ». Avant, un nom
+tapé sans rien choisir partait sans un mot : le rendez-vous s'enregistrait « sans client ».
+
+- **Deux chemins** (`ChoixDossier`, `CarteRetenue`) : à la frappe, « Dans ton fichier · n » (les
+  dossiers) puis, en dernière ligne, « Garder « … » pour ce rendez-vous » (« Pas ajouté à tes
+  contacts : seulement noté sur le rendez-vous », Valider ; Entrée la choisit quand rien ne
+  correspond). Le choix fait apparaître une carte « ✓ Retenu pour ce rendez-vous » : dorée pour un
+  client du fichier (« Client de ton fichier · sa recherche »), grise pour un nom gardé (« Pas dans
+  tes contacts »), avec « Changer ». Avant de taper, une ligne dit les deux possibilités.
+- **Pas pour une visite** : elle a besoin du dossier (ses biens) ; la ligne « Garder » n'apparaît pas.
+- **Le nom gardé** donne le titre proposé (« Rendez-vous · Martin Lefèvre », « Appel · … ») ;
+  l'aperçu et le pied le disent (« Avec Martin Lefèvre, noté sur le rendez-vous (pas dans tes
+  contacts) ») ; aucune fiche, aucun suivi, aucune relance. Relu à la modification.
+- **Rien ne se perd** : un nom tapé et pas retenu se lit dans le pied ; à l'enregistrement, une
+  question (« le garder pour ce rendez-vous ? ») — OK le garde, Annuler revient au choix.
+
+### V3.105 — 7 octobre 2026 · Nouveau rendez-vous : plus de « Dossiers récents »
+
+Rien à passer dans Supabase.
+
+Alexandre : « il faut enlever les dossiers récents ; qu'on tape juste le client nous-mêmes », pour
+tous les rendez-vous (visite, rendez-vous client, signature…).
+
+- **`ChoixDossier`** (`PageAgenda.tsx`, section « Pour quel client » de la fenêtre) : sans rien
+  taper, seulement le champ « Tape le nom du client… » ; la liste n'apparaît qu'à la frappe
+  (« 1 résultat », « Aucun dossier »), comme avant. Un seul sélecteur sert à tous les types de
+  rendez-vous, depuis l'agenda comme depuis « Nouveau rendez-vous » partout.
+
 ### V3.104 — 7 octobre 2026 · « Sa recherche » : les critères en cartes, rangées selon ce qui est rempli
 
 Rien à passer dans Supabase.
