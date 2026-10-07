@@ -1497,6 +1497,70 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.112 — 7 octobre 2026 · Le rapprochement, expliqué des deux côtés : l'onglet du bien et celui de l'acheteur
+
+Rien à passer dans Supabase.
+
+Alexandre, devant l'onglet Acheteurs d'un bien : « je ne comprends pas… je n'avais même pas fait
+attention à "parmi vos neuf recherches actives"… il faut mieux présenter, mieux expliquer » ; « les
+prospects, il faut les mettre aussi dans correspondre… tous ceux qui sont dans la case acheteur,
+sauf ceux qui sont archivés ou qui ont trouvé » ; côté acheteur : « dès que j'arrive dans
+Rapprochement, qu'on comprenne bien, avec une petite explication… que je ne sois pas perdu » ; « si
+je relance, ça ne va chercher que les nouveaux ? ». Maquettes sur le canevas « Acheteurs d'un bien et
+rapprochement » : il a choisi un mélange de A et B pour le bien, et C pour l'acheteur.
+
+- **Qui compte** (`outils.ts`, `acheteurSuivi`) : tout acheteur en cours — un contact acheteur, pas
+  archivé, ni « Bien trouvé » ni « Perdu ». Les prospects (et ceux en pause, ou « offre écrite »)
+  correspondent comme les actifs ; leur statut s'affiche à côté du nom (`STATUT_ACHETEUR`). `rang`
+  n'a plus que 'ok' et 'incomplet' (sans budget ou sans secteur). Touche aussi les compteurs de la
+  liste des biens, l'envoi groupé (V3.111), la Vue d'ensemble. `chargerListe` lit maintenant
+  `types` et `archive` des contacts (sans ces colonnes, comme avant).
+- **Le tri complet d'un bien** (`outils.ts`, `triBien`) : chaque recherche ouverte d'un acheteur en
+  cours (hors propriétaire) tombe dans UNE case — correspond (70 % et plus), en partie (50 à 69 %),
+  à compléter, ou pas montrée avec sa raison (`RAISONS_CACHE` : autre secteur, autre type de bien,
+  trop cher pour eux, trop petit, pas assez de chambres, il manque un indispensable, trop loin de
+  leurs critères, trop peu de critères). Les cases s'additionnent : `total`. Les pas montrées sont
+  rangées les plus proches d'abord (le moins au-dessus du budget, la meilleure note).
+- **L'onglet du bien s'appelle « Rapprochement »** (le même mot que sur la fiche acheteur), dans
+  `biens/RapprochementBien.tsx` (+ `.module.css`), qui remplace `ListeAcheteurs` (supprimée
+  d'AcheteursBien.tsx ; ses morceaux — Note, état, Illu — y sont exportés) :
+  « Qui, dans ta base, pourrait acheter cet appartement ? », « Comment ça marche ? » à déplier (les
+  quatre étapes et la légende des notes), les trois gestes (regarde, coche, « Envoyer… ») ; « 8
+  recherches ouvertes dans ta base, triées pour cet appartement », une barre proportionnelle et
+  quatre cases qui mènent à leur rubrique ; une rubrique par case (cinq lignes, puis « Voir les N
+  autres »), sur chaque acheteur ses critères cochés ou barrés (budget, secteur, surface, chambres,
+  puis ce qui coince) ; « Pas montrés » en carrés par raison, les deux plus proches en tête,
+  « Voir les N », et « Envoyer » pour le lui proposer quand même (la fenêtre dit alors « Pas proposé
+  d'office (trop cher pour eux, +12 %…) » — `Acheteur.horsListe`) ; le pied, collant : combien de
+  cochés, « Un autre client… » (la fenêtre d'envoi de la liste, avec la recherche par nom, V3.111) et
+  « Envoyer… ». Avec 300 acheteurs, rien ne déborde : barre et cases proportionnelles, cinq lignes
+  par rubrique, deux noms par raison.
+- **Avant le mandat** : l'envoi s'ouvre aussi depuis la fiche (comme depuis la liste, V3.111), après
+  un mot (« Ce bien n'est pas encore sous mandat… il le verra sans prix tant que le prix n'est pas
+  fixé » · « Le présenter quand même »).
+- **La fenêtre « Envoyer… »** (`FenEnvoiAcheteurs`) dit où va le bien : « Il passe dans
+  « Présentés »… », et pour le mail « Tu relis, il part, et le bien passe dans « Présentés » ». Si son
+  lien d'espace ne lui a pas encore été envoyé : « par mail, il le verra tout de suite ».
+- **L'onglet Rapprochement de l'acheteur** (`fiche/Rapprochement.tsx`, `GuideRapprochement`) remplace
+  le bandeau : « Quels biens de ta base pourraient plaire à Camille ? », les trois temps, puis
+  « 1 · Où chercher ? » — deux cases à cocher, « Mes biens en vente · 6 » et « Les annonces de mes
+  veilles · 214 » (avec la période) —, le dernier rapprochement, « Seulement les nouveautés » ou
+  « Tout revoir », et « Lancer le rapprochement » : la fenêtre s'ouvre directement sur la recherche.
+- **Les nouveautés** : chaque rapprochement note au Suivi les biens montrés (`metadata.vus`, leurs
+  clés ; une annonce de veille se reconnaît maintenant à son adresse, plus à la ligne qui l'a
+  trouvée). « Seulement les nouveautés » replie à part ceux déjà vus : « Déjà vu le 29 septembre,
+  pas retenu · 2 ». Les rapprochements d'avant cette version n'ont pas de liste : la première fois,
+  tout est nouveau.
+- **Le pied de la fenêtre** explique les deux boutons : « Le mettre dans sa sélection — onglet
+  Sélection, rien ne part, tu l'enverras plus tard » et « Le lui envoyer par mail — tu relis, il
+  part, le bien passe dans Présentés ».
+
+Vérifié au banc, 1280 et 390 px : un appartement (1 correspond — une prospecte —, 1 en partie, 1 à
+compléter, 5 pas montrés dont 4 trop chers et 1 autre type ; un archivé et un « bien trouvé » non
+comptés), « Comment ça marche ? », « Envoyer… » (le mot sur le lien), « Envoyer » depuis « Pas
+montrés », « Un autre client… », la garde d'une maison en estimation ; côté acheteur, le guide, le
+lancement, « 1 nouveau bien » et « Déjà vu le 29 septembre », le journal écrit avec ses `vus`.
+
 ### V3.111 — 7 octobre 2026 · Envoyer des biens cochés à un client qu'on choisit ; le rapprochement écarte aussi les annonces
 
 Rien à passer dans Supabase.
@@ -4685,7 +4749,8 @@ Maquettes validées par Alexandre (variante B de l'en-tête), puis codées.
   si un de vos mandats lui correspond déjà, « Recherche de … enregistrée · « 4 pièces… » lui
   correspond à 89 % » et « Voir », qui lance le rapprochement sur vos mandats, ceux-là cochés
   (prop `depart` de `Rapprochement`).
-- **La fiche bien, côté acheteurs** (`biens/AcheteursBien.tsx`) : l'onglet Acheteurs liste les
+- **La fiche bien, côté acheteurs** (`biens/AcheteursBien.tsx` ; depuis la V3.112, l'onglet s'appelle
+  « Rapprochement » et vit dans `biens/RapprochementBien.tsx` — voir l'historique) : l'onglet Acheteurs liste les
   recherches qui correspondent (filtres Tous · Correspondent · En partie), avec appeler, SMS,
   mail, l'état de chacun (« Nouveau : recherche ouverte hier », « Dans sa sélection depuis… »,
   « Présenté le … · l'a ouvert · veut visiter ») et **« Sélection ou envoi… »** : le mettre dans
