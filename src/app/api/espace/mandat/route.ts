@@ -300,7 +300,7 @@ async function renoncerDocument(o: {
     html: gabarit(`${nomClient} a renoncé à son mandat`, `<p><b>${echappe(nomClient)}</b> a exercé son droit de rétractation en ligne, le ${dateCourte(le)} à ${heureParis(le)}.</p>
       <p>Le mandat${numero ? ` <b>n° ${echappe(numero)}</b>` : ''} (signé en ligne dans Documents) prend fin. ${echappe(registreTexte)}${echappe(prevenusTexte)}</p>
       ${soucis.map(s => `<p style="color:#b91c1c">⚠️ ${echappe(s)}</p>`).join('')}
-      <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+      <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
   });
   /* V3.57 : `accuse` — son accusé de réception est-il parti ? L'espace ne
      lui dit « envoyé par e-mail » que si c'est vrai. */
@@ -480,7 +480,7 @@ export async function POST(req: NextRequest) {
               `<p>Le numéro <b>${echappe(numero)}</b> du registre des mandats vient d'être inscrit pour le mandat de recherche de <b>${echappe(nomClient)}</b>, qui est en train de le signer depuis son espace.</p>
                <p>Rien à reporter ailleurs. S'il ne signe pas, marque-le « sans suite » dans Documents › Registre des mandats.</p>
                ${eNum ? `<p style="color:#b91c1c">⚠️ La fiche n'a pas pu garder le numéro : ${echappe(eNum.message)}</p>` : ''}
-               <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+               <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
           });
           }
         }
@@ -512,7 +512,7 @@ export async function POST(req: NextRequest) {
               `<p>Le numéro <b>${echappe(numero)}</b> de ta réserve vient d'être attribué au mandat de recherche de <b>${echappe(nomClient)}</b>, qui est en train de le signer depuis son espace.</p>
                <p><b>Reporte-le dans le registre ImmoFacile.</b> S'il ne va pas au bout, marque-le « clos sans suite ».</p>${reste}
                ${eNum ? `<p style="color:#b91c1c">⚠️ La fiche n'a pas pu garder le numéro : ${echappe(eNum.message)}</p>` : ''}
-               <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+               <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
           });
         }
 
@@ -594,7 +594,7 @@ export async function POST(req: NextRequest) {
           texte: `Bonjour ${mandant.prenom},\n\nVoici votre code pour signer votre mandat de recherche : ${joli}\n\nIl est valable ${CODE_MINUTES} minutes.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message.\n\nAlexandre Rogelet — Emilio Immobilier`,
           html: gabarit('Votre code de signature', `<p>Bonjour ${echappe(mandant.prenom)},</p>
             <p>Voici votre code pour signer votre mandat de recherche :</p>
-            <div style="margin:16px 0;font-size:32px;font-weight:800;letter-spacing:8px;color:#1a2332">${joli}</div>
+            <div style="margin:16px 0;font-size:32px;font-weight:800;letter-spacing:8px;color:#13243D">${joli}</div>
             <p>Il est valable ${CODE_MINUTES} minutes.</p>`,
             'Si vous n’êtes pas à l’origine de cette demande, ignorez simplement ce message.'),
         });
@@ -749,11 +749,11 @@ export async function POST(req: NextRequest) {
               <p>Il signe avec <b>${echappe(autres)}</b>, qui ${cos.length > 1 ? 'ont' : 'a'} reçu son lien personnel. Le mandat l’engage déjà ; il sera complet à leur signature.</p>
               <p>${execution ? 'Il a demandé que la recherche commence <b>tout de suite</b>.' : 'Il préfère attendre la fin des 14 jours.'}</p>
               ${contenu.source === 'reserve' ? '<p>Numéro pris dans ta réserve : <b>reporte-le dans ImmoFacile</b>.</p>' : ''}
-              ${fiche ? `<p style="color:#1e3a8a">👥 ${echappe(fiche)}</p>` : ''}
+              ${fiche ? `<p style="color:#1B3D6B">👥 ${echappe(fiche)}</p>` : ''}
               ${echecs.length ? `<p style="color:#b91c1c">⚠️ Lien non envoyé : ${echappe(echecs.join(' ; '))}. Renvoie-le depuis sa fiche.</p>` : ''}
               ${eP ? `<p style="color:#b91c1c">⚠️ Sa copie n’a pas pu lui être envoyée (${echappe(eP)}).</p>` : ''}
               ${eFicheP ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFicheP.message)}).</p>` : ''}
-              <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+              <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
           });
           const finR = finRetractation(le);
           return NextResponse.json({
@@ -882,7 +882,7 @@ export async function POST(req: NextRequest) {
             ${ecarts.map(e => `<p style="color:#b45309">⚠️ ${echappe(e)}</p>`).join('')}
             ${eClient ? `<p style="color:#b91c1c">⚠️ Sa copie n’a pas pu lui être envoyée (${echappe(eClient)}) : envoie-lui le PDF ci-joint.</p>` : ''}
             ${eFiche ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFiche.message)}) : remplis le bloc Mandat à la main.</p>` : ''}
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`,
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`,
             'Le PDF signé, avec son certificat, est en pièce jointe et dans le dossier privé des mandats.'),
         });
 
@@ -1009,7 +1009,7 @@ export async function POST(req: NextRequest) {
             <p>Le mandat <b>n° ${echappe(l.numero)}</b> prend fin. ${echappe(registreTexte)}</p>
             ${eFiche ? `<p style="color:#b91c1c">⚠️ La fiche n’a pas pu être mise à jour (${echappe(eFiche.message)}).</p>` : ''}
             ${eAccuse ? `<p style="color:#b91c1c">⚠️ Son accusé de réception n’a pas pu lui être envoyé (${echappe(eAccuse)}) : envoie-le-lui toi-même.</p>` : ''}
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
         });
         return NextResponse.json({ ok: true, accuse: !eAccuse });
       }
@@ -1108,7 +1108,7 @@ export async function POST(req: NextRequest) {
           html: gabarit(`${nomClient} a une question sur son mandat`, `<p><b>${echappe(nomClient)}</b> a ouvert son mandat de recherche et souhaite être rappelé ${echappe(quoi)}.</p>
             <p>Honoraires proposés : <b>${echappe(honorairesCourt(actuelle))}</b>${tel ? ` · Son téléphone : <b>${echappe(tel)}</b>` : ''}</p>
             <p>Si vous convenez d’autres honoraires (un autre taux ou un forfait), change-les dans sa fiche (« Faire signer le mandat »), puis envoie-lui le mandat par e-mail.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>`),
         });
         return NextResponse.json({ ok: true });
       }
