@@ -674,10 +674,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
            numéro disponible, la demande passe, et Alexandre est alerté.
            La recherche est relue en entier : ses colonnes « mandat_ »
            n'existent qu'une fois le SQL passé, et un select('*') ne casse
-           jamais sur une colonne absente. */
+           jamais sur une colonne absente.
+           V3.114 : sauf pour un bien de l'agence (`bien_vente_id`, une copie
+           d'un de ses biens en vente). Le visiter ne demande jamais de mandat
+           de recherche, et l'alerte à Alexandre n'en parle pas : il est le
+           mandataire du vendeur, la visite se fait comme pour tout acheteur. */
         let pasDeMandat: PasDeMandat = '';
         let attendus = '';
-        if (avis === 'souhaite_visiter') {
+        if (avis === 'souhaite_visiter' && !bien.bien_vente_id) {
           const { data: rm } = await supabase.from('recherches').select('*').eq('id', recherche.id).maybeSingle();
           const etat = rm ? await etatServeur(supabase, rm) : 'sans_numero';
           /* Un mandat préparé dans Documents, pas encore signé (V3.32) : c'est
