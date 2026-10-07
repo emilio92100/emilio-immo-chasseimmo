@@ -9,6 +9,7 @@ import { estIssue, raisonsValides, issueDe, badgeApresVisite, maintenantParis, v
 import { ecritServeur } from '@/lib/ecritures';
 import { colonneSuspensionAbsente } from '@/lib/suspension';
 import { retracteEnLigne, pourEspaceAcheteur } from '@/lib/documents-espace';
+import { logoMail } from '@/lib/mail-charte';
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -180,25 +181,25 @@ async function prevenirVisite(
   const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
   const prix = bien.prix_acquereur || bien.prix_vendeur;
   const photo = Array.isArray(bien.photos) ? bien.photos.filter(Boolean)[0] : null;
-  const html = `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
-  <div style="background:#1a2332;padding:18px 22px;border-radius:14px 14px 0 0">
-    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:11px">EMILIO · CRM</div>
-    <div style="color:#ffffff;font-weight:800;font-size:18px;margin-top:6px">${echappe(nom)} veut visiter</div>
+  const html = `<div style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#46566B">
+  <div style="background:#22497D;padding:18px 22px 16px;border-radius:14px 14px 0 0;border-bottom:3px solid #E68B23">
+    ${logoMail('CRM')}
+    <div style="color:#ffffff;font-weight:800;font-size:18px;line-height:1.3;margin-top:12px">${echappe(nom)} veut visiter</div>
   </div>
-  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px">
-    <div style="border:1px solid #e3e8f0;border-radius:12px;overflow:hidden;background:#f8fafc">
+  <div style="border:1px solid #E8EDF3;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px">
+    <div style="border:1px solid #E8EDF3;border-radius:12px;overflow:hidden;background:#F5F8FC">
       ${photo ? `<img src="${echappe(photo)}" alt="" width="514" style="width:100%;max-width:514px;height:auto;display:block;border:0" />` : ''}
       <div style="padding:14px 16px">
-        <div style="font-weight:700;font-size:15px;color:#1a2332">${echappe(titre)}</div>
-        ${lieu ? `<div style="color:#64748b;margin-top:4px;font-size:13px">${echappe(lieu)}</div>` : ''}
-        ${prix ? `<div style="font-weight:800;font-size:17px;color:#1a2332;margin-top:8px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
+        <div style="font-weight:700;font-size:15px;color:#13243D">${echappe(titre)}</div>
+        ${lieu ? `<div style="color:#5B6B80;margin-top:4px;font-size:13px">${echappe(lieu)}</div>` : ''}
+        ${prix ? `<div style="font-weight:800;font-size:17px;color:#13243D;margin-top:8px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
       </div>
     </div>
-    <div style="margin-top:16px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;font-weight:700">Ses disponibilités</div>
-    <div style="margin-top:6px;font-size:14px;line-height:1.6;color:#1a2332">${dispos ? echappe(dispos) : 'Pas précisées : à lui demander.'}</div>
+    <div style="margin-top:16px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8FA3BF;font-weight:700">Ses disponibilités</div>
+    <div style="margin-top:6px;font-size:14px;line-height:1.6;color:#13243D">${dispos ? echappe(dispos) : 'Pas précisées : à lui demander.'}</div>
     ${mandatTexte ? `<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.55"><b>${mandatTete}</b> ${echappe(mandatTexte)}</div>` : ''}
-    <a href="${lien}" style="display:inline-block;margin-top:18px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
-    <div style="margin-top:14px;font-size:12px;color:#94a3b8">La demande est aussi dans tes Relances, pour aujourd’hui.</div>
+    <a href="${lien}" style="display:inline-block;margin-top:18px;background:#E68B23;color:#13243D;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
+    <div style="margin-top:14px;font-size:12px;color:#8FA3BF">La demande est aussi dans tes Relances, pour aujourd’hui.</div>
   </div>
 </div>`;
   const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
@@ -254,28 +255,28 @@ async function prevenirApresVisite(
     non: 'Ses raisons rejoignent « Ce que ses visites ont appris », dans l’onglet Visites de sa fiche.',
   }[issue];
   const lignes = [
-    prix ? `<div style="margin-top:6px;font-size:15px;color:#1a2332"><b>Son prix en tête :</b> ${euros(prix)}</div>` : '',
+    prix ? `<div style="margin-top:6px;font-size:15px;color:#13243D"><b>Son prix en tête :</b> ${euros(prix)}</div>` : '',
     motifs.length ? `<div style="margin-top:8px">${motifs.map(m => `<span style="display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border-radius:99px;background:${ISSUES[issue].fond};color:${ISSUES[issue].couleur};font-size:13px;font-weight:700">${echappe(m)}</span>`).join('')}</div>` : '',
-    mot ? `<div style="margin-top:8px;font-size:14px;line-height:1.6;color:#1a2332;background:#f8fafc;border-radius:10px;padding:10px 12px">« ${echappe(mot)} »</div>` : '',
+    mot ? `<div style="margin-top:8px;font-size:14px;line-height:1.6;color:#13243D;background:#F5F8FC;border-radius:10px;padding:10px 12px">« ${echappe(mot)} »</div>` : '',
   ].join('');
-  const html = `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
-  <div style="background:#1a2332;padding:18px 22px;border-radius:14px 14px 0 0">
-    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:11px">EMILIO · CRM</div>
-    <div style="color:#ffffff;font-weight:800;font-size:18px;margin-top:6px">${ISSUES[issue].e} ${echappe(phrase)}</div>
+  const html = `<div style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#46566B">
+  <div style="background:#22497D;padding:18px 22px 16px;border-radius:14px 14px 0 0;border-bottom:3px solid #E68B23">
+    ${logoMail('CRM')}
+    <div style="color:#ffffff;font-weight:800;font-size:18px;line-height:1.3;margin-top:12px">${ISSUES[issue].e} ${echappe(phrase)}</div>
   </div>
-  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px">
-    <div style="font-size:13px;color:#64748b">Après sa visite${quand ? ` du ${echappe(quand)}` : ''}, depuis son espace :</div>
-    <div style="border:1px solid #e3e8f0;border-radius:12px;overflow:hidden;background:#f8fafc;margin-top:10px">
+  <div style="border:1px solid #E8EDF3;border-top:none;border-radius:0 0 14px 14px;padding:20px 22px">
+    <div style="font-size:13px;color:#5B6B80">Après sa visite${quand ? ` du ${echappe(quand)}` : ''}, depuis son espace :</div>
+    <div style="border:1px solid #E8EDF3;border-radius:12px;overflow:hidden;background:#F5F8FC;margin-top:10px">
       ${photo ? `<img src="${echappe(photo)}" alt="" width="514" style="width:100%;max-width:514px;height:auto;display:block;border:0" />` : ''}
       <div style="padding:14px 16px">
-        <div style="font-weight:700;font-size:15px;color:#1a2332">${echappe(titre)}</div>
-        ${lieu ? `<div style="color:#64748b;margin-top:4px;font-size:13px">${echappe(lieu)}</div>` : ''}
-        ${prixBien ? `<div style="font-weight:800;font-size:17px;color:#1a2332;margin-top:8px">${euros(prixBien)}</div>` : ''}
+        <div style="font-weight:700;font-size:15px;color:#13243D">${echappe(titre)}</div>
+        ${lieu ? `<div style="color:#5B6B80;margin-top:4px;font-size:13px">${echappe(lieu)}</div>` : ''}
+        ${prixBien ? `<div style="font-weight:800;font-size:17px;color:#13243D;margin-top:8px">${euros(prixBien)}</div>` : ''}
       </div>
     </div>
     ${lignes}
-    <a href="${lien}" style="display:inline-block;margin-top:18px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
-    <div style="margin-top:14px;font-size:12px;color:#94a3b8">${echappe(ensuite)}</div>
+    <a href="${lien}" style="display:inline-block;margin-top:18px;background:#E68B23;color:#13243D;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:800">Ouvrir sa fiche</a>
+    <div style="margin-top:14px;font-size:12px;color:#8FA3BF">${echappe(ensuite)}</div>
   </div>
 </div>`;
   const texte = [
@@ -1247,28 +1248,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         }
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const html = `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
-  <div style="background:#1a2332;padding:22px 24px;border-radius:14px 14px 0 0">
-    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:12px">EMILIO IMMOBILIER</div>
+        const html = `<div style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#46566B">
+  <div style="background:#22497D;padding:18px 22px 16px;border-radius:14px 14px 0 0;border-bottom:3px solid #E68B23">
+    ${logoMail()}
   </div>
-  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:24px">
+  <div style="border:1px solid #E8EDF3;border-top:none;border-radius:0 0 14px 14px;padding:24px">
     <p style="margin:0 0 16px">Bonjour,</p>
     <p style="margin:0 0 20px;line-height:1.7">Voici un bien que je suis en train de regarder.
       Dites-moi ce que vous en pensez.</p>
-    <div style="border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc;overflow:hidden">
+    <div style="border:1px solid #E8EDF3;border-radius:12px;background:#F5F8FC;overflow:hidden">
       ${photo ? `<img src="${echappe(photo)}" alt="" width="510" style="width:100%;max-width:510px;height:auto;display:block;border:0" />` : ''}
       <div style="padding:16px">
-      <div style="font-weight:700;font-size:16px;color:#1a2332">${echappe(bien.titre || 'Le bien')}</div>
-      ${lieuBien ? `<div style="color:#64748b;margin-top:5px;font-size:13px"><span style="color:#c9a84c">&#9679;</span> ${echappe(lieuBien)}</div>` : ''}
-      ${carac ? `<div style="color:#64748b;margin-top:6px;font-size:13px">${carac}</div>` : ''}
-      ${prix ? `<div style="font-weight:800;font-size:20px;color:#1a2332;margin-top:10px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
-      <a href="${lien}" style="display:inline-block;margin-top:14px;background:#c9a84c;color:#fff;
+      <div style="font-weight:700;font-size:16px;color:#13243D">${echappe(bien.titre || 'Le bien')}</div>
+      ${lieuBien ? `<div style="color:#5B6B80;margin-top:5px;font-size:13px"><span style="color:#E68B23">&#9679;</span> ${echappe(lieuBien)}</div>` : ''}
+      ${carac ? `<div style="color:#5B6B80;margin-top:6px;font-size:13px">${carac}</div>` : ''}
+      ${prix ? `<div style="font-weight:800;font-size:20px;color:#13243D;margin-top:10px">${Number(prix).toLocaleString('fr-FR')} €</div>` : ''}
+      <a href="${lien}" style="display:inline-block;margin-top:14px;background:#E68B23;color:#13243D;
         text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Voir la fiche</a>
       </div>
     </div>
     <p style="margin:20px 0 0">${echappe(prenom)}</p>
-    <hr style="border:none;border-top:1px solid #e3e8f0;margin:24px 0 14px">
-    <div style="font-size:12px;color:#94a3b8;line-height:1.6">
+    <hr style="border:none;border-top:1px solid #E8EDF3;margin:24px 0 14px">
+    <div style="font-size:12px;color:#8FA3BF;line-height:1.6">
       Fiche transmise par ${echappe(prenom)}.<br>
       Ce bien est présenté par Alexandre Rogelet, chasseur immobilier · 06 58 95 76 32<br>
       Emilio Immobilier — RT Conseils · CPI 9201 2020 000 045 344
@@ -1281,7 +1282,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
           headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
           body: JSON.stringify({
             Messages: [{
-              From: { Email: FROM_EMAIL, Name: FROM_NAME },
+              /* V3.118 : c'est le client qui partage, pas Alexandre. */
+              From: { Email: FROM_EMAIL, Name: cl?.prenom ? `${cl.prenom} via Emilio Immobilier` : 'Emilio Immobilier' },
               To: [{ Email: dest }],
               Subject: `${prenom} vous partage un bien`,
               TextPart: `Bonjour,\n\nVoici un bien que je suis en train de regarder. Dites-moi ce que vous en pensez.\n\n${bien.titre || ''}\n${[carac, prix ? Number(prix).toLocaleString('fr-FR') + ' \u20ac' : null].filter(Boolean).join(' \u00b7 ')}\n${lien}\n\n${prenom}\n\n---\nFiche transmise par ${prenom}.\nCe bien est présenté par Alexandre Rogelet, chasseur immobilier · 06 58 95 76 32\nEmilio Immobilier — RT Conseils · CPI 9201 2020 000 045 344`,
