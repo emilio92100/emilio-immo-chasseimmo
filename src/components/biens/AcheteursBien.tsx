@@ -1,27 +1,14 @@
 'use client';
 /* ═══ Les acheteurs d'un bien (V3.29) ═══════════════════════════════════════
-   Les recherches actives qui correspondent au bien, notées comme dans leur
-   espace (src/lib/correspondance.ts) : 70 % et plus « correspondent », 50 à
-   69 % « en partie ».
+   Les morceaux communs : l'avatar, la note en anneau, l'état d'un acheteur
+   (« Présenté le… »), la carte « Les acheteurs » de la Vue d'ensemble, et la
+   fenêtre « Envoyer… » (dans sa sélection, dans son espace, par mail).
+   L'onglet lui-même, « Rapprochement », est dans RapprochementBien.tsx
+   (V3.112 : il remplace la liste d'ici). */
 
-   · En vente (mandat, sous offre, sous compromis) : on coche, puis
-     « Sélection ou envoi… » — le mettre dans leur sélection (rien ne part),
-     l'envoyer dans leur espace, ou, pour un seul acheteur, ouvrir le mail
-     d'envoi habituel depuis sa fiche. Appeler, SMS, mail sur chaque ligne.
-   · Avant le mandat (à suivre, estimation) : la même liste, sans envoi —
-     « L'envoi s'ouvre au mandat ». On sait déjà qui appeler.
-   · En pause, vendu, retiré : la liste reste, en lecture.
-
-   La carte « Les acheteurs » de la Vue d'ensemble est ici aussi.
-
-   V3.99 : « Correspondent » et « En partie » ne parlent que des acheteurs
-   actifs dont la recherche dit son budget et son secteur (outils.ts, `rang`).
-   Les autres sont à part, dans « À compléter » et « Prospects ». */
-
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Ic } from '@/components/documents/ApercuActe';
-import { euros } from '@/lib/mandat';
 import { dateCourte, titreBien, type BienVente } from '@/lib/biens-vente';
 import { demanderOuvertureFiche } from '@/lib/intentions';
 import {
@@ -39,7 +26,7 @@ export const modeAcheteurs = (etape: string): ModeAcheteurs =>
 
 /* ── Petits morceaux ── */
 const C = 113.1; // périmètre du cercle de la note (r = 18)
-function Note({ n, t = 48, gris }: { n: number; t?: number; gris?: boolean }) {
+export function Note({ n, t = 48, gris }: { n: number; t?: number; gris?: boolean }) {
   const coul = gris ? '#cbd5e1' : n >= 85 ? '#16a34a' : n >= SEUIL_CORRESPOND ? '#c9a84c' : '#94a3b8';
   return (
     <svg className={a.note} width={t} height={t} viewBox="0 0 48 48" role="img" aria-label={`${n} pour cent`}>
@@ -69,7 +56,7 @@ export function Avatar({ acheteur, petit }: { acheteur: Acheteur; petit?: boolea
 /* Ce qui ne colle pas, en une ligne ; sinon « Tout correspond ».
    V3.99 : une recherche sans budget ou sans secteur le dit d'abord. */
 const MANQUE: Record<string, string> = { budget: 'pas de budget', secteur: 'pas de secteur' };
-function ecart(x: Acheteur): { t: string; ok: boolean } {
+export function ecart(x: Acheteur): { t: string; ok: boolean } {
   if (x.manque.length) return { t: `Recherche à compléter : ${x.manque.map(k => MANQUE[k] || k).join(', ')}`, ok: false };
   const pb = x.corr.lignes.filter(l => l.etat !== 'oui');
   if (!pb.length) return { t: `Tout correspond : ${x.corr.lignes.map(l => l.lib.toLowerCase()).slice(0, 4).join(', ')}`, ok: true };
@@ -89,7 +76,7 @@ export const estNouveau = (x: Acheteur) => !x.copie && (joursDepuis(x.recherche.
 const enSelection = (c: Copie | null) => !!c && c.etape === 'selection';
 const presente = (c: Copie | null) => !!c && c.etape !== 'selection';
 
-function etat(x: Acheteur): { t: string; ton: 'nouveau' | 'dossier' } | null {
+export function etat(x: Acheteur): { t: string; ton: 'nouveau' | 'dossier' } | null {
   const c = x.copie;
   if (c && enSelection(c)) return { t: `Dans sa sélection depuis le ${dateCourte(c.created_at)} · pas encore envoyé`, ton: 'dossier' };
   if (c) {
@@ -105,169 +92,18 @@ function etat(x: Acheteur): { t: string; ton: 'nouveau' | 'dossier' } | null {
   return null;
 }
 
-const telDe = (x: Acheteur) => (x.client.telephones || []).find(Boolean) || '';
-const mailDe = (x: Acheteur) => (x.client.emails || []).find(Boolean) || '';
-const sansEspaces = (t: string) => t.replace(/[\s.]+/g, '');
+export const telDe = (x: Acheteur) => (x.client.telephones || []).find(Boolean) || '';
+export const mailDe = (x: Acheteur) => (x.client.emails || []).find(Boolean) || '';
+export const sansEspaces = (t: string) => t.replace(/[\s.]+/g, '');
 
 /* L'illustration de l'en-tête : trois acheteurs qui flottent. */
-function Illu() {
+export function Illu() {
   return (
     <svg className={a.illu} width="116" height="72" viewBox="0 0 116 72" aria-hidden="true">
       <g className={a.f1}><circle cx="26" cy="38" r="20" fill="#dcfce7" stroke="#fff" strokeWidth="3" /><circle cx="26" cy="32" r="6" fill="#16a34a" /><path d="M15 50c2-7 20-7 22 0" fill="#16a34a" /></g>
       <g className={a.f2}><circle cx="58" cy="30" r="22" fill="#e0e7ff" stroke="#fff" strokeWidth="3" /><circle cx="58" cy="24" r="7" fill="#4f46e5" /><path d="M46 43c2-8 22-8 24 0" fill="#4f46e5" /></g>
       <g className={a.f3}><circle cx="90" cy="40" r="19" fill="#fef3c7" stroke="#fff" strokeWidth="3" /><circle cx="90" cy="34" r="6" fill="#b45309" /><path d="M80 51c2-7 18-7 20 0" fill="#b45309" /></g>
     </svg>
-  );
-}
-
-/* ══ LA LISTE ════════════════════════════════════════════════════════════ */
-export function ListeAcheteurs({ acheteurs, mode, nbRecherches, onFiche, onAgir, max, onTout, titre, ecartes }: {
-  acheteurs: Acheteur[]; mode: ModeAcheteurs; nbRecherches: number;
-  /* V3.45 : « 3 autres recherches ne sont pas montrées : budget trop court… » */
-  ecartes?: string;
-  onFiche: (clientId: string) => void;
-  /* Ouvre « Sélection ou envoi » pour ces acheteurs (en vente seulement). */
-  onAgir?: (l: Acheteur[]) => void;
-  /* La version courte de la Vue d'ensemble : les premiers, et « Voir les N ». */
-  max?: number; onTout?: () => void; titre?: string;
-}) {
-  const liste = useMemo(() => acheteurs.filter(x => x.corr.note >= SEUIL_LISTE), [acheteurs]);
-  /* V3.99 : les acheteurs actifs, budget et secteur dits ; les autres à part. */
-  const principaux = liste.filter(fiable);
-  const incomplets = liste.filter(x => x.rang === 'incomplet');
-  const prospects = liste.filter(x => x.rang === 'prospect');
-  const bons = principaux.filter(x => x.corr.note >= SEUIL_CORRESPOND);
-  const partiels = principaux.length - bons.length;
-  const [filtre, setFiltre] = useState<'tout' | 'bons' | 'partiels' | 'incomplets' | 'prospects'>(() => (bons.length ? 'bons' : 'tout'));
-  const vente = mode === 'vente' && !!onAgir;
-  /* Les trois premiers qui correspondent et n'ont pas encore le bien sont cochés d'office. */
-  const [choisis, setChoisis] = useState<string[]>(() => (vente ? bons.filter(x => !x.copie).slice(0, 3).map(x => x.recherche.id) : []));
-  const vus = max ? principaux
-    : filtre === 'incomplets' ? incomplets : filtre === 'prospects' ? prospects
-      : principaux.filter(x => filtre === 'tout' || (filtre === 'bons' ? x.corr.note >= SEUIL_CORRESPOND : x.corr.note < SEUIL_CORRESPOND));
-  const montres = max ? vus.slice(0, max) : vus;
-  const coches = liste.filter(x => choisis.includes(x.recherche.id) && !presente(x.copie));
-  const basculer = (id: string) => setChoisis(c => (c.includes(id) ? c.filter(y => y !== id) : [...c, id]));
-
-  const titreBloc = titre || (mode === 'avant' ? 'Qui pourrait l’acheter' : 'Acheteurs qui correspondent');
-  const sous = mode === 'avant'
-    ? 'Sur les critères de leur recherche et la surface, les pièces, le secteur du bien. Le prix compte dès qu’il est défini.'
-    : `Parmi vos ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} active${nbRecherches > 1 ? 's' : ''} : les acheteurs actifs dont la recherche dit son budget et son secteur, avec la même note que dans leur espace. Budget trop court, autre secteur, trop petit ou pas assez de chambres : écartée.`;
-  const verrou = mode === 'avant' ? 'L’envoi s’ouvre au mandat' : mode === 'pause' ? 'Vente en pause : l’envoi reprend avec elle' : mode === 'fini' ? 'Le bien n’est plus en vente' : '';
-
-  return (
-    <section className={`${a.bloc} ${max ? a.court : ''}`} aria-label={titreBloc}>
-      <div className={a.tete}>
-        {!max && <Illu />}
-        <div className={a.teteTx}>
-          <div className={a.teteL1}>
-            <h3>{titreBloc}</h3>
-            <b className={a.teteN}>{bons.length}</b>
-            {max && partiels > 0 && <span className={a.pastille}>{`${partiels} en partie`}</span>}
-          </div>
-          <p>{sous}</p>
-        </div>
-        {!max && liste.length > 0 && (
-          <div className={a.puces} role="group" aria-label="Filtrer">
-            <span className={a.pucesL}>
-              <button type="button" className={filtre === 'tout' ? a.puceOn : a.puce} aria-pressed={filtre === 'tout'} onClick={() => setFiltre('tout')}>Tous <b>{principaux.length}</b></button>
-              <button type="button" className={filtre === 'bons' ? a.puceOn : a.puce} aria-pressed={filtre === 'bons'} onClick={() => setFiltre('bons')}>Correspondent <b>{bons.length}</b></button>
-              <button type="button" className={filtre === 'partiels' ? a.puceOn : a.puce} aria-pressed={filtre === 'partiels'} onClick={() => setFiltre('partiels')}>En partie <b>{partiels}</b></button>
-            </span>
-            {(incomplets.length > 0 || prospects.length > 0) && (
-              <span className={`${a.pucesL} ${a.pucesAPart}`}>
-                {incomplets.length > 0 && (
-                  <button type="button" className={filtre === 'incomplets' ? a.puceOn : `${a.puce} ${a.puceAPart}`} aria-pressed={filtre === 'incomplets'} onClick={() => setFiltre('incomplets')}
-                    title="Recherches sans budget ou sans secteur : à compléter avant de les rapprocher">À compléter <b>{incomplets.length}</b></button>
-                )}
-                {prospects.length > 0 && (
-                  <button type="button" className={filtre === 'prospects' ? a.puceOn : `${a.puce} ${a.puceAPart}`} aria-pressed={filtre === 'prospects'} onClick={() => setFiltre('prospects')}
-                    title="Contacts au statut Prospect">Prospects <b>{prospects.length}</b></button>
-                )}
-              </span>
-            )}
-          </div>
-        )}
-        {max && verrou && <span className={a.verrou}><Ic n="cadenas" t={14} />{verrou}</span>}
-      </div>
-
-      {(max ? principaux : liste).length === 0 ? (
-        <div className={a.vide}>
-          <span className={a.videIc}><Ic n="groupe" t={24} /></span>
-          <b>Aucune recherche ne lui correspond pour l’instant.</b>
-          <span>{mode === 'avant' ? 'La liste se remplit dès qu’un acheteur est suivi, ou que la surface, les pièces, le secteur sont saisis.' : 'Elle se met à jour dès qu’un acheteur est suivi, ou que le prix change.'}</span>
-        </div>
-      ) : (
-        <div className={a.lignes}>
-          {montres.map((x, i) => {
-            const on = choisis.includes(x.recherche.id) && !presente(x.copie);
-            const e = ecart(x);
-            const et = etat(x);
-            const tel = telDe(x), mail = mailDe(x);
-            return (
-              <div key={x.recherche.id} className={`${a.ligne} ${vente ? a.ligneVente : ''} ${on ? a.ligneOn : ''}`} style={{ animationDelay: `${Math.min(i, 8) * 0.04}s` }}>
-                {vente && (
-                  <button type="button" className={`${a.coche} ${on ? a.cocheOn : ''}`} disabled={presente(x.copie)} aria-pressed={on}
-                    aria-label={presente(x.copie) ? 'Déjà présenté' : on ? 'Retirer du choix' : 'Choisir cet acheteur'} title={presente(x.copie) ? 'Il l’a déjà dans son espace' : undefined}
-                    onClick={() => basculer(x.recherche.id)}>
-                    <Ic n="check" t={13} e={3.2} />
-                  </button>
-                )}
-                <Note n={x.corr.note} t={max ? 44 : 48} gris={!!x.manque.length} />
-                <Avatar acheteur={x} />
-                <div className={a.qui}>
-                  <div className={a.quiL1}>
-                    <button type="button" className={a.nom} onClick={() => onFiche(x.client.id)}>{nomClient(x.client)}</button>
-                    {x.rang === 'prospect' && <span className={a.tagProspect}>Prospect</span>}
-                    {x.recherche.budget_max ? <span className={a.budget}>{`jusqu’à ${euros(x.recherche.budget_max)}`}</span> : null}
-                  </div>
-                  <span className={e.ok ? a.ecartOk : a.ecartKo}>{e.t}</span>
-                  {et && <span className={et.ton === 'nouveau' ? a.etatNouveau : a.etat}>{et.ton === 'nouveau' && <i className={a.ping} />}{et.t}</span>}
-                </div>
-                {!max && (
-                  <div className={a.actions}>
-                    <div className={a.contacts}>
-                      {tel && <a className={a.rond} href={`tel:${sansEspaces(tel)}`} aria-label={`Appeler ${nomClient(x.client)}`} title={tel}><Ic n="telephone" t={16} /><span className={a.rondTx}>Appeler</span></a>}
-                      {tel && <a className={a.rond} href={`sms:${sansEspaces(tel)}`} aria-label={`SMS à ${nomClient(x.client)}`} title="SMS"><Ic n="bulle" t={16} /><span className={a.rondTx}>SMS</span></a>}
-                      {mail && <a className={`${a.rond} ${a.rondMail}`} href={`mailto:${mail}`} aria-label={`Mail à ${nomClient(x.client)}`} title={mail}><Ic n="mail" t={16} /></a>}
-                    </div>
-                    {vente && (
-                      <button type="button" className={a.agir} onClick={() => onAgir!([x])}>
-                        <Ic n="envoyer" t={15} />{presente(x.copie) ? 'Renvoyer…' : 'Envoyer…'}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {max && x.recherche.budget_max ? <span className={a.budgetD}>{'jusqu’à '}<b>{euros(x.recherche.budget_max)}</b></span> : null}
-              </div>
-            );
-          })}
-          {!max && !montres.length && (
-            <div className={a.videPetit}>{(filtre === 'tout' || filtre === 'bons') && !principaux.length
-              ? `Aucun acheteur actif avec un budget et un secteur ne lui correspond.${incomplets.length ? ' Regardez « À compléter »' : ''}${incomplets.length && prospects.length ? ' et « Prospects »' : prospects.length ? ' Regardez « Prospects »' : ''}${incomplets.length || prospects.length ? '.' : ''}`
-              : 'Personne dans ce filtre.'}</div>
-          )}
-        </div>
-      )}
-
-      {!max && ecartes && <p className={a.ecartes}><Ic n="info" t={14} /><span>{ecartes}</span></p>}
-
-      {max && onTout && liste.length > 0 && (
-        <button type="button" className={a.tout} onClick={onTout}>{liste.length > montres.length ? `Voir les ${liste.length} dans l’onglet Acheteurs` : 'Ouvrir l’onglet Acheteurs'}</button>
-      )}
-      {!max && vente && liste.length > 0 && (
-        <div className={a.pied}>
-          <span className={a.piedN}><b>{coches.length}</b>{coches.length > 1 ? 'acheteurs choisis' : 'acheteur choisi'}</span>
-          <span className={a.piedAide}>Ceux qui l’ont déjà dans leur espace ne se cochent pas.</span>
-          <button type="button" className={a.btnOr} disabled={!coches.length} onClick={() => onAgir!(coches)}>
-            <Ic n="envoyer" t={17} />Sélection ou envoi…
-          </button>
-        </div>
-      )}
-      {!max && !vente && verrou && liste.length > 0 && (
-        <div className={a.pied}><span className={a.verrou}><Ic n="cadenas" t={14} />{verrou}</span></div>
-      )}
-    </section>
   );
 }
 
@@ -354,7 +190,7 @@ export function FenEnvoiAcheteurs({ bien, choisis, onFermer, onFait, onFiche }: 
           <span className={a.fenIc}><Ic n="envoyer" t={20} /></span>
           <div className={a.fenTx}>
             <h2>{seul ? `${titre} pour ${nom}` : `${titre} pour ${choisis.length} acheteurs`}</h2>
-            <p>{seul ? `Correspond à ${seul.corr.note} % de sa recherche.` : choisis.map(x => nomClient(x.client)).join(', ')}</p>
+            <p>{seul ? (seul.horsListe ? `Pas proposé d’office (${seul.horsListe}) : tu le lui proposes quand même.` : seul.corr.note >= 0 ? `Correspond à ${seul.corr.note} % de sa recherche.` : 'Choisi par toi : sa recherche ne se compare pas à ce bien.') : choisis.map(x => nomClient(x.client)).join(', ')}</p>
           </div>
           <button type="button" className={a.fermer} aria-label="Fermer" disabled={!!en} onClick={onFermer}><Ic n="croix" t={16} e={2.2} /></button>
         </div>
@@ -374,7 +210,7 @@ export function FenEnvoiAcheteurs({ bien, choisis, onFermer, onFait, onFiche }: 
               <b>{en === 'espace' ? 'Envoi…' : seul ? 'Envoyer dans son espace' : 'Envoyer dans leur espace'}</b>
               <small>{!pourEspace.length
                 ? 'Déjà dans son espace.'
-                : `Il y arrive tout de suite, avec la note de correspondance. ${seul ? 'Il est prévenu' : 'Ils sont prévenus'} sur ${seul ? 'son' : 'leur'} téléphone s’${seul ? 'il l’a' : 'ils l’ont'} accepté.`}</small>
+                : `Il passe dans « Présentés » et y arrive tout de suite, avec la note de correspondance. ${seul ? 'Il est prévenu' : 'Ils sont prévenus'} sur ${seul ? 'son' : 'leur'} téléphone s’${seul ? 'il l’a' : 'ils l’ont'} accepté.${seul && !seul.recherche.bienvenue_envoye_le ? ' Son lien d’espace ne lui a pas encore été envoyé : par mail, il le verra tout de suite.' : ''}`}</small>
             </span>
           </button>
           {seul && (
@@ -382,7 +218,7 @@ export function FenEnvoiAcheteurs({ bien, choisis, onFermer, onFait, onFiche }: 
               <span className={a.optIc}><Ic n="mail" t={20} /></span>
               <span className={a.optTx}>
                 <b>{en === 'mail' ? 'Ouverture…' : 'Envoyer par mail…'}</b>
-                <small>{mailDe(seul) ? 'Sa fiche s’ouvre sur le mail d’envoi habituel, ce bien déjà choisi. Vous relisez avant qu’il parte.' : 'Pas d’adresse mail sur sa fiche.'}</small>
+                <small>{mailDe(seul) ? 'Sa fiche s’ouvre sur le mail d’envoi habituel, ce bien déjà choisi. Tu relis, il part, et le bien passe dans « Présentés ».' : 'Pas d’adresse mail sur sa fiche.'}</small>
               </span>
             </button>
           )}

@@ -9,10 +9,10 @@ import { visitePasseeParis } from '@/lib/visites';
 import { signalerEchec } from '@/lib/ecritures';
 import { toutLire } from '@/lib/registre';
 import { modele, aujourdhui, lirePersonnes, PERSONNE_VIDE, type Personne } from '@/lib/actes';
-import { correspondance, criteresDepuisRecherche, type Correspondance } from '@/lib/correspondance';
-import { RAISONS_ECART, raisonEcart, type RaisonEcart } from '@/lib/ecart-acheteur';
+import { correspondance, criteresDepuisRecherche, grouperSecteurs, type Correspondance } from '@/lib/correspondance';
+import { raisonEcart, type RaisonEcart } from '@/lib/ecart-acheteur';
 import { conjointDe } from '@/lib/foyer';
-import { TYPES_CONTACT, colonneContactAbsente, typesDe } from '@/lib/contacts';
+import { TYPES_CONTACT, acheteurEnCours, colonneContactAbsente, typesDe } from '@/lib/contacts';
 import {
   ETAPES_BIEN, apresReponse, argentBien, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
@@ -33,6 +33,8 @@ export type ClientMini = {
   emails: string[] | null; telephones: string[] | null;
   /* Ce qui est propre au type (V3.14) ; « Sa société » y vit (V3.30). */
   pro?: unknown;
+  /* V3.112 : pour savoir qui est un acheteur en cours (lus par chargerListe). */
+  types?: unknown; archive?: boolean | null;
 };
 export type RechercheMini = Record<string, unknown> & { id: string; client_id: string; nom?: string | null; active?: boolean | null; type_bien?: string | null; budget_max?: number | null };
 /* La copie d'un bien en vente dans le dossier d'un acheteur (table biens). */
@@ -107,6 +109,14 @@ export function mandatsParBien(l: ListeBiens): Record<string, EtatMandatDoc> {
   return out;
 }
 
+/* Les contacts, avec leurs types et l'archive (V3.112 : le rapprochement d'un
+   bien regarde tous les acheteurs en cours). Sans ces colonnes (avant leur
+   SQL), comme avant. */
+async function lireClientsListe() {
+  const r = await toutLire<ClientMini>((de, a) => supabase.from('clients').select(`${CLIENT_COLS}, types, archive`).order('id').range(de, a));
+  return r.erreur && colonneContactAbsente(r.erreur) ? toutLire<ClientMini>((de, a) => supabase.from('clients').select(CLIENT_COLS).order('id').range(de, a)) : r;
+}
+
 export async function chargerListe(): Promise<ListeBiens> {
   /* Par pages de 1 000 (V3.33) : Supabase plafonne chaque requête à 1 000
      lignes, quoi que dise .limit(). Au-delà, des acheteurs, des visites ou
@@ -116,7 +126,7 @@ export async function chargerListe(): Promise<ListeBiens> {
     toutLire<SuiviVente>((de, a) => supabase.from('biens_vente_suivi').select('*').order('le', { ascending: false }).order('id').range(de, a)),
     toutLire<Copie>((de, a) => supabase.from('biens').select('id, bien_vente_id, client_id, recherche_id, etape, envoye_le, badge_retour, created_at, vu_le, retour_client, retour_le').not('bien_vente_id', 'is', null).order('id').range(de, a)),
     toutLire<RechercheMini>((de, a) => supabase.from('recherches').select('*').eq('active', true).order('id').range(de, a)),
-    toutLire<ClientMini>((de, a) => supabase.from('clients').select(CLIENT_COLS).order('id').range(de, a)),
+    lireClientsListe(),
   ]);
   if (b.erreur) lever('Les biens n’ont pas pu être lus', b.erreur);
   if (s.erreur) lever('Le suivi des biens n’a pas pu être lu', s.erreur);
@@ -446,17 +456,27 @@ export async function ficheClient(id: string): Promise<Record<string, unknown>> 
 
 /* ══ Les acheteurs qui correspondent ══════════════════════════════════════
    La même note que dans l'espace de l'acheteur (src/lib/correspondance.ts),
-   sur ses recherches actives, clients actifs ou prospects, hors propriétaire.
+   sur ses recherches actives, hors propriétaire.
 
    V3.99 (Alexandre : « ça me met des noms alors que je n'ai rien prévu, je ne
-   suis pas convaincu ») : seul un acheteur au statut Actif, dont la recherche
-   dit son budget ET son secteur, peut « correspondre » (`rang` 'ok'). Une
-   recherche sans l'un des deux n'était jugée que sur le reste : trois
-   critères suffisaient pour sortir à 100 % sur n'importe quel bien. Elle
-   passe « À compléter ». Les prospects sont à part. Les compteurs (onglet,
-   liste des biens, envoi groupé) ne comptent que les 'ok'. */
-export type RangAcheteur = 'ok' | 'incomplet' | 'prospect';
-export type Acheteur = { recherche: RechercheMini; client: ClientMini; corr: Correspondance; copie: Copie | null; rang: RangAcheteur; manque: string[] };
+   suis pas convaincu ») : une recherche qui ne dit pas son budget ET son
+   secteur n'était jugée que sur le reste : trois critères suffisaient pour
+   sortir à 100 % sur n'importe quel bien. Elle passe « À compléter » (`rang`
+   'incomplet') ; les compteurs (onglet, liste des biens, envoi groupé) ne
+   comptent que les 'ok'.
+
+   V3.112 (Alexandre : « les prospects, il faut les mettre aussi dans
+   correspondre… tous ceux qui sont dans la case acheteur, sauf ceux qui sont
+   archivés ou ceux qui ont trouvé ») : tout acheteur en cours compte
+   (`acheteurSuivi`) — un contact acheteur, pas archivé, ni « Bien trouvé » ni
+   « Perdu ». Un prospect correspond comme un actif ; son statut s'affiche à
+   côté de son nom. */
+export type RangAcheteur = 'ok' | 'incomplet';
+export type Acheteur = {
+  recherche: RechercheMini; client: ClientMini; corr: Correspondance; copie: Copie | null; rang: RangAcheteur; manque: string[];
+  /* V3.112 : proposé quand même depuis « Pas montrés » — la raison, pour la fenêtre d'envoi. */
+  horsListe?: string;
+};
 export const SEUIL_CORRESPOND = 70;
 export const SEUIL_LISTE = 50;
 /* Ce qui manque à une recherche pour être jugée : « budget », « secteur ». */
@@ -468,6 +488,12 @@ export function manqueRecherche(r: RechercheMini): string[] {
   return m;
 }
 export const fiable = (x: Acheteur) => x.rang === 'ok';
+/* Un acheteur à qui l'on peut proposer un bien (V3.112). */
+export const acheteurSuivi = (c: ClientMini | null | undefined): c is ClientMini =>
+  !!c && acheteurEnCours(c) && !['bien_trouve', 'perdu'].includes(String(c.statut || ''));
+/* Son statut, quand ce n'est pas « Actif » : à côté de son nom. */
+export const STATUT_ACHETEUR: Record<string, string> = { prospect: 'Prospect', suspendu: 'En pause', offre_ecrite: 'Offre écrite' };
+const copieDuBien = (b: BienVente, r: RechercheMini, copies: Copie[]) => copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null;
 
 /* V3.45 : un critère essentiel nettement raté écarte l'acheteur, quelle que
    soit sa note (src/lib/ecart-acheteur.ts). */
@@ -480,22 +506,21 @@ export function acheteursTries(b: BienVente, recherches: RechercheMini[], client
   for (const r of recherches) {
     if (r.active === false) continue;
     const c = clients[r.client_id];
-    if (!c || !['actif', 'prospect'].includes(String(c.statut || ''))) continue;
+    if (!acheteurSuivi(c)) continue;
     if (b.client_id && r.client_id === b.client_id) continue;
     if (!typeCompatible(b.donnees?.typeBien, r.type_bien)) continue;
     const cr = criteresDepuisRecherche(r);
     const corr = correspondance(bc, cr);
     if (!corr) continue;
     const manque = manqueRecherche(r);
-    const rang: RangAcheteur = c.statut === 'prospect' ? 'prospect' : manque.length ? 'incomplet' : 'ok';
-    const x: Acheteur = { recherche: r, client: c, corr, copie: copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null, rang, manque };
+    const x: Acheteur = { recherche: r, client: c, corr, copie: copieDuBien(b, r, copies), rang: manque.length ? 'incomplet' : 'ok', manque };
     const raison = raisonEcart(corr, bc, cr);
     if (raison) ecartes.push({ acheteur: x, raison });
     else retenus.push(x);
   }
   return { retenus: retenus.sort((x, y) => y.corr.note - x.corr.note), ecartes };
 }
-/* Ceux qui correspondent pour de bon (V3.99) : actifs, budget et secteur dits. */
+/* Ceux qui correspondent pour de bon : budget et secteur dits. */
 export function acheteursPour(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): Acheteur[] {
   return acheteursTries(b, recherches, clients, copies).retenus.filter(fiable);
 }
@@ -509,24 +534,76 @@ export const SANS_NOTE = -1;
 export function acheteurChoisi(b: BienVente, r: RechercheMini, c: ClientMini, copies: Copie[]): Acheteur {
   const corr = typeCompatible(b.donnees?.typeBien, r.type_bien) ? correspondance(versCorrespondance(b), criteresDepuisRecherche(r)) : null;
   const manque = manqueRecherche(r);
-  return {
-    recherche: r, client: c, corr: corr || { note: SANS_NOTE, lignes: [] },
-    copie: copies.find(y => y.bien_vente_id === b.id && y.recherche_id === r.id) || null,
-    rang: c.statut === 'prospect' ? 'prospect' : manque.length ? 'incomplet' : 'ok', manque,
-  };
+  return { recherche: r, client: c, corr: corr || { note: SANS_NOTE, lignes: [] }, copie: copieDuBien(b, r, copies), rang: manque.length ? 'incomplet' : 'ok', manque };
 }
 /* « · correspondance 82 % » dans l'historique du client ; rien sans note. */
 export const noteJournal = (n: number) => (n >= 0 ? ` · correspondance ${n} %` : '');
 
-/* « 4 autres recherches ne sont pas montrées : budget trop court (2), autre secteur (2). » */
-export function phraseEcartes(l: Ecarte[]): string {
-  const parListe = l.filter(x => x.acheteur.corr.note >= SEUIL_LISTE);
-  if (!parListe.length) return '';
-  const n = new Map<RaisonEcart, number>();
-  for (const x of parListe) n.set(x.raison, (n.get(x.raison) || 0) + 1);
-  const raisons = [...n.entries()].sort((p, q) => q[1] - p[1]).map(([r, k]) => (k > 1 ? `${RAISONS_ECART[r]} (${k})` : RAISONS_ECART[r])).join(', ');
-  const k = parListe.length;
-  return `${k} autre${k > 1 ? 's' : ''} recherche${k > 1 ? 's' : ''} ${k > 1 ? 'ne sont' : 'n’est'} pas montrée${k > 1 ? 's' : ''} : ${raisons}.`;
+/* ══ Le rapprochement d'un bien : tout le tri (V3.112) ════════════════════
+   Alexandre : « je ne comprends pas… il faut mieux présenter, mieux
+   expliquer ». Chaque recherche ouverte d'un acheteur en cours (hors
+   propriétaire) tombe dans UNE case : correspond (70 % et plus), en partie
+   (50 à 69 %), à compléter (sans budget ou sans secteur, 50 % et plus), ou
+   pas montrée, avec sa raison. Les cases s'additionnent : leur somme est le
+   nombre de recherches regardées (`total`). Les pas montrées sont rangées
+   par raison, les plus proches d'abord (`ordre`). */
+export type RaisonCache = RaisonEcart | 'loin' | 'type' | 'peu';
+export const RAISONS_CACHE: Record<RaisonCache, { lib: string; sous: string }> = {
+  secteur: { lib: 'Autre secteur', sous: 'Le bien n’est pas dans les villes qu’ils cherchent.' },
+  type: { lib: 'Autre type de bien', sous: 'Ils cherchent autre chose.' },
+  budget: { lib: 'Trop cher pour eux', sous: 'Plus de 10 % au-dessus de leur budget.' },
+  surface: { lib: 'Trop petit', sous: 'Moins de 90 % de la surface qu’ils demandent.' },
+  chambres: { lib: 'Pas assez de chambres', sous: 'Il leur en faut davantage.' },
+  indispensable: { lib: 'Il manque un indispensable', sous: 'Un équipement qu’ils exigent n’y est pas.' },
+  loin: { lib: 'Trop loin de leurs critères', sous: 'Moins de 50 % : trop de critères ne collent pas.' },
+  peu: { lib: 'Trop peu de critères', sous: 'Leur recherche n’en dit pas assez pour comparer.' },
+};
+export type Cache = { raison: RaisonCache; recherche: RechercheMini; client: ClientMini; note: number | null; detail: string; ordre: number };
+export type TriBien = { total: number; vide: boolean; bons: Acheteur[]; partiels: Acheteur[]; incomplets: Acheteur[]; caches: Cache[] };
+
+function detailEcart(raison: RaisonEcart, corr: Correspondance, bc: ReturnType<typeof versCorrespondance>, cr: ReturnType<typeof criteresDepuisRecherche>): { detail: string; ordre: number } {
+  if (raison === 'budget' && cr.budgetMax && bc.prix) {
+    const plus = Math.round((bc.prix / cr.budgetMax - 1) * 100);
+    return { detail: `+${plus} % · jusqu’à ${eurosSuivi(cr.budgetMax)}`, ordre: plus };
+  }
+  if (raison === 'secteur') {
+    const villes = [...new Set(grouperSecteurs(cr.secteurs || []).map(v => v.ville))];
+    return { detail: villes.slice(0, 3).join(', ') + (villes.length > 3 ? '…' : ''), ordre: -corr.note };
+  }
+  if (raison === 'surface') return { detail: cr.surfaceMin ? `${cr.surfaceMin} m² minimum` : '', ordre: -corr.note };
+  if (raison === 'chambres') return { detail: cr.chambresMin ? `${cr.chambresMin} chambres minimum` : '', ordre: -corr.note };
+  const manque = corr.lignes.filter(l => l.poids === 3 && l.etat === 'non').map(l => l.lib.toLowerCase());
+  return { detail: manque.length ? `sans ${manque.join(', ')}` : '', ordre: -corr.note };
+}
+
+export function triBien(b: BienVente, recherches: RechercheMini[], clients: Record<string, ClientMini>, copies: Copie[]): TriBien {
+  const t: TriBien = { total: 0, vide: !b.donnees?.typeBien && !b.prix, bons: [], partiels: [], incomplets: [], caches: [] };
+  const bc = versCorrespondance(b);
+  for (const r of recherches) {
+    if (r.active === false) continue;
+    const c = clients[r.client_id];
+    if (!acheteurSuivi(c)) continue;
+    if (b.client_id && r.client_id === b.client_id) continue;
+    t.total++;
+    if (t.vide) continue;
+    const cacher = (raison: RaisonCache, note: number | null, detail: string, ordre: number) => t.caches.push({ raison, recherche: r, client: c, note, detail, ordre });
+    if (!typeCompatible(b.donnees?.typeBien, r.type_bien)) { cacher('type', null, r.type_bien ? `cherche : ${String(r.type_bien).toLowerCase()}` : '', 0); continue; }
+    const cr = criteresDepuisRecherche(r);
+    const corr = correspondance(bc, cr);
+    if (!corr) { cacher('peu', null, 'pas assez de critères à comparer', 0); continue; }
+    const raison = raisonEcart(corr, bc, cr);
+    if (raison) { const d = detailEcart(raison, corr, bc, cr); cacher(raison, corr.note, d.detail, d.ordre); continue; }
+    if (corr.note < SEUIL_LISTE) { cacher('loin', corr.note, `${corr.note} % de ses critères`, -corr.note); continue; }
+    const manque = manqueRecherche(r);
+    const x: Acheteur = { recherche: r, client: c, corr, copie: copieDuBien(b, r, copies), rang: manque.length ? 'incomplet' : 'ok', manque };
+    if (manque.length) t.incomplets.push(x);
+    else if (corr.note >= SEUIL_CORRESPOND) t.bons.push(x);
+    else t.partiels.push(x);
+  }
+  const parNote = (p: Acheteur, q: Acheteur) => q.corr.note - p.corr.note;
+  t.bons.sort(parNote); t.partiels.sort(parNote); t.incomplets.sort(parNote);
+  t.caches.sort((p, q) => p.ordre - q.ordre);
+  return t;
 }
 
 /* ══ Le bien ═══════════════════════════════════════════════════════════ */

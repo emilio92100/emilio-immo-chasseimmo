@@ -23,7 +23,7 @@ import {
 import type { ChoixGuide } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, fiable, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
-  MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, phraseEcartes, supprimerBien, supprimerSuivi,
+  MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
 import { exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
@@ -38,7 +38,9 @@ import { signalerFicheOuverte, signalerBienActif } from '@/components/layout/Fic
 import { lirePro, lireStructure } from '@/lib/contacts';
 import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
-import { CarteAcheteurs, FenEnvoiAcheteurs, ListeAcheteurs, modeAcheteurs } from './AcheteursBien';
+import { CarteAcheteurs, FenEnvoiAcheteurs, modeAcheteurs } from './AcheteursBien';
+import { RapprochementBien } from './RapprochementBien';
+import { FenEnvoiLot } from './LotBiens';
 import { DossierBien, type DestPropose } from './DossierBien';
 import { PastilleProprio } from './PastilleProprio';
 import { OngletVisitesOffres } from './VisitesOffres';
@@ -1156,6 +1158,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   /* V3.45 : ceux qui ratent nettement un critère essentiel sont écartés (outils.ts). */
   const tries = useMemo(() => acheteursTries(bien, liste.recherches, liste.clients, detail?.copies || []), [bien, liste, detail]);
   const acheteurs = tries.retenus;
+  /* V3.112 : l'onglet « Rapprochement » — tout le tri de la base (outils.ts). */
+  const tri = useMemo(() => triBien(bien, liste.recherches, liste.clients, detail?.copies || []), [bien, liste, detail]);
+  /* « Un autre client… » : la fenêtre d'envoi avec la recherche par nom (LotBiens). */
+  const [envoiAutre, setEnvoiAutre] = useState(false);
   const proprio = bien.client_id ? liste.clients[bien.client_id] || null : null;
   const recherchesProprio = proprio ? liste.recherches.filter(r => r.client_id === proprio.id) : [];
   const visites = useMemo(() => (detail ? visitesDe(detail, liste.clients) : []), [detail, liste.clients]);
@@ -1464,6 +1470,12 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
     if (e === 'annonce_type' && quoi !== 'prix') {
       return g('C’est une annonce type', `Elle sert à faire venir des acheteurs, sans montrer le vrai bien. Pour ${QUOI[quoi]}, passe par le vrai bien ou par la fiche de l’acheteur.`, []);
     }
+    /* V3.112 : avant le mandat, présenter le bien reste possible (comme depuis
+       la liste des biens, V3.111) — après un mot sur le prix. */
+    if (avant && quoi === 'presenter') {
+      return g('Ce bien n’est pas encore sous mandat', 'Tu peux déjà le présenter à un acheteur : il le verra sans prix tant que le prix n’est pas fixé.',
+        [{ ...ch.continuer, l: 'Le présenter quand même', s: 'Dans sa sélection, son espace ou par mail' }, ch.mandat]);
+    }
     if (avant) {
       return quoi === 'prix'
         ? g('Ce bien n’est pas encore en vente', 'Avant le mandat, c’est l’estimation qui donne le prix conseillé. Le prix affiché se fixe à la signature du mandat.', [ch.estim, ch.mandat])
@@ -1564,7 +1576,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
     { k: 'apercu', l: 'Résumé', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
     ...(avant || e === 'annonce_type' ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
-    { k: 'acheteurs', l: 'Acheteurs', n: acheteurs.filter(a => fiable(a) && a.corr.note >= SEUIL_CORRESPOND).length, ic: 'cible' },
+    { k: 'acheteurs', l: 'Rapprochement', n: tri.bons.length, ic: 'cible' },
     { k: 'documents', l: 'Documents', n: docsLies.length, ic: 'plume' }, { k: 'historique', l: 'Historique', ic: 'historique' },
   ];
 
@@ -2175,9 +2187,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
 
       {onglet === 'acheteurs' && (
         <div className={b.col}>
-          <ListeAcheteurs key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} acheteurs={acheteurs} mode={mode} ecartes={phraseEcartes(tries.ecartes)}
-            nbRecherches={liste.recherches.length} onFiche={ouvrirClient}
-            onAgir={mode === 'vente' ? l => garde('presenter', () => setFen({ k: 'acheteurs', liste: l }))() : undefined} />
+          <RapprochementBien key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} bien={bien} tri={tri} mode={mode} copies={detail?.copies || []}
+            onFiche={ouvrirClient}
+            onAgir={mode === 'vente' || mode === 'avant' ? l => garde('presenter', () => setFen({ k: 'acheteurs', liste: l }))() : undefined}
+            onAutre={mode === 'vente' || mode === 'avant' ? garde('presenter', () => setEnvoiAutre(true)) : undefined} />
           {horsListe.length > 0 && (
             <Bloc ic="envoyer" titre={<>{'Aussi dans leur dossier'}<i>{` · ${horsListe.length}`}</i></>}>
               <p className={b.sous}>Ils ont ce bien dans leur dossier, mais leur recherche ne lui correspond plus assez, ou ils ne sont plus suivis.</p>
@@ -2322,6 +2335,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
         <FenAnnulerMandat bien={bien} depuis={etapeAvantMandat(detail?.suivi || [])} enRoute={!!mandatEnRoute}
           signeDoc={mandatSigne ? { id: mandatSigne.id, numero: mandatSigne.numero || null } : null}
           onFermer={() => setFen(null)} onFait={r => apres(r)} onDocuments={id => { setFen(null); ouvrirDoc(id); }} />
+      )}
+      {envoiAutre && (
+        <FenEnvoiLot biens={[bien]} liste={liste} nomBien={x => x.titre || titreBien(x.donnees || {})}
+          onFermer={() => setEnvoiAutre(false)} onFait={() => { void apres(); }}
+          onFiche={id => { setEnvoiAutre(false); void ouvrirClient(id); }} />
       )}
       {fen?.k === 'acheteurs' && (
         <FenEnvoiAcheteurs bien={bien} choisis={fen.liste} onFermer={() => setFen(null)}
