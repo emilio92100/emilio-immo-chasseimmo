@@ -1497,22 +1497,77 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
-### V3.107 — 7 octobre 2026 · Photos : une image envoyée toute faite est de nouveau rangée
+### V3.108 — 7 octobre 2026 · L'éditeur d'un bien en « vignettes dessinées » (maquette A1)
 
 Rien à passer dans Supabase.
 
-Constaté pendant la veille de Didier Orlik : depuis la V3.43 (30 septembre), `/api/upload-photos` ne
-téléchargeait que des adresses http(s). Une photo recadrée dans le navigateur, ou débarrassée d'un
-logo par ChatGPT, arrive en « data URI » (`data:image/jpeg;base64,…`) : elle était renvoyée telle
-quelle, sans être rangée dans `photos-biens` (signalé dans le skill de veille le 2 octobre).
+Alexandre, devant trois maquettes de l'éditeur : « j'aime beaucoup le sommaire à gauche » ; les
+icônes (« la cuisine, l'état général, chauffage et eau chaude ») : « plus jolis, avec des icônes
+qu'on comprenne mieux ; il n'y a pas de charme » ; « les cases, les blocs, je suis pas fan ». Parmi
+trois façons de remplir, il a choisi « les vignettes dessinées », pour la création d'un bien (la
+même page sert à « Modifier »).
 
-- **`decoderDataUri()`** (`src/app/api/upload-photos/route.ts`) : une data URI d'image (JPEG, PNG,
-  WebP, GIF, AVIF) est décodée sur place, sans rien télécharger, puis passe les mêmes contrôles
-  qu'une photo téléchargée : `typeImage()` sur les premiers octets, 15 Mo au plus. Un autre type
-  (`data:image/svg+xml`, `data:text/html`…) est refusé et garde sa valeur, comme une adresse refusée.
-- Rien d'autre ne change : les adresses web suivent le même chemin qu'avant.
-- La limite de Vercel sur le corps d'une requête (environ 4,5 Mo) reste la vraie limite d'une photo
-  envoyée ainsi.
+- **Les dessins** (`Pictos.tsx`, nouveau) : environ 150 pictos, trait marine et couleurs douces,
+  calculés une fois au chargement (grille de 48 : jusqu'à cinq formes pleines, un trait marine, un
+  trait de couleur). Une table par question et par réponse (`pictoChoix(cle, v)`) : le type de bien,
+  le propriétaire et son projet, l'état, la cuisine, le chauffage, l'eau chaude, les fenêtres et les
+  volets, ce qu'il a, les annexes, l'exposition (une boussole par cap), la vue, le DPE, la copro, le
+  prix, le mandat, l'occupation, les clés, l'accès. Un dessin par partie (`PICTO_ETAPE`) et par bloc
+  (`PICTO_BLOC`), sur une pastille douce (`teinte`).
+- **Les vignettes** (`ChampsBien.tsx`, `ChampVignettes`) : toutes les questions `choix` et `cases` de
+  la fiche du bien, dans l'éditeur comme dans la visite sur place. Une petite carte par réponse (son
+  dessin, son nom, son aide) ; la retenue a un liseré or et une coche. Une question n'a ses dessins
+  que si toutes ses réponses en ont un ; sinon, le petit dessin au trait dans une pastille. Les
+  documents juridiques (`ChampActe`) ne changent pas. Les lettres du DPE perdent leur cadre gris.
+- **Le sommaire à gauche** (`EditeurBien.tsx`, à partir de 1 101 px) : « Le vendeur / Le bien / Pour
+  toi seul / La vente », chaque partie avec une coche verte (remplie, rien d'obligatoire ne manque),
+  le nombre à compléter, ou « à faire » ; en tête « rempli à x % » (les réponses attendues : ni les
+  textes libres, ni les cases, ni le dossier, ni les observations) et, mandat signé, « n points à
+  compléter avant de publier l'annonce ». Il remplace le fil d'étapes du haut. En dessous de
+  1 101 px : un menu en haut (« 3 sur 12 · L'intérieur », la jauge), qui déroule le même sommaire ;
+  Échap le ferme avant de fermer l'éditeur.
+- **Au milieu** : la tête de la partie en carte blanche, son dessin en grand, « Partie 3 sur 12 »,
+  « n à compléter » ; chaque bloc avec son dessin. « Étape par étape » devient « Partie par partie »,
+  « Étape suivante : … » devient « Suivant : … » ; au téléphone, le pied dit les noms (« ← Le bien »,
+  « Extérieur → »).
+- **À droite, « La fiche, en direct »** (carte marine) : le nom du bien, l'adresse, le prix (prix
+  conseillé avant le mandat ; « le prix viendra à l'estimation » pour un bien à suivre), les
+  honoraires et le net vendeur, les faits en pastilles, le prix au m², les charges, la taxe foncière.
+  Puis « Pour publier l'annonce » : `controleAnnonce` (chaque ligne porte maintenant `ou`, sa partie)
+  plus le texte de l'annonce et des photos, chaque manque avec un lien vers sa partie. La carte « dans
+  la liste » est retirée (« je suis pas fan »). Les props `suivi`, `nbAcheteurs`… restent dans la
+  signature, plus lues.
+
+Les liens de la V3.107 (une ligne d'une carte → son champ) marchent toujours : vérifiés au banc.
+
+### V3.107 — 7 octobre 2026 · « Modifier » mène à la bonne partie, et chaque ligne à son champ
+
+Rien à passer dans Supabase.
+
+Alexandre : sur la fiche d'un bien, « Modifier » du quartier « va dans le bien toujours, ça ne va
+pas directement sur le quartier » ; pour le prix, il arrivait sur l'onglet « Prix et mandat »
+mais pas « sur la partie prix » : il fallait descendre à la main.
+
+- **Chaque « Modifier » vise sa partie** (`OngletBien`, `FicheBien.tsx`) : Le quartier →
+  `bien:t-prox` (Proximité et transports), L'immeuble → `bien:t-imm` (La maison → `bien:t-constr`),
+  Charges et taxes → `copro:t-fin`, Le prix → `prix:t-prix`, la tuile et le côté du mandat →
+  `prix:t-mandat`. La partie s'éclaire un instant, comme depuis la V3.45.
+- **Chaque ligne d'une carte est un lien vers son champ** : `Kv` (`OngletsBien.tsx`) prend
+  `aller` ; la ligne devient un bouton (`.kvBtn`), un petit crayon apparaît au survol (toujours
+  visible, plus pâle, au téléphone). Nouveau format de départ de l'éditeur : `etape:@cleDuChamp`
+  (« interieur:@vitrage », « bien:@quartier », « copro:@syndic »…).
+- **L'éditeur** (`EditeurBien.tsx`) descend jusqu'au champ (posé au quart de la hauteur, avec de
+  l'air au-dessus), l'éclaire (`data-eclaire-champ`, `Biens.module.css`) et, à la souris
+  seulement, y pose le curseur si c'est un champ à taper — au téléphone, le clavier cacherait le
+  champ. Un champ caché (« Balcon » sans balcon coché) : on s'arrête au haut de l'étape. Marche
+  dans les deux modes (étape par étape et « tout sur une page »).
+- **`ChampsBien.tsx`** : chaque champ porte `data-champ="<clé>"` ; ceux qui passent par
+  `ChampActe` sont enveloppés d'un `display: contents` qui le porte, l'éditeur prend alors la
+  boîte de son contenu.
+
+En parallèle, trois maquettes de l'éditeur (sommaire à gauche / une page à parties dépliables /
+les cartes de la fiche avec un panneau), toutes sans « la carte dans la liste » à droite : en
+attente du choix d'Alexandre, rien n'est construit.
 
 ### V3.106 — 7 octobre 2026 · Nouveau rendez-vous : un client du fichier, ou un nom gardé pour ce rendez-vous
 
