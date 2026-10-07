@@ -584,7 +584,7 @@ export default function Clients({ onNavigate, fenetre }: {
     cree.current = null;
     setForm(pre ? {
       ...initForm, prenom: pre.prenom, nom: pre.nom, email1: pre.email, tel1: pre.tel,
-      types: pre.types, source: 'site', source_detail: pre.source_detail, notes: pre.notes,
+      types: pre.types, source: pre.source || 'site', source_detail: pre.source_detail, notes: pre.notes,
       creerBien: !fenetre,
     } : initForm);
     /* V3.50 : une demande « Accompagnement acheteur » garde ce que le client
