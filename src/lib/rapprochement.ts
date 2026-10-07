@@ -211,8 +211,15 @@ export async function rapprocher(recherche: Ligne, clientId: string, source: Sou
       vus.add(cle);
       compares++;
       if (!typeAnnonceOk(p.type_bien, recherche.type_bien)) continue;
-      const corr = correspondance(corrDepuisAnnonce(p), crit);
-      if (!corr || corr.note < SEUIL_LISTE) continue;
+      /* V3.111 : la règle qui écarte vaut aussi pour les annonces (budget
+         dépassé de plus de 10 %, ville hors de ses secteurs, trop petit, pas
+         assez de chambres), comme pour vos mandats. Sans elle, une annonce
+         bien trop chère sortait « en partie ». Les équipements d'une annonce
+         ne sont pas sûrs (une case vide n'est pas un « non ») : le critère
+         « indispensable » ne l'écarte pas. */
+      const bcA = corrDepuisAnnonce(p);
+      const corr = correspondance(bcA, crit);
+      if (!corr || corr.note < SEUIL_LISTE || raisonEcart(corr, bcA, crit)) continue;
       if (p.url && deja.urls.has(String(p.url))) { dejaLa++; continue; }
       const photos = (Array.isArray(p.photos) ? p.photos : []).filter((x: unknown) => typeof x === 'string' && x);
       trouves.push({
