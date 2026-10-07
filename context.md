@@ -1498,6 +1498,53 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.118 — 8 octobre 2026 · Tous les mails aux couleurs du site, avec le logo ; le partage signé du client
+
+Rien à passer dans Supabase.
+
+Alexandre : « les mails… fais les modifs partout nécessaires. Il faut vraiment que les mails soient
+jolis, toujours avec le logo Emilio ». Et, sur le mail de partage d'un bien depuis l'espace : « en
+nom, ça fait Alexandre Rogelet et Emilio Immobilier. Il faudrait plutôt mettre un truc plus
+généraliste » — choisi : « Camille via Emilio Immobilier ».
+
+- **`src/lib/mail-charte.ts`** (neuf) : les couleurs des mails (`MAIL` : bleu `#22497D`, encre
+  `#13243D`, orange `#E68B23`, orange foncé `#A95808` pour un texte sur blanc, orange clair `#F2B266`
+  sur le bleu, fonds `#F5F8FC` / `#E6EDF6`), la police (`POLICE_MAIL` : Plus Jakarta Sans puis les
+  polices du système ; `LIEN_POLICE_MAIL` dans l'en-tête des mails complets), le logo blanc
+  (`LOGO_BLANC_MAIL`, `logoMail(mention)`) et `enveloppeMail({ titre, corps, pied, mention })` : la
+  bande bleue au logo, un filet orange, le titre, le texte.
+- **Le gabarit des mails courts** (`gabarit`, `lib/mandat-serveur.ts`) passe par `enveloppeMail` :
+  tous les mails du mandat, des signatures et des codes (espace/mandat, signer, relances, retrait,
+  cosignataire, signature-documents, cosignature, registre-archive) ont désormais le logo au lieu
+  du mot « EMILIO IMMOBILIER » en doré.
+- **Les grands mails** (`send-mail` : biens, bienvenue, lien, nouvelle recherche, visites, mandat
+  prêt ; `lib/point-auto.ts` : « Où en est votre recherche ? ») : les constantes deviennent bleu /
+  orange (`BLEU`, `DORE`, `FOND`, plus `ENCRE`, `DORE_TEXTE`, `DORE_CLAIR`), les étiquettes et le
+  téléphone du pied en orange clair sur le bleu, les liens orange foncé, les boutons orange au texte
+  encre, l'accroche en Plus Jakarta Sans (plus de Georgia), le fond de page bleuté au lieu du beige.
+- **Les alertes envoyées à Alexandre** (`espace/[action]` : « veut visiter », retour de visite ;
+  point automatique ; demande du site) : le logo et une pastille « CRM ».
+- **Les mails écrits par Alexandre** (au vendeur depuis la fiche d'un bien, `biens-vente` ; les
+  documents, `documents`) : dans `enveloppeMail`, le logo en tête. Le « Nouveau mail » garde ses deux
+  styles (« Simple » sans en-tête, le plus naturel ; « Avec l'en-tête Emilio »), aux nouvelles
+  couleurs.
+- **Le partage d'un bien** (`espace/[action]`, `partage`) : l'expéditeur s'affiche « Camille via
+  Emilio Immobilier » (le prénom du client ; « Emilio Immobilier » s'il n'en a pas), plus
+  « Alexandre ROGELET — Emilio Immobilier » ; le logo en tête.
+
+Vérifié au banc : chaque type de mail rendu en HTML avec des données factices et regardé en 680 et
+390 px (biens, bienvenue, lien, nouvelle recherche, point automatique, code de signature, Nouveau
+mail en-tête Emilio, mail au vendeur, alerte CRM).
+
+### V3.117 — 8 octobre 2026 · Une barre de défilement discrète dans l'espace
+
+Alexandre, sur la fiche d'un bien de l'espace (téléphone et ordinateur) : « une grosse barre bleue à
+droite… il faut la réduire ou la faire bien plus discrète ». C'était la barre de défilement élargie
+et foncée en septembre (V3.28, V3.29) pour sa tablette Windows ; son téléphone, un Samsung à stylet,
+se déclare « pointeur fin » et la recevait aussi. Désormais : rien au téléphone (la barre du
+système) ; à partir de 900 px, 10 px de large, gris bleuté `#C2CEDF`, sans piste, `#8FA3BF` au
+survol (Firefox : `scrollbar-width: thin`).
+
 ### V3.116 — 8 octobre 2026 · L'espace acheteur aux couleurs du site ; « Le mettre dans son espace » côté acheteur
 
 Rien à passer dans Supabase.
