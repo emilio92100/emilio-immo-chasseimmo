@@ -44,7 +44,9 @@ import c from './Contacts.module.css';
 
 type Nav = (page: string, data?: unknown) => void;
 
-export default function FicheSelonType({ client, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: Nav }) {
+/* V3.102 — `retourVers` : la fiche a été ouverte depuis Relances ; son bouton
+   retour y ramène et le dit (« Relances » au lieu de « Contacts »). */
+export default function FicheSelonType({ client, onBack, onNavigate, retourVers }: { client: Client; onBack: () => void; onNavigate: Nav; retourVers?: 'relances' }) {
   /* La recherche de la barre du haut n'envoie qu'une partie de la fiche : on
      relit la ligne entière avant de choisir. */
   const partiel = !client.created_at;
@@ -69,7 +71,7 @@ export default function FicheSelonType({ client, onBack, onNavigate }: { client:
     return (
       <div style={{ padding: '40px 24px', color: '#64748b', fontSize: 14, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 14 }}>
         <span>{manque.erreur ? `La fiche n’a pas pu être lue : ${manque.erreur}` : 'Ce contact n’existe plus : il a été supprimé.'}</span>
-        <button type="button" className={c.btn} onClick={onBack}><Ic n="retour" t={15} />Revenir aux contacts</button>
+        <button type="button" className={c.btn} onClick={onBack}><Ic n="retour" t={15} />{retourVers === 'relances' ? 'Revenir aux relances' : 'Revenir aux contacts'}</button>
       </div>
     );
   }
@@ -77,8 +79,8 @@ export default function FicheSelonType({ client, onBack, onNavigate }: { client:
   /* Lue après coup (depuis la recherche du haut) : elle remplace sa
      silhouette en fondu (V3.80). */
   const fiche = estAcheteur(x)
-    ? <FicheClient client={x} onBack={onBack} onNavigate={onNavigate} />
-    : <FicheContact key={x.id} client={x} onBack={onBack} onNavigate={onNavigate} />;
+    ? <FicheClient client={x} onBack={onBack} onNavigate={onNavigate} retourVers={retourVers} />
+    : <FicheContact key={x.id} client={x} onBack={onBack} onNavigate={onNavigate} retourVers={retourVers} />;
   return partiel ? <div className="fiche-entre">{fiche}</div> : fiche;
 }
 
@@ -207,7 +209,7 @@ function ActiviteHero({ proprio, biens, archives = 0, vente, journal, relances, 
 type OngletContact = 'savoir' | 'documents' | 'suivi';
 const ORDRE_ONGLETS: OngletContact[] = ['savoir', 'documents', 'suivi'];
 
-function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: Nav }) {
+function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { client: Client; onBack: () => void; onNavigate: Nav; retourVers?: 'relances' }) {
   const [x, setX] = useState<Client>(depart);
   /* V3.81 (Alexandre : « depuis une relance, Ouvrir la fiche ne mène pas au
      Suivi pour certains ») : la fiche d'un vendeur, d'un propriétaire, d'un
@@ -473,7 +475,7 @@ function FicheContact({ client: depart, onBack, onNavigate }: { client: Client; 
     <div className={c.fiche}>
       {mail && <FenetreMail contact={x as unknown as ContactMail} onFermer={() => setMail(false)} onEnvoye={recharger} />}
       <div className={c.barre}>
-        <button type="button" className={c.retour} onClick={onBack}><Ic n="retour" t={16} />Contacts</button>
+        <button type="button" className={c.retour} onClick={onBack}><Ic n="retour" t={16} />{retourVers === 'relances' ? 'Relances' : 'Contacts'}</button>
         <div className={c.actions}>
           {types.includes('confrere') && (
             <button type="button" className={`${c.btn} ${c.btnOr}`} onClick={() => onNavigate('documents', { delegation: x.id })}><Ic n="accord" t={15} />Déléguer un mandat</button>
