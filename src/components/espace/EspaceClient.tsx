@@ -6732,20 +6732,26 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
    On règle maintenant sur la largeur de l'écran, ou dès qu'une souris existe
    (« any-pointer »). Et plus large, et bien plus foncé : la poignée est
    bleu marine, la piste gris clair. */
-@media (min-width:900px), (any-pointer:fine){
-  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:20px; height:20px}
-  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:#DCE3EC}
+/* V3.117 : trop grosse, au contraire (Alexandre, sur la fiche d'un bien :
+   « une grosse barre bleue à droite… ça fait moche »). Elle s'affichait même
+   sur son téléphone : un Samsung avec stylet dit avoir un pointeur fin
+   (« any-pointer:fine »). Désormais : rien au téléphone (la barre du
+   système, fine et qui s'efface) ; à partir de 900 px, une barre fine, gris
+   bleuté, sans piste, qui fonce au survol. */
+@media (min-width:900px){
+  html::-webkit-scrollbar, body::-webkit-scrollbar, .feuille::-webkit-scrollbar, .pop-carte::-webkit-scrollbar{width:10px; height:10px}
+  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, .feuille::-webkit-scrollbar-track, .pop-carte::-webkit-scrollbar-track{background:transparent}
   html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb, .feuille::-webkit-scrollbar-thumb, .pop-carte::-webkit-scrollbar-thumb{
-    background:#22497D; border-radius:12px; border:3px solid transparent; background-clip:padding-box; min-height:72px}
-  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#13243D}
-  html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:#E68B23}
-  /* la fiche a des coins arrondis : la piste ne touche ni le haut ni le bas */
-  .feuille.fiche::-webkit-scrollbar-track{margin-top:14px; margin-bottom:14px; border-radius:10px}
+    background:#C2CEDF; border-radius:99px; border:2px solid transparent; background-clip:padding-box; min-height:48px}
+  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, .feuille::-webkit-scrollbar-thumb:hover, .pop-carte::-webkit-scrollbar-thumb:hover{background-color:#8FA3BF}
+  html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, .feuille::-webkit-scrollbar-thumb:active, .pop-carte::-webkit-scrollbar-thumb:active{background-color:#5B6B80}
+  /* la fiche a des coins arrondis : la barre ne touche ni le haut ni le bas */
+  .feuille.fiche::-webkit-scrollbar-track{margin-top:14px; margin-bottom:14px}
 }
 /* Firefox ne connaît pas les règles ci-dessus : il a les siennes. */
 @supports (-moz-appearance:none){
-  @media (min-width:900px), (any-pointer:fine){
-    html, .feuille, .pop-carte{scrollbar-width:auto; scrollbar-color:#22497D #DCE3EC}
+  @media (min-width:900px){
+    html, .feuille, .pop-carte{scrollbar-width:thin; scrollbar-color:#C2CEDF transparent}
   }
 }
 
