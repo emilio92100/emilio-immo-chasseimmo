@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
+import { enveloppeMail } from '@/lib/mail-charte';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -163,11 +164,12 @@ export async function POST(req: NextRequest) {
       /* Le mail : le message tel qu'Alexandre l'a écrit (il porte déjà
          « Bonjour » et la signature), puis les liens s'il y en a. */
       const paras = message.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('');
-      const blocLiens = liens.length ? `<div style="margin:18px 0 6px;padding:14px 16px;border:1px solid #e3e8f0;border-radius:12px;background:#f8fafc">
-        <div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#7a5d1c;margin-bottom:8px">DOCUMENTS À TÉLÉCHARGER · LIENS VALABLES ${LIENS_JOURS} JOURS</div>
-        ${liens.map(l => `<div style="margin:6px 0"><a href="${echappe(l.url)}" style="color:#1a2332;font-weight:700">${echappe(l.nom)}</a> <span style="color:#94a3b8;font-size:12px">· ${tailleFr(l.taille)}</span></div>`).join('')}
+      const blocLiens = liens.length ? `<div style="margin:18px 0 6px;padding:14px 16px;border:1px solid #E8EDF3;border-radius:12px;background:#F5F8FC">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#A95808;margin-bottom:8px">DOCUMENTS À TÉLÉCHARGER · LIENS VALABLES ${LIENS_JOURS} JOURS</div>
+        ${liens.map(l => `<div style="margin:6px 0"><a href="${echappe(l.url)}" style="color:#13243D;font-weight:700">${echappe(l.nom)}</a> <span style="color:#8FA3BF;font-size:12px">· ${tailleFr(l.taille)}</span></div>`).join('')}
       </div>` : '';
-      const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2f3c52;max-width:600px">${paras}${blocLiens}</div>`;
+      /* V3.118 : dans l'enveloppe de la charte, le logo Emilio en tête. */
+      const html = enveloppeMail({ corps: `${paras}${blocLiens}` });
       const texte = `${message}${liens.length ? `\n\nDocuments à télécharger (liens valables ${LIENS_JOURS} jours) :\n${liens.map(l => `- ${l.nom} : ${l.url}`).join('\n')}` : ''}`;
 
       const envoyes: string[] = [];
@@ -225,7 +227,8 @@ export async function POST(req: NextRequest) {
       if (eBien) return ko(eBien.message, 500);
       if (!bien) return ko('Bien introuvable', 404);
 
-      const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#2f3c52;max-width:600px">${message.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('')}</div>`;
+      /* V3.118 : dans l'enveloppe de la charte, le logo Emilio en tête. */
+      const html = enveloppeMail({ corps: message.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('') });
       const envoyes: string[] = [];
       const echecs: string[] = [];
       for (const dst of dests) {
