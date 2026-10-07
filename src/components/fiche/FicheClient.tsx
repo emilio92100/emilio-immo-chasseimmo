@@ -246,6 +246,40 @@ function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
 
 
 
+/* Les secteurs d'une recherche, ville par ville (« Courbevoie » puis ses
+   quartiers, ou « Toute la ville »), dans leur carte (V3.104). La carte
+   tient sur un tiers de la largeur : les quartiers passent sous la ville, en
+   retrait et un peu plus petits, pour en tenir deux par ligne. */
+const QUARTIER: React.CSSProperties = { fontSize: 12.5, padding: '3px 10px' };
+function SecteursListe({ secteurs }: { secteurs: string[] }) {
+  const bv: Record<string, string[]> = {};
+  secteurs.forEach((s: string) => {
+    const m = s.match(/^(.+?)\s*\((.+?)\)$/);
+    if (m) { const q = m[1].trim(), v = m[2].trim(); if (!bv[v]) bv[v] = []; bv[v].push(q); }
+    else { if (!bv[s]) bv[s] = []; }
+  });
+  return (
+    <>
+      {Object.entries(bv).map(([ville, qs]) => (
+        <div key={ville} style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 9, background: '#eff4fb', border: '1px solid #d6e3f5', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#3b6ea8' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z" /><circle cx="12" cy="10" r="2.6" /></svg>
+            </span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--emilio)' }}>{ville}</span>
+            {qs.length === 0 && <span className={styles.secteurTag} style={QUARTIER}>Toute la ville</span>}
+          </div>
+          {qs.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 36 }}>
+              {qs.map(q => <span key={q} className={styles.secteurTag} style={QUARTIER}>{q}</span>)}
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 import OngletVeille from './OngletVeille';
 import OngletBiens from './OngletBiens';
 import MandatEnLigne from './MandatEnLigne';
@@ -4318,14 +4352,33 @@ ${signatureMail()}`,
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
                     );
 
-                    return (
-                      <div className="fc-familles" style={{ display: 'grid', gridTemplateColumns: `repeat(${[logement.length, immeuble.length, aTransport ? 1 : 0].filter(Boolean).length || 1}, minmax(0, 1fr))`, gap: 12 }}>
-                        <FamilleCrit titre="Le logement" couleur="#2d5c8f" fond="#eff4fb" trait="#d6e3f5" lignes={logement}
-                          ico={ICO(<><path d="M3 21h18" /><path d="M5 21V9.5L12 4l7 5.5V21" /><path d="M10 21v-6h4v6" /></>, '#2d5c8f')} />
-                        <FamilleCrit titre="L'immeuble" couleur="#6d28d9" fond="#f5f3ff" trait="#ddd6fe" lignes={immeuble}
-                          ico={ICO(<><path d="M4 21V4h9v17" /><path d="M13 10h7v11" /><path d="M7 8h2" /><path d="M7 12h2" /><path d="M7 16h2" /></>, '#6d28d9')} />
-                        {aTransport && (
-                          <div style={{ border: '1px solid #cbf0d8', borderRadius: 14, overflow: 'hidden' }}>
+                    /* V3.104 — Tout en cartes, rangées selon ce qui est rempli. Alexandre :
+                       « on voit la case du logement qui prend l'entièreté de l'écran » (la
+                       surface à gauche, le métrage tout à droite), et « critères souhaités et
+                       critères indispensables, comme ça on voit les choses à côté ». Les
+                       rangées se font plus bas ; au téléphone, une colonne (crm-mobile.css,
+                       .fc-familles). Les précisions restent dessous, sur toute la largeur. */
+                    const ex = (cr.exigences || {}) as Record<string, string>;
+                    const EQUIP: [string, string][] = [['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']];
+                    const equip: { cle: string; texte: string; fort: boolean }[] = [];
+                    EQUIP.forEach(([k, l]) => { if ((cr as any)[k] || ex[k]) equip.push({ cle: k, texte: l, fort: ex[k] === 'indispensable' }); });
+                    if (ex.exterieur) equip.push({ cle: 'exterieur', texte: `🌤️ Extérieur${cr.exterieur_surface_min ? ` de ${cr.exterieur_surface_min} m² mini` : ''}`, fort: ex.exterieur === 'indispensable' });
+                    if (cr.cuisine_type) equip.push({ cle: 'cuisine', texte: `${cr.cuisine_type === 'ouverte' ? '🍽️' : '🚪'} Cuisine ${cr.cuisine_type === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
+                    const indispensables = equip.filter(e => e.fort), souhaites = equip.filter(e => !e.fort);
+
+                    const ENTETE: React.CSSProperties = { padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 };
+                    const TITRE = (couleur: string): React.CSSProperties => ({ fontSize: 11, fontWeight: 800, color: couleur, textTransform: 'uppercase', letterSpacing: 0.9, whiteSpace: 'nowrap' });
+                    const NOTE = (couleur: string): React.CSSProperties => ({ marginLeft: 'auto', minWidth: 0, fontSize: 11, fontWeight: 600, color: couleur, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
+                    const PUCE_FORTE: React.CSSProperties = { background: 'var(--emilio-fond)', color: '#f2dfa6', border: '1px solid #c9a84c', padding: '4px 12px', borderRadius: 20, fontSize: 13.5, fontWeight: 700 };
+                    const PUCE: React.CSSProperties = { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 13.5, fontWeight: 600 };
+
+                    const familles: React.ReactNode[] = [];
+                    if (logement.length) familles.push(<FamilleCrit key="logement" titre="Le logement" couleur="#2d5c8f" fond="#eff4fb" trait="#d6e3f5" lignes={logement}
+                      ico={ICO(<><path d="M3 21h18" /><path d="M5 21V9.5L12 4l7 5.5V21" /><path d="M10 21v-6h4v6" /></>, '#2d5c8f')} />);
+                    if (immeuble.length) familles.push(<FamilleCrit key="immeuble" titre="L'immeuble" couleur="#6d28d9" fond="#f5f3ff" trait="#ddd6fe" lignes={immeuble}
+                      ico={ICO(<><path d="M4 21V4h9v17" /><path d="M13 10h7v11" /><path d="M7 8h2" /><path d="M7 12h2" /><path d="M7 16h2" /></>, '#6d28d9')} />);
+                    if (aTransport) familles.push(
+                          <div key="transports" style={{ border: '1px solid #cbf0d8', borderRadius: 14, overflow: 'hidden' }}>
                             <div style={{ background: '#f0fdf4', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
                               {ICO(<><path d="M7.5 4h9a3 3 0 0 1 3 3v6.5a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /><path d="M4.5 10h15" /><path d="M8.5 16.5 6.5 20" /><path d="M15.5 16.5l2 3.5" /></>, '#15803d')}
                               <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 0.9 }}>Les transports</span>
@@ -4364,63 +4417,72 @@ ${signatureMail()}`,
                               )}
                             </div>
                           </div>
-                        )}
+                    );
+                    const carteSecteurs = cr.secteurs?.length > 0 ? (
+                      <div key="secteurs" style={{ border: '1px solid #efe2bf', borderRadius: 14, overflow: 'hidden' }}>
+                        <div style={{ ...ENTETE, background: '#fbf6e9' }}>
+                          {ICO(<><path d="M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z" /><circle cx="12" cy="10" r="2.6" /></>, '#a07c28')}
+                          <span style={TITRE('#a07c28')}>Secteurs recherchés</span>
+                        </div>
+                        <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                          <SecteursListe secteurs={cr.secteurs} />
+                        </div>
                       </div>
+                    ) : null;
+                    const carteIndispensables = indispensables.length ? (
+                      <div key="indispensables" style={{ border: '1px solid #c9a84c', borderRadius: 14, overflow: 'hidden' }}>
+                        <div style={{ ...ENTETE, background: 'var(--emilio-fond)' }}>
+                          {ICO(<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />, '#e8c96a')}
+                          <span style={TITRE('#f2dfa6')}>Indispensables</span>
+                          <span style={NOTE('rgba(242,223,166,.62)')} title="Un bien qui ne les a pas n’est pas envoyé">sinon, pas d’envoi</span>
+                        </div>
+                        <div style={{ padding: '12px 14px 14px', display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                          {indispensables.map(e => <span key={e.cle} style={PUCE_FORTE}>{e.texte}</span>)}
+                        </div>
+                      </div>
+                    ) : null;
+                    const carteSouhaites = souhaites.length ? (
+                      <div key="souhaites" style={{ border: '1px solid #e2e8f0', borderRadius: 14, overflow: 'hidden' }}>
+                        <div style={{ ...ENTETE, background: '#f8fafc' }}>
+                          {ICO(<><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12.2 2.4 2.4 4.6-4.9" /></>, '#16a34a')}
+                          <span style={TITRE('#475569')}>Souhaités</span>
+                          <span style={NOTE('#94a3b8')}>un plus</span>
+                        </div>
+                        <div style={{ padding: '12px 14px 14px', display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                          {souhaites.map(e => <span key={e.cle} style={PUCE}>{e.texte}</span>)}
+                        </div>
+                      </div>
+                    ) : null;
+                    /* Les rangées. Les familles en haut ; dessous, les souhaités, les
+                       indispensables et les secteurs, au bout à droite (Alexandre : « mettre
+                       le secteur à la fin, à droite, quand tout est rempli »). Trois
+                       cartes ou moins : une seule rangée. Jamais une carte seule sur sa
+                       rangée quand l'autre peut en céder une : un logement seul garde les
+                       secteurs à côté de lui, des secteurs seuls dessous prennent les
+                       transports avec eux (2 + 2). */
+                    const dessous = [carteSouhaites, carteIndispensables, carteSecteurs].filter(Boolean) as React.ReactNode[];
+                    const tout = [...familles, ...dessous];
+                    if (!tout.length) return null;
+                    let rangees: React.ReactNode[][];
+                    if (tout.length <= 3) rangees = [tout];
+                    else {
+                      const haut = [...familles], bas = [...dessous];
+                      if (haut.length === 1) haut.push(bas.pop()!);
+                      if (bas.length === 1) bas.unshift(haut.pop()!);
+                      rangees = [haut, bas];
+                    }
+
+                    return (
+                      <>
+                        {rangees.map((r, k) => (
+                          <div key={k} className="fc-familles" style={{ display: 'grid', gridTemplateColumns: `repeat(${r.length}, minmax(0, 1fr))`, gap: 12 }}>
+                            {r}
+                          </div>
+                        ))}
+                      </>
                     );
                   })()}
 
-                  {/* Ligne 2 : Équipements */}
-                  {(() => {
-                    /* Le chasseur distingue « souhaité » et « indispensable » : le doré
-                       signale ce sans quoi un bien n'a pas à être présenté. */
-                    const ex = (cr.exigences || {}) as Record<string, string>;
-                    const base: [string, string][] = [['parking','🅿️ Parking'],['balcon','🌿 Balcon'],['terrasse','☀️ Terrasse'],['jardin','🌳 Jardin'],['cave','📦 Cave'],['ascenseur','🛗 Ascenseur'],['gardien','👮 Gardien'],['interphone','🔔 Interphone'],['digicode','🔢 Digicode']];
-                    const lignes: { cle: string; texte: string; fort: boolean }[] = [];
-                    base.forEach(([k, l]) => { if ((cr as any)[k] || ex[k]) lignes.push({ cle: k, texte: l, fort: ex[k] === 'indispensable' }); });
-                    if (ex.exterieur) lignes.push({ cle: 'exterieur', texte: `🌤️ Extérieur${cr.exterieur_surface_min ? ` de ${cr.exterieur_surface_min} m² mini` : ''}`, fort: ex.exterieur === 'indispensable' });
-                    if (cr.cuisine_type) lignes.push({ cle: 'cuisine', texte: `${cr.cuisine_type === 'ouverte' ? '🍽️' : '🚪'} Cuisine ${cr.cuisine_type === 'ouverte' ? 'ouverte' : 'séparée'}`, fort: ex.cuisine === 'indispensable' });
-                    if (lignes.length === 0) return null;
-                    const duDore = lignes.some(l => l.fort);
-                    return (
-                      <div style={{ paddingBottom: cr.secteurs?.length ? 8 : 0, borderBottom: cr.secteurs?.length ? '1px solid #f1f5f9' : 'none' }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Critères importants</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {lignes.map(l => (
-                            <span key={l.cle} style={l.fort
-                              ? { background: 'var(--emilio-fond)', color: '#f2dfa6', border: '1px solid #c9a84c', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 700 }
-                              : { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20, fontSize: 14, fontWeight: 600 }}>{l.texte}</span>
-                          ))}
-                        </div>
-                        {duDore && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 6 }}>En doré : <b style={{ color: '#9a7d2e' }}>indispensable</b> — un bien qui ne l&apos;a pas ne part pas.</div>}
-                      </div>
-                    );
-                  })()}
-                  {/* Ligne 3 : Secteurs */}
-                  {cr.secteurs?.length > 0 && (
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Secteurs recherchés</div>
-                  )}
-                  {cr.secteurs?.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {(() => {
-                        const bv: Record<string, string[]> = {};
-                        cr.secteurs.forEach((s:string) => {
-                          const m = s.match(/^(.+?)\s*\((.+?)\)$/);
-                          if (m) { const q=m[1].trim(),v=m[2].trim(); if(!bv[v])bv[v]=[]; bv[v].push(q); }
-                          else { if(!bv[s])bv[s]=[]; }
-                        });
-                        return Object.entries(bv).map(([ville, qs]) => (
-                          <div key={ville} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
-                            <span style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 9, background: '#eff4fb', border: '1px solid #d6e3f5', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#3b6ea8' }}>
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z" /><circle cx="12" cy="10" r="2.6" /></svg>
-                            </span>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--emilio)', minWidth: 'max-content' }}>{ville}</span>
-                            {qs.length > 0 && qs.map(q => <span key={q} className={styles.secteurTag}>{q}</span>)}
-                            {qs.length === 0 && <span className={styles.secteurTag}>Toute la ville</span>}
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  )}
                   {/* Notes */}
                   {cr.notes && (
                     <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #c9a84c' }}>
