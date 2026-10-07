@@ -234,7 +234,8 @@ Les ouvertures sont limitées à une écriture par demi-heure pour ne pas gonfle
     Alexandre. La synthèse part aussi à la veille (`veilleLire` → `appris_visites`).
 - **`journal`** : le fil de suivi — `client_id`, `recherche_id`, `bien_id`, `type`, `titre`,
   `description`, `metadata`
-- **`envois`** : `type` (`mail_libre` · `envoi_bien` · `selection_biens` · `compte_rendu_visite`),
+- **`envois`** : `type` (`mail_libre` · `envoi_bien` · `selection_biens` · `compte_rendu_visite` —
+  la règle `envois_type_check` n'accepte que ces quatre-là depuis la V3.113, `outils/sql/envois-types.sql`),
   `objet`, `corps`, `destinataires`, `biens_ids`, `sms_envoye`
 - **`relances`** : `type`, `statut`, **`date_echeance`**, **`note`**
   ⚠️ Le type déclare `en_attente | cloturee | **reportee**`, mais `reportee` n'est **jamais écrite**
@@ -1496,6 +1497,41 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.113 — 7 octobre 2026 · Un bien d'avant le mandat part vraiment sans prix ; la trace des envois refusée par la base
+
+⚠️ **Une requête à passer dans Supabase** : `outils/sql/envois-types.sql` (une fois).
+
+Alexandre, après avoir envoyé un bien en estimation à un client de test : « j'ai eu ce message avec
+un petit message rouge, je ne sais pas ce que ça veut dire » (« Le mail est parti, mais son suivi :
+pas enregistré. L'envoi (communications) : … violates check constraint "envois_type_check" ») ; et
+« le rappel dit que le prix ne sera pas affiché… dans mon espace, le prix était affiché ».
+
+- **La trace des envois** : la règle `envois_type_check`, en base, refusait au moins un des types
+  qu'écrit le serveur (`mail_libre`, `envoi_bien`, `selection_biens`, `compte_rendu_visite`). Le
+  mail partait ; sa ligne dans l'onglet Communications, non. Le fichier SQL remplace la règle par ces
+  quatre types (`not valid` : les anciennes lignes ne sont pas revérifiées) et affiche l'ancienne
+  règle et les types présents dans la table. Passé le 7 octobre au soir. L'ancienne règle commençait
+  par `CHECK ((type = ANY (ARRAY['selection_biens', 'presentation_services', …` (la suite coupée à
+  l'écran) ; la table ne contenait que `mail_libre : 6 · selection_biens : 4`, **aucun
+  `envoi_bien`** : un mail avec UN seul bien n'avait jamais laissé de trace dans Communications
+  (sans erreur visible avant la V3.17). Sa ligne du Suivi (« 📤 Bien envoyé ») s'écrivait, elle,
+  dans `journal` : l'historique du client n'a rien perdu.
+- **Le prix avant le mandat** (`prixCopie(d, etape)`, `lib/biens-vente.ts`) : avant le mandat (à
+  suivre, estimation), le prix de la fiche est le prix conseillé de l'estimation, pas un prix
+  affiché. La copie chez l'acheteur part sans prix (`prix_vendeur`, `prix_acquereur` vides). Il
+  arrive à la signature : `changerEtape` (le bien passe sous mandat, ou en revient : `repercuterPrix`
+  avec l'étape), `mandatSigneSurBien` et `retirerMandatDuBien` (`prixChezAcheteurs` avec les étapes
+  avant/après). `enregistrerBien` passe l'étape aussi : une fiche d'estimation enregistrée retire le
+  prix des copies qui l'avaient (celles envoyées avant cette version).
+- **Sans prix, l'acheteur lit « Prix à venir »** : l'espace (`PRIX`, `EspaceClient.tsx` ; `EUR` de
+  `Decouverte.tsx`) et la page `/bien/<id>` (sans la mention « Prix FAI » dessous), au lieu d'un
+  tiret. Le mail, lui, n'affichait déjà pas de prix quand il n'y en a pas.
+- **Les phrases du CRM** disent ce qui se passe : « il le verra sans prix (le prix conseillé de
+  l'estimation reste entre toi et le vendeur). Le prix arrivera chez lui à la signature du mandat »
+  (fiche du bien), « Il partira sans prix ; le prix arrivera chez l'acheteur à la signature du
+  mandat » (onglet Rapprochement), et la fenêtre d'envoi de la liste le dit toujours (elle ne le
+  disait que pour un bien sans prix du tout).
 
 ### V3.112 — 7 octobre 2026 · Le rapprochement, expliqué des deux côtés : l'onglet du bien et celui de l'acheteur
 
