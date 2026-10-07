@@ -1497,6 +1497,39 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.102 — 7 octobre 2026 · Une fiche ouverte depuis Relances ramène à Relances
+
+Rien à passer dans Supabase.
+
+Alexandre : « dans Relances, je fais Ouvrir la fiche, je traite la relance depuis la fiche ; quand
+c'est fait je ferme la fiche en bas, et ça me remet dans mes contacts. Je dois rappuyer sur Relances
+à gauche, puis sur Aujourd'hui, pour retrouver ma liste à jour ». Il proposait aussi « un onglet
+Relances déjà ouvert ».
+
+- **Fermer la fiche ramène à Relances** (`AppLayout`, `fermerContact`). Un contact ouvert depuis
+  Relances porte `depuis: 'relances'` dans la barre des fiches ouvertes (`FicheOuverte.depuis`,
+  gardé dans `fiches.ouvertes`) : la croix, « Tout fermer », le bouton retour de la fiche et la
+  suppression du contact ramènent à Relances. L'origine se lit sur l'écran qu'on quitte
+  (`pageRef`) : ouverte d'un autre écran, la clé est remise à vide ; d'une fiche à l'autre, chacune
+  garde la sienne. Ailleurs, rien ne change (Contacts pour un contact, Biens pour un bien, V3.35).
+- **Le bouton retour le dit** : « ← Relances » (fiche d'acheteur), « Relances » (fiche d'un autre
+  contact), `retourVers` passé par `FicheSelonType`. Sur téléphone, où la barre du bas n'existe pas
+  (V3.31), c'est lui qui ramène.
+- **Le bloc « Relances »** dans la barre (`FichesOuvertes`, `k: 'relances'`, la cloche sur fond
+  bleu comme la carte) : posé par « Ouvrir la fiche » et par « Voir » d'un rapprochement, avec la
+  tuile choisie en dessous (« Aujourd'hui »). Un clic rouvre Relances sans fermer la fiche ; il
+  s'allume quand Relances est à l'écran.
+- **Relances reprend où on l'avait laissée** (`PageRelances`, `quitterPour`, `lireRetour`).
+  `sessionStorage` `relances.retour` garde la tuile, la période (« Plus loin »), la relance ouverte
+  et celles qui la suivaient à l'écran. Le retour passe par `?page=relances&retour=1` (posé par
+  `handleNavigate('relances', { retour: true })`, et sur l'adresse de Relances avant d'ouvrir la
+  fiche : le retour du navigateur, le geste retour d'Android, en profite), effacé à l'arrivée. La
+  liste est relue ; la page se pose sur la relance ouverte, ou sur la suivante si elle vient d'être
+  close depuis la fiche (CloreRelances, V3.83), amenée au milieu si elle n'est pas en vue, avec un
+  liseré or qui s'éteint (`data-repere`). **La recherche n'est pas reprise** : elle servait à
+  trouver ce contact, et le retour tomberait sur « Aucune relance ne correspond ». **Le menu de
+  gauche ouvre toujours sur « À faire »** (V3.85).
+
 ### V3.101 — 7 octobre 2026 · Un lien mort sur un bien retenu : remplacé, et la trace gardée
 
 Rien à passer dans Supabase : tout tient dans `biens.historique_prix`.
