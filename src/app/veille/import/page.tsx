@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, addJournal } from '@/lib/supabase';
 import { apprisDe } from '@/lib/visites';
 import { reprendreSuspendus } from '@/lib/suspension';
 
@@ -21,6 +21,9 @@ import { reprendreSuspendus } from '@/lib/suspension';
  *                                          clients, avec la même URL.
  *   await window.majPlansBien(bienId, plans)
  *                                        → pose ou remplace les plans d'un bien déjà retenu.
+ *   await window.majLienBien(bienId, nouveau)
+ *                                        → le lien d'un bien retenu est mort : le remplace
+ *                                          et garde la trace de l'ancien (V3.101).
  *
  * Aucune clé ne circule : c'est la page, déjà authentifiée, qui écrit.
  */
@@ -111,9 +114,12 @@ export default function PageImportVeille() {
       const resultat = [];
       for (const r of aChercher) {
         const [biens, props, passages, journal, visitesR] = await Promise.all([
+          /* V3.101 : l'identifiant et l'agence du bien, pour que la veille puisse
+             remplacer un lien mort (majLienBien), et l'historique, pour qu'elle
+             reconnaisse les liens déjà retirés. */
           lire('biens',
-            'url, yanport_id, titre, prix_vendeur, surface, ville, etape',
-            'url, titre, prix_vendeur, surface', r.id),
+            'id, url, yanport_id, titre, prix_vendeur, surface, ville, etape, agence_nom, source_portail, historique_prix',
+            'id, url, titre, prix_vendeur, surface', r.id),
           lire('veille_propositions',
             'url, yanport_id, statut, motif_ecart, titre, prix, surface, ville, created_at',
             'url, statut, motif_ecart, titre, prix, surface', r.id),
@@ -161,13 +167,22 @@ export default function PageImportVeille() {
             ville: p.ville || null,
             statut: p.statut || null, motif: p.motif_ecart || null,
           })),
-          ...(biens as any[]).map((b) => ({
-            ou: b.etape === 'presente' ? 'presente' : 'selection',
-            url: b.url || null, yanport_id: b.yanport_id || null,
-            titre: b.titre || null, prix: b.prix_vendeur ?? null, surface: b.surface ?? null,
-            ville: b.ville || null,
-            statut: 'retenu', motif: null,
-          })),
+          ...(biens as any[]).flatMap((b) => {
+            const base = {
+              ou: b.etape === 'presente' ? 'presente' : 'selection',
+              bien_id: b.id || null, agence: b.agence_nom || null, portail: b.source_portail || null,
+              url: b.url || null, yanport_id: b.yanport_id || null,
+              titre: b.titre || null, prix: b.prix_vendeur ?? null, surface: b.surface ?? null,
+              ville: b.ville || null,
+              statut: 'retenu', motif: null as string | null,
+            };
+            /* Les liens retirés d'un bien retenu restent connus : une annonce
+               remise en ligne sous son ancien lien ne revient pas comme neuve. */
+            const morts = (Array.isArray(b.historique_prix) ? b.historique_prix : [])
+              .filter((x: any) => x?.type === 'diffuseur' && x.retiree_le && x.url && x.url !== b.url)
+              .map((x: any) => ({ ...base, url: String(x.url), agence: x.agence || null, motif: `lien retiré le ${x.retiree_le}` }));
+            return [base, ...morts];
+          }),
         ];
 
         resultat.push({
@@ -497,6 +512,146 @@ export default function PageImportVeille() {
       return { ok: true };
     }
 
+    /**
+     * Le lien d'un bien retenu ne mène plus nulle part (V3.101).
+     *
+     *   await window.majLienBien(bienId, {
+     *     url: 'https://…',        // la nouvelle annonce du même bien, vérifiée en ligne le jour même
+     *     agence: '…',             // l'agence qui la porte (absente : la même qu'avant)
+     *     agence_tel: '…',         // son téléphone
+     *     portail: 'seloger',      // où elle est lue
+     *     prix: 718000,            // le prix qu'elle affiche
+     *     date: '2026-10-05',      // sa date de mise en ligne
+     *     retiree_le: '2026-10-07',// le jour où l'ancien lien a été trouvé mort (défaut : aujourd'hui)
+     *     apercu: true,            // rend ce qui serait écrit, sans rien écrire
+     *   })
+     *
+     * Sans `url` : l'annonce est retirée et rien ne la remplace. Le lien reste
+     * enregistré, marqué mort, et la carte le dit (« Annonce retirée le … »).
+     *
+     * Rien ne se perd : l'ancienne annonce reste dans `historique_prix`, en
+     * ligne « diffuseur » marquée `retiree_le` et `lien_retenu`, avec son
+     * agence, son portail, son prix et son téléphone. La carte du bien
+     * l'affiche en haut (AvisLien) : où il était, où il est. Une ligne part
+     * aussi au parcours du bien.
+     *
+     * Le prix vendeur n'est jamais touché : c'est celui que le client a reçu.
+     * Un prix différent sur la nouvelle annonce se lit dans le marché, et la
+     * réponse le signale (`prix_change`) pour qu'Alexandre décide.
+     */
+    async function majLienBien(bienId: string, nouveau: any = {}) {
+      if (!bienId) return { ok: false, error: 'bienId manquant' };
+      const { data: b, error: e1 } = await supabase.from('biens')
+        .select('id, client_id, recherche_id, titre, etape, url, agence_nom, agence_tel, source_portail, prix_vendeur, historique_prix')
+        .eq('id', bienId).maybeSingle();
+      if (e1) return { ok: false, error: e1.message };
+      if (!b) return { ok: false, error: 'bien introuvable' };
+
+      const aujourdhui = new Date().toISOString().slice(0, 10);
+      const retireeLe = String(nouveau.retiree_le || aujourdhui).slice(0, 10);
+      const ancienUrl: string = String(b.url || '').trim();
+      const nouvelUrl: string = String(nouveau.url || '').trim();
+      if (nouvelUrl && nouvelUrl === ancienUrl) return { ok: false, error: 'ce lien est déjà celui du bien' };
+      if (!ancienUrl && !nouvelUrl) return { ok: false, error: 'le bien n’a pas de lien, et aucun nouveau lien n’est donné' };
+
+      const memeNom = (x: any, y: any) => !!String(x || '').trim() && String(x || '').trim().toLowerCase() === String(y || '').trim().toLowerCase();
+      const portailDe = (s: any) => (s && !/^veille$/i.test(String(s)) ? String(s) : null);
+      const ancienneAgence: string | null = b.agence_nom ? String(b.agence_nom).trim() : null;
+      const hist: any[] = Array.isArray(b.historique_prix) ? b.historique_prix.map((x: any) => ({ ...x })) : [];
+
+      /* Une fiche d'avant le marquage des diffuseurs : ses lignes d'agence
+         sont recopiées en « diffuseur », sinon la première ligne marquée les
+         ferait disparaître du marché (diffuseurs() ne lit plus qu'elles). */
+      if (!hist.some((x) => x?.type === 'diffuseur')) {
+        for (const x of [...hist]) {
+          const ag = String(x?.agence ?? x?.a ?? '').trim();
+          if (ag) hist.push({ type: 'diffuseur', agence: ag, prix: x?.prix ?? x?.p ?? null, date: x?.date ?? null, url: x?.url ?? null });
+        }
+      }
+
+      // 1. l'ancienne annonce : marquée retirée, jamais effacée
+      if (ancienUrl) {
+        const i = hist.findIndex((x) => x?.type === 'diffuseur' && x.url === ancienUrl);
+        if (i >= 0) {
+          hist[i] = {
+            ...hist[i], retiree_le: hist[i].retiree_le || retireeLe, lien_retenu: true,
+            portail: hist[i].portail || portailDe(b.source_portail),
+            tel: hist[i].tel || b.agence_tel || null,
+          };
+        } else {
+          hist.push({
+            type: 'diffuseur', agence: ancienneAgence || portailDe(b.source_portail) || 'Annonce',
+            prix: b.prix_vendeur ?? null, url: ancienUrl, portail: portailDe(b.source_portail),
+            tel: b.agence_tel || null, retiree_le: retireeLe, lien_retenu: true,
+          });
+        }
+      }
+
+      // 2. la nouvelle annonce : une agence déjà connue est mise à jour, sinon ajoutée
+      const nouvelleAgence: string | null = nouvelUrl ? (String(nouveau.agence || '').trim() || ancienneAgence) : null;
+      if (nouvelUrl) {
+        const j = hist.findIndex((x) => x?.type === 'diffuseur' && !x.retiree_le
+          && (x.url === nouvelUrl || memeNom(x.agence, nouvelleAgence)));
+        const ligne: any = {
+          type: 'diffuseur', agence: nouvelleAgence || 'Annonce', url: nouvelUrl,
+          prix: nouveau.prix ?? null, date: nouveau.date || aujourdhui,
+          portail: nouveau.portail || null, vu_le: aujourdhui,
+          ...(nouveau.agence_tel ? { tel: nouveau.agence_tel } : {}),
+        };
+        if (j >= 0) {
+          hist[j] = {
+            ...hist[j], ...ligne,
+            prix: nouveau.prix ?? hist[j].prix ?? null,
+            date: nouveau.date || hist[j].date || aujourdhui,
+            portail: nouveau.portail || hist[j].portail || null,
+          };
+        } else hist.push(ligne);
+      }
+
+      // 3. la fiche : le lien, et l'agence si elle a changé
+      const changeAgence = !!nouvelUrl && !!nouveau.agence && !memeNom(nouveau.agence, ancienneAgence);
+      const champs: Record<string, unknown> = { historique_prix: hist };
+      if (nouvelUrl) {
+        champs.url = nouvelUrl;
+        if (nouveau.portail) champs.source_portail = nouveau.portail;
+        /* L'ancien téléphone était celui de l'ancienne agence : il reste sur
+           sa ligne retirée, il ne reste pas sur la fiche. */
+        if (changeAgence) { champs.agence_nom = String(nouveau.agence).trim(); champs.agence_tel = nouveau.agence_tel || null; }
+        else if (nouveau.agence_tel) champs.agence_tel = nouveau.agence_tel;
+      }
+      const prixChange = nouvelUrl && nouveau.prix != null && b.prix_vendeur != null && Number(nouveau.prix) !== Number(b.prix_vendeur)
+        ? { prix_vendeur: Number(b.prix_vendeur), nouvelle_annonce: Number(nouveau.prix) } : null;
+      const avant = { url: b.url, agence_nom: b.agence_nom, agence_tel: b.agence_tel, source_portail: b.source_portail };
+
+      if (nouveau.apercu) return { ok: true, apercu: true, bien: b.titre, etape: b.etape, avant, champs, prix_change: prixChange };
+
+      const { data: maj, error: e2 } = await supabase.from('biens').update(champs).eq('id', bienId).select('id');
+      if (e2) {
+        log(`Lien non mis à jour (${b.titre || bienId}) : ${e2.message}`, false);
+        return { ok: false, error: e2.message };
+      }
+      if (!maj?.length) {
+        log(`Lien non mis à jour (${b.titre || bienId}) : aucune ligne modifiée`, false);
+        return { ok: false, error: 'aucune ligne modifiée' };
+      }
+
+      // 4. une ligne au parcours du bien (type « bien_modifie », reconnu par la frise)
+      const titre = !nouvelUrl
+        ? `Annonce retirée — ${ancienneAgence || 'l’agence'} ne la diffuse plus`
+        : changeAgence
+          ? `Lien mis à jour — annonce ${ancienneAgence || 'd’origine'} retirée, toujours en vente chez ${nouvelleAgence}`
+          : `Lien mis à jour — ${nouvelleAgence || 'l’agence'} a remis l’annonce en ligne`;
+      const journal = b.client_id
+        ? await addJournal(b.client_id, 'bien_modifie', titre, undefined, {
+            lien_maj: true, ancien_url: ancienUrl || null, nouvel_url: nouvelUrl || null,
+            ancienne_agence: ancienneAgence, nouvelle_agence: nouvelleAgence, retiree_le: retireeLe,
+          }, { rechercheId: b.recherche_id, bienId })
+        : false;
+
+      log(`${nouvelUrl ? 'Lien mis à jour' : 'Annonce marquée retirée'} : ${b.titre || bienId}`);
+      return { ok: true, bien: b.titre, etape: b.etape, avant, apres: { ...champs, historique_prix: undefined }, prix_change: prixChange, journal };
+    }
+
     (window as any).veilleLire = veilleLire;
     (window as any).veilleDeposer = veilleDeposer;
     (window as any).veilleMaj = veilleMaj;
@@ -505,6 +660,7 @@ export default function PageImportVeille() {
     (window as any).pdfTermine = pdfTermine;
     (window as any).majPhotosBien = majPhotosBien;
     (window as any).majPlansBien = majPlansBien;
+    (window as any).majLienBien = majLienBien;
     (window as any).__VEILLE_PRETE__ = true;
     setPret(true);
 
@@ -526,6 +682,7 @@ export default function PageImportVeille() {
       delete (window as any).pdfTermine;
       delete (window as any).majPhotosBien;
       delete (window as any).majPlansBien;
+      delete (window as any).majLienBien;
       delete (window as any).__VEILLE_PRETE__;
     };
   }, [log]);
