@@ -846,6 +846,11 @@ function ChampAdresse({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
   useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
   const taper = (q: string) => {
     maj('adresse', q);
+    /* V3.100 : la position venait de la suggestion choisie ; l'adresse
+       retouchée à la main ne la suit plus (le 68 avenue d'Iéna placé près de
+       Fréjus). Elle est oubliée : le serveur la retrouve à partir de
+       l'adresse, du code postal et de la ville (lib/flux-site-serveur.ts). */
+    if (d.gps) maj('gps', null);
     derniere.current = q;
     if (minuterie.current) clearTimeout(minuterie.current);
     if (q.trim().length < 4) { setSug([]); return; }
