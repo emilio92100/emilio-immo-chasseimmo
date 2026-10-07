@@ -6,6 +6,7 @@ import {
   TYPE_ENVOI, PLAFOND_PAR_JOUR,
 } from '@/lib/point-auto';
 import { alerteMailActive } from '@/lib/alertes';
+import { logoMail } from '@/lib/mail-charte';
 
 /**
  * L'envoi quotidien du point automatique — « Où en est votre recherche ? ».
@@ -89,14 +90,14 @@ export async function GET(req: NextRequest) {
        quand un mail n'a pas pu partir : ça, Alexandre doit le savoir. */
     if (rates.length || (partis.length && await alerteMailActive(sb, 'point_auto_recap'))) {
       const lignes = partis.map((p) =>
-        `<li style="margin:0 0 6px;"><a href="${CRM}/?page=fiche&client=${encodeURIComponent(p.id)}" style="color:#1a2332;font-weight:700;">${echappe(p.nom)}</a>${p.revente ? ' <span style="color:#9a7d2e;font-weight:700;">· revente possible</span>' : ''}</li>`).join('');
-      const html = `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#2f3c52">
-  <div style="background:#1a2332;padding:18px 22px;border-radius:14px 14px 0 0">
-    <div style="color:#c9a84c;font-weight:700;letter-spacing:2px;font-size:11px">EMILIO · CRM</div>
-    <div style="color:#ffffff;font-weight:800;font-size:18px;margin-top:6px">Point automatique du jour</div>
+        `<li style="margin:0 0 6px;"><a href="${CRM}/?page=fiche&client=${encodeURIComponent(p.id)}" style="color:#13243D;font-weight:700;">${echappe(p.nom)}</a>${p.revente ? ' <span style="color:#A95808;font-weight:700;">· revente possible</span>' : ''}</li>`).join('');
+      const html = `<div style="font-family:'Plus Jakarta Sans',-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#46566B">
+  <div style="background:#22497D;padding:18px 22px 16px;border-radius:14px 14px 0 0;border-bottom:3px solid #E68B23">
+    ${logoMail('CRM')}
+    <div style="color:#ffffff;font-weight:800;font-size:18px;line-height:1.3;margin-top:12px">Point automatique du jour</div>
   </div>
-  <div style="border:1px solid #e3e8f0;border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;font-size:14px;line-height:1.6">
-    ${partis.length ? `<p style="margin:0 0 10px;">Le mail « Où en est votre recherche ? » est parti chez ${partis.length} client${partis.length > 1 ? 's' : ''} dont le dossier ne bougeait plus :</p><ul style="margin:0 0 12px;padding-left:18px;">${lignes}</ul><p style="margin:0;color:#64748b;font-size:13px;">Leurs réponses arriveront dans tes Relances et dans leur suivi.</p>` : ''}
+  <div style="border:1px solid #E8EDF3;border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;font-size:14px;line-height:1.6">
+    ${partis.length ? `<p style="margin:0 0 10px;">Le mail « Où en est votre recherche ? » est parti chez ${partis.length} client${partis.length > 1 ? 's' : ''} dont le dossier ne bougeait plus :</p><ul style="margin:0 0 12px;padding-left:18px;">${lignes}</ul><p style="margin:0;color:#5B6B80;font-size:13px;">Leurs réponses arriveront dans tes Relances et dans leur suivi.</p>` : ''}
     ${rates.length ? `<p style="margin:14px 0 0;color:#b91c1c;">Pas parti : ${rates.map((x) => `${echappe(x.nom)} (${echappe(x.erreur)})`).join(', ')}.</p>` : ''}
   </div>
 </div>`;
