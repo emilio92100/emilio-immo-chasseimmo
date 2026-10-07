@@ -76,7 +76,7 @@ const SEP_PASTILLES = ' · ';
 const SEP_LIBRE = ' — ';
 const ANNUL_MS = 5000;
 
-const BLEU = '#1b365d', VERT = '#15803d', ROUGE = '#b42318', OR = '#c9a84c';
+const BLEU = '#1b365d', VERT = '#15803d', ROUGE = '#b42318', OR = '#E68B23';
 
 const FEUILLES: Record<AvisDecouverte, { tag: string; t: string; p: string; ph: string; btn: string; passer: string }> = {
   refuse: {
@@ -951,7 +951,7 @@ html.dec-ouvert, html.dec-ouvert body{overflow:hidden !important; overscroll-beh
 /* La feuille de l'espace, rangée sous le bas de l'écran, laisse remonter son
    ombre : on l'éteint tant qu'elle est fermée et que « Découvrir » est ouvert. */
 html.dec-ouvert .feuille:not(.on){box-shadow:none}
-.dec{position:fixed; inset:0; z-index:56; background:#f3f5f8; color:var(--encre);
+.dec{position:fixed; inset:0; z-index:56; background:#F2F5F9; color:var(--encre);
   display:flex; flex-direction:column; overscroll-behavior:contain;
   padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);
   opacity:0; transform:translateY(12px); transition:opacity .28s ease, transform .32s cubic-bezier(.22,.8,.3,1)}
@@ -965,7 +965,7 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
   gap:10px; padding:0 6px 0 18px}
 .dec-logo{height:30px; width:auto; display:block}
 .dec-tete-d{display:flex; align-items:center; gap:2px}
-.dec-cpt{padding:6px 12px; border-radius:999px; background:#fff; border:1px solid #e2e7ee;
+.dec-cpt{padding:6px 12px; border-radius:999px; background:#fff; border:1px solid #E8EDF3;
   font-size:13px; font-weight:700; white-space:nowrap}
 .dec-x{width:44px; height:44px; display:flex; align-items:center; justify-content:center;
   border-radius:50%; color:var(--encre)}
@@ -979,7 +979,7 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
    contenu : sur un petit écran, c'est la scène qui défile, rien n'est coupé. */
 .dec-carte{flex:1 0 auto; min-height:0; display:flex; flex-direction:column; background:#fff;
   border-radius:28px; overflow:hidden; will-change:transform;
-  box-shadow:0 2px 4px rgba(20,35,58,.05), 0 26px 50px -28px rgba(20,35,58,.45)}
+  box-shadow:0 2px 4px rgba(19,36,61,.05), 0 26px 50px -28px rgba(19,36,61,.45)}
 .dec-ph{position:relative; flex:1 1 auto; min-height:180px}
 /* Posée en absolu : une hauteur en % dans deux flex imbriqués peut valoir
    zéro sur iPhone (voir PleinEcran dans EspaceClient). */
@@ -988,15 +988,15 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec-l1{display:flex; align-items:center; justify-content:space-between; gap:8px 24px; flex-wrap:wrap}
 .dec-prix{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; letter-spacing:-.6px; white-space:nowrap; line-height:1.15}
 .dec-voir{flex:0 0 auto; display:flex; align-items:center; gap:8px; min-height:46px; padding:0 18px;
-  border:1px solid #d3dcea !important; border-radius:999px; background:#eef2f8; font-size:14.5px; font-weight:700; color:${BLEU}}
+  border:1px solid #C9D5E6 !important; border-radius:999px; background:#E8EFF8; font-size:14.5px; font-weight:700; color:${BLEU}}
 .dec-voir:hover{background:#e4eaf3}
 .dec-titre{font-size:16px; font-weight:600; line-height:1.3}
-.dec-meta{font-size:14px; color:#5b6678; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.dec-meta{font-size:14px; color:#5B6B80; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .dec-note{display:flex; align-items:center; gap:10px; margin-top:2px; font-size:13px; font-weight:600}
-.dec-note-b{flex:0 0 72px; height:6px; border-radius:3px; background:#eef1f6; overflow:hidden}
+.dec-note-b{flex:0 0 72px; height:6px; border-radius:3px; background:#F2F5F9; overflow:hidden}
 .dec-note-b i{display:block; height:100%; border-radius:3px; background:${OR}}
 .dec-neuf{position:absolute; z-index:3; top:26px; left:14px; padding:6px 11px; border-radius:999px;
-  background:${OR}; color:#14233a; font-size:12px; font-weight:700; pointer-events:none}
+  background:${OR}; color:#13243D; font-size:12px; font-weight:700; pointer-events:none}
 
 .dec-visiter{flex:0 0 auto; height:52px; display:flex; align-items:center; justify-content:center; gap:10px;
   border:1.5px solid ${BLEU} !important; border-radius:16px; background:#fff; color:${BLEU};
@@ -1007,21 +1007,21 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 
 /* — la galerie — */
 .dg{position:relative; width:100%; height:100%; overflow:hidden; touch-action:pan-y;
-  user-select:none; -webkit-user-select:none; cursor:grab; background:linear-gradient(148deg,#3a5178,#22314c)}
+  user-select:none; -webkit-user-select:none; cursor:grab; background:linear-gradient(148deg,#2A5A96,#1B3D6B)}
 .dg.tient{cursor:grabbing}
 .dg.zoom{cursor:zoom-in}
 .dg-bande{position:absolute; inset:0; display:flex; will-change:transform}
-.dg-c{flex:0 0 100%; width:100%; height:100%; overflow:hidden; background:#dfe5ee}
+.dg-c{flex:0 0 100%; width:100%; height:100%; overflow:hidden; background:#DCE3EC}
 .dg-c img{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; -webkit-user-drag:none}
 .dg-vide{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.55)}
 .dg-segs{position:absolute; z-index:2; top:12px; left:14px; right:14px; display:flex; gap:4px; pointer-events:none}
 .dg-segs span{flex:1 1 0; height:3px; border-radius:2px; background:#fff; opacity:.45; transition:opacity .3s}
 .dg-segs span.on{opacity:1}
 .dg-n{position:absolute; z-index:3; top:26px; right:14px; padding:6px 11px; border-radius:999px;
-  background:rgba(20,35,58,.74); color:#fff; font-size:12px; font-weight:600; pointer-events:none}
+  background:rgba(19,36,61,.74); color:#fff; font-size:12px; font-weight:600; pointer-events:none}
 .dg-f{position:absolute; z-index:3; top:0; bottom:0; margin:auto 0; width:44px; height:44px; padding:0;
   display:flex; align-items:center; justify-content:center; border-radius:50%;
-  background:rgba(255,255,255,.92); color:#14233a; box-shadow:0 4px 12px -6px rgba(20,35,58,.5);
+  background:rgba(255,255,255,.92); color:#13243D; box-shadow:0 4px 12px -6px rgba(19,36,61,.5);
   transition:opacity .25s}
 .dg-f.g{left:10px} .dg-f.d{right:10px}
 .dg-f.cache{opacity:0; pointer-events:none}
@@ -1037,7 +1037,7 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 
 /* — le curseur — */
 .dec-cur{position:relative; flex:0 0 auto; height:80px; border-radius:40px; background:#fff;
-  border:1px solid #e2e7ee; box-shadow:0 10px 24px -18px rgba(20,35,58,.4)}
+  border:1px solid #E8EDF3; box-shadow:0 10px 24px -18px rgba(19,36,61,.4)}
 .dec-cur-t{position:absolute; inset:0; border-radius:40px; pointer-events:none; opacity:0}
 .dec-cur-t.g{background:#fdecea} .dec-cur-t.d{background:#e7f6ed}
 .dec-cur-m{position:absolute; top:8px; bottom:8px; width:calc(50% - 42px); max-width:140px;
@@ -1053,7 +1053,7 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
   touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; will-change:transform}
 .dec-rond:active{cursor:grabbing}
 .dec-rond-in{position:absolute; inset:0; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  color:#fff; border:3px solid ${OR}; background:${BLEU}; box-shadow:0 10px 22px -8px rgba(20,35,58,.65)}
+  color:#fff; border:3px solid ${OR}; background:${BLEU}; box-shadow:0 10px 22px -8px rgba(19,36,61,.65)}
 .dec-cur.repos .dec-rond-in{animation:dec-balance 1.1s cubic-bezier(.45,0,.55,1) -.55s infinite alternate}
 .dec-ch{position:absolute; top:0; bottom:0; display:flex; align-items:center; opacity:.8}
 .dec-ch.g{left:3px} .dec-ch.d{right:3px}
@@ -1071,8 +1071,8 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec-annul.a-plein{transform:none; opacity:1}
 .dec-annul.a-sort{transform:scale(.2); opacity:0; transition:transform .42s cubic-bezier(.55,0,.8,.2), opacity .42s ease-in}
 .dec-annul button{display:flex; align-items:center; gap:10px; height:50px; padding:0 20px 0 8px;
-  border:1px solid #e2e7ee !important; border-radius:999px; background:#fff; color:${BLEU};
-  font-size:14.5px; font-weight:700; white-space:nowrap; box-shadow:0 16px 34px -18px rgba(20,35,58,.6)}
+  border:1px solid #E8EDF3 !important; border-radius:999px; background:#fff; color:${BLEU};
+  font-size:14.5px; font-weight:700; white-space:nowrap; box-shadow:0 16px 34px -18px rgba(19,36,61,.6)}
 .dec-annul-r{position:relative; width:36px; height:36px; display:flex; align-items:center; justify-content:center;
   border-radius:50%; background:#f5f7fa}
 .dec-annul-r svg:first-child{position:absolute; left:0; top:0; transform:rotate(-90deg)}
@@ -1088,11 +1088,11 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec-fiche-in .corps-f{flex:1 0 auto}
 .dec-f-retour{position:absolute; z-index:6; top:calc(12px + env(safe-area-inset-top,0px)); left:12px;
   height:44px; display:flex; align-items:center; gap:4px; padding:0 14px 0 8px; border-radius:999px;
-  background:rgba(255,255,255,.94); font-size:14px; font-weight:700; color:#14233a;
-  box-shadow:0 4px 12px -6px rgba(20,35,58,.5)}
+  background:rgba(255,255,255,.94); font-size:14px; font-weight:700; color:#13243D;
+  box-shadow:0 4px 12px -6px rgba(19,36,61,.5)}
 .dec-f-haut{padding:18px 20px 0}
-.dec-f-retour.col{position:static; background:#fff; border:1px solid #d5dce6 !important; box-shadow:none; height:40px}
-.dec-f-bas{position:sticky; bottom:0; z-index:7; margin-top:auto; background:#fff; border-top:1px solid #e2e7ee;
+.dec-f-retour.col{position:static; background:#fff; border:1px solid #DCE3EC !important; box-shadow:none; height:40px}
+.dec-f-bas{position:sticky; bottom:0; z-index:7; margin-top:auto; background:#fff; border-top:1px solid #E8EDF3;
   padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px)); display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px}
 .dec-f-bas button{min-height:70px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
   border-radius:16px; background:#fff; font-size:14.5px; font-weight:700; line-height:1.15; text-align:center; padding:6px 4px}
@@ -1108,48 +1108,48 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec-q-boite{position:absolute; left:0; right:0; bottom:0; max-height:calc(100% - 24px); overflow-y:auto;
   overscroll-behavior:contain; background:#fff; border-radius:28px 28px 0 0;
   padding:10px 20px calc(18px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:16px;
-  box-shadow:0 -20px 40px -24px rgba(20,35,58,.4); transform:translateY(104%);
+  box-shadow:0 -20px 40px -24px rgba(19,36,61,.4); transform:translateY(104%);
   transition:transform .5s cubic-bezier(.22,.8,.3,1)}
 .dec-q.on .dec-q-boite{transform:none}
 .dec-q.sort .dec-q-boite{transform:translateY(104%); transition:transform .36s cubic-bezier(.5,0,.75,0)}
-.dec-q-poignee{align-self:center; width:40px; height:4px; border-radius:2px; background:#d5dce6; flex:0 0 auto}
+.dec-q-poignee{align-self:center; width:40px; height:4px; border-radius:2px; background:#DCE3EC; flex:0 0 auto}
 .dec-q-tete{display:flex; align-items:center; gap:12px}
-.dec-q-mini{flex:0 0 auto; width:56px; height:56px; border-radius:14px; overflow:hidden; background:#dfe5ee;
+.dec-q-mini{flex:0 0 auto; width:56px; height:56px; border-radius:14px; overflow:hidden; background:#DCE3EC;
   display:flex; align-items:center; justify-content:center; color:#8a97aa}
 .dec-q-mini img{width:100%; height:100%; object-fit:cover; display:block}
 .dec-q-bien{flex:1 1 auto; min-width:0; display:flex; flex-direction:column}
 .dec-q-bien b, .dec-q-bien span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .dec-q-bien b{font-size:14.5px}
-.dec-q-bien span{font-size:13px; color:#5b6678}
+.dec-q-bien span{font-size:13px; color:#5B6B80}
 .dec-q-tag{flex:0 0 auto; padding:5px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap}
 .dec-q-tag.refuse{color:${ROUGE}; background:#fdecea; border:1px solid #f3d0cc}
 .dec-q-tag.interesse{color:${VERT}; background:#e7f6ed; border:1px solid #c4e6d1}
-.dec-q-tag.souhaite_visiter{color:${BLEU}; background:#eef2f8; border:1px solid #d3dcea}
+.dec-q-tag.souhaite_visiter{color:${BLEU}; background:#E8EFF8; border:1px solid #C9D5E6}
 .dec-q-txt h2{margin:0; font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; letter-spacing:-.4px; line-height:1.2}
-.dec-q-txt p{margin:6px 0 0; font-size:14px; line-height:1.5; color:#5b6678}
+.dec-q-txt p{margin:6px 0 0; font-size:14px; line-height:1.5; color:#5B6B80}
 .dec-chips{display:flex; flex-wrap:wrap; gap:8px}
 .dec-chip{display:flex; align-items:center; gap:6px; min-height:44px; padding:0 15px; border-radius:999px;
-  border:1px solid #d5dce6 !important; background:#fff; color:#14233a; font-size:14px; font-weight:600;
+  border:1px solid #DCE3EC !important; background:#fff; color:#13243D; font-size:14px; font-weight:600;
   transition:background .2s, color .2s, border-color .2s}
 .dec-chip.on{background:${BLEU}; color:#fff; border-color:${BLEU} !important}
-.dec-mot{display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; color:#2a3a52}
-.dec-mot textarea{font-family:inherit; font-size:16px; padding:10px 12px; border:1px solid #d5dce6; border-radius:14px;
-  resize:none; color:#14233a; outline:none}
+.dec-mot{display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; color:#22497D}
+.dec-mot textarea{font-family:inherit; font-size:16px; padding:10px 12px; border:1px solid #DCE3EC; border-radius:14px;
+  resize:none; color:#13243D; outline:none}
 .dec-mot textarea:focus{border-color:${BLEU}}
 .dec-ajout{align-self:flex-start; display:flex; align-items:center; gap:6px; min-height:44px; padding:0 2px;
   font-size:14px; font-weight:700; color:${BLEU}}
-.dec-vv{display:flex; align-items:center; gap:12px; min-height:62px; padding:10px 14px; border:1px solid #d3dcea !important;
-  border-radius:16px; background:#eef2f8; text-align:left; color:#14233a}
+.dec-vv{display:flex; align-items:center; gap:12px; min-height:62px; padding:10px 14px; border:1px solid #C9D5E6 !important;
+  border-radius:16px; background:#E8EFF8; text-align:left; color:#13243D}
 .dec-vv-i{flex:0 0 auto; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;
   background:${BLEU}; color:#fff}
 .dec-vv-t{flex:1 1 auto; display:flex; flex-direction:column}
 .dec-vv-t b{font-size:14.5px}
-.dec-vv-t span{font-size:13px; color:#5b6678; line-height:1.4}
+.dec-vv-t span{font-size:13px; color:#5B6B80; line-height:1.4}
 .dec-q-pied{display:flex; flex-direction:column; gap:4px}
 .dec-envoyer{min-height:54px; border-radius:16px; font-size:15.5px; font-weight:700; background:${BLEU}; color:#fff;
   transition:background .25s, color .25s}
-.dec-envoyer:disabled{background:#e2e7ee; color:#7d8a9c; cursor:default}
-.dec-passer{min-height:44px; font-size:14px; font-weight:600; color:#5b6678}
+.dec-envoyer:disabled{background:#E8EDF3; color:#7d8a9c; cursor:default}
+.dec-passer{min-height:44px; font-size:14px; font-weight:600; color:#5B6B80}
 
 /* — la fin — */
 .dec-fin{flex:1 1 auto; min-height:0; overflow-y:auto; width:100%; max-width:480px; margin:0 auto;
@@ -1157,12 +1157,12 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec-fin-h{background:${BLEU}; border-radius:28px; padding:26px 22px; display:flex; flex-direction:column;
   align-items:center; gap:10px; text-align:center; color:#fff}
 .dec-fin-ok{width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  background:${OR}; color:#14233a}
+  background:${OR}; color:#13243D}
 .dec-fin-h h2{margin:4px 0 0; font-family:'Plus Jakarta Sans',sans-serif; font-size:23px; font-weight:800; letter-spacing:-.4px; color:#fff}
 .dec-fin-h p{margin:0; font-size:14.5px; line-height:1.5; color:#d8e0eb}
 .dec-fin-t{background:#fff; border-radius:22px; padding:6px 18px;
-  box-shadow:0 1px 2px rgba(20,35,58,.04), 0 12px 28px -22px rgba(20,35,58,.35)}
-.dec-fin-t > div{display:flex; align-items:center; gap:12px; min-height:52px; border-bottom:1px solid #eef1f6}
+  box-shadow:0 1px 2px rgba(19,36,61,.04), 0 12px 28px -22px rgba(19,36,61,.35)}
+.dec-fin-t > div{display:flex; align-items:center; gap:12px; min-height:52px; border-bottom:1px solid #F2F5F9}
 .dec-fin-t > div:last-child{border-bottom:0}
 .dec-fin-t i{width:10px; height:10px; border-radius:50%; flex:0 0 auto}
 .dec-fin-t span{flex:1 1 auto; font-size:15px}
@@ -1170,7 +1170,7 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec-fin-t b{font-size:17px}
 .dec-fin-b{display:flex; flex-direction:column; gap:4px}
 .dec-fin-1{min-height:54px; border-radius:16px; background:${BLEU}; color:#fff; font-size:15.5px; font-weight:700}
-.dec-fin-2{min-height:44px; font-size:14px; font-weight:600; color:#5b6678}
+.dec-fin-2{min-height:44px; font-size:14px; font-weight:600; color:#5B6B80}
 .dec-fin-a{height:62px; flex:0 0 auto; display:flex; align-items:center; justify-content:center}
 
 /* — de la tablette à l'ordinateur : la question devient une fenêtre — */
@@ -1198,26 +1198,26 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec.pc .dec-logo{height:38px}
 .dec-prog{display:flex; align-items:center; gap:14px}
 .dec-prog b{font-family:'Plus Jakarta Sans',sans-serif; font-size:17px; font-weight:800}
-.dec-prog > span:last-child{font-size:14px; font-weight:700; color:#5b6678}
+.dec-prog > span:last-child{font-size:14px; font-weight:700; color:#5B6B80}
 .dec-pts{display:flex; gap:5px}
-.dec-pts i{width:26px; height:5px; border-radius:3px; background:#d5dce6; transition:background .3s}
+.dec-pts i{width:26px; height:5px; border-radius:3px; background:#DCE3EC; transition:background .3s}
 .dec-pts i.pt-fait{background:${BLEU}} .dec-pts i.pt-ici{background:${OR}}
 .dec-quitter{justify-self:end; display:flex; align-items:center; gap:8px; min-height:44px; padding:0 16px;
-  border:1px solid #d5dce6 !important; border-radius:999px; background:#fff; font-size:14px; font-weight:700; color:#14233a}
+  border:1px solid #DCE3EC !important; border-radius:999px; background:#fff; font-size:14px; font-weight:700; color:#13243D}
 .dec-quitter:hover{background:#f6f8fb}
 .dec.pc .dec-scene{max-width:1168px; padding:0 24px 24px; overflow:visible}
 .dec.pc .dec-carte{flex:1 1 auto; min-height:min(520px, calc(100vh - 104px)); max-height:740px; display:grid;
   grid-template-columns:minmax(0,1fr) 440px; border-radius:28px;
-  box-shadow:0 2px 4px rgba(20,35,58,.05), 0 30px 60px -36px rgba(20,35,58,.45)}
+  box-shadow:0 2px 4px rgba(19,36,61,.05), 0 30px 60px -36px rgba(19,36,61,.45)}
 .dec-gauche{display:flex; flex-direction:column; min-height:0; min-width:0}
 .dec.pc .dec-ph{flex:1 1 auto; min-height:0}
 .dec-minis{flex:0 0 auto; display:flex; gap:10px; padding:10px 18px; overflow-x:auto; scrollbar-width:thin}
 .dec-mini{flex:0 0 auto; width:104px; height:72px; padding:0; border-radius:12px; overflow:hidden;
-  border:3px solid transparent !important; opacity:.7; transition:border-color .25s, opacity .25s; background:#dfe5ee}
+  border:3px solid transparent !important; opacity:.7; transition:border-color .25s, opacity .25s; background:#DCE3EC}
 .dec-mini.on{border-color:${OR} !important; opacity:1}
 .dec-mini:hover{opacity:1}
 .dec-mini img{width:100%; height:100%; object-fit:cover; display:block}
-.dec-droite{position:relative; min-height:0; border-left:1px solid #eef1f6; display:flex; flex-direction:column}
+.dec-droite{position:relative; min-height:0; border-left:1px solid #F2F5F9; display:flex; flex-direction:column}
 .dec-col{flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding:32px 32px 0}
 .dec.pc .dec-prix{font-size:34px; letter-spacing:-.8px}
 .dec.pc .dec-titre{font-size:20px; font-weight:700; margin-top:4px}
@@ -1225,8 +1225,8 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec.pc .dec-note{font-size:13.5px}
 .dec.pc .dec-note-b{flex-basis:96px}
 .dec-atouts{display:flex; flex-wrap:wrap; gap:6px}
-.dec-atouts span{padding:5px 11px; border-radius:999px; background:#f3f5f8; border:1px solid #e2e7ee; font-size:13px; font-weight:500; color:#2a3a52}
-.dec-extrait{margin:2px 0 0; font-size:14px; line-height:1.55; color:#2a3a52; display:-webkit-box; -webkit-line-clamp:4;
+.dec-atouts span{padding:5px 11px; border-radius:999px; background:#F2F5F9; border:1px solid #E8EDF3; font-size:13px; font-weight:500; color:#22497D}
+.dec-extrait{margin:2px 0 0; font-size:14px; line-height:1.55; color:#22497D; display:-webkit-box; -webkit-line-clamp:4;
   -webkit-box-orient:vertical; overflow:hidden; white-space:pre-line}
 .dec-vide{flex:1 1 auto; min-height:4px}
 .dec.pc .dec-pied{height:58px}
@@ -1241,7 +1241,7 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
 .dec.pc .dec-fin-h h2{font-size:26px}
 .dec.pc .dec-fin-b{flex-direction:row-reverse; gap:10px}
 .dec.pc .dec-fin-b button{flex:1 1 0; min-height:52px}
-.dec.pc .dec-fin-2{border:1px solid #d5dce6 !important; border-radius:16px; background:#fff; color:#14233a; font-size:15px; font-weight:700}
+.dec.pc .dec-fin-2{border:1px solid #DCE3EC !important; border-radius:16px; background:#fff; color:#13243D; font-size:15px; font-weight:700}
 @media (max-height:760px){ .dec.pc .dec-extrait{display:none} }
 
 /* — un téléphone court (iPhone SE, barres du navigateur affichées) : tout

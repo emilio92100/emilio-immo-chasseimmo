@@ -3,7 +3,7 @@
    téléphone, le bandeau tient en une ligne et ses filtres : tout le reste
    est pour la carte. */
 
-.racine { font-family: 'DM Sans', system-ui, sans-serif; color: #1a2332; }
+.racine { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #13243D; }
 
 /* ── Téléphone : plein écran, sous la barre du bas ── */
 .tel {
@@ -16,9 +16,9 @@
 .bandeau {
   position: relative; z-index: 3; flex: 0 0 auto;
   padding: calc(10px + env(safe-area-inset-top, 0px)) 0 10px;
-  background: linear-gradient(152deg, #4d6c9e 0%, #3a5886 55%, #46659a 100%);
+  background: linear-gradient(152deg, #3A6AA8 0%, #22497D 55%, #3A6AA8 100%);
   color: #fff;
-  box-shadow: 0 10px 24px -16px rgba(36, 56, 92, .7);
+  box-shadow: 0 10px 24px -16px rgba(27,61,107, .7);
 }
 .ligne1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; }
 .titreT {
@@ -26,7 +26,7 @@
   font-size: 13px; letter-spacing: .1px;
 }
 .titreT b { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; color: #fff; }
-.titreT span { font-weight: 700; color: #ecd28a; }
+.titreT span { font-weight: 700; color: #F2B266; }
 
 .bascule {
   flex: 0 0 auto; display: inline-flex; padding: 3px; gap: 2px; border-radius: 99px;
@@ -34,11 +34,11 @@
 }
 .bascule button {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border-radius: 99px;
-  font: 700 12.5px 'DM Sans', sans-serif; color: rgba(255, 255, 255, .86);
+  font: 700 12.5px 'Plus Jakarta Sans', sans-serif; color: rgba(255, 255, 255, .86);
   transition: background .2s, color .2s, transform .15s;
 }
 .bascule button:active { transform: scale(.94); }
-.bascule .basculeOn { background: #fff; color: #24385c; cursor: default; }
+.bascule .basculeOn { background: #fff; color: #1B3D6B; cursor: default; }
 /* Sur téléphone, les mots suffisent : la place va au titre et à la ville. */
 .tel .bascule svg { display: none !important; }
 
@@ -47,15 +47,15 @@
 .puce {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
   height: 32px; padding: 0 12px; border-radius: 99px;
-  font: 700 13px 'DM Sans', sans-serif; white-space: nowrap;
+  font: 700 13px 'Plus Jakarta Sans', sans-serif; white-space: nowrap;
   background: rgba(255, 255, 255, .12); color: #fff; border: 1px solid rgba(255, 255, 255, .2);
   transition: background .2s, color .2s, border-color .2s, transform .15s;
 }
 .puce:active { transform: scale(.94); }
 .puce i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, #fff); flex: 0 0 auto; }
 .puce b { font: 800 12px 'Plus Jakarta Sans', sans-serif; opacity: .8; }
-.puceOn { background: #fff; color: #1a2332; border-color: #fff; }
-.puceOn b { color: var(--c, #3a5886); opacity: 1; }
+.puceOn { background: #fff; color: #13243D; border-color: #fff; }
+.puceOn b { color: var(--c, #22497D); opacity: 1; }
 
 .corpsCarte { position: relative; }
 .tel .corpsCarte { flex: 1; min-height: 0; }
@@ -67,9 +67,9 @@
 .pastille {
   display: inline-flex; align-items: center; gap: 6px;
   height: 28px; padding: 0 11px 0 9px; border-radius: 99px;
-  background: #fff; color: #1a2332; cursor: pointer;
+  background: #fff; color: #13243D; cursor: pointer;
   font: 800 12.5px 'Plus Jakarta Sans', sans-serif; white-space: nowrap; letter-spacing: -.1px;
-  box-shadow: 0 6px 16px -6px rgba(15, 23, 42, .55), 0 0 0 1px rgba(15, 23, 42, .06);
+  box-shadow: 0 6px 16px -6px rgba(19,36,61, .55), 0 0 0 1px rgba(19,36,61, .06);
   transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), background .2s, color .2s, width .2s, height .2s, padding .2s;
   animation: entre .38s cubic-bezier(.34, 1.56, .64, 1) backwards;
 }
@@ -77,7 +77,7 @@
 .pastille i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: 0 0 auto; }
 .pastille:hover, .envSurvol .pastille { transform: scale(1.07); }
 .envSel { z-index: 5; }
-.envSel .pastille { background: #24385c; color: #fff; transform: scale(1.1); }
+.envSel .pastille { background: #1B3D6B; color: #fff; transform: scale(1.1); }
 .envSel .pastille i { box-shadow: 0 0 0 2px #fff; }
 .envSurvol { z-index: 4; }
 /* Une visite calée : l'étiquette violette, et le point exact dessous. */
@@ -132,28 +132,28 @@
 
 /* ── Les biens de la zone ── */
 .photo {
-  flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: #94a3b8;
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: #8FA3BF;
   background: linear-gradient(135deg, #dfe6f0, #c9d5e4 60%, #b7c6d9) center / cover no-repeat;
 }
 .corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .etiq {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
-  padding: 2px 8px; border-radius: 99px; font: 800 11px 'DM Sans', sans-serif; white-space: nowrap;
+  padding: 2px 8px; border-radius: 99px; font: 800 11px 'Plus Jakarta Sans', sans-serif; white-space: nowrap;
   color: color-mix(in srgb, var(--c) 76%, black); background: color-mix(in srgb, var(--c) 13%, white);
 }
 .etiq i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); flex: 0 0 auto; }
-.titre { font: 700 13.5px/1.3 'Plus Jakarta Sans', sans-serif; color: #1a2332; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-.prixL { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; color: #64748b; }
-.prixL b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #a07c28; white-space: nowrap; }
+.titre { font: 700 13.5px/1.3 'Plus Jakarta Sans', sans-serif; color: #13243D; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.prixL { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; color: #5B6B80; }
+.prixL b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #A95808; white-space: nowrap; }
 .prixL span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .actions { display: flex; gap: 6px; margin-top: 6px; }
 .voir, .itin {
   display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 13px; border-radius: 10px;
-  font: 700 12.5px 'DM Sans', sans-serif; white-space: nowrap; text-decoration: none; cursor: pointer;
+  font: 700 12.5px 'Plus Jakarta Sans', sans-serif; white-space: nowrap; text-decoration: none; cursor: pointer;
 }
-.voir { background: #3a5886; color: #fff; }
+.voir { background: #22497D; color: #fff; }
 .voir:hover { background: #2f4a73; }
-.itin { border: 1.5px solid #e3e8f0; background: #fff; color: #1a2332; }
+.itin { border: 1.5px solid #E8EDF3; background: #fff; color: #13243D; }
 
 /* Téléphone : une bande qu'on fait glisser, au-dessus de la barre du bas. */
 .bas { position: absolute; z-index: 3; left: 0; right: 0; bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
@@ -172,7 +172,7 @@
   display: flex; background: #fff; border-radius: 18px; overflow: hidden; cursor: pointer;
   /* Pas de bordure transparente : elle dessinait un cadre blanc autour de la
      photo. La fiche choisie prend un contour doré, posé par-dessus. */
-  box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55);
+  box-shadow: 0 14px 30px -16px rgba(19,36,61, .55);
   outline: 2px solid transparent; outline-offset: -2px;
   transition: outline-color .2s, transform .2s;
   -webkit-tap-highlight-color: transparent;
@@ -182,24 +182,24 @@
 .fb .corps { padding: 9px 11px 10px 12px; }
 .fb .actions { margin-top: 5px; }
 .fb .voir, .fb .itin { height: 30px; padding: 0 12px; font-size: 12px; }
-.fb.choisi { outline-color: #c9a84c; }
+.fb.choisi { outline-color: #E68B23; }
 
 .rien {
   margin: 0 16px; padding: 13px 16px; border-radius: 16px; background: #fff;
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  font-size: 13px; color: #64748b; text-align: center;
-  box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55);
+  font-size: 13px; color: #5B6B80; text-align: center;
+  box-shadow: 0 14px 30px -16px rgba(19,36,61, .55);
 }
-.rien button { height: 32px; padding: 0 14px; border-radius: 99px; background: #eef2f8; color: #24385c; font: 700 13px 'DM Sans', sans-serif; }
+.rien button { height: 32px; padding: 0 14px; border-radius: 99px; background: #E8EFF8; color: #1B3D6B; font: 700 13px 'Plus Jakarta Sans', sans-serif; }
 
 .outils { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: 6px; right: 14px; bottom: 14px; }
 .tel .outils { right: 12px; bottom: calc(88px + 136px + env(safe-area-inset-bottom, 0px)); }
 .outils button {
-  width: 40px; height: 40px; border-radius: 13px; background: #fff; color: #24385c;
+  width: 40px; height: 40px; border-radius: 13px; background: #fff; color: #1B3D6B;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 10px 24px -12px rgba(15, 23, 42, .55); transition: background .15s, transform .15s;
+  box-shadow: 0 10px 24px -12px rgba(19,36,61, .55); transition: background .15s, transform .15s;
 }
-.outils button:hover { background: #f5f7fb; }
+.outils button:hover { background: #F5F8FC; }
 .outils button:active { transform: scale(.92); }
 
 /* « N biens ne sont pas sur la carte » (V3.28) : posé en haut de la carte,
@@ -207,38 +207,38 @@
 .hors {
   position: absolute; z-index: 4; left: 14px; top: 14px; max-width: min(430px, calc(100% - 28px));
   display: flex; align-items: flex-start; gap: 10px; padding: 10px 8px 11px 11px; border-radius: 16px;
-  background: #fff; box-shadow: 0 14px 30px -16px rgba(15, 23, 42, .55), 0 0 0 1px rgba(201, 168, 76, .28);
-  font-size: 12.5px; line-height: 1.45; color: #64748b;
+  background: #fff; box-shadow: 0 14px 30px -16px rgba(19,36,61, .55), 0 0 0 1px rgba(230,139,35, .28);
+  font-size: 12.5px; line-height: 1.45; color: #5B6B80;
   animation: entre .35s cubic-bezier(.16, 1, .3, 1) backwards;
 }
 /* Au téléphone, sous la mention OpenFreeMap (en haut à droite), qui doit rester lisible. */
 .tel .hors { left: 12px; right: 12px; top: 30px; max-width: none; }
 .horsIc {
   flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; background: #fdf3d8; color: #a07c28;
+  display: flex; align-items: center; justify-content: center; background: #fdf3d8; color: #A95808;
 }
 .horsTxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding-top: 1px; }
-.horsTxt b { font: 800 13.5px/1.3 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
-.horsTxt button { padding: 0; font: 700 12.5px 'DM Sans', sans-serif; color: #8a6a1f; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.horsTxt b { font: 800 13.5px/1.3 'Plus Jakarta Sans', sans-serif; color: #13243D; }
+.horsTxt button { padding: 0; font: 700 12.5px 'Plus Jakarta Sans', sans-serif; color: #8a6a1f; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
 .horsFermer {
   flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; padding: 0;
-  background: transparent; color: #94a3b8; font-size: 17px; line-height: 1;
+  background: transparent; color: #8FA3BF; font-size: 17px; line-height: 1;
 }
-.horsFermer:hover { background: #f1f5f9; color: #1a2332; }
+.horsFermer:hover { background: #F2F5F9; color: #13243D; }
 
 .charge {
   position: absolute; z-index: 4; top: 14px; left: 0; right: 0; margin: 0 auto; width: fit-content;
   display: flex; align-items: center; gap: 9px; padding: 8px 14px; border-radius: 99px;
-  background: #3a5886; color: #fff; font: 700 12.5px 'DM Sans', sans-serif;
-  box-shadow: 0 12px 26px -14px rgba(15, 23, 42, .6);
+  background: #22497D; color: #fff; font: 700 12.5px 'Plus Jakarta Sans', sans-serif;
+  box-shadow: 0 12px 26px -14px rgba(19,36,61, .6);
 }
-.charge span { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .3); border-top-color: #ecd28a; animation: tourne .8s linear infinite; }
+.charge span { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .3); border-top-color: #F2B266; animation: tourne .8s linear infinite; }
 @keyframes tourne { to { transform: rotate(360deg); } }
 .message {
   position: absolute; z-index: 5; top: 12px; left: 12px; right: 12px; max-width: 460px;
   display: flex; align-items: flex-start; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 14px;
-  background: rgba(26, 35, 50, .94); color: #fff; font-size: 13px; line-height: 1.45;
-  box-shadow: 0 16px 34px -16px rgba(15, 23, 42, .7);
+  background: rgba(19,36,61, .94); color: #fff; font-size: 13px; line-height: 1.45;
+  box-shadow: 0 16px 34px -16px rgba(19,36,61, .7);
   animation: entre .35s cubic-bezier(.16, 1, .3, 1);
 }
 .message span { flex: 1; }
@@ -247,12 +247,12 @@
 /* ── Ordinateur : la carte, et la liste de la zone à côté ── */
 .pc { margin-top: 20px; }
 .tetePc { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.tetePc h2 { margin: 0; font: 800 26px/1.2 'Plus Jakarta Sans', sans-serif; letter-spacing: -.5px; color: #1a2332; }
-.tetePc p { margin: 4px 0 0; font-size: 14px; color: #64748b; }
-.pc .bascule { background: #eef2f8; border-color: #e3e8f0; }
-.pc .bascule button { color: #475569; height: 32px; padding: 0 14px; font-size: 13px; }
-.pc .bascule button:hover { color: #24385c; }
-.pc .bascule .basculeOn { background: #fff; color: #24385c; box-shadow: 0 4px 12px -6px rgba(36, 56, 92, .45); }
+.tetePc h2 { margin: 0; font: 800 26px/1.2 'Plus Jakarta Sans', sans-serif; letter-spacing: -.5px; color: #13243D; }
+.tetePc p { margin: 4px 0 0; font-size: 14px; color: #5B6B80; }
+.pc .bascule { background: #E8EFF8; border-color: #E8EDF3; }
+.pc .bascule button { color: #46566B; height: 32px; padding: 0 14px; font-size: 13px; }
+.pc .bascule button:hover { color: #1B3D6B; }
+.pc .bascule .basculeOn { background: #fff; color: #1B3D6B; box-shadow: 0 4px 12px -6px rgba(27,61,107, .45); }
 /* Les filtres, posés sur la carte (V3.28). Avant, une ligne de pastilles
    entre le titre et la carte. Une seule barre blanche en haut, au milieu :
    un trait fin entre chaque choix, et le choix actif à sa couleur. Centrée
@@ -262,7 +262,7 @@
   width: fit-content; max-width: calc(100% - 28px);
   display: flex; align-items: center; padding: 4px; border-radius: 16px;
   background: rgba(255, 255, 255, .95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 16px 34px -18px rgba(15, 23, 42, .55), 0 0 0 1px rgba(15, 23, 42, .07);
+  box-shadow: 0 16px 34px -18px rgba(19,36,61, .55), 0 0 0 1px rgba(19,36,61, .07);
   overflow-x: auto; scrollbar-width: none;
   animation: entre .35s cubic-bezier(.16, 1, .3, 1) backwards;
 }
@@ -270,19 +270,19 @@
 .fp {
   position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
   height: 36px; padding: 0 14px; border-radius: 12px;
-  font: 700 13px 'DM Sans', sans-serif; color: #334155; white-space: nowrap;
+  font: 700 13px 'Plus Jakarta Sans', sans-serif; color: #13243D; white-space: nowrap;
   transition: background .22s, color .22s, box-shadow .22s;
 }
 .fp + .fp::before {
   content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 1px;
-  background: #e3e8f0; transition: opacity .2s;
+  background: #E8EDF3; transition: opacity .2s;
 }
 /* Pas de trait contre le choix actif : il a déjà sa couleur. */
 .fpOn::before, .fpOn + .fp::before { opacity: 0; }
 .fp i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: 0 0 auto; transition: background .22s; }
-.fp b { font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #94a3b8; transition: color .22s; }
-.fp:hover { background: color-mix(in srgb, var(--c, #3a5886) 9%, transparent); }
-.fpOn, .fpOn:hover { background: var(--c, #3a5886); color: #fff; box-shadow: 0 8px 18px -10px var(--c, #3a5886); }
+.fp b { font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #8FA3BF; transition: color .22s; }
+.fp:hover { background: color-mix(in srgb, var(--c, #22497D) 9%, transparent); }
+.fpOn, .fpOn:hover { background: var(--c, #22497D); color: #fff; box-shadow: 0 8px 18px -10px var(--c, #22497D); }
 .fpOn i { background: #fff; }
 .fpOn b { color: rgba(255, 255, 255, .85); }
 /* Sous la barre de filtres : le message, le bandeau « pas sur la carte »,
@@ -295,26 +295,26 @@
   display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px;
   height: clamp(480px, calc(100vh - 150px), 860px);
 }
-.pc .cadre { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid #dbe2ec; box-shadow: 0 18px 40px -30px rgba(36, 56, 92, .55); }
+.pc .cadre { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid #dbe2ec; box-shadow: 0 18px 40px -30px rgba(27,61,107, .55); }
 .cote {
   display: flex; flex-direction: column; min-height: 0; overflow: hidden;
-  background: #fff; border: 1px solid #e3e8f0; border-radius: 20px; box-shadow: 0 18px 40px -30px rgba(36, 56, 92, .55);
+  background: #fff; border: 1px solid #E8EDF3; border-radius: 20px; box-shadow: 0 18px 40px -30px rgba(27,61,107, .55);
 }
-.coteTete { display: flex; align-items: center; gap: 8px; padding: 14px 16px 12px; border-bottom: 1px solid #eef1f6; }
-.coteTete b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #24385c; }
-.coteTete span { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 99px; background: #eef2f8; color: #3a5886; font: 800 12px 'Plus Jakarta Sans', sans-serif; display: inline-flex; align-items: center; justify-content: center; }
-.coteTete button { margin-left: auto; font: 700 12.5px 'DM Sans', sans-serif; color: #a07c28; padding: 4px 6px; }
+.coteTete { display: flex; align-items: center; gap: 8px; padding: 14px 16px 12px; border-bottom: 1px solid #F2F5F9; }
+.coteTete b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1B3D6B; }
+.coteTete span { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 99px; background: #E8EFF8; color: #22497D; font: 800 12px 'Plus Jakarta Sans', sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+.coteTete button { margin-left: auto; font: 700 12.5px 'Plus Jakarta Sans', sans-serif; color: #A95808; padding: 4px 6px; }
 .coteListe { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .fl {
   display: flex; gap: 12px; padding: 8px; border-radius: 16px; cursor: pointer;
-  border: 1.5px solid transparent; background: #f8fafc;
+  border: 1.5px solid transparent; background: #F5F8FC;
   transition: background .18s, border-color .18s, box-shadow .2s;
   animation: entre .3s cubic-bezier(.16, 1, .3, 1) backwards;
 }
-.fl:hover { background: #f1f5f9; }
+.fl:hover { background: #F2F5F9; }
 .fl .photo { width: 92px; height: 72px; border-radius: 12px; }
-.fl.choisi { background: #fff; border-color: #c9a84c; box-shadow: 0 12px 26px -18px rgba(36, 56, 92, .6); }
-.pc .rien { box-shadow: none; background: #f8fafc; margin: 0; }
+.fl.choisi { background: #fff; border-color: #E68B23; box-shadow: 0 12px 26px -18px rgba(27,61,107, .6); }
+.pc .rien { box-shadow: none; background: #F5F8FC; margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .pastille, .fl, .point, .message { animation: none !important; }
