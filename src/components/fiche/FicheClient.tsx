@@ -296,7 +296,7 @@ import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
-import Rapprochement from './Rapprochement';
+import Rapprochement, { GuideRapprochement, type DepartRappro } from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
 
@@ -914,7 +914,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   /* Depuis une alerte (« un acheteur arrive ») ou le petit message après
      l'enregistrement des critères : le rapprochement part tout seul, sur vos
      mandats, ceux-là déjà cochés. Remis à zéro à la fermeture. */
-  const [rapproDepart, setRapproDepart] = useState<{ source: 'mandats' | 'veilles' | 'deux'; cocher?: string[] } | null>(null);
+  const [rapproDepart, setRapproDepart] = useState<DepartRappro | null>(null);
   const [toastRappro, setToastRappro] = useState<{ titre: string; texte: string; ids: string[] } | null>(null);
   const [veilleCount, setVeilleCount] = useState(0);
 
@@ -3514,32 +3514,21 @@ ${signatureMail()}`,
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const dernierRappro = rapprochements[0];
   const jourRappro = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
-  const bandeauRappro = !rechercheActive ? null : (
-    <section className={styles.rappro} aria-label={`Des biens pour ${client.prenom}`}>
-      <svg className={styles.rapproIllu} width="150" height="76" viewBox="0 0 150 76" aria-hidden="true">
-        <rect width="150" height="76" rx="14" fill="#fbf6e9" />
-        <path className={styles.rapproTrait} d="M40 38 C 62 28, 78 20, 96 20" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
-        <path className={styles.rapproTrait} d="M40 38 C 62 48, 78 56, 96 56" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
-        <circle className={styles.rapproOnde} cx="36" cy="38" r="19" fill="none" stroke="#c9a84c" strokeWidth="2" />
-        <circle cx="36" cy="38" r="19" fill="#2e4166" />
-        <foreignObject x="19" y="21" width="34" height="34"><AvatarContact c={client as never} teinte={{ bg: '#2e4166', fg: '#e8c96a' }} taille={34} /></foreignObject>
-        <g className={styles.rapproFlotte1}><rect x="94" y="8" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><path d="M108 22l6-5 6 5M110 21v5h8v-5" fill="none" stroke="#34496e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></g>
-        <g className={styles.rapproFlotte2}><rect x="94" y="44" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><circle cx="114" cy="55" r="4.2" fill="none" stroke="#a07c28" strokeWidth="1.6" /><path d="M117.2 58.2l2.8 2.8" stroke="#a07c28" strokeWidth="1.6" strokeLinecap="round" /></g>
-      </svg>
-      <div className={styles.rapproTx}>
-        <div className={styles.rapproTitre}>
-          <h2>{`Des biens pour ${client.prenom}`}</h2>
-          {!!mandatsOk?.n && <span className={styles.rapproNouveau}><i />{mandatsOk.n > 1 ? `${mandatsOk.n} mandats` : '1 mandat'}</span>}
-        </div>
-        <p>{mandatsOk?.n
-          ? <><b>{`${mandatsOk.n > 1 ? `${mandatsOk.n} de vos mandats lui correspondent` : '1 de vos mandats lui correspond'}, jusqu’à ${mandatsOk.meilleure} %`}</b>{' · à comparer aussi : les biens de vos veilles'}</>
-          : 'Comparez sa recherche avec vos mandats en cours et les biens trouvés par vos veilles pour vos autres clients.'}</p>
-        {dernierRappro && <small className={styles.rapproDernier}>{`Dernier le ${jourRappro(dernierRappro.created_at)} · ${dernierRappro.metadata?.n ?? 0} bien${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''} trouvé${(dernierRappro.metadata?.n ?? 0) > 1 ? 's' : ''}`}</small>}
-      </div>
-      <button type="button" className={styles.rapproCta} onClick={() => setRappro(true)}>
-        <Icone nom="etoile" taille={17} epaisseur={2.2} />{dernierRappro ? 'Refaire un rapprochement' : 'Faire un rapprochement'}
-      </button>
-    </section>
+  /* V3.112 : l'onglet Rapprochement s'ouvre sur un guide (Rapprochement.tsx,
+     GuideRapprochement) ; l'illustration de l'ancien bandeau y reste. Les
+     biens déjà montrés (`vus`) servent à « Seulement les nouveautés ». */
+  const vusRappro = rapprochements.flatMap(j => (Array.isArray(j.metadata?.vus) ? (j.metadata.vus as string[]) : []));
+  const illuRappro = (
+    <svg className={styles.rapproIllu} width="150" height="76" viewBox="0 0 150 76" aria-hidden="true">
+      <rect width="150" height="76" rx="14" fill="#fbf6e9" />
+      <path className={styles.rapproTrait} d="M40 38 C 62 28, 78 20, 96 20" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
+      <path className={styles.rapproTrait} d="M40 38 C 62 48, 78 56, 96 56" fill="none" stroke="#c9a84c" strokeWidth="1.6" />
+      <circle className={styles.rapproOnde} cx="36" cy="38" r="19" fill="none" stroke="#c9a84c" strokeWidth="2" />
+      <circle cx="36" cy="38" r="19" fill="#2e4166" />
+      <foreignObject x="19" y="21" width="34" height="34"><AvatarContact c={client as never} teinte={{ bg: '#2e4166', fg: '#e8c96a' }} taille={34} /></foreignObject>
+      <g className={styles.rapproFlotte1}><rect x="94" y="8" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><path d="M108 22l6-5 6 5M110 21v5h8v-5" fill="none" stroke="#34496e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></g>
+      <g className={styles.rapproFlotte2}><rect x="94" y="44" width="44" height="24" rx="8" fill="#fff" stroke="#e3e8f0" /><circle cx="114" cy="55" r="4.2" fill="none" stroke="#a07c28" strokeWidth="1.6" /><path d="M117.2 58.2l2.8 2.8" stroke="#a07c28" strokeWidth="1.6" strokeLinecap="round" /></g>
+    </svg>
   );
 
   const ETAPES_LABELS: Record<string, string> = {
@@ -4098,7 +4087,9 @@ ${signatureMail()}`,
           <div className={styles.ens}>
             {!rechercheActive ? <div className={styles.carteEns}><p className={styles.situNotes}>Le rapprochement part d’une recherche : ouvre-lui en une d’abord.</p></div> : (
               <>
-                {bandeauRappro}
+                <GuideRapprochement client={client} recherche={rechercheActive as unknown as Record<string, unknown>} illu={illuRappro}
+                  dernier={dernierRappro ? { le: dernierRappro.created_at, n: Number(dernierRappro.metadata?.n ?? 0) } : null}
+                  onLancer={o => { setRapproDepart(o); setRappro(true); }} />
                 <div className={styles.ensCols}>
                   <div className={styles.ensCol}>
                     <div className={styles.carteEns}>
@@ -5717,7 +5708,7 @@ ${signatureMail()}`,
       {/* ═══ LE RAPPROCHEMENT (V3.29) ═══ */}
       {rappro && rechercheActive && (
         <Rapprochement client={client} recherche={rechercheActive as unknown as Record<string, unknown>} resume={resumeRecherche}
-          depart={rapproDepart}
+          depart={rapproDepart} vus={vusRappro} dernierLe={dernierRappro?.created_at || null}
           onFermer={() => { setRappro(false); setRapproDepart(null); load(); }}
           onFicheBien={(id) => { setRappro(false); setRapproDepart(null); onNavigate('biens', { bien: id }); }}
           onFini={async (quoi, ids) => {
