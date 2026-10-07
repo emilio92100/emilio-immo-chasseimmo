@@ -223,7 +223,9 @@ export async function rapprocher(recherche: Ligne, clientId: string, source: Sou
       if (p.url && deja.urls.has(String(p.url))) { dejaLa++; continue; }
       const photos = (Array.isArray(p.photos) ? p.photos : []).filter((x: unknown) => typeof x === 'string' && x);
       trouves.push({
-        cle: `v-${p.id}`, source: 'veille', prop: p,
+        /* V3.112 : une clé qui ne change pas d'une fois sur l'autre (l'adresse
+           de l'annonce), pour reconnaître ce qui a déjà été vu. */
+        cle: `v-${p.url || p.yanport_id || p.id}`, source: 'veille', prop: p,
         titre: p.titre || [p.type_bien, p.nb_pieces ? `${p.nb_pieces} pièces` : '', p.surface ? `${p.surface} m²` : ''].filter(Boolean).join(' · ') || 'Annonce',
         lieu: [p.quartier, p.ville].filter(Boolean).join(' · '),
         prix: nb(p.prix), photo: photos[0] || null, photos, url: p.url || null,
@@ -275,14 +277,16 @@ export async function poserEnSelection(t: Trouve, clientId: string, rechercheId:
 }
 
 /* Le rapprochement lui-même, noté au Suivi : c'est ce qui permet de dire
-   « Dernier rapprochement le 29 septembre » sur la fiche. */
-export async function noterRapprochement(clientId: string, rechercheId: string, n: number, source: SourceRappro, periode: PeriodeVeille): Promise<void> {
+   « Dernier rapprochement le 29 septembre » sur la fiche. V3.112 : avec les
+   biens montrés (`vus`, leurs clés), pour ne remontrer la fois suivante que
+   les nouveautés (« Seulement les nouveautés »). */
+export async function noterRapprochement(clientId: string, rechercheId: string, n: number, source: SourceRappro, periode: PeriodeVeille, vus: string[] = []): Promise<void> {
   const ou = source === 'mandats' ? 'vos mandats' : source === 'veilles' ? 'les veilles' : 'vos mandats et les veilles';
   const p = source === 'mandats' ? '' : ` (${PERIODES.find(x => x.k === periode)?.l.toLowerCase() || ''})`;
   const { error } = await supabase.from('journal').insert({
     client_id: clientId, recherche_id: rechercheId, type: 'rapprochement',
     titre: `Rapprochement · ${n} bien${n > 1 ? 's' : ''} trouvé${n > 1 ? 's' : ''}`,
-    description: `Dans ${ou}${p}.`, metadata: { source, periode, n },
+    description: `Dans ${ou}${p}.`, metadata: { source, periode, n, vus },
   });
   if (error) signalerEchec('Le rapprochement est fait, mais son historique', error.message);
 }
