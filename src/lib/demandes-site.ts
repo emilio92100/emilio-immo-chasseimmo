@@ -40,10 +40,12 @@ export type DemandeSite = {
   client_id: string | null;
   /* Quand le mail « Nouvelle demande » est parti (outils/sql/demandes-site-notifier.sql). */
   notifie_le?: string | null;
-  /* V3.93 : d'où vient la demande. Absent (toutes les demandes d'avant) : le
-     site. Les portails (SeLoger, Logic-Immo, Belles Demeures) arriveront avec
-     la passerelle SeLoger (context.md §7) ; la colonne viendra avec eux. */
+  /* V3.93 : d'où vient la demande. Vide (le site, toutes les demandes d'avant) :
+     le site. V3.100 : les portails (SeLoger, Logic-Immo, Belles Demeures)
+     arrivent par lib/seloger-contacts-serveur.ts, avec leur numéro chez AVIV
+     (`lead_id`) — outils/sql/demandes-portails.sql. */
   source?: string | null;
+  lead_id?: string | null;
 };
 
 /* ── D'où vient une demande (V3.93, « Demandes Internet ») ──────────────── */
@@ -298,19 +300,22 @@ export function resume(d: DemandeSite): string {
   const cat = cleCategorie(d);
   const lu = lireMessage(d.message);
   const c = lu.champs;
+  /* V3.100 : une demande d'un portail n'a parfois que son message (« je veux
+     vendre », depuis la page de l'agence) : la ligne le montre plutôt que rien. */
+  const extrait = (t: string) => { const x = t.replace(/\s+/g, ' ').trim(); return x.length > 140 ? `${x.slice(0, 138).trim()}…` : x; };
   if (cat === 'estimation') {
     const adresse = trouver(c, 'adresse');
     const lieu = propre(d.desired_location) || (adresse ? adresse.split(',').slice(-1)[0].trim() : '') || trouver(c, 'ville');
     const pieces = trouver(c, 'pieces');
     return [typeBien(d.property_type || trouver(c, 'type')), pieces ? `${pieces} p.` : '', surface(d.desired_surface || trouver(c, 'surface')), lieu]
-      .filter(Boolean).join(' · ');
+      .filter(Boolean).join(' · ') || extrait(trouver(c, 'message') || lu.libre);
   }
   if (cat === 'mandat_recherche') {
-    return [typeBien(d.property_type), montant(d.budget), propre(d.desired_location), delai(d.timeline)].filter(Boolean).join(' · ');
+    return [typeBien(d.property_type), montant(d.budget), propre(d.desired_location), delai(d.timeline)].filter(Boolean).join(' · ')
+      || extrait(trouver(c, 'message') || lu.libre);
   }
   if (cat === 'rappel_bien') return d.property_title || 'Un bien du site';
-  const texte = String(d.message || '').replace(/\s+/g, ' ').trim();
-  return texte.length > 140 ? `${texte.slice(0, 138).trim()}…` : texte;
+  return extrait(String(d.message || ''));
 }
 
 /* La fourchette DVF d'une estimation, pour la liste. */
@@ -404,7 +409,12 @@ export type PreRemplissage = {
   demandeId: string;
   prenom: string; nom: string; email: string; tel: string;
   types: TypeContact[];
+  /* V3.100 : la source du contact (lib/sources.ts) : « site », ou
+     « plateforme » pour une demande d'un portail ; `origine`, la phrase de
+     la fenêtre « Créer la fiche contact ? ». */
+  source: 'site' | 'plateforme';
   source_detail: string;
+  origine: string;
   notes: string;
   /* V3.50 : les critères d'une demande « Accompagnement acheteur », dans
      les clés du formulaire de critères (CritForm) ; seulement ceux qu'on
@@ -479,8 +489,9 @@ export function preRemplissage(d: DemandeSite): PreRemplissage {
   const cat = categorieDe(d.form_type);
   const p = presenter(d);
   const { prenom, nom } = prenomNom(d.name);
+  const pv = provenanceDe(d);
   const lignes = [
-    `Demande reçue sur le site le ${new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })} (${cat.lib.toLowerCase()}).`,
+    `Demande reçue sur ${pv.portail ? pv.lib : 'le site'} le ${new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })} (${cat.lib.toLowerCase()}).`,
     ...p.rubriques.flatMap(r => [...r.champs.map(x => `${x.l} : ${x.v}`), ...(r.puces || []).map((x, i) => (r.numerotees ? `Priorité ${i + 1} : ${x}` : x))]),
     p.bien ? `Bien : ${p.bien.titre}${p.bien.ref ? ` (réf. ${p.bien.ref})` : ''}` : '',
     p.dvf?.fourchette ? `Estimation DVF du site : ${p.dvf.fourchette}` : '',
@@ -492,7 +503,9 @@ export function preRemplissage(d: DemandeSite): PreRemplissage {
     email: emailUtile(d.email) ? d.email.trim().toLowerCase() : '',
     tel: telUtile(d.phone) ? joliTel(d.phone) : '',
     types: cat.type ? [cat.type] : [],
-    source_detail: `Formulaire « ${cat.lib} »`,
+    source: pv.portail ? 'plateforme' : 'site',
+    source_detail: pv.portail ? pv.lib : `Formulaire « ${cat.lib} »`,
+    origine: pv.portail ? `${pv.lib}, ${cat.lib.toLowerCase()}` : `site, formulaire « ${cat.lib} »`,
     notes: lignes.join('\n'),
     criteres: criteresDemande(d),
   };

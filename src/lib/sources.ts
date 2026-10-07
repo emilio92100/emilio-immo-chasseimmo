@@ -41,7 +41,7 @@ export const SOURCES: { k: SourceContact; lib: string; ic: string; famille: stri
   { k: 'autre', lib: 'Autre', ic: 'points', famille: 'autre', detail: 'texte', question: 'Laquelle ?' },
 ];
 
-export const PLATEFORMES = ['SeLoger', 'Leboncoin', 'Bien’ici', 'Logic-Immo', 'PAP', 'Figaro Immobilier'];
+export const PLATEFORMES = ['SeLoger', 'Leboncoin', 'Bien’ici', 'Logic-Immo', 'Belles Demeures', 'PAP', 'Figaro Immobilier'];
 
 export const sourceDe = (k?: string | null) => SOURCES.find(s => s.k === k) || null;
 

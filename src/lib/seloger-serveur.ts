@@ -33,20 +33,34 @@ type Env = 'sandbox' | 'production';
 const envSeLoger = (): Env => (process.env.SELOGER_ENV?.trim().toLowerCase() === 'production' ? 'production' : 'sandbox');
 const baseApi = (e: Env) => (e === 'production' ? 'https://api.aviv-group.com/caas/v4' : 'https://api.aviv-group.com/sandbox/caas/v4');
 
-function acces() {
+/* V3.100 : deux API d'AVIV, mêmes codes, chacune son jeton (son « audience »).
+   « annonces » : l'envoi des annonces (Aviv Classified v4) ;
+   « contacts » : les demandes des acquéreurs (Seeker Leads v1,
+   lib/seloger-contacts-serveur.ts). SELOGER_CONTACTS_ENV, s'il est mis, règle
+   les contacts à part (sinon, ils suivent SELOGER_ENV). */
+export type ApiAviv = 'annonces' | 'contacts';
+const envContacts = (): Env => {
+  const v = process.env.SELOGER_CONTACTS_ENV?.trim().toLowerCase();
+  return v === 'production' ? 'production' : v === 'sandbox' ? 'sandbox' : envSeLoger();
+};
+const baseContacts = (e: Env) => (e === 'production' ? 'https://api.aviv-group.com/seeker-leads/v1' : 'https://api.aviv-group.com/sandbox/seeker-leads/v1');
+
+function acces(api: ApiAviv = 'annonces', envForce?: Env) {
   const id = process.env.SELOGER_CLIENT_ID?.trim();
   const secret = process.env.SELOGER_CLIENT_SECRET?.trim();
   if (!id || !secret) return null;
-  const env = envSeLoger();
+  const env = envForce || (api === 'contacts' ? envContacts() : envSeLoger());
+  const base = api === 'contacts' ? baseContacts(env) : baseApi(env);
   return {
-    id, secret, env,
-    base: baseApi(env),
-    audience: process.env.SELOGER_AUDIENCE?.trim() || baseApi(env),
+    id, secret, env, api,
+    base,
+    audience: (api === 'annonces' ? process.env.SELOGER_AUDIENCE?.trim() : '') || base,
     intermediaire: process.env.SELOGER_INTERMEDIAIRE?.trim() || 'RC-621209',
-    scope: process.env.SELOGER_SCOPE?.trim() || '',
+    scope: (api === 'annonces' ? process.env.SELOGER_SCOPE?.trim() : '') || '',
   };
 }
-type Acces = NonNullable<ReturnType<typeof acces>>;
+export type Acces = NonNullable<ReturnType<typeof acces>>;
+export const accesAviv = acces;
 
 /* « Logiciel/version outil/version système/version », sans « / » ni espace
    à l'intérieur d'une partie : sans lui, le pare-feu d'AVIV refuse. */
@@ -59,14 +73,15 @@ export type EtatSeLoger = {
   dernier?: { le: string; crees: number; modifies: number; retires: number; erreurs: string[] };
 };
 const fichierEtat = (e: Env) => `diffusion/seloger-${e}.json`;
-const fichierJeton = (e: Env) => `diffusion/seloger-jeton-${e}.json`;
+/* Le jeton des annonces garde son nom d'avant la V3.100 ; celui des contacts a le sien. */
+const fichierJeton = (e: Env, api: ApiAviv = 'annonces') => (api === 'annonces' ? `diffusion/seloger-jeton-${e}.json` : `diffusion/seloger-jeton-${api}-${e}.json`);
 
-async function lireJson<T>(sb: ReturnType<typeof baseServeur>, chemin: string): Promise<T | null> {
+export async function lireJson<T>(sb: ReturnType<typeof baseServeur>, chemin: string): Promise<T | null> {
   const { data, error } = await sb.storage.from(BUCKET).download(chemin);
   if (error || !data) return null;
   try { return JSON.parse(await data.text()) as T; } catch { return null; }
 }
-async function garderJson(sb: ReturnType<typeof baseServeur>, chemin: string, x: unknown, quoi: string) {
+export async function garderJson(sb: ReturnType<typeof baseServeur>, chemin: string, x: unknown, quoi: string) {
   const { error } = await sb.storage.from(BUCKET).upload(chemin, Buffer.from(JSON.stringify(x)), { upsert: true, contentType: 'application/json' });
   if (error) console.error(`[seloger] ${quoi} non gardé :`, error.message);
 }
@@ -81,14 +96,16 @@ export async function lireEtatSeLoger(sb = baseServeur()): Promise<EtatSeLoger> 
    à la main. */
 type Jeton = { audience: string; jeton: string; expire: number; le?: number };
 type Refus = { audience: string; echec: number; message: string };
-let enMemoire: Jeton | null = null;
+/* Un jeton par audience (annonces, contacts ; test ou production). */
+const enMemoire = new Map<string, Jeton>();
 const ATTENTE_REFUS = 30 * 60_000;
 
 async function jeton(sb: ReturnType<typeof baseServeur>, a: Acces, o: { neuf?: boolean; forcer?: boolean } = {}): Promise<string> {
   const valable = (j: Jeton | null) => !!j && !!j.jeton && j.audience === a.audience && j.expire - Date.now() > 10 * 60_000;
-  if (!o.neuf && valable(enMemoire)) return enMemoire!.jeton;
-  const garde = await lireJson<Jeton & Partial<Refus>>(sb, fichierJeton(a.env));
-  if (!o.neuf && valable(garde as Jeton)) { enMemoire = garde as Jeton; return garde!.jeton; }
+  const memo = enMemoire.get(a.audience) || null;
+  if (!o.neuf && valable(memo)) return memo!.jeton;
+  const garde = await lireJson<Jeton & Partial<Refus>>(sb, fichierJeton(a.env, a.api));
+  if (!o.neuf && valable(garde as Jeton)) { enMemoire.set(a.audience, garde as Jeton); return garde!.jeton; }
   if (!o.forcer && garde?.echec && garde.audience === a.audience && Date.now() - garde.echec < ATTENTE_REFUS) {
     throw new Error(`${garde.message} — nouvel essai automatique dans ${Math.ceil((ATTENTE_REFUS - (Date.now() - garde.echec)) / 60_000)} min`);
   }
@@ -107,20 +124,20 @@ async function jeton(sb: ReturnType<typeof baseServeur>, a: Acces, o: { neuf?: b
   try { j = JSON.parse(t); } catch { /* réponse illisible */ }
   if (!r.ok || !j.access_token) {
     const message = `accès refusé par SeLoger (${r.status}${j.error ? ` ${j.error}` : ''}${j.error_description ? ` : ${j.error_description}` : ''})`;
-    enMemoire = null;
-    await garderJson(sb, fichierJeton(a.env), { audience: a.audience, echec: Date.now(), message } satisfies Refus, 'Le refus');
+    enMemoire.delete(a.audience);
+    await garderJson(sb, fichierJeton(a.env, a.api), { audience: a.audience, echec: Date.now(), message } satisfies Refus, 'Le refus');
     throw new Error(message);
   }
   const nouveau: Jeton = { audience: a.audience, jeton: j.access_token, expire: Date.now() + (Number(j.expires_in) || 86_400) * 1000, le: Date.now() };
-  enMemoire = nouveau;
-  await garderJson(sb, fichierJeton(a.env), nouveau, 'Le jeton');
+  enMemoire.set(a.audience, nouveau);
+  await garderJson(sb, fichierJeton(a.env, a.api), nouveau, 'Le jeton');
   return nouveau.jeton;
 }
 
 /* ── Un appel à l'API ──────────────────────────────────────────────────── */
-type Reponse = { status: number; json: Record<string, unknown> | null; trace: string | null };
+export type Reponse = { status: number; json: Record<string, unknown> | null; trace: string | null };
 
-async function appel(sb: ReturnType<typeof baseServeur>, a: Acces, methode: string, chemin: string, corps?: unknown, forcer = false): Promise<Reponse> {
+export async function appelAviv(sb: ReturnType<typeof baseServeur>, a: Acces, methode: string, chemin: string, corps?: unknown, forcer = false): Promise<Reponse> {
   const une = async (j: string) => {
     const r = await fetch(`${a.base}${chemin}`, {
       method: methode,
@@ -137,12 +154,13 @@ async function appel(sb: ReturnType<typeof baseServeur>, a: Acces, methode: stri
   /* Un jeton refusé (révoqué, codes changés) : un seul nouvel essai, et
      seulement s'il a plus de 10 minutes — un jeton tout neuf refusé, c'est
      un réglage à revoir, pas un jeton à redemander. */
-  if (r.status === 401 && enMemoire?.le && Date.now() - enMemoire.le > 10 * 60_000) return une(await jeton(sb, a, { neuf: true, forcer }));
+  const vieux = enMemoire.get(a.audience);
+  if (r.status === 401 && vieux?.le && Date.now() - vieux.le > 10 * 60_000) return une(await jeton(sb, a, { neuf: true, forcer }));
   return r;
 }
 
 /* L'erreur telle qu'AVIV la décrit (RFC 7807), en une ligne. */
-function erreurDe(r: Reponse): string {
+export function erreurDe(r: Reponse): string {
   const j = r.json || {};
   const details = Array.isArray(j.errors)
     ? (j.errors as { name?: string; reason?: string }[]).slice(0, 4).map(e => `${e.name || ''} ${e.reason || ''}`.trim()).join(' ; ')
@@ -208,15 +226,15 @@ export async function deposerSeLoger(o: { forcer?: boolean } = {}): Promise<Resu
       let cid = garde?.classifiedId || '';
       let cree = false;
       if (cid) {
-        rep = await appel(sb, a, 'PUT', `/classifieds/${encodeURIComponent(cid)}`, x.annonce, f);
+        rep = await appelAviv(sb, a, 'PUT', `/classifieds/${encodeURIComponent(cid)}`, x.annonce, f);
         /* Effacée de leur côté : on la recrée. */
-        if (rep.status === 404) { cid = ''; rep = await appel(sb, a, 'POST', '/classifieds', x.annonce, f); cree = true; }
+        if (rep.status === 404) { cid = ''; rep = await appelAviv(sb, a, 'POST', '/classifieds', x.annonce, f); cree = true; }
       } else {
-        rep = await appel(sb, a, 'POST', '/classifieds', x.annonce, f);
+        rep = await appelAviv(sb, a, 'POST', '/classifieds', x.annonce, f);
         cree = true;
         /* Déjà chez eux sous le même identifiant : on la met à jour. */
         const existant = dejaLa(rep);
-        if (existant) { cid = existant; rep = await appel(sb, a, 'PUT', `/classifieds/${encodeURIComponent(cid)}`, x.annonce, f); cree = false; }
+        if (existant) { cid = existant; rep = await appelAviv(sb, a, 'PUT', `/classifieds/${encodeURIComponent(cid)}`, x.annonce, f); cree = false; }
       }
       if (rep.status >= 200 && rep.status < 300) {
         const id = typeof rep.json?.classifiedId === 'string' ? rep.json.classifiedId : cid;
@@ -229,7 +247,7 @@ export async function deposerSeLoger(o: { forcer?: boolean } = {}): Promise<Resu
     for (const id of aRetirer) {
       if (Date.now() - debut > BUDGET_MS) { partiel = true; break; }
       const g = etat.annonces[id];
-      const rep = await appel(sb, a, 'DELETE', `/classifieds/${encodeURIComponent(g.classifiedId)}`, undefined, f);
+      const rep = await appelAviv(sb, a, 'DELETE', `/classifieds/${encodeURIComponent(g.classifiedId)}`, undefined, f);
       if ((rep.status >= 200 && rep.status < 300) || rep.status === 404) { delete etat.annonces[id]; r.retires++; }
       else r.erreurs.push(`${g.reference || id} (retrait) : ${erreurDe(rep)}`);
     }
@@ -260,7 +278,7 @@ export async function statutsSeLoger(): Promise<{ ok: boolean; erreur?: string; 
   const nom = (it?: Statut) => [it?.status, it?.subStatus].filter(Boolean).join(' · ') || 'inconnu';
   try {
     for (const [id, g] of Object.entries(etat.annonces)) {
-      const rep = await appel(sb, a, 'GET', `/classifieds/${encodeURIComponent(g.classifiedId)}/statuses?limit=15`);
+      const rep = await appelAviv(sb, a, 'GET', `/classifieds/${encodeURIComponent(g.classifiedId)}/statuses?limit=15`);
       const items = ((Array.isArray(rep.json?.items) ? rep.json!.items : []) as Statut[])
         .sort((x, y) => String(y.statusDate || '').localeCompare(String(x.statusDate || '')));
       const it = items[0];
@@ -284,3 +302,4 @@ export async function statutsSeLoger(): Promise<{ ok: boolean; erreur?: string; 
 
 export const codesSeLoger = () => !!acces();
 export const environnementSeLoger = envSeLoger;
+export const environnementContacts = envContacts;
