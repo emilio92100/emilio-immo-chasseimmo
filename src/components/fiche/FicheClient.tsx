@@ -1420,6 +1420,40 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     }
   }
 
+  /* V3.110 — Renvoyer le lien. Alexandre : « le mail de bienvenue, on ne
+     peut plus le renvoyer ; avoir un bouton à côté, renvoyer le lien, si un
+     client me dit : je ne l'ai pas reçu ». Un mail court, le même lien
+     qu'avant ; il ne touche pas au mail de bienvenue. Il se montre dès que le
+     client a reçu son lien une fois (pour cette recherche ou une autre). */
+  const [envoiLien, setEnvoiLien] = useState(false);
+  const [lienRenvoye, setLienRenvoye] = useState(false);
+  const aSonLien = recherches.some(x => !!x.bienvenue_envoye_le);
+  async function renvoyerLien() {
+    if (!rechercheActive || envoiLien) return;
+    const dest = (client.emails || []).filter((e: string) => e && e.includes('@'));
+    if (dest.length === 0) { alert("Ce client n'a pas d'adresse mail valide."); return; }
+    if (!confirm(`Renvoyer à ${dest.join(', ')} le lien de son espace ?\n\n`
+      + `Un mail court : le même lien qu'avant, et le rappel pour l'ajouter à l'écran d'accueil de son téléphone.`)) return;
+    setEnvoiLien(true);
+    try {
+      const r = await fetch('/api/send-mail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_ids: [client.id], recherche_id: rechercheActive.id, mode: 'lien', objet: '', corps: '' }),
+      });
+      const d = await r.json();
+      if (!d?.success) { alert(`Le mail n'est pas parti : ${d?.results?.[0]?.error || d?.error || 'erreur inconnue'}`); return; }
+      if (d.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', d.avertissements.join(' ; '));
+      setLienRenvoye(true);
+      setTimeout(() => setLienRenvoye(false), 5000);
+      /* Le Suivi porte « 🔗 Lien de l'espace renvoyé » (écrit par le serveur). */
+      load();
+    } catch (e) {
+      alert(`Le mail n'est pas parti : ${(e as Error).message}`);
+    } finally {
+      setEnvoiLien(false);
+    }
+  }
+
   async function renommerRecherche() {
     if (!rechercheActive) return;
     const nom = prompt('Renommer la recherche :', rechercheActive.nom);
@@ -4134,6 +4168,14 @@ ${signatureMail()}`,
                     {envoiBienvenue ? 'Envoi…' : dejaAccueilli ? 'Prévenir le client' : 'Envoyer le mail de bienvenue'}
                   </button>
                 )}
+                {aSonLien && (
+                  <>
+                    <p className={styles.situNotes} style={{ marginTop: 4 }}>Il ne retrouve plus son lien, ou dit ne pas l’avoir reçu ? Renvoie-le-lui : un mail court, avec le même lien.</p>
+                    <button type="button" className={styles.btn} style={{ alignSelf: 'flex-start' }} onClick={renvoyerLien} disabled={envoiLien}>
+                      {envoiLien ? 'Envoi…' : lienRenvoye ? '✓ Lien renvoyé' : '🔗 Renvoyer le lien'}
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {/* Le mail « Où en est votre recherche ? » (V3.17), sorti du bloc
@@ -4258,7 +4300,7 @@ ${signatureMail()}`,
                 <button className={styles.editBtn} onClick={envoyerBienvenue}
                   disabled={!!rechercheActive?.bienvenue_envoye_le || envoiBienvenue}
                   title={rechercheActive?.bienvenue_envoye_le
-                    ? `Déjà envoyé le ${new Date(rechercheActive.bienvenue_envoye_le).toLocaleDateString('fr-FR')}`
+                    ? `Déjà envoyé le ${new Date(rechercheActive.bienvenue_envoye_le).toLocaleDateString('fr-FR')}. S’il ne l’a pas reçu : « Renvoyer le lien », juste à côté.`
                     : dejaAccueilli
                       ? 'Prévenir le client que cette nouvelle recherche est ouverte dans son espace'
                       : 'Envoyer au client son lien d’espace et l’inviter à l’installer sur son téléphone'}
@@ -4270,6 +4312,13 @@ ${signatureMail()}`,
                       ? (dejaAccueilli ? '✓ Client prévenu' : '✓ Bienvenue envoyée')
                       : (dejaAccueilli ? '✉️ Prévenir le client' : '👋 Mail de bienvenue')}
                 </button>
+                {/* V3.110 : à côté, une fois le lien reçu, de quoi le renvoyer. */}
+                {aSonLien && (
+                  <button className={styles.editBtn} onClick={renvoyerLien} disabled={envoiLien}
+                    title="Le client ne trouve plus son lien : lui renvoyer un mail court, avec le même lien">
+                    {envoiLien ? '⏳ Envoi…' : lienRenvoye ? '✓ Lien renvoyé' : '🔗 Renvoyer le lien'}
+                  </button>
+                )}
                 <button className={styles.editBtn} onClick={() => ouvrirCriteres()}>✏️ Modifier</button>
               </span>
             </div>
