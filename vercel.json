@@ -12,6 +12,10 @@
     {
       "path": "/api/diffusion/portails",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/seloger/contacts",
+      "schedule": "45 5 * * *"
     }
   ]
 }

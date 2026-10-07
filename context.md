@@ -987,6 +987,7 @@ SeLoger) : ils vont dans les variables de Vercel, posées par Alexandre.
   (V3.93, l'ancienne « Demandes du site » : la provenance, les tuiles des portails et leurs
   chiffres sont prêts, à zéro). Il faudra la colonne `contact_submissions.source` (`seloger`,
   `logicimmo`, `bellesdemeures` ; vide = le site) et l'identifiant du lead pour ne rien doubler.
+  **Fait en V3.100** (en attente de l'ouverture de l'accès de production par AVIV).
 - **Jinka** : un fichier **POLIRIS 4.12** (`Annonces.csv`, séparateur `!#`, guillemets, sans ligne
   d'en-tête, **ISO-8859-1** — remplacer ’ œ € … qui n'y existent pas), seul dans `emilio-immo.zip`,
   déposé en **SFTP** sur le serveur de Jinka (port 22 ; hôte, utilisateur et mot de passe dans Vercel) sous un nom temporaire
@@ -1493,6 +1494,58 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.100 — 7 octobre 2026 · Les demandes SeLoger dans « Demandes Internet » ; la position des biens vérifiée (Jinka)
+
+⚠️ **À passer dans Supabase : `outils/sql/demandes-portails.sql`** (deux colonnes et un index sur
+`contact_submissions`). Sans lui, la relève lit les demandes mais ne peut pas les ranger : la
+réponse de `/api/seloger/contacts` le dit (`attente: 'sql'`).
+
+- **La position des biens** (Jinka, Rémi Bruder : « 61605021, 68 avenue d'Iéna, Paris 16e : les
+  champs 298 et 299 donnent un point près de Fréjus, à 700 km ; vérifiez que la recherche de
+  position tient compte du code postal et de la ville »). La position de la fiche
+  (`donnees.gps`) vient de la suggestion cliquée dans le champ adresse (ChampsBien,
+  `ChampAdresse`) ; une avenue d'Iéna du Var avait été choisie, puis le code postal et la ville
+  corrigés : le point, lui, restait, et `positionsBiens` le croyait sans rien vérifier. Désormais
+  (lib/flux-site-serveur.ts) chaque adresse est cherchée avec son code postal et sa ville (une
+  fois, gardée dans `geocodes`), le résultat n'est cru que s'il tombe dans le même département ;
+  fiche et adresse d'accord à 3 km près → la fiche ; en désaccord → l'adresse (au numéro ou à la
+  rue), sinon aucun point ; une fiche sans adresse cherchable n'est gardée qu'en France. Et une
+  adresse retapée à la main oublie l'ancien point. Le site, Jinka et SeLoger en profitent.
+  Vérifié sur les 16 annonces du fichier Jinka (toutes dans leur ville), redéposé à 16 h 28.
+- **SeLoger en production : refusé pour l'instant.** `SELOGER_ENV=production` est dans Vercel
+  (redéployé). Le premier envoi : `403 access_denied … You need to create a "client-grant"
+  associated to this API` — l'accès de production se fait ouvrir par AVIV (Christiane Roussel,
+  mail d'Alexandre du 7 octobre, avec l'accès aux contacts). Rien n'est parti. Le refus est
+  retenu 30 minutes (lib/seloger-serveur.ts) puis réessayé tout seul : dès l'ouverture, les 15
+  annonces partent sans rien toucher. Puis prévenir Christiane pour couper ImmoFacile.
+- **Les demandes des acquéreurs** (API « Seeker Leads » v1, la doc OpenAPI fournie par
+  Alexandre) : `GET /leads?minDate&maxDate` (secondes, 7 jours au plus, 100 par page, `start`
+  pour la suite). Même client que les annonces, **son propre jeton** (audience
+  `…/seeker-leads/v1`, gardé dans `diffusion/seloger-jeton-contacts-<env>.json` ;
+  lib/seloger-serveur.ts sert désormais les deux API, `accesAviv('contacts')`).
+  `SELOGER_CONTACTS_ENV` (facultatif) règle les contacts à part, sinon ils suivent `SELOGER_ENV`.
+  - lib/seloger-contacts.ts (isomorphe) : une demande AVIV → une ligne de `contact_submissions`.
+    Sur une annonce ou un appel suivi → « Info sur un bien » (le bien retrouvé par son
+    identifiant, sa référence, ou le numéro court d'ImmoFacile pour un bien actif ; son lien sur le
+    site) ; page de l'agence → vendre : « Estimation », acheter : « Accompagnement », le reste :
+    « Demande générale » ; recherche transmise → ses critères dans les colonnes. `source` :
+    `seloger`, `logicimmo` (LIM, LIC, LIN), `bellesdemeures` (BDS, LUX). `notifie_le` rempli :
+    SeLoger envoie déjà son mail, le CRM n'en ajoute pas.
+  - lib/seloger-contacts-serveur.ts : la relève, depuis la dernière (deux heures de
+    recouvrement ; `lead_id` unique en base empêche les doublons), une par minute au plus. La
+    première remonte 30 jours ; ce qui a plus de deux jours arrive « Traitée ».
+  - Qui relève : le CRM ouvert (EnvoiPortails, à l'ouverture puis toutes les 5 minutes ; une
+    demande arrivée recompte les pastilles), le cron du matin (5 h 45 UTC), et AVIV lui-même si
+    l'abonnement est fait : `POST /api/seloger/contacts {webhook:'abonner'}` (derrière le badge,
+    une fois, **pas encore fait**) lui donne l'adresse de la route avec une clé déduite de
+    `CRON_SECRET` ; à chaque signal, on relève les deux derniers jours.
+  - `/api/seloger/contacts` est publique dans src/proxy.ts (cron, AVIV) : la serrure est dans
+    la route. `GET ?voir=1[&jours=7][&env=sandbox]` montre ce que rendrait AVIV, sans rien ranger.
+  - « Créer le contact » depuis une demande d'un portail : source « Plateforme immobilière ·
+    SeLoger » (lib/sources.ts : Belles Demeures ajouté aux plateformes), et la fenêtre dit
+    « Source : SeLoger, info sur un bien ». La ligne d'une demande qui n'a que son message le
+    montre (`resume`).
 
 ### V3.99b — 7 octobre 2026 · La fenêtre de diffusion réparée ; Demandes Internet sans bande du haut
 
