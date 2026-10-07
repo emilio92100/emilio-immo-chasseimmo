@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
           texte: `Le lien de ${qui} a expiré sans signature. Le mandat n° ${l.numero} continue avec ${premier}.\n\nÀ toi de choisir, dans la fenêtre « Mandat de recherche » de sa fiche : lui renvoyer un nouveau lien, ou clore l'invitation.\n\n${lienCrm}`,
           html: gabarit(`${qui} n’a pas signé`, `<p>Le lien de <b>${echappe(qui)}</b> a expiré sans signature. Le mandat <b>n° ${echappe(l.numero)}</b> continue avec ${echappe(premier)}.</p>
             <p>À toi de choisir, dans la fenêtre « Mandat de recherche » de sa fiche : lui renvoyer un nouveau lien, ou clore l’invitation.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir la fiche</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir la fiche</a>`),
         });
         if (eA) ko.noter(`${qui} (mandat n° ${l.numero}) : l’alerte « délai dépassé » n’est pas partie (${eA})`);
         bilan.push(`${qui} : délai dépassé`);
@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
           texte: `${qui} a reçu son lien il y a 7 jours et n'a pas encore signé. Un second rappel vient de partir. Un coup de fil à ${premier} peut aider.\n\n${lienCrm}`,
           html: gabarit(`${qui} n’a pas encore signé`, `<p><b>${echappe(qui)}</b> a reçu son lien il y a 7 jours et n’a pas encore signé. Un second rappel vient de partir.</p>
             <p>Un coup de fil à ${echappe(premier)} peut aider.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir la fiche</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir la fiche</a>`),
         });
         if (eA2) ko.noter(`${qui} (mandat n° ${l.numero}) : l’alerte du second rappel n’est pas partie (${eA2})`);
       }
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
       texte: `Le passage du matin (rappels de signature, mandats proposés, registre) a rencontré ${n > 1 ? 'ces problèmes' : 'ce problème'} :\n\n${ko.liste.map(x => `- ${x}`).join('\n')}\n\n${CRM()}`,
       html: gabarit('Rappels du matin : à vérifier', `<p>Le passage du matin (rappels de signature, mandats proposés, registre) a rencontré ${n > 1 ? 'ces problèmes' : 'ce problème'} :</p>
         <ul style="margin:0 0 12px;padding-left:18px;color:#b91c1c">${ko.liste.map(x => `<li style="margin:0 0 6px">${echappe(x)}</li>`).join('')}</ul>
-        <a href="${CRM()}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`),
+        <a href="${CRM()}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`),
     });
     if (eM) console.error('[mandat/relances] le mail des échecs n’est pas parti', eM);
   }
@@ -223,10 +223,10 @@ async function relancerDocuments(sb: SupabaseClient, ko: Echecs): Promise<string
           html: gabarit(`${qui} n’a pas signé`, finOffre
             ? `<p><b>${echappe(qui)}</b> n’a pas signé ${echappe(nd.le)}, qui n’est plus valable depuis le ${echappe(quand)} (${echappe(doc.titre || m.titre)}). Elle ne peut plus être signée.</p>
             <p>Dans Documents (fiche du document) : arrête la signature. Une nouvelle offre se prépare si l’acheteur le souhaite.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`
             : `<p>Le lien de <b>${echappe(qui)}</b> a expiré sans signature (${echappe(doc.titre || m.titre)}).</p>
             <p>À toi de choisir, dans Documents (fiche du document) : lui renvoyer un lien, ou arrêter la signature.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`),
         });
         if (eA) ko.noter(`${qui} (${doc.titre || m.titre}) : l’alerte « n’a pas signé » n’est pas partie (${eA})`);
         bilan.push(`${qui} (document) : ${finOffre ? 'offre plus valable' : 'délai dépassé'}`);
@@ -245,7 +245,7 @@ async function relancerDocuments(sb: SupabaseClient, ko: Echecs): Promise<string
           texte: `${qui} a reçu son lien il y a 7 jours et n'a pas encore signé. Un dernier rappel vient de partir. Un coup de fil peut aider.\n\n${lienCrm}`,
           html: gabarit(`${qui} n’a pas encore signé`, `<p><b>${echappe(qui)}</b> a reçu son lien il y a 7 jours et n’a pas encore signé ${echappe(nd.le)}. Un dernier rappel vient de partir.</p>
             <p>Un coup de fil peut aider.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir le CRM</a>`),
         });
         if (eA2) ko.noter(`${qui} (${doc.titre || m.titre}) : l’alerte du dernier rappel n’est pas partie (${eA2})`);
       }
@@ -317,8 +317,8 @@ async function relancerPropositions(sb: SupabaseClient, ko: Echecs): Promise<str
         texte: `Bonjour ${prenom},\n\n${phrase.replace(/’/g, "'")}\n\nLire et signer mon mandat : ${lien}\n\nUne question avant de signer ? Répondez simplement à ce message.\n\nAlexandre Rogelet — Emilio Immobilier`,
         html: gabarit('Votre mandat de recherche', `<p>Bonjour ${echappe(prenom)},</p>
           <p>${echappe(phrase)}</p>
-          <p><a href="${lien}" style="display:inline-block;margin:6px 0 4px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:800;font-size:15px">Lire et signer mon mandat</a></p>
-          <p style="font-size:13px;color:#64748b">Une question avant de signer&nbsp;? Répondez simplement à ce message.</p>
+          <p><a href="${lien}" style="display:inline-block;margin:6px 0 4px;background:#E68B23;color:#13243D;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:800;font-size:15px">Lire et signer mon mandat</a></p>
+          <p style="font-size:13px;color:#5B6B80">Une question avant de signer&nbsp;? Répondez simplement à ce message.</p>
           <p>Alexandre Rogelet — Emilio Immobilier</p>`),
       });
       bilan.push(`${nom} : rappel du mandat ${rappel}${erreur ? ` (⚠️ ${erreur})` : ''}`);
@@ -339,7 +339,7 @@ async function relancerPropositions(sb: SupabaseClient, ko: Echecs): Promise<str
           texte: `Le mandat proposé dans son espace le ${dateCourte(proposeLe)} n'est pas signé. Un second rappel vient de partir. Un coup de fil peut aider.\n\n${lienCrm}`,
           html: gabarit(`${nom} n’a pas encore signé`, `<p>Le mandat de recherche proposé dans son espace le <b>${echappe(dateCourte(proposeLe))}</b> n’est pas signé. Un second rappel vient de partir.</p>
             <p>Un coup de fil peut aider.</p>
-            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#c9a84c;color:#1a2332;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir la fiche</a>`),
+            <a href="${lienCrm}" style="display:inline-block;margin-top:8px;background:#E68B23;color:#13243D;text-decoration:none;padding:11px 16px;border-radius:10px;font-weight:800">Ouvrir la fiche</a>`),
         });
         if (eA) ko.noter(`${nom} : l’alerte du second rappel du mandat proposé n’est pas partie (${eA})`);
       }
