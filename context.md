@@ -1498,6 +1498,27 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.119 — 8 octobre 2026 · La présentation de l'espace : des photos, rien ne défile derrière, plus de petite barre
+
+Rien à passer dans Supabase.
+
+Alexandre, sur la présentation de l'espace : « dès qu'il s'affiche… une petite barre s'affiche
+pendant quelques secondes à droite » ; « quand on scrolle, ça scrolle derrière alors qu'il faut que
+ça soit bloqué » ; « les biens retenus arrivent ici… il n'y a pas de photo. Pour rendre plus vivant…
+une petite photo et que ça bouge un peu » ; pareil pour « Votre avis affine la recherche ».
+
+- **La petite barre** : le texte de chaque écran entre en glissant de 12 px ; le temps de
+  l'animation, il débordait de `.corps`, et le téléphone montrait sa barre de défilement. `.corps`
+  la cache (`scrollbar-width:none`, `::-webkit-scrollbar`), sans perdre le défilement si le texte est
+  vraiment trop long.
+- **Rien ne défile derrière** : tant que la feuille est ouverte, `html` et `body` passent en
+  `overflow:hidden !important` (l'espace les met en `auto !important`) ; au doigt, un `touchmove`
+  bloqué partout sauf dans le texte de la feuille s'il dépasse. Tout revient à la fermeture.
+- **Des photos** : deux photos du site emilio-immo.com copiées dans `public/bienvenue/`
+  (`bien-1.webp`, `bien-2.webp`, 11 et 12 Ko). « Les biens retenus arrivent ici » : la fiche du bien
+  porte la photo, et la carte de derrière une autre ; « Votre avis » : la vignette du bien. Un zoom
+  lent qui va et vient (7 s) les fait vivre.
+
 ### V3.118 — 8 octobre 2026 · Tous les mails aux couleurs du site, avec le logo ; le partage signé du client
 
 Rien à passer dans Supabase.
