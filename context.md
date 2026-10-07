@@ -1498,6 +1498,64 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.121 — 8 octobre 2026 · « Envoyer » s'ouvre vide, un simple mail hors du CRM, et chaque fiche garde sa place
+
+Rien à passer dans Supabase.
+
+- **« Envoyer » depuis la liste des biens** (`LotBiens.tsx`, `FenEnvoiLot`). Alexandre : « ça
+  sélectionne déjà les personnes dont la recherche est similaire : si on a 20 personnes, il y en aura
+  20 de présélectionnées ». La fenêtre s'ouvre **vide, rien de coché**. Un seul champ, « Un nom, ou une
+  adresse e-mail » :
+  - un client avec une recherche ouverte : « Ajouter », comme avant (l'envoi se note dans son Suivi) ;
+  - un contact sans recherche ouverte : « Par simple mail » ;
+  - une adresse que le CRM ne connaît pas (« quelqu'un rencontré dans la rue ») : « Ajouter »
+    (ou Entrée).
+
+  Les deux derniers reçoivent un **simple mail** (route `/api/biens-vente`, action `presenter`) :
+  - le texte relu dans la fenêtre, avec « Bonjour, » sans prénom. Quand aucun client du CRM n'est
+    dans les destinataires, le texte proposé dit « Suite à notre échange » ;
+  - une carte par bien : la photo, ce que dit l'annonce (`bienPourSite`), le prix (pas avant le
+    mandat) et « Voir le bien » vers `www.emilio-immo.com/biens/<idSite>` **si le bien est publié
+    sur le site**. C'est le seul lien public d'un bien de l'agence : `/bien/<id>` ne lit que les
+    copies des acheteurs. Sinon, la carte part sans lien, et la fenêtre le dit ;
+  - les cartes passent avant la signature ;
+  - la trace : une ligne `envoi` (`donnees.presentation`) dans l'historique de chaque bien, affichée
+    « Présenté par mail à … » dans la rubrique Acheteurs, et une ligne `envoi_bien` dans le Suivi
+    du contact s'il est au CRM (sans `recherche_id` : il n'a pas de recherche ouverte).
+
+  En dessous, une carte « Qui, dans ta base, pourrait être intéressé ? » et **« Lancer le
+  rapprochement »** : un petit temps de calcul à l'écran (1,1 s), puis les acheteurs qui
+  correspondent, sans rien de coché, avec « Tout cocher ». En tête de la fenêtre, la photo du bien
+  quand il est seul.
+- **La fenêtre « Envoyer… » du Rapprochement d'un bien** (`AcheteursBien.tsx`, `FenEnvoiAcheteurs`) :
+  - le bien en tête, avec sa photo (un léger zoom), son titre, ce que le titre ne dit pas déjà et
+    son prix ;
+  - puis « Pour Camille Lefèvre · correspond à 100 % » ;
+  - les trois choix portent un mot : « Rien ne part », « Tout de suite », « Tu relis avant ». La
+    sélection le dit en clair : « Il ne le voit pas encore : c'est toi qui le lui envoies ensuite,
+    depuis sa fiche ».
+- **La pastille « N acheteurs pour ce bien » quitte les cartes de la liste** (`CarteBien.tsx`) :
+  « trop d'infos sur la première page ». Les acheteurs restent dans le Rapprochement du bien. Le
+  compte se calcule encore dans `PageBiens` (inutilisé, sans effet).
+- **Chaque fiche garde sa place** (`src/lib/place-fiche.ts`, nouveau). Alexandre : « je vais dans
+  Rapprochement, je descends, je clique sur un client… quand je retourne sur le bien, il se remet dans
+  Vue d'ensemble ».
+  - La fiche d'un bien retient son onglet, sa sous-vue et la hauteur où on l'a quittée.
+    Rapprochement retient aussi ses rubriques dépliées et ses cases cochées, tant que rien n'est
+    parti entre-temps : la clé est la liste des copies.
+  - La fiche d'un acheteur retient sa rubrique, son étape et sa recherche ; celle d'un autre
+    contact, son onglet.
+  - Rouverte par la barre des fiches ouvertes, le retour du navigateur ou la liste, la fiche reprend
+    là. La place est rangée dans la session du navigateur pour 30 minutes.
+  - Une demande précise passe devant : une alerte (`demanderOngletBien`) ou une relance
+    (`lireOuvertureFiche`).
+  - La hauteur est lue en sortie, dans le nettoyage d'un `useLayoutEffect` : à cet instant, l'écran
+    suivant n'a pas encore remplacé le contenu. Elle est rendue une fois la fiche lue. Si le contenu
+    finit d'arriver après, on réessaie pendant 1,5 s, et on lâche dès qu'Alexandre fait défiler
+    lui-même.
+  - Revenir à la liste par « ← » remonte en haut : la liste le fait avant que la fiche ne se ferme.
+    L'onglet, lui, est gardé.
+
 ### V3.120 — 8 octobre 2026 · « Consulter » ouvre le document dans l'onglet, au lieu de le télécharger
 
 Rien à passer dans Supabase.
