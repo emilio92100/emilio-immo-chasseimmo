@@ -150,7 +150,10 @@ export async function apercuContacts(o: { jours?: number; env?: 'sandbox' | 'pro
   const sb = baseServeur();
   const maintenant = Math.floor(Date.now() / 1000);
   const jours = Math.min(Math.max(o.jours || 7, 1), 30);
-  const r = await lireLeads(sb, a, maintenant - jours * JOUR, maintenant, Date.now() + BUDGET_MS);
+  /* Un accès refusé (jeton) lève une erreur : on la rend, au lieu d'un 500 muet. */
+  let r: Awaited<ReturnType<typeof lireLeads>>;
+  try { r = await lireLeads(sb, a, maintenant - jours * JOUR, maintenant, Date.now() + BUDGET_MS); }
+  catch (e) { return { ok: false, env: a.env, erreur: (e as Error).message, recus: 0, lignes: [] as LigneDemande[] }; }
   const index = r.leads.length ? await indexDesBiens(sb) : new Map();
   return { ok: !r.erreur, env: a.env, ...(r.erreur ? { erreur: r.erreur } : {}), recus: r.leads.length, lignes: r.leads.map(l => ligneDuLead(l, index)) };
 }
@@ -181,7 +184,9 @@ const cacher = (u?: string) => String(u || '').replace(/([?&]cle=)[^&]+/, '$1…
 export async function abonnements() {
   const a = accesAviv('contacts');
   if (!a) return { ok: true, attente: 'codes' as const, abonnements: [] as Abonnement[] };
-  const r = await appelAviv(baseServeur(), a, 'GET', '/webhook/subscriptions');
+  let r: Awaited<ReturnType<typeof appelAviv>>;
+  try { r = await appelAviv(baseServeur(), a, 'GET', '/webhook/subscriptions'); }
+  catch (e) { return { ok: false, env: a.env, erreur: (e as Error).message, abonnements: [] as Abonnement[] }; }
   if (r.status !== 200) return { ok: false, env: a.env, erreur: `SeLoger : ${erreurDe(r)}`, abonnements: [] as Abonnement[] };
   const items = (Array.isArray(r.json?.items) ? r.json!.items : []) as Abonnement[];
   return { ok: true, env: a.env, abonnements: items.map(x => ({ ...x, url: cacher(x.url) })) };
@@ -189,6 +194,10 @@ export async function abonnements() {
 
 /* S'abonner, une fois : si l'adresse est déjà là, on la remet active. */
 export async function abonner() {
+  try { return await abonnerVraiment(); }
+  catch (e) { return { ok: false, erreur: (e as Error).message }; }
+}
+async function abonnerVraiment() {
   const a = accesAviv('contacts');
   const k = cleWebhook();
   if (!a || !k) return { ok: false, erreur: !a ? 'codes SeLoger absents' : 'CRON_SECRET absent' };
