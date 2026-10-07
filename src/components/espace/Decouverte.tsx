@@ -103,8 +103,10 @@ const FEUILLES: Record<AvisDecouverte, { tag: string; t: string; p: string; ph: 
 };
 const AVIS_OK: AvisDecouverte[] = ['refuse', 'interesse', 'souhaite_visiter'];
 
+/* Le prix d'un bien. V3.113 : sans prix (un bien de l'agence avant le
+   mandat), « Prix à venir », pas un tiret. */
 const EUR = (n?: number | null) =>
-  n == null ? '—' : n.toLocaleString('fr-FR').replace(/[  ]/g, ' ') + ' €';
+  !n ? 'Prix à venir' : n.toLocaleString('fr-FR').replace(/[  ]/g, ' ') + ' €';
 
 /* Le mélange de deux couleurs : le bouton rond passe du bleu au vert (ou au
    rouge) à mesure qu'il avance, au lieu de changer d'un coup. */
