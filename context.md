@@ -1498,6 +1498,38 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.116 — 8 octobre 2026 · L'espace acheteur aux couleurs du site ; « Le mettre dans son espace » côté acheteur
+
+Rien à passer dans Supabase.
+
+Alexandre : « couleur de l'espace… mettre les couleurs de Emilio, avec la même typo… j'ai vu certains
+trucs en noir aussi ». Et, pour le rapprochement de la fiche acheteur, le même choix que côté bien :
+présenter dans son espace sans mail.
+
+- **Les couleurs** (`EspaceClient`, `SignatureMandat`, `Decouverte`, `CarteEspace`, les pages
+  `espace/[token]` — chargement, introuvable, préparation, manifeste, couleur de la barre du
+  téléphone — et la page publique `/bien/<id>`) : la palette du site remplace marine et doré.
+  Variables : `--encre` `#13243D`, `--or` `#E68B23`, `--or-fonce` `#A95808`, `--or-clair` `#F2B266`
+  (neuve), `--marque` `#22497D` et `--marque-fonce` `#1B3D6B` (neuves), `--fond` `#F5F8FC`, traits
+  `#E8EDF3` / `#DCE3EC`, plumes `#5B6B80` / `#8FA3BF`, `--bleu` = le bleu de la marque. Les dégradés
+  du haut passent aux bleus de la marque (`#2A5A96` → `#1B3D6B`). **Plus de noir** : tout
+  `background:var(--encre)` (l'engagement, l'avatar du conseiller, les puces choisies, les DPE, la
+  bannière « Installer l'appli »…) devient `var(--marque)`. Le doré en texte : orange clair sur fond
+  bleu, orange foncé sur fond clair (lisible). Les couleurs qui portent un sens (vert, prune, brique
+  des avis) ne bougent pas. Police : Plus Jakarta Sans partout (le DM Sans du corps est parti ;
+  `input, textarea, select` héritent).
+- **AGENTS.md §5, « Langage visuel »** dit maintenant ces couleurs-là.
+- **« Le mettre dans son espace »** (`fiche/Rapprochement.tsx`, `presenterDansEspace` dans
+  `lib/rapprochement.ts`) : un troisième choix au pied de la fenêtre, entre « Le mettre dans sa
+  sélection » et « Le lui envoyer par mail ». Les biens passent « Présentés » sans mail (canal
+  `lien`), une ligne « Présenté · dans son espace » au Suivi, la relance « sans réponse » et sa
+  notification (`suiteEnvoi`, une fois pour tous) ; un bien déjà présenté n'est pas touché. La fiche
+  s'ouvre ensuite sur Présentés. Trois colonnes sur ordinateur, empilés au téléphone.
+
+Vérifié au banc : l'espace (accueil, fiche d'un bien) en 390 et 1280 px, avant et après ; la fenêtre
+de rapprochement en 390 et 1280 px, et les écritures du nouveau choix (bien en sélection puis
+présenté, Suivi, relance).
+
 ### V3.115 — 7 octobre 2026 · La présentation de l'espace : une feuille qui monte du bas, six écrans animés
 
 Rien à passer dans Supabase.

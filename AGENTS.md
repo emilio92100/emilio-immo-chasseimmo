@@ -291,9 +291,15 @@ de fond, pas de style.
 
 ### Langage visuel
 
-- **Marine `#1a2332` + or `#c9a84c` + blanc + gris.** Un seul accent par page :
-  l'or souligne le chiffre qui compte, rien d'autre. Quatre cartes de quatre
-  couleurs = arc-en-ciel (refusé une fois déjà).
+- **Les couleurs et la police du site emilio-immo.com** (depuis la V3.116, à la
+  demande d'Alexandre — plus de marine, de doré ni de noir) : encre `#13243D`
+  pour le texte, bleu de la marque `#22497D` pour les aplats sombres
+  (`--marque`), orange `#E68B23` pour l'accent (`--or` ; `--or-fonce` `#A95808`
+  pour un texte orange sur fond clair, `--or-clair` `#F2B266` sur fond bleu),
+  fond `#F5F8FC`, Plus Jakarta Sans partout. Les variables ont gardé leurs noms
+  (`--or`, `--encre`) : seules leurs valeurs ont changé. Un seul accent par
+  page : l'orange souligne le chiffre qui compte, rien d'autre. Quatre cartes
+  de quatre couleurs = arc-en-ciel (refusé une fois déjà).
 - **Icônes dessinées, pas d'émoji**, dans les nouvelles interfaces : composant
   `Ico` + table `T` en haut de `EspaceClient.tsx`. Les émoji ne rendent pas
   pareil d'un téléphone à l'autre et font amateur. Exception : les émoji déjà
