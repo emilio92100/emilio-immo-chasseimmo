@@ -1497,6 +1497,23 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.107 — 7 octobre 2026 · Photos : une image envoyée toute faite est de nouveau rangée
+
+Rien à passer dans Supabase.
+
+Constaté pendant la veille de Didier Orlik : depuis la V3.43 (30 septembre), `/api/upload-photos` ne
+téléchargeait que des adresses http(s). Une photo recadrée dans le navigateur, ou débarrassée d'un
+logo par ChatGPT, arrive en « data URI » (`data:image/jpeg;base64,…`) : elle était renvoyée telle
+quelle, sans être rangée dans `photos-biens` (signalé dans le skill de veille le 2 octobre).
+
+- **`decoderDataUri()`** (`src/app/api/upload-photos/route.ts`) : une data URI d'image (JPEG, PNG,
+  WebP, GIF, AVIF) est décodée sur place, sans rien télécharger, puis passe les mêmes contrôles
+  qu'une photo téléchargée : `typeImage()` sur les premiers octets, 15 Mo au plus. Un autre type
+  (`data:image/svg+xml`, `data:text/html`…) est refusé et garde sa valeur, comme une adresse refusée.
+- Rien d'autre ne change : les adresses web suivent le même chemin qu'avant.
+- La limite de Vercel sur le corps d'une requête (environ 4,5 Mo) reste la vraie limite d'une photo
+  envoyée ainsi.
+
 ### V3.106 — 7 octobre 2026 · Nouveau rendez-vous : un client du fichier, ou un nom gardé pour ce rendez-vous
 
 Rien à passer dans Supabase : le nom libre va dans `rendez_vous.details` (JSON), clé `personne`.
