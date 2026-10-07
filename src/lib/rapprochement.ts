@@ -276,6 +276,36 @@ export async function poserEnSelection(t: Trouve, clientId: string, rechercheId:
   return id;
 }
 
+/* V3.116 : « Le mettre dans son espace » (fenêtre de la fiche acheteur). Les
+   biens que poserEnSelection vient de poser passent « Présentés » sans mail,
+   comme « Dans son espace » côté bien (envoyerDansEspace) : il les voit dans
+   son espace. Un bien déjà présenté n'est pas touché (son avis reste). La
+   relance et la notification (suiteEnvoi) sont posées par l'appelant, une
+   seule fois pour tous. */
+export async function presenterDansEspace(ids: string[], clientId: string, rechercheId: string): Promise<{ n: number; erreurs: string[] }> {
+  const erreurs: string[] = [];
+  let n = 0;
+  const quand = new Date().toISOString();
+  for (const id of ids) {
+    const { data, error } = await supabase.from('biens')
+      .update({ etape: 'presente', envoye_le: quand, canal_envoi: 'lien', badge_retour: 'propose' })
+      .eq('id', id).eq('etape', 'selection').select('id, titre, ville, prix_acquereur, prix_vendeur');
+    if (error) { erreurs.push(error.message); continue; }
+    if (!data?.length) continue;
+    n++;
+    const b = data[0] as Ligne;
+    const prix = Number(b.prix_acquereur) || Number(b.prix_vendeur) || 0;
+    const { error: eJ } = await supabase.from('journal').insert({
+      client_id: clientId, recherche_id: rechercheId, bien_id: id, type: 'envoi_bien',
+      titre: 'Présenté · dans son espace',
+      description: `${String(b.titre || b.ville || 'Bien')}${prix ? ` · ${prix.toLocaleString('fr-FR')} €` : ''}`,
+      metadata: {},
+    });
+    if (eJ) signalerEchec('Le bien est présenté, mais l’historique du client', eJ.message);
+  }
+  return { n, erreurs };
+}
+
 /* Le rapprochement lui-même, noté au Suivi : c'est ce qui permet de dire
    « Dernier rapprochement le 29 septembre » sur la fiche. V3.112 : avec les
    biens montrés (`vus`, leurs clés), pour ne remontrer la fois suivante que
