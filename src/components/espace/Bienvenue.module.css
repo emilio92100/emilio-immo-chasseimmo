@@ -1,0 +1,270 @@
+/* La présentation de l'espace (V3.115) : une feuille qui monte du bas, six
+   écrans, une animation par écran. Aux couleurs et à la police du site
+   emilio-immo.com (bleu #22497D, orange #E68B23, encre #13243D, Plus Jakarta
+   Sans), à la demande d'Alexandre. Maquette : canevas « Bienvenue dans
+   l'espace acheteur », variante 1. */
+
+.couche{position:fixed; inset:0; z-index:75; font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;
+  color:#13243D; -webkit-font-smoothing:antialiased}
+.voile{position:absolute; inset:0; background:rgba(19,36,61,.55); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
+  animation:voileIn .4s ease both; touch-action:none}
+.part .voile{animation:voileOut .38s ease both}
+
+.feuille{position:absolute; left:0; right:0; bottom:0; margin:0 auto; width:100%; max-width:480px;
+  max-height:calc(100dvh - 12px); box-sizing:border-box; display:flex; flex-direction:column;
+  padding:10px 24px calc(16px + env(safe-area-inset-bottom,0px));
+  /* Un fond uni, gris-bleu très clair (le « pale » du site), comme la variante
+     des cartes que préférait Alexandre ; pas de blanc, pas de dégradé. */
+  background:#F5F8FC;
+  border-radius:28px 28px 0 0; box-shadow:0 -24px 48px -24px rgba(19,36,61,.45);
+  animation:monte .55s cubic-bezier(.22,.8,.24,1) both; overscroll-behavior:contain; overflow:hidden; outline:none}
+.part .feuille{animation:descend .38s cubic-bezier(.4,0,1,1) both}
+
+.poignee{align-self:center; flex:0 0 auto; width:42px; height:5px; border-radius:99px; background:#D5DEEA; margin-bottom:12px}
+.tete{flex:0 0 auto; display:flex; align-items:center; gap:14px; margin-bottom:14px}
+.barres{flex:1; display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:5px}
+.barre{display:block; height:5px; border-radius:99px; background:#DCE3EC; overflow:hidden}
+.barre > i{display:block; height:100%; width:0; border-radius:99px; background:#E68B23; transform-origin:left}
+.faite > i{width:100%}
+.courante > i{width:100%; animation:barreIn .6s cubic-bezier(.22,.8,.24,1) both}
+.croix{flex:0 0 auto; width:38px; height:38px; border-radius:50%; border:none; background:#E8EDF3; color:#13243D;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0}
+.croix:hover{background:#DCE3EC}
+
+.corps{flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column}
+.versD{animation:droite .45s cubic-bezier(.22,.8,.24,1) both}
+.versG{animation:gauche .45s cubic-bezier(.22,.8,.24,1) both}
+.illuCol{flex:0 0 auto; display:flex; justify-content:center}
+.illuAnim{width:100%; display:flex; justify-content:center}
+.illu{position:relative; width:100%; aspect-ratio:342/230; border-radius:22px; overflow:hidden; background:#E8EFF8;
+  box-shadow:0 24px 44px -26px rgba(19,36,61,.55), 0 0 0 1px rgba(255,255,255,.6)}
+.scene{position:absolute; left:0; top:0; width:342px; height:230px; transform-origin:0 0; overflow:hidden; color:#13243D}
+.conseiller{display:none}
+
+.textes{display:flex; flex-direction:column; gap:8px; margin-top:20px}
+.sur{font-size:11px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase; color:#A95808;
+  animation:texteIn .5s .08s cubic-bezier(.22,.8,.24,1) both}
+.titre{margin:0; font-family:inherit; font-size:24px; line-height:1.2; font-weight:800; letter-spacing:-.4px;
+  text-wrap:balance; color:#13243D; animation:texteIn .5s .14s cubic-bezier(.22,.8,.24,1) both}
+.texte{margin:0; font-size:15px; line-height:1.6; font-weight:500; color:#46566B;
+  animation:texteIn .5s .2s cubic-bezier(.22,.8,.24,1) both}
+.fort, .astuce{display:flex; align-items:center; gap:9px; margin-top:4px; padding:10px 12px; border-radius:12px;
+  animation:texteIn .5s .3s cubic-bezier(.22,.8,.24,1) both}
+.fort > svg, .astuce > svg{flex:0 0 auto}
+.fort{background:#FDEBD3; color:#A95808; font-size:13.5px; font-weight:800}
+.astuce{background:#fff; border:1px solid #E8EDF3; color:#22497D; font-size:13px; font-weight:700}
+
+.pied{flex:0 0 auto; display:flex; flex-direction:column; gap:8px; padding-top:12px}
+.boutons{display:flex; gap:10px}
+.retour{height:52px; padding:0 16px; border-radius:10px; border:1.5px solid #DCE3EC; background:#fff; color:#13243D;
+  font:700 15px 'Plus Jakarta Sans',system-ui,sans-serif; display:inline-flex; align-items:center; gap:6px; cursor:pointer}
+.retour:hover{border-color:#C9D5E6}
+.suivant{flex:1; position:relative; overflow:hidden; height:52px; border-radius:10px; border:none; background:#E68B23;
+  color:#13243D; font:800 15.5px 'Plus Jakarta Sans',system-ui,sans-serif; display:flex; align-items:center;
+  justify-content:center; gap:9px; cursor:pointer}
+.suivant::before{content:""; position:absolute; top:0; bottom:0; left:0; width:40%;
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.5),rgba(255,255,255,0));
+  animation:scintille 3.4s ease-in-out infinite}
+.suivant > *{position:relative}
+.suivant:hover{background:#EE9733}
+.fin{animation:halo 2.2s ease-in-out infinite}
+.bas{text-align:center; font-size:12px; font-weight:600; color:#5B6B80}
+
+/* Fermée à la première visite : où la retrouver. */
+.note{position:fixed; z-index:75; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom,0px));
+  max-width:440px; margin:0 auto; box-sizing:border-box; display:flex; gap:12px; padding:14px; border-radius:18px;
+  background:#fff; border:1px solid #DCE3EC; box-shadow:0 20px 40px -22px rgba(19,36,61,.5);
+  font-family:'Plus Jakarta Sans',system-ui,sans-serif; color:#13243D; animation:texteIn .45s cubic-bezier(.22,.8,.24,1) both}
+.noteIco{width:36px; height:36px; flex:0 0 auto; border-radius:50%; background:#E8EFF8; color:#22497D;
+  display:flex; align-items:center; justify-content:center}
+.noteTx{flex:1; min-width:0; display:flex; flex-direction:column; gap:4px}
+.noteTx b{font-size:14.5px; font-weight:800}
+.noteTx span{font-size:13px; line-height:1.5; font-weight:500; color:#46566B}
+.noteBtns{display:flex; gap:8px; margin-top:6px}
+.noteBtn{height:38px; padding:0 14px; border-radius:10px; border:1.5px solid #DCE3EC; background:#fff; color:#13243D;
+  font:700 13.5px 'Plus Jakarta Sans',system-ui,sans-serif; cursor:pointer}
+
+/* Un petit téléphone (iPhone SE…) : tout tient sans défiler. */
+@media (max-height:700px){
+  .illu{max-width:280px}
+  .textes{margin-top:14px}
+  .titre{font-size:21px}
+  .texte{font-size:14px; line-height:1.55}
+}
+
+/* ── Ordinateur : la fenêtre au centre, l'animation à gauche ── */
+@media (min-width:860px){
+  .feuille{top:0; right:0; bottom:0; left:0; margin:auto; width:min(920px, calc(100vw - 48px)); max-width:none;
+    height:min(540px, calc(100vh - 48px)); max-height:none; padding:0; border-radius:24px;
+    display:grid; grid-template-columns:440px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto;
+    box-shadow:0 40px 90px -30px rgba(19,36,61,.65); animation:monteOrdi .55s cubic-bezier(.22,.8,.24,1) both;
+    background:#F5F8FC}
+  .part .feuille{animation:descendOrdi .38s cubic-bezier(.4,0,1,1) both}
+  .poignee{display:none}
+  .tete{grid-column:2; grid-row:1; margin:0; padding:28px 32px 0 38px; gap:16px}
+  .barres{gap:6px}
+  .croix{width:40px; height:40px}
+  .corps{display:contents}
+  .illuCol{grid-column:1; grid-row:1 / span 3; position:relative; align-items:center;
+    background:transparent}
+  .illuAnim{width:auto}
+  .illu{width:400px; max-width:none; box-shadow:0 30px 60px -32px rgba(19,36,61,.6)}
+  .conseiller{display:inline-flex; position:absolute; left:24px; bottom:20px; align-items:center; gap:8px;
+    font-size:12px; font-weight:700; color:#22497D}
+  .conseiller > span{width:26px; height:26px; border-radius:50%; background:#E68B23; color:#13243D; display:inline-flex;
+    align-items:center; justify-content:center; font-size:10.5px; font-weight:800}
+  .textes{grid-column:2; grid-row:2; align-self:center; margin:0; padding:0 32px 0 38px; gap:12px}
+  .sur{font-size:12px; letter-spacing:1.5px}
+  .titre{font-size:31px; line-height:1.15; letter-spacing:-.6px}
+  .texte{font-size:16px; line-height:1.65}
+  .fort, .astuce{align-self:flex-start; padding:10px 14px}
+  .pied{grid-column:2; grid-row:3; flex-direction:row; align-items:center; gap:12px; padding:0 32px 28px 38px}
+  .bas{order:-1; margin-right:auto; text-align:left; font-size:12.5px}
+  .retour{height:50px; padding:0 18px}
+  .suivant{flex:0 0 auto; min-width:200px; height:50px; padding:0 24px}
+  .note{left:auto; right:32px; bottom:32px; width:400px; margin:0}
+}
+
+/* ══ Les six animations (342 × 230, mises à l'échelle) ══ */
+.s0{position:absolute; inset:0; background:radial-gradient(circle at 50% 50%, #fff 0%, #E8EFF8 72%)}
+.anneau{position:absolute; left:50%; top:50%; border-radius:50%; border:1.5px dashed #C9D5E6}
+.tourne60{animation:tourne 60s linear infinite}
+.orbite{position:absolute; left:50%; top:50%; width:200px; height:200px; margin:-100px 0 0 -100px; animation:tourne 18s linear infinite}
+.satellite{position:absolute; width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:50%; background:#fff;
+  box-shadow:0 10px 20px -10px rgba(19,36,61,.45); display:flex; align-items:center; justify-content:center;
+  animation:contre 18s linear infinite}
+.maisonPulse{position:absolute; left:50%; top:50%; width:86px; height:86px; margin:-43px 0 0 -43px; border-radius:50%;
+  background:#22497D; animation:pulse 2.4s ease-out infinite}
+.maison{position:absolute; left:50%; top:50%; width:86px; height:86px; margin:-43px 0 0 -43px; border-radius:50%;
+  background:#22497D; box-shadow:0 18px 30px -14px rgba(19,36,61,.7); display:flex; align-items:center; justify-content:center;
+  animation:pop .6s .1s cubic-bezier(.22,.8,.24,1) both}
+
+.s1{position:absolute; inset:0; background:#E8EFF8}
+.radar{position:absolute; left:50%; top:50%; width:380px; height:380px; margin:-190px 0 0 -190px; border-radius:50%;
+  background:conic-gradient(from 0deg, rgba(230,139,35,.40), rgba(230,139,35,0) 24%, rgba(230,139,35,0));
+  animation:tourne 3s linear infinite}
+.cercle{position:absolute; left:50%; top:50%; border-radius:50%; border:1.5px solid rgba(34,73,125,.16)}
+.repere{position:absolute; width:26px; height:26px; margin:-26px 0 0 -13px; animation:pin 6s ease-in-out infinite both}
+.centre{position:absolute; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+  background:#22497D; box-shadow:0 0 0 5px rgba(34,73,125,.18)}
+.sources{position:absolute; left:12px; top:12px; display:flex; flex-direction:column; gap:5px}
+.source{align-self:flex-start; display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px;
+  border-radius:99px; background:rgba(255,255,255,.92); font-size:10.5px; font-weight:700; color:#22497D;
+  box-shadow:0 6px 14px -10px rgba(19,36,61,.5); animation:pop .5s cubic-bezier(.22,.8,.24,1) both}
+.source > i{width:6px; height:6px; border-radius:50%; background:#E68B23}
+.enCours{position:absolute; left:50%; bottom:12px; transform:translateX(-50%); display:inline-flex; align-items:center;
+  gap:8px; height:30px; padding:0 13px; border-radius:99px; background:#13243D; color:#fff; font-size:11.5px;
+  font-weight:700; white-space:nowrap}
+.enCours > i{width:7px; height:7px; border-radius:50%; background:#4ade80; animation:cligne 1.4s ease-in-out infinite}
+
+.s2{position:absolute; inset:0; background:#E8EFF8}
+.carteFond{position:absolute; left:50%; top:66px; width:196px; height:150px; margin-left:-88px; border-radius:16px;
+  background:#DCE3EC; transform:rotate(5deg); animation:carteIn .7s .1s cubic-bezier(.22,.8,.24,1) both}
+.carteBien{position:absolute; left:50%; top:58px; width:206px; height:160px; margin-left:-114px; border-radius:16px;
+  background:#fff; box-shadow:0 20px 34px -18px rgba(19,36,61,.55); overflow:hidden; display:flex; flex-direction:column;
+  animation:carteIn .7s .35s cubic-bezier(.22,.8,.24,1) both}
+.photo{position:relative; height:96px; background:linear-gradient(135deg,#C9D5E6 0%,#E8EFF8 100%); display:flex;
+  align-items:center; justify-content:center}
+.pastille{position:absolute; display:inline-flex; align-items:center; border-radius:99px; font-size:10px; font-weight:800}
+.prixL{font-size:15px; font-weight:800}
+.petit{font-size:11px; color:#5B6B80}
+.notif{position:absolute; left:14px; right:14px; top:10px; display:flex; align-items:center; gap:10px; padding:9px 11px;
+  border-radius:15px; background:#fff; box-shadow:0 14px 28px -16px rgba(19,36,61,.55); animation:notif 6s .9s ease-in-out infinite both}
+.cloche{width:32px; height:32px; flex:0 0 auto; border-radius:10px; background:#FDEBD3; color:#A95808; display:flex;
+  align-items:center; justify-content:center}
+
+.s3{position:absolute; inset:0; background:#E8EFF8; display:flex; flex-direction:column; gap:10px; padding:14px 16px; box-sizing:border-box}
+.monte{animation:monteIl .55s cubic-bezier(.22,.8,.24,1) both}
+.ligneBien{display:flex; align-items:center; gap:10px; padding:8px; border-radius:14px; background:#fff;
+  box-shadow:0 10px 22px -16px rgba(19,36,61,.5)}
+.avis3{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px}
+.avisB{position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:9px 2px; border-radius:12px; font-size:10.5px; font-weight:800; white-space:nowrap}
+.appui{animation:appui 3.6s 1s ease-in-out infinite}
+.tap{position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%;
+  background:rgba(22,163,74,.35); opacity:0; animation:tap 3.6s 1s ease-out infinite}
+.justesse{display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:14px; background:#fff}
+.chiffres{position:relative; width:40px; height:16px}
+.chiffres > b{position:absolute; right:0; font-size:13px; font-weight:800}
+.avant46{color:#5B6B80; opacity:0; animation:remplitN 3.6s 1s ease-in-out infinite both}
+.apres93{color:#A95808; animation:remplitM 3.6s 1s ease-in-out infinite both}
+.jauge{display:block; height:8px; border-radius:99px; background:#E8EFF8; overflow:hidden}
+.jauge > i{display:block; height:100%; width:93%; border-radius:99px; background:linear-gradient(90deg,#F2B266,#E68B23);
+  animation:remplit 3.6s 1s ease-in-out infinite both}
+
+.s4{position:absolute; inset:0; background:#E8EFF8; padding:14px 16px; box-sizing:border-box}
+.criteres{display:flex; flex-direction:column; gap:10px; padding:12px 14px; border-radius:16px; background:#fff;
+  box-shadow:0 12px 24px -18px rgba(19,36,61,.5)}
+.budget{position:relative; width:90px; height:18px}
+.budget > b{position:absolute; right:0; font-size:14px; font-weight:800}
+.avantB{opacity:0; animation:avant 6s .6s ease-in-out infinite both}
+.apresB{color:#A95808; animation:apres 6s .6s ease-in-out infinite both}
+.glissiere{position:relative; display:block; height:8px; border-radius:99px; background:#E8EFF8}
+.glissiere > i{position:absolute; left:0; top:0; bottom:0; width:76%; border-radius:99px; background:#E68B23;
+  animation:glisseur 6s .6s ease-in-out infinite both}
+.curseur{position:absolute; top:50%; left:76%; width:22px; height:22px; margin:-11px 0 0 -11px; border-radius:50%;
+  background:#fff; border:2.5px solid #E68B23; box-sizing:border-box; box-shadow:0 6px 14px -4px rgba(19,36,61,.45);
+  animation:curseur 6s .6s ease-in-out infinite both}
+.puces{display:flex; gap:6px; flex-wrap:wrap}
+.puce{height:26px; padding:0 10px; border-radius:99px; border:1.5px solid #F2B266; background:#FDEBD3; color:#A95808;
+  font-size:11px; font-weight:700; display:inline-flex; align-items:center; box-sizing:border-box}
+.puceVive{animation:puce 6s .6s ease-in-out infinite both}
+.prevenu{position:absolute; left:30px; right:30px; bottom:12px; display:flex; align-items:center; gap:9px; padding:8px 11px;
+  border-radius:14px; background:#13243D; color:#fff; box-shadow:0 14px 26px -14px rgba(19,36,61,.7);
+  animation:toastIl 6s .6s ease-in-out infinite both}
+.ok{width:24px; height:24px; flex:0 0 auto; border-radius:50%; background:#16a34a; display:flex; align-items:center; justify-content:center}
+
+.s5{position:absolute; inset:0; background:#E8EFF8; display:flex; gap:10px; padding:14px; box-sizing:border-box}
+.agenda{width:146px; flex:0 0 auto; display:flex; flex-direction:column; border-radius:16px; background:#fff; overflow:hidden;
+  box-shadow:0 12px 24px -18px rgba(19,36,61,.5)}
+.agendaH{height:30px; background:#E68B23; color:#13243D; display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800; letter-spacing:1.4px}
+.coche{stroke-dasharray:26; animation:trace .6s 1s cubic-bezier(.65,0,.35,1) both}
+.miniCarte{flex:1; position:relative; border-radius:16px; background:#E8EFF8; overflow:hidden}
+.prixPin{position:absolute; display:flex; flex-direction:column; align-items:center; animation:rebond 2.4s ease-in-out infinite}
+.prixPin > span{height:20px; padding:0 7px; border-radius:99px; font-size:10px; font-weight:800; display:inline-flex;
+  align-items:center; white-space:nowrap; box-shadow:0 6px 12px -8px rgba(19,36,61,.6)}
+.prixPin > i{width:2px; height:8px}
+.etiquette{position:absolute; left:8px; bottom:8px; height:22px; padding:0 9px; border-radius:99px; background:#fff;
+  font-size:10px; font-weight:800; color:#22497D; display:inline-flex; align-items:center}
+
+/* Moins de mouvement demandé par le téléphone : tout reste, rien ne bouge. */
+@media (prefers-reduced-motion:reduce){
+  .couche *, .note, .note *{animation:none !important}
+  .avant46, .avantB{opacity:0} .tap{opacity:0}
+}
+
+@keyframes voileIn{from{opacity:0}to{opacity:1}}
+@keyframes voileOut{from{opacity:1}to{opacity:0}}
+@keyframes monte{from{transform:translateY(100%)}to{transform:none}}
+@keyframes descend{from{transform:none}to{transform:translateY(100%)}}
+@keyframes monteOrdi{from{opacity:0;transform:translateY(80px)}to{opacity:1;transform:none}}
+@keyframes descendOrdi{from{opacity:1;transform:none}to{opacity:0;transform:translateY(80px)}}
+@keyframes droite{from{opacity:0;transform:translateX(36px)}to{opacity:1;transform:none}}
+@keyframes gauche{from{opacity:0;transform:translateX(-36px)}to{opacity:1;transform:none}}
+@keyframes texteIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes barreIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes scintille{0%,55%{transform:translateX(-130%) skewX(-18deg)}85%,100%{transform:translateX(230%) skewX(-18deg)}}
+@keyframes halo{0%,100%{box-shadow:0 8px 18px -10px rgba(230,139,35,.9),0 0 0 0 rgba(230,139,35,.45)}50%{box-shadow:0 8px 18px -10px rgba(230,139,35,.9),0 0 0 7px rgba(230,139,35,0)}}
+@keyframes tourne{to{transform:rotate(360deg)}}
+@keyframes contre{to{transform:rotate(-360deg)}}
+@keyframes pulse{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.75);opacity:0}}
+@keyframes pop{0%{opacity:0;transform:scale(.5)}70%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+@keyframes monteIl{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes carteIn{from{opacity:0;transform:translateY(44px) rotate(5deg)}to{opacity:1}}
+@keyframes notif{0%{opacity:0;transform:translateY(-18px) scale(.95)}8%,72%{opacity:1;transform:none}82%,100%{opacity:0;transform:translateY(-10px) scale(.97)}}
+@keyframes pin{0%{opacity:0;transform:translateY(-10px) scale(.4)}10%,78%{opacity:1;transform:none}90%,100%{opacity:0;transform:scale(.8)}}
+@keyframes cligne{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes tap{0%,55%{transform:scale(.4);opacity:0}65%{opacity:.55}100%{transform:scale(2.1);opacity:0}}
+@keyframes appui{0%,58%,100%{transform:scale(1)}64%{transform:scale(.92)}72%{transform:scale(1.05)}}
+@keyframes remplit{0%,22%{width:46%}62%,100%{width:93%}}
+@keyframes remplitN{0%,22%{opacity:1}30%,100%{opacity:0}}
+@keyframes remplitM{0%,40%{opacity:0}55%,100%{opacity:1}}
+@keyframes glisseur{0%,14%{width:56%}42%,84%{width:76%}98%,100%{width:56%}}
+@keyframes curseur{0%,14%{left:56%}42%,84%{left:76%}98%,100%{left:56%}}
+@keyframes avant{0%,22%{opacity:1;transform:none}32%,86%{opacity:0;transform:translateY(-8px)}96%,100%{opacity:1;transform:none}}
+@keyframes apres{0%,22%{opacity:0;transform:translateY(8px)}32%,86%{opacity:1;transform:none}96%,100%{opacity:0;transform:translateY(8px)}}
+@keyframes puce{0%,40%{background:#fff;color:#5B6B80;border-color:#DCE3EC}48%,86%{background:#FDEBD3;color:#A95808;border-color:#F2B266}96%,100%{background:#fff;color:#5B6B80;border-color:#DCE3EC}}
+@keyframes toastIl{0%,50%{opacity:0;transform:translateY(14px)}58%,88%{opacity:1;transform:none}96%,100%{opacity:0;transform:translateY(8px)}}
+@keyframes trace{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
+@keyframes rebond{0%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}50%{transform:translateY(0)}65%{transform:translateY(-3px)}80%{transform:translateY(0)}}

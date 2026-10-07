@@ -12,6 +12,7 @@ import { ISSUES, ISSUES_OK, RAISONS, type Issue } from '@/lib/visites';
 import { correspondance, type LigneCorr, type Correspondance } from '@/lib/correspondance';
 import CarteEspace, { CATS_ESPACE, type BienCarte, type CatEspace } from './CarteEspace';
 import Decouverte, { GalerieGlisse, CSS_DECOUVERTE, type ActionsFiche, type AvisDecouverte } from './Decouverte';
+import Bienvenue from './Bienvenue';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -53,6 +54,9 @@ type Bien = {
   vente?: { etat: 'compromis' | 'vendu' | 'retire' | 'pause'; vous: boolean } | null;
   /* V3.48 : son offre sur un bien de l'agence, telle que le CRM la tient. */
   offre?: { statut: string; tombe: boolean } | null;
+  /* V3.114 : un bien de l'agence (une copie d'un de ses biens en vente).
+     Le visiter ne demande jamais de mandat de recherche. */
+  agence?: boolean;
 };
 const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis')
   : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : v.etat === 'pause' ? 'En pause' : 'Sous compromis');
@@ -1415,7 +1419,11 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      ce dernier, seulement tant que LUI ne l'a pas signé et qu'il a un lien
      valable à lui (`enRoute.lien`, le même que lit /api/espace/retour) :
      signé par lui, en attente de son conjoint, ses visites passent (V3.55). */
-  const visiteBloquee = () => {
+  /* V3.114 : `id` — un bien de l'agence ne bloque jamais : Alexandre est le
+     mandataire du vendeur, pas besoin du mandat de recherche pour le visiter
+     (le serveur ne le demande pas non plus). */
+  const visiteBloquee = (id?: string) => {
+    if (id && biensRef.current.find(x => x.id === id)?.agence) return false;
     const m = mandatRef.current;
     return (m.etat !== 'valide' && !!m.enRoute?.lien && m.document?.vous !== 'signe') || m.etat === 'a_signer';
   };
@@ -1520,6 +1528,8 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   async function enregistrerAvis(b: Bien, avis: string, commentaire: string) {
     const enRoute = mandatRef.current.enRoute;
+    /* V3.114 : un bien de l'agence part directement, sans mandat de recherche. */
+    if (b.agence) { await poserAvis(b, avis, commentaire, false); return; }
     if (avis === 'souhaite_visiter' && mandatRef.current.etat !== 'valide' && enRoute?.lien && mandatRef.current.document?.vous !== 'signe') {
       ouvrirMandatDocument(b, commentaire, enRoute.lien);
       return;
@@ -1604,22 +1614,27 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }, [envoyer]);
 
   /* La présentation s'ouvre une seule fois par appareil. Le petit délai laisse
-     la page se poser : elle arrive comme un accueil, pas comme une interruption. */
+     la page se poser : elle arrive comme un accueil, pas comme une interruption.
+     V3.115 : la feuille qui monte du bas, six écrans (Bienvenue.tsx). 'auto' :
+     ouverte d'elle-même ; fermée, un mot dit où la retrouver. 'main' : par
+     « Comment ça marche ? ». */
   const CLE_BIENVENUE = 'emilio_bienvenue';
-  const ouvrirBienvenue = useCallback(() => {
-    montrer(<Bienvenue client={client} onFermer={() => {
-      try { localStorage.setItem(CLE_BIENVENUE, '1'); } catch { /* stockage indisponible */ }
-      fermer();
-    }} />, 'pleine');
-  }, [client]);
+  const [bienvenue, setBienvenue] = useState<{ auto: boolean; n: number } | null>(null);
+  /* `n` : chaque ouverture repart du premier écran, même si le mot de fin
+     était encore affiché. */
+  const ouvrirBienvenue = useCallback(() => setBienvenue(x => ({ auto: false, n: (x?.n || 0) + 1 })), []);
+  const bienvenueVue = useCallback(() => {
+    try { localStorage.setItem(CLE_BIENVENUE, '1'); } catch { /* stockage indisponible */ }
+  }, []);
+  const bienvenueFinie = useCallback(() => setBienvenue(null), []);
 
   useEffect(() => {
     let deja = true;
     try { deja = localStorage.getItem(CLE_BIENVENUE) === '1'; } catch { deja = false; }
     if (deja) return;
-    const t = setTimeout(() => ouvrirBienvenue(), 900);
+    const t = setTimeout(() => setBienvenue(x => x || { auto: true, n: 1 }), 900);
     return () => clearTimeout(t);
-  }, [ouvrirBienvenue]);
+  }, []);
 
   /* « Découvrir » était ouvert quand l'espace s'est rechargé (retour d'une
      autre application, nouveau bien arrivé) : il le retrouve, au premier
@@ -2302,6 +2317,10 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         role="dialog" aria-modal="true">
         {!variante && <div className="poignee" />}{feuille}
       </div>
+      {bienvenue && (
+        <Bienvenue key={bienvenue.n} prenom={client.prenom || ''} conseiller={AGENT.nom.split(' ')[0]} auto={bienvenue.auto}
+          onVu={bienvenueVue} onFini={bienvenueFinie} />
+      )}
     </>
   );
 }
@@ -5410,34 +5429,6 @@ function Explication({ a, onFermer }: { a: typeof AIDES[string]; onFermer: () =>
         ))}
       </div>
       <button className="btn or" style={{ marginTop: 22, width: '100%' }} onClick={onFermer}>J&apos;ai compris</button>
-    </div>
-  );
-}
-
-/* La présentation de l'espace. Elle s'ouvre toute seule à la première visite,
-   puis se retrouve derrière « Comment ça marche ? ». Elle ne reste pas en
-   permanence sur la page d'accueil : on la lit une fois, elle a fait son office. */
-function Bienvenue({ client, onFermer }: any) {
-  return (
-    <div className="bienv">
-      <div className="bienv-sceau"><Ico n="cible" t={30} /></div>
-      <div className="bienv-sur">Votre espace personnel</div>
-      <h3>Bienvenue, {client.prenom}</h3>
-      <p>Cet espace a été créé rien que pour votre recherche. Il est privé, il n&apos;y a ni compte
-        ni mot de passe&nbsp;: le lien vous suffit, et vous pouvez y revenir quand vous voulez.</p>
-      {/* chaque puce = une icône + UN bloc de texte, sinon le flex écarte les mots */}
-      <div className="puces">
-        <span><span className="k"><Ico n="check" t={15} /></span><span>Nous cherchons pour vous <b>au quotidien</b>, sur les portails, notre carnet d&apos;adresses et notre base off-market.</span></span>
-        <span><span className="k"><Ico n="check" t={15} /></span><span>Les biens retenus arrivent ici dès qu&apos;ils sortent&nbsp;— avec ce que nous avons lu, et ce que nous avons écarté.</span></span>
-        <span><span className="k"><Ico n="check" t={15} /></span><span>Vos critères sont les vôtres&nbsp;: vous les faites évoluer vous-même, votre conseiller en est informé.</span></span>
-        <span><span className="k"><Ico n="check" t={15} /></span><span>Un avis en un clic sur chaque bien&nbsp;— c&apos;est ce qui affine la suite de la recherche.</span></span>
-      </div>
-      <button className="btn or" style={{ marginTop: 22, width: '100%' }} onClick={onFermer}>J&apos;ai compris</button>
-      {/* Une phrase, pas une demande : l'idée est posée, elle reviendra d'elle-même
-          un peu plus tard, quand il aura vu ce qu'il y a dedans. */}
-      <div className="bienv-pied">
-        Vous pourrez l&apos;ajouter à votre écran d&apos;accueil pour le retrouver en un geste.
-      </div>
     </div>
   );
 }

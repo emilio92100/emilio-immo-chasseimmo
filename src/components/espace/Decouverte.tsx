@@ -61,7 +61,7 @@ type Props = {
   /** Envoie la réponse (après les cinq secondes). false : pas partie. */
   enregistrer: (id: string, avis: AvisDecouverte, commentaire: string, garder: boolean) => Promise<boolean>;
   /** Un mandat est à signer avant toute demande de visite. */
-  visiteBloquee: () => boolean;
+  visiteBloquee: (id?: string) => boolean;
   /** La demande de visite par le chemin habituel : signature d'abord. */
   demanderVisite: (id: string, commentaire: string) => void;
   /** La pile « Échap » de l'espace (useEchap). */
@@ -651,7 +651,7 @@ export default function Decouverte(props: Props) {
     /* Pas de visite sans mandat : la signature d'abord, par le chemin
        habituel de l'espace. Le bien revient au centre pendant ce temps ; il
        s'en ira tout seul quand la demande sera partie (voir plus bas). */
-    if (avis === 'souhaite_visiter' && P.current.visiteBloquee()) {
+    if (avis === 'souhaite_visiter' && P.current.visiteBloquee(b.id)) {
       fermerQuestion(() => {
         valider();
         remettre();
