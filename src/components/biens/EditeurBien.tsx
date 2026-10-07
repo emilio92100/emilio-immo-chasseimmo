@@ -390,7 +390,10 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
      Alexandre : « Modifier » des surfaces renvoyait au début du formulaire.
      « interieur:@vitrage » (V3.107) : droit sur un champ, depuis une ligne
      d'une carte de la fiche. */
-  const [etapeDepart, sectDepart] = (depart || '').split(':');
+  /* V3.109 : sans « : » (« exterieur », le « Modifier » d'une carte), la
+     partie est une chaîne vide, pas `undefined` — en « tout sur une page »,
+     le `startsWith` plus bas cassait, et la page restait en haut. */
+  const [etapeDepart = '', sectDepart = ''] = (depart || '').split(':');
   const [etape, setEtape] = useState(() => Math.max(0, etapesDuBien(bien.etape).findIndex(e => e.id === etapeDepart)));
   /* Le sens du dernier pas (V3.80) : l'étape arrive de la droite ou de la gauche. */
   const [sens, setSens] = useState<1 | -1>(1);
