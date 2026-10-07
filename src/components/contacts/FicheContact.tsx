@@ -24,6 +24,7 @@ import ChoixSource from './ChoixSource';
 import { avantMandat, etapeDe } from '@/lib/biens-vente';
 import { BiensHero, useBiensBandeau, type ActiviteVente, type BienHero } from './BiensBandeau';
 import { demanderNouveauBien, demanderOngletBien, lireOuvertureFiche, oublierOuvertureFiche, signalerMaj } from '@/lib/intentions';
+import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
 import { cloreRelancesArchive, reporterRelance } from '@/lib/relances';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { Horloge, LigneTuiles, Tuile, Tuiles } from '@/components/shared/Tuiles';
@@ -239,7 +240,14 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
   const [action, setAction] = useState<{ edition: any | null; type: 'note' | 'appel' } | null>(null);
   const [tour, setTour] = useState(0);
   const [mail, setMail] = useState(false);
-  const [onglet, setOnglet] = useState<OngletContact>(() => (ouverture ? 'suivi' : 'savoir'));
+  /* V3.121 : sans demande précise, la fiche reprend l'onglet et la hauteur
+     où on l'avait laissée (lib/place-fiche.ts). */
+  const placeLue = usePlace(`contact:${depart.id}`);
+  const place = ouverture ? null : placeLue;
+  const [onglet, setOnglet] = useState<OngletContact>(() => (ouverture ? 'suivi' : ORDRE_ONGLETS.includes(place?.onglet as OngletContact) ? (place!.onglet as OngletContact) : 'savoir'));
+  useEffect(() => { retenirPlace(`contact:${depart.id}`, { onglet }); }, [depart.id, onglet]);
+  const [journalLu, setJournalLu] = useState(false);
+  useHauteur(`contact:${depart.id}`, place, journalLu, !!place && place.onglet === onglet);
   useEffect(() => {
     if (!ouverture) return;
     const t = window.setTimeout(() => document.getElementById('onglets-contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
@@ -266,7 +274,7 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
   useEffect(() => {
     let vivant = true;
     supabase.from('journal').select('*').eq('client_id', depart.id).order('created_at', { ascending: false })
-      .then(({ data }) => { if (vivant) setJournal(data || []); });
+      .then(({ data }) => { if (vivant) { setJournal(data || []); setJournalLu(true); } });
     supabase.from('relances').select('id, date_echeance, note, recherche_id').eq('client_id', depart.id).eq('statut', 'en_attente')
       .order('date_echeance', { ascending: true })
       .then(({ data }) => { if (vivant) setRelances(data || []); });
