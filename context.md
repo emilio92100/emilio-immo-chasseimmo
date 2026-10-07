@@ -1497,6 +1497,22 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.109 — 7 octobre 2026 · « Modifier » d'une carte, en « tout sur une page » : la page descend de nouveau
+
+Rien à passer dans Supabase.
+
+Alexandre : « quand je retourne sur la fiche et je fais Modifier sur une catégorie, dans le sommaire
+je suis bien dans l'énergie, mais au milieu je vois toujours le propriétaire » ; les lignes au
+crayon, elles, menaient au bon endroit.
+
+- **La cause** (V3.107) : le départ de l'éditeur se lit « partie:bloc ». Sans « : » (« exterieur »,
+  le « Modifier » d'une carte), le bloc valait `undefined`, et `sectDepart.startsWith('@')` cassait
+  dans le minuteur — seulement en « tout sur une page » (en « partie par partie », on n'y passait
+  pas). Le sommaire montrait la bonne partie, la page restait en haut.
+- **Corrigé** (`EditeurBien.tsx`) : `const [etapeDepart = '', sectDepart = ''] = …`. Vérifié au banc
+  dans les deux modes, en rouvrant plusieurs fois de suite : Intérieur, Extérieur, Énergie, le
+  quartier, une ligne au crayon.
+
 ### V3.108 — 7 octobre 2026 · L'éditeur d'un bien en « vignettes dessinées » (maquette A1)
 
 Rien à passer dans Supabase.
