@@ -14,13 +14,16 @@ import styles from './FichesOuvertes.module.css';
      · les biens : FicheBien, à son ouverture (EVT_FICHE_OUVERTE), et il dit
        aussi quel bien est à l'écran (EVT_BIEN_ACTIF) pour l'allumer ;
      · la carte : PageCarte, quand on ouvre une fiche depuis elle — un clic
-       sur son bloc la rouvre là où on l'avait laissée (V3.27).
+       sur son bloc la rouvre là où on l'avait laissée (V3.27) ;
+     · les relances : PageRelances, de la même façon (V3.102) — un clic
+       rouvre Relances sur la même tuile, posée sur la relance qu'on
+       traitait.
 
    Les blocs se rangent à la main : on en attrape un et on le fait glisser
    (au doigt : un appui un peu long, puis glisser). L'ordre est gardé. */
 
 export type FicheOuverte = {
-  k: 'contact' | 'bien' | 'carte';
+  k: 'contact' | 'bien' | 'carte' | 'relances';
   id: string;
   titre: string;
   sous?: string;
@@ -28,6 +31,9 @@ export type FicheOuverte = {
   personne?: { prenom?: string | null; nom?: string | null; civilite?: string | null; couple?: boolean | null; conjoint?: unknown; types?: unknown };
   statut?: string | null;
   photo?: string | null;
+  /* V3.102 — Un contact ouvert depuis Relances : fermer sa fiche (×, « Tout
+     fermer », le bouton retour) ramène à Relances, pas à Contacts. */
+  depuis?: 'relances';
 };
 
 export const EVT_FICHE_OUVERTE = 'emilio:fiche-ouverte';
@@ -52,7 +58,7 @@ export const MAX_FICHES = 10;
 export function lireFiches(): FicheOuverte[] {
   try {
     const v = JSON.parse(localStorage.getItem(CLE) || '[]');
-    return Array.isArray(v) ? v.filter(x => x && (x.k === 'contact' || x.k === 'bien' || x.k === 'carte') && typeof x.id === 'string').slice(0, MAX_FICHES) : [];
+    return Array.isArray(v) ? v.filter(x => x && (x.k === 'contact' || x.k === 'bien' || x.k === 'carte' || x.k === 'relances') && typeof x.id === 'string').slice(0, MAX_FICHES) : [];
   } catch { return []; }
 }
 export function ecrireFiches(l: FicheOuverte[]) {
@@ -256,6 +262,10 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
                   : f.k === 'carte'
                   ? <span className={`${styles.vignette} ${styles.vignetteCarte}`}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-2.5 6 2.5 6-2.5v14.5l-6 2.5-6-2.5-6 2.5z" /><path d="M9 3.5v14.5" /><path d="M15 6v14.5" /></svg>
+                    </span>
+                  : f.k === 'relances'
+                  ? <span className={`${styles.vignette} ${styles.vignetteCarte}`}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6.2 16.8V11a5.8 5.8 0 0 1 11.6 0v5.8l1.7 2H4.5z" /><path d="M10 21.2h4" /></svg>
                     </span>
                   : <span className={styles.vignette}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
