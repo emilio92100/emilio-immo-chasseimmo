@@ -117,7 +117,25 @@ function dpe(d: BienVente['donnees'], energyClass?: string, gesClass?: string): 
     yearOfConsumptionCostEstimation: entierPositif(num(d, 'coutAnnee')),
   };
   if (!c.efficiencyClass && !c.overallEnergyNeed) return undefined;
+  /* V3.100 (8 octobre, EMI-V-2026-330 refusée : « GHGEmission shouldn't be
+     null ») : SeLoger refuse un DPE à moitié rempli. Les deux lettres et les
+     deux chiffres, ou rien : un DPE incomplet part comme « non communiqué »,
+     pour que l'annonce passe quand même (comme avec ImmoFacile), et le CRM
+     le signale (lotSeLoger). */
+  if (dpeIncomplet(d, energyClass, gesClass).length) return { certificateType: 'EMPTY' };
   return { certificateType: date && date < '2021-07-01' ? 'DPE_V01_2011' : 'DPE_V07_2021', ...c };
+}
+/* Ce qui manque à un DPE commencé pour que SeLoger l'accepte. */
+export function dpeIncomplet(d: BienVente['donnees'], energyClass?: string, gesClass?: string): string[] {
+  const statut = String(d.dpeStatut || '');
+  if (statut === 'vierge' || statut === 'non') return [];
+  const lettre = (x?: string) => !!x && /^[A-G]$/.test(x);
+  const commence = lettre(energyClass) || !!entierPositif(num(d, 'dpeValeur')) || lettre(gesClass) || !!entierPositif(num(d, 'gesValeur'));
+  if (!commence) return [];
+  return [
+    [!lettre(energyClass), 'la lettre énergie'], [!entierPositif(num(d, 'dpeValeur')), 'la valeur énergie (kWh)'],
+    [!lettre(gesClass), 'la lettre GES'], [!entierPositif(num(d, 'gesValeur')), 'la valeur GES (kg CO₂)'],
+  ].filter(([m]) => m).map(([, l]) => l as string);
 }
 
 /* ── Une annonce ───────────────────────────────────────────────────────── */
@@ -328,6 +346,11 @@ export function lotSeLoger(biens: BienVente[], gps?: Map<string, { lat: number; 
     if (!annonce.media?.length) out.avertissements.push(`${nom} : aucune photo`);
     const energie = ((dt.energy as Json)?.countrySpecific as Json | undefined)?.fr as Json | undefined;
     if (!energie?.energyCertificate) out.avertissements.push(`${nom} : DPE non renseigné`);
+    else {
+      const site = bienPourSite(b, null);
+      const trous = dpeIncomplet(b.donnees || {}, site.energyClass, site.gesClass);
+      if (trous.length) out.avertissements.push(`${nom} : DPE incomplet (il manque ${trous.join(', ')}) : envoyé à SeLoger comme « non communiqué »`);
+    }
     const fee = ((dt.prices as Json)?.brokerageFee || {}) as Json;
     if (fee.feeFor === 'BUYER_OR_TENANT' && !fee.feePercentage) out.avertissements.push(`${nom} : honoraires à la charge de l’acquéreur, sans taux ni montant (à préciser dans la fiche)`);
     vus.add(id);
