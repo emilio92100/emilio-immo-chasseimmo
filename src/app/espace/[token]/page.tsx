@@ -208,9 +208,10 @@ export default async function PageEspace({ params, searchParams }: {
   /* V3.48 : où en est SON offre sur un bien de l'agence (acceptée, refusée,
      retirée, compromis tombé) — l'espace ne disait que « Offre envoyée ». */
   const offreParBien = new Map<string, { statut: string; tombe: boolean }>();
+  const chargesAnParVente = new Map<string, number>();
   if (idsVente.length) {
     const [ventes, compromis, offres] = await Promise.all([
-      supabase.from('biens_vente').select('id, etape').in('id', idsVente),
+      supabase.from('biens_vente').select('id, etape, donnees').in('id', idsVente),
       supabase.from('biens_vente_suivi').select('bien_id, le, donnees').in('bien_id', idsVente).eq('type', 'etape').eq('statut', 'compromis'),
       supabase.from('biens_vente_suivi').select('id, bien_id, client_id, recherche_id, statut, le, donnees').in('bien_id', idsVente).eq('type', 'offre'),
     ]);
@@ -230,7 +231,10 @@ export default async function PageEspace({ params, searchParams }: {
       const acceptees = lesOffres.filter((o) => o.bien_id === bienId && o.statut === 'acceptee');
       return acceptees.length === 1 && sienne(acceptees[0]);
     };
-    for (const v of (ventes.data || []) as { id: string; etape: string }[]) {
+    for (const v of (ventes.data || []) as { id: string; etape: string; donnees?: Record<string, unknown> | null }[]) {
+      /* V3.133 : les charges annuelles saisies dans le CRM (la copie n'a que le trimestre). */
+      const an = Number(v.donnees?.chargesAn);
+      if (an > 0) chargesAnParVente.set(v.id, an);
       if (v.etape === 'compromis' || v.etape === 'vendu') venteParBien.set(v.id, { etat: v.etape, vous: estAMoi(v.id) });
       else if (v.etape === 'retire') venteParBien.set(v.id, { etat: 'retire', vous: false });
       else if (v.etape === 'suspendu') venteParBien.set(v.id, { etat: 'pause', vous: false });
@@ -274,6 +278,7 @@ export default async function PageEspace({ params, searchParams }: {
     clim: b.climatisation, traversant: b.traversant,
     charges: b.charges_trimestrielles, taxe: b.taxe_fonciere,
     chargesComprises: b.charges_comprises || null,
+    chargesAn: (b.bien_vente_id && chargesAnParVente.get(b.bien_vente_id)) || null,
     chauffage: b.chauffage, lots: b.nb_lots,
     pdfUrl: b.pdf_statut === 'pret' ? b.pdf_url : null,
     envoyeLe: b.envoye_le, vuLe: b.vu_le,
