@@ -1539,6 +1539,19 @@ score juste en bas ». À l'écran, on dit « le rapprochement » ou « la relec
   - « Écartées au premier tri » vient en direct, replié, avec « Envoyer » quand même ;
   - le texte sous le bouton dit la date du dernier rapprochement et combien de recherches passent
     le premier tri depuis.
+- **Les prospects et les acheteurs en pause comptent aussi** (Alexandre : « j'ai l'impression qu'il
+  va chercher juste ceux qui sont en acheteur actif, et pas prospect »). La recherche d'un prospect
+  naît « en attente » (`active` à false : sa veille attend qu'il passe Actif, de même pour les
+  imports d'ImmoFacile « à qualifier »), celle d'un acheteur en pause s'arrête avec lui : la liste
+  ne lisait que `active = true`.
+  - `chargerListe` lit aussi `recherchesAttente` : les recherches arrêtées des clients prospect ou
+    en pause.
+  - `rechercheOuverte(r, c)`, `recherchesRappro(liste)` (outils.ts) : `triBien` et
+    `acheteursTries` les prennent ; l'onglet Rapprochement, « Envoyer » et sa recherche par nom
+    aussi.
+  - Une recherche arrêtée d'un acheteur actif (close, son bien trouvé) reste dehors.
+  - La veille, les alertes et le point automatique ne changent pas : ils ignorent toujours les
+    prospects.
 - **FicheBien** passe `seances` (son suivi) et `onSeance` (le nouveau rapprochement entre dans
   l'historique sans relire la fiche). L'historique montre « Rapprochement : 3 oui · 2 à voir ·
   2 non ».
