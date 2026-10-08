@@ -154,13 +154,13 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let { data: bien } = await supabase.from('biens').select('*').eq('id', id).maybeSingle() as { data: any };
   /* V3.131 : pas une copie d'acheteur ? Peut-être un bien de l'agence. */
-  let venteDirecte: { etape?: string | null; archive?: boolean | null } | null = null;
+  let venteDirecte: { etape?: string | null; archive?: boolean | null; donnees?: Record<string, unknown> | null } | null = null;
   if (!bien) {
     const { data: v } = await supabase.from('biens_vente').select('*').eq('id', id).maybeSingle();
     if (!v) notFound();
     const vente = v as BienVente;
     bien = { id: vente.id, ...versBienAcheteur(vente, { clientId: '', rechercheId: '', quand: '' }) };
-    venteDirecte = { etape: vente.etape, archive: vente.archive };
+    venteDirecte = { etape: vente.etape, archive: vente.archive, donnees: vente.donnees };
   }
 
   /* Un bien encore « en sélection » (pas encore présenté) reste lisible : un
@@ -170,12 +170,14 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   const [venteLue, reglagesLus] = await Promise.all([
     venteDirecte ? Promise.resolve({ data: venteDirecte, error: null })
       : bien.bien_vente_id
-      ? supabase.from('biens_vente').select('etape, archive').eq('id', bien.bien_vente_id).maybeSingle()
+      ? supabase.from('biens_vente').select('etape, archive, donnees').eq('id', bien.bien_vente_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     supabase.from('parametres').select('cle, valeur').in('cle', ['conseiller_telephone', 'conseiller_email']),
   ]);
   if (venteLue.error) console.error('[bien public] état de la vente', venteLue.error.message);
   const etat = etatDeVente(venteLue.data as { etape?: string | null; archive?: boolean | null } | null);
+  /* V3.133 : un bien de l'agence — les charges annuelles saisies dans le CRM. */
+  const chargesAn = Number((venteLue.data as { donnees?: Record<string, unknown> | null } | null)?.donnees?.chargesAn) || 0;
   const bandeau = etat ? BANDEAU[etat] : null;
   const reglages = Object.fromEntries(((reglagesLus.data || []) as { cle: string; valeur: string | null }[]).map(r => [r.cle, (r.valeur || '').trim()]));
   const telConseiller = reglages.conseiller_telephone || TEL_DEFAUT;
@@ -226,7 +228,8 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   /* Les charges se saisissent au trimestre dans le CRM : on l'écrit tel quel
      plutôt que de multiplier par quatre un chiffre dont on n'est pas sûr. */
   const couts: { i: string; l: string; v: string; u: string }[] = [];
-  if (bien.charges_trimestrielles) couts.push({ i: 'euro', l: 'Charges', v: `${fmt(bien.charges_trimestrielles)} €`, u: 'par trimestre' });
+  if (chargesAn > 0) couts.push({ i: 'euro', l: 'Charges', v: `${fmt(chargesAn)} €`, u: `par an · ${fmt(Math.round(chargesAn / 12))} € par mois` });
+  else if (bien.charges_trimestrielles) couts.push({ i: 'euro', l: 'Charges', v: `${fmt(bien.charges_trimestrielles)} €`, u: 'par trimestre' });
   if (bien.taxe_fonciere) couts.push({ i: 'immeuble', l: 'Taxe foncière', v: `${fmt(bien.taxe_fonciere)} €`, u: 'par an' });
   if (bien.chauffage) couts.push({ i: 'eclair', l: 'Chauffage', v: String(bien.chauffage), u: '' });
   if (bien.nb_lots) couts.push({ i: 'maison', l: 'Copropriété', v: String(bien.nb_lots), u: bien.nb_lots > 1 ? 'lots' : 'lot' });
@@ -403,7 +406,7 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
                 </div>
               ))}
             </div>
-            {bien.charges_trimestrielles && bien.charges_comprises ? (
+            {(chargesAn > 0 || bien.charges_trimestrielles) && bien.charges_comprises ? (
               <p style={{ margin: '9px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: PLUME }}>
                 <b style={{ fontWeight: 700 }}>Compris dans les charges :</b> {bien.charges_comprises}
               </p>
