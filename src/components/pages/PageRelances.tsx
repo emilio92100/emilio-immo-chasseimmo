@@ -776,7 +776,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
           phrase={loading ? 'Les clients à recontacter, du plus pressé au moins pressé.' : retard.length ? `${retard.length > 1 ? `${retard.length} relances en retard` : 'Une relance en retard'} : à rattraper en premier.` : duJour.length ? `${duJour.length > 1 ? `${duJour.length} relances` : 'Une relance'} pour aujourd’hui, rien en retard.` : 'Rien en retard, rien pour aujourd’hui.'}
           recherche={{ valeur: q, onChange: setQ, placeholder: 'Nom, téléphone, note…', label: 'Chercher une relance' }}
           bouton2={tri.length > 0 ? { lib: `Tri à faire · ${triDus.length ? `${triDus.length} à appeler` : 'rien aujourd’hui'}`, court: 'Tri', ic: <Ic n="drapeau" t={15} ep={2.1} />, onClick: () => blocTri.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } : undefined}
-          label="Filtrer les relances" actif={filtre} defiler={false}
+          label="Filtrer les relances" actif={filtre} defiler={false} aCheval
           onChoisir={k => { setPeriode(null); setReport(null); setFiltre(k as Filtre); }}
           tuiles={loading ? [] : [
             { cle: 'retard', lib: 'En retard', n: retard.length, couleur: '#dc2626', alerte: true },

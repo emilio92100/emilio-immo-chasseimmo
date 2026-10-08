@@ -297,7 +297,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       <EnteteRubrique titre="Visites" icone={PictoVisites}
         phrase={visites.length === 0 && demandes.length === 0 ? (loading ? undefined : 'Aucune visite pour l’instant') : phraseProchaine}
         recherche={visites.length > 0 || demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un bien ou un client…', label: 'Chercher une visite' } : undefined}
-        label="Filtrer les visites" actif={filtre} onChoisir={(c: string) => setFiltre(c as typeof filtre)}
+        label="Filtrer les visites" aCheval actif={filtre} onChoisir={(c: string) => setFiltre(c as typeof filtre)}
         tuiles={visites.length === 0 && demandes.length === 0 ? [] : ([
           { cle: 'tout', lib: 'Toutes', n: trouvees.length },
           { cle: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, couleur: '#ef4444', alerte: true },
