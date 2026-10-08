@@ -192,6 +192,22 @@ export async function preparerSeLoger(sb = baseServeur()): Promise<LotSeLoger & 
   return { ...lot, empreintes };
 }
 
+/* Une annonce supprimée chez SeLoger ? (V3.100)
+   Son dernier état qui compte, du plus récent au plus ancien, en sautant ce
+   qui est en cours (RECEIVING, RECEIVED, …ING) et les échecs (…_FAILED, un
+   PUT refusé sur une annonce supprimée) : DELETED = elle n'existe plus. */
+async function supprimee(sb: ReturnType<typeof baseServeur>, a: Acces, cid: string, forcer: boolean): Promise<boolean> {
+  try {
+    const rep = await appelAviv(sb, a, 'GET', `/classifieds/${encodeURIComponent(cid)}/statuses?limit=15`, undefined, forcer);
+    if (rep.status === 404) return true;
+    if (rep.status !== 200) return false;
+    const items = ((Array.isArray(rep.json?.items) ? rep.json!.items : []) as { status?: string; statusDate?: string }[])
+      .sort((x, y) => String(y.statusDate || '').localeCompare(String(x.statusDate || '')));
+    const fin = items.find(x => { const st = String(x.status || ''); return st && !/^RECEIV/.test(st) && !/ING$/.test(st) && !/_FAILED$/.test(st); });
+    return fin?.status === 'DELETED';
+  } catch { return false; }
+}
+
 /* ── L'envoi ───────────────────────────────────────────────────────────── */
 export type ResultatSeLoger = {
   ok: boolean; erreur?: string; env: Env;
@@ -230,6 +246,12 @@ export async function deposerSeLoger(o: { forcer?: boolean } = {}): Promise<Resu
       let rep: Reponse;
       let cid = garde?.classifiedId || '';
       let cree = false;
+      /* V3.100 (8 octobre) : l'annonce gardée a pu être SUPPRIMÉE chez SeLoger —
+         celles qu'on avait reprises d'ImmoFacile (« Duplicated classified ») ont
+         été effacées quand sa diffusion a été coupée. Un PUT sur une annonce
+         supprimée est accepté (202) mais ne la remet jamais en ligne : on en
+         crée une nouvelle. */
+      if (cid && await supprimee(sb, a, cid, f)) cid = '';
       if (cid) {
         rep = await appelAviv(sb, a, 'PUT', `/classifieds/${encodeURIComponent(cid)}`, x.annonce, f);
         /* Effacée de leur côté : on la recrée. */
@@ -239,6 +261,12 @@ export async function deposerSeLoger(o: { forcer?: boolean } = {}): Promise<Resu
         cree = true;
         /* Déjà chez eux sous le même identifiant : on la met à jour. */
         const existant = dejaLa(rep);
+        if (existant && existant === garde?.classifiedId) {
+          /* SeLoger renvoie vers l'annonce supprimée : on ne la « met pas à jour »
+             dans le vide, on le dit. */
+          r.erreurs.push(`${nom} : SeLoger garde l’ancienne annonce supprimée (${existant}) sous cet identifiant — à signaler à SeLoger`);
+          continue;
+        }
         if (existant) { cid = existant; rep = await appelAviv(sb, a, 'PUT', `/classifieds/${encodeURIComponent(cid)}`, x.annonce, f); cree = false; }
       }
       if (rep.status >= 200 && rep.status < 300) {
