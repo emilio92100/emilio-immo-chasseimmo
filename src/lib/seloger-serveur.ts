@@ -153,9 +153,14 @@ export async function appelAviv(sb: ReturnType<typeof baseServeur>, a: Acces, me
   const r = await une(await jeton(sb, a, { forcer }));
   /* Un jeton refusé (révoqué, codes changés) : un seul nouvel essai, et
      seulement s'il a plus de 10 minutes — un jeton tout neuf refusé, c'est
-     un réglage à revoir, pas un jeton à redemander. */
+     un réglage à revoir, pas un jeton à redemander.
+     V3.100 : de même pour « 403 Bad Scope » : un jeton pris AVANT qu'AVIV
+     ouvre un droit (les contacts, le 8 octobre) ne le porte pas, et il vaut
+     24 heures ; il faut en demander un neuf pour avoir le droit. */
   const vieux = enMemoire.get(a.audience);
-  if (r.status === 401 && vieux?.le && Date.now() - vieux.le > 10 * 60_000) return une(await jeton(sb, a, { neuf: true, forcer }));
+  const texte = [r.json?.title, r.json?.detail, r.json?.message].filter(x => typeof x === 'string').join(' ');
+  const droitManquant = r.status === 403 && /scope/i.test(texte);
+  if ((r.status === 401 || droitManquant) && vieux?.le && Date.now() - vieux.le > 10 * 60_000) return une(await jeton(sb, a, { neuf: true, forcer }));
   return r;
 }
 
