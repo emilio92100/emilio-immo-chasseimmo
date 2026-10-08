@@ -33,6 +33,8 @@ type Bien = {
   surfaceTerrasse?: number | null; surfaceBalcon?: number | null;
   nbParking?: number | null;
   charges?: number | null; taxe?: number | null; chargesComprises?: string | null;
+  /* V3.133 : un bien de l'agence — le montant annuel saisi dans le CRM. */
+  chargesAn?: number | null;
   chauffage?: string | null; lots?: number | null;
   pdfUrl: string | null; envoyeLe: string | null; vuLe: string | null;
   avis: string | null; commentaire: string | null; retourLe: string | null;
@@ -4231,7 +4233,10 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
   /* Les charges se saisissent au trimestre dans le CRM : on l'écrit tel quel
      plutôt que de multiplier par quatre un chiffre dont on n'est pas sûr. */
   const couts: [string, string, string, string][] = [];
-  if (b.charges) couts.push(['euro', 'Charges', EUR(b.charges), 'par trimestre']);
+  /* V3.133 (Alexandre : « les charges, je les mets à l'année ») : pour un bien
+     de l'agence, le montant annuel saisi, et ce qu'il fait par mois. */
+  if (b.chargesAn) couts.push(['euro', 'Charges', EUR(b.chargesAn), `par an · ${EUR(Math.round(b.chargesAn / 12))} par mois`]);
+  else if (b.charges) couts.push(['euro', 'Charges', EUR(b.charges), 'par trimestre']);
   if (b.taxe) couts.push(['immeuble', 'Taxe foncière', EUR(b.taxe), 'par an']);
   if (b.chauffage) couts.push(['eclair', 'Chauffage', b.chauffage, '']);
   if (b.lots) couts.push(['maison', 'Copropriété', String(b.lots), b.lots > 1 ? 'lots' : 'lot']);
@@ -4401,7 +4406,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
                 </div>
               ))}
             </div>
-            {b.charges && b.chargesComprises ? (
+            {(b.chargesAn || b.charges) && b.chargesComprises ? (
               <p className="cout-compris"><b>Compris dans les charges :</b> {b.chargesComprises}</p>
             ) : null}
           </>
