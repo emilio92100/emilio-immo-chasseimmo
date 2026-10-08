@@ -14,7 +14,7 @@
        (/api/biens-vente/photos-immofacile), dans l'ordre d'ImmoFacile ;
      · son historique : une ligne « Repris d'ImmoFacile », une ligne d'étape,
        puis une note par action d'ImmoFacile, à sa date ;
-     · le contact devient « Vendeur » quand la vente est en cours.
+     · son contact : Vendeur si le bien est en vente, Propriétaire sinon (V3.137).
    Chaque écriture est lue ; un bien qui échoue n'arrête pas les suivants,
    et le compte rendu dit ce qui a manqué. Un bien déjà importé (sa
    référence ImmoFacile est dans une fiche) n'est jamais recréé. */
@@ -26,6 +26,7 @@ import { colonnesBien, lirePhotos, referenceSuivante, type BienVente, type Donne
 import { completerDonnees, type BienCRM, type PlanBien } from '@/lib/import-biens-immofacile';
 import { sourceDepuis, type ClientCRM } from '@/lib/import-immofacile';
 import { colonneSourceAbsente } from '@/lib/sources';
+import { ETAPES_EN_VENTE } from '@/lib/contacts';
 import { donneesProprio, marquerVendeur, noterProprioRelie, type ClientMini } from './outils';
 
 export type EtatCRMBiens = { clients: ClientCRM[]; biens: BienCRM[]; references: (string | null)[] };
@@ -56,7 +57,9 @@ const msg = (e: unknown) => (e as Error)?.message || 'erreur inconnue';
 async function creerVendeur(p: PlanBien, etape: EtapeVente, crm: EtatCRMBiens): Promise<ClientCRM> {
   const v = p.vendeur!;
   const reference = await genererReference();
-  const types = etape === 'vendu' ? ['vendeur_signe'] : ['vendeur'];
+  /* V3.137 : Vendeur seulement si le bien est en vente (mandat, sous offre,
+     sous compromis) ; Propriétaire sinon. */
+  const types = etape === 'vendu' ? ['vendeur_signe'] : ETAPES_EN_VENTE.includes(etape) ? ['vendeur'] : ['proprietaire'];
   const ligne: Record<string, unknown> = {
     reference, prenom: v.prenom || '', nom: v.nom || '', token_espace: jetonEspace(v.prenom, v.nom),
     adresse: v.adresse || null, emails: v.emails, telephones: v.telephones, statut: 'prospect', est_vendeur: false,
@@ -170,9 +173,10 @@ export async function importerBien(p: PlanBien, c: ChoixBien, crm: EtatCRMBiens,
     else res.suivi = (data || []).length;
   }
 
-  /* 5. Le contact : « Vendeur » quand la vente est en cours ; une ligne dans son Suivi. */
+  /* 5. Le contact : son type suit le bien (V3.137 : Vendeur en vente,
+     Propriétaire sinon) ; une ligne dans son Suivi. */
   if (client && EN_COURS.includes(c.etape)) {
-    if (!(await marquerVendeur(client.id))) res.soucis.push('le type « Vendeur » n’a pas été posé sur son contact');
+    if (!(await marquerVendeur(client.id))) res.soucis.push('son type de contact n’a pas été mis à jour');
     try { await noterProprioRelie(bien, client.id, false); } catch (e) { res.soucis.push(`la ligne dans le Suivi du vendeur n’a pas été écrite (${msg(e)})`); }
   }
   return res;
