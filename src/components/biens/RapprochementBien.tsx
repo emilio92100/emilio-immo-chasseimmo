@@ -35,7 +35,7 @@ import { euros } from '@/lib/mandat';
 import type { BienVente, SuiviVente } from '@/lib/biens-vente';
 import { Illu, etat, mailDe, sansEspaces, telDe, teinte, type ModeAcheteurs } from './AcheteursBien';
 import {
-  RAISONS_CACHE, STATUT_ACHETEUR, acheteurChoisi, ajouterSuivi, nomClient,
+  RAISONS_CACHE, STATUT_ACHETEUR, acheteurChoisi, ajouterSuivi, estPasPourLui, nomClient, supprimerSuivi,
   type Acheteur, type Cache, type Copie, type RaisonCache, type TriBien,
 } from './outils';
 import r from './RapprochementBien.module.css';
@@ -71,12 +71,13 @@ const SOUS: Record<AvisIA['v'], string> = {
   non: 'Le rapprochement les écarte : la raison est écrite pour chacun.',
 };
 
-export function RapprochementBien({ bien, tri, mode, copies, seances, onSeance, onFiche, onAgir, onAutre }: {
+export function RapprochementBien({ bien, tri, mode, copies, suivi, onSuivi, onFiche, onAgir, onAutre }: {
   bien: BienVente; tri: TriBien; mode: ModeAcheteurs; copies: Copie[];
-  /* L'historique du bien : ses rapprochements passés y sont (estSeance). */
-  seances: SuiviVente[];
-  /* Un rapprochement vient d'être gardé : la fiche l'ajoute à son historique. */
-  onSeance?: (x: SuiviVente) => void;
+  /* L'historique du bien : ses rapprochements passés (estSeance) et ses
+     « Pas pour lui » (estPasPourLui, V3.126). */
+  suivi: SuiviVente[];
+  /* Une ligne vient d'être ajoutée (ou retirée) : la fiche suit, sans se relire. */
+  onSuivi?: (ajout: SuiviVente | null, retrait?: string) => void;
   onFiche: (clientId: string) => void;
   /* « Envoyer… » : la fenêtre des trois choix (FenEnvoiAcheteurs). */
   onAgir?: (l: Acheteur[]) => void;
@@ -113,9 +114,14 @@ export function RapprochementBien({ bien, tri, mode, copies, seances, onSeance, 
     if (touche.current) retenirPlace(`bien:${bien.id}`, { rappro: { cle: cleCopies, ouverts, non: nonOuverts, choisis } });
   }, [bien.id, cleCopies, ouverts, nonOuverts, choisis]);
 
-  /* Ceux qui passent le premier tri aujourd'hui, par recherche. */
-  const candidats = useMemo(() => [...tri.bons, ...tri.partiels, ...tri.incomplets], [tri]);
-  const parId = useMemo(() => new Map(candidats.map(x => [x.recherche.id, x])), [candidats]);
+  /* Ceux qui passent le premier tri aujourd'hui, par recherche ; sans ceux
+     qu'Alexandre a écartés de ce bien (« Pas pour lui », V3.126). */
+  const seances = useMemo(() => suivi.filter(estSeance), [suivi]);
+  const ecartes = useMemo(() => suivi.filter(estPasPourLui).sort((p, q) => q.le.localeCompare(p.le)), [suivi]);
+  const ecartesIds = useMemo(() => new Set(ecartes.map(x => String(x.recherche_id))), [ecartes]);
+  const tous = useMemo(() => [...tri.bons, ...tri.partiels, ...tri.incomplets], [tri]);
+  const candidats = useMemo(() => tous.filter(x => !ecartesIds.has(x.recherche.id)), [tous, ecartesIds]);
+  const parId = useMemo(() => new Map(tous.map(x => [x.recherche.id, x])), [tous]);
 
   /* Les rapprochements : ceux de l'historique, et celui qui vient d'être fait. */
   const [locale, setLocale] = useState<Seance | null>(null);
@@ -178,10 +184,36 @@ export function RapprochementBien({ bien, tri, mode, copies, seances, onSeance, 
       const garde = await ajouterSuivi({ bien_id: bien.id, type: 'note', le: seance.le, commentaire, donnees });
       const id = garde?.id || seance.id;
       setLocale({ ...seance, id, gardee: true });
-      onSeance?.({ ...(garde || {}), id, bien_id: bien.id, type: 'note', le: seance.le, commentaire, donnees } as SuiviVente);
+      onSuivi?.({ ...(garde || {}), id, bien_id: bien.id, type: 'note', le: seance.le, commentaire, donnees } as SuiviVente);
     } catch (e) {
       setSouci(s => ({ ...s, erreur: `Ce rapprochement est à l’écran, mais il n’a pas pu être gardé : ${(e as Error).message}` }));
     }
+  }
+
+  /* ── « Pas pour lui » (V3.126) : il ne sera plus proposé sur ce bien ── */
+  const [ecartEn, setEcartEn] = useState('');
+  async function ecarter(x: Acheteur) {
+    if (ecartEn) return;
+    setEcartEn(x.recherche.id);
+    const nom = nomClient(x.client);
+    const commentaire = `${nom} ne sera plus proposé dans les rapprochements de ce bien.`;
+    const donnees = { pasPourLui: true };
+    try {
+      const garde = await ajouterSuivi({ bien_id: bien.id, type: 'note', client_id: x.client.id, recherche_id: x.recherche.id, qui: nom, commentaire, donnees });
+      touche.current = true;
+      setChoisis(c => c.filter(id => id !== x.recherche.id));
+      onSuivi?.({ ...(garde || {}), bien_id: bien.id, type: 'note', client_id: x.client.id, recherche_id: x.recherche.id, qui: nom, commentaire, donnees } as SuiviVente);
+    } catch (e) {
+      setSouci(s => ({ ...s, erreur: `« Pas pour lui » n’a pas pu être gardé : ${(e as Error).message}` }));
+    }
+    setEcartEn('');
+  }
+  async function remettre(ligneId: string) {
+    if (ecartEn) return;
+    setEcartEn(ligneId);
+    try { await supprimerSuivi(ligneId); onSuivi?.(null, ligneId); }
+    catch (e) { setSouci(s => ({ ...s, erreur: `Il n’a pas pu être remis : ${(e as Error).message}` })); }
+    setEcartEn('');
   }
 
   /* ── Les cases ── */
@@ -214,10 +246,11 @@ export function RapprochementBien({ bien, tri, mode, copies, seances, onSeance, 
     const et = x ? etat(x) : null;
     const nom = x ? nomClient(x.client) : l.nom;
     const tt = teinte(l.c);
+    const ecarte = ecartes.find(y => y.recherche_id === l.r) || null;
     return (
       <div key={l.r} className={`${r.carte} ${peutEnvoyer ? r.carteEnvoi : ''} ${on ? r.carteOn : ''}`} data-v={l.v} style={{ animationDelay: `${Math.min(k, 8) * 0.035}s` }}>
         {peutEnvoyer && (
-          <button type="button" className={`${r.coche} ${on ? r.cocheOn : ''}`} disabled={!x || deja} aria-pressed={on}
+          <button type="button" className={`${r.coche} ${on ? r.cocheOn : ''}`} disabled={!x || deja || !!ecarte} aria-pressed={on}
             aria-label={deja ? 'Déjà présenté' : !x ? 'Plus dans ta base' : on ? `Décocher ${nom}` : `Cocher ${nom}`}
             title={deja ? 'Il l’a déjà dans son espace' : !x ? 'Sa recherche ne passe plus le premier tri' : undefined}
             onClick={() => basculer(l.r)}>
@@ -230,23 +263,27 @@ export function RapprochementBien({ bien, tri, mode, copies, seances, onSeance, 
             <button type="button" className={r.nom} onClick={() => onFiche(l.c)}>{nom}</button>
             {statut && <span className={r.tag}>{statut}</span>}
             {x?.recherche.budget_max ? <span className={r.budget}><Ic n="euro" t={13} />{`jusqu’à ${euros(x.recherche.budget_max)}`}</span> : null}
+            {ecarte && <span className={r.tagEcarte}>{'Pas pour lui'}</span>}
           </div>
           <AvisDetail avis={{ v: l.v, r: l.t, s: l.s, p: l.p, m: l.m }} sansMot />
           {et && <span className={et.ton === 'nouveau' ? r.etatNouveau : r.etat}>{et.ton === 'nouveau' && <i className={r.ping} />}{et.t}</span>}
           {!x && <span className={r.parti}>{'Sa recherche est fermée, ou ne passe plus le premier tri.'}</span>}
         </div>
-        {x && (tel || mail || peutEnvoyer) && (
+        {x && (
           <div className={r.actions}>
             <div className={r.contacts}>
               {tel && <a className={r.rond} href={`tel:${sansEspaces(tel)}`} aria-label={`Appeler ${nom}`} title={tel}><Ic n="telephone" t={16} /><span className={r.rondTx}>Appeler</span></a>}
               {tel && <a className={r.rond} href={`sms:${sansEspaces(tel)}`} aria-label={`SMS à ${nom}`} title="SMS"><Ic n="bulle" t={16} /><span className={r.rondTx}>SMS</span></a>}
               {mail && <a className={`${r.rond} ${r.rondMail}`} href={`mailto:${mail}`} aria-label={`Mail à ${nom}`} title={mail}><Ic n="mail" t={16} /></a>}
             </div>
-            {peutEnvoyer && (
+            {peutEnvoyer && !ecarte && (
               <button type="button" className={r.agir} onClick={() => onAgir!([x])}>
                 <Ic n="envoyer" t={15} />{deja ? 'Renvoyer…' : 'Envoyer…'}
               </button>
             )}
+            {ecarte
+              ? <button type="button" className={r.pasPour} disabled={!!ecartEn} onClick={() => { void remettre(ecarte.id); }} title="Il sera de nouveau proposé dans les rapprochements de ce bien">{'Le remettre'}</button>
+              : <button type="button" className={r.pasPour} disabled={!!ecartEn} onClick={() => { void ecarter(x); }} title="Il ne te sera plus proposé sur ce bien. Tu pourras le remettre.">{ecartEn === x.recherche.id ? '…' : 'Pas pour lui'}</button>}
           </div>
         )}
       </div>
@@ -450,6 +487,23 @@ export function RapprochementBien({ bien, tri, mode, copies, seances, onSeance, 
               })}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Écartés à la main (« Pas pour lui », V3.126) */}
+      {ecartes.length > 0 && (
+        <section className={r.ecartes} aria-label="Écartés par toi">
+          <div className={r.ecartesT}>
+            <b>{`Pas pour eux · ${ecartes.length}`}</b>
+            <span>{fr('Tu les as écartés de ce bien : le rapprochement ne les relit plus et ne te les propose plus.')}</span>
+          </div>
+          {ecartes.map(y => (
+            <div key={y.id} className={r.ecarte}>
+              <button type="button" className={r.gensNom} onClick={() => y.client_id && onFiche(y.client_id)}>{y.qui || 'Un acheteur'}</button>
+              <small>{`écarté le ${dateRappro(y.le)}`}</small>
+              <button type="button" className={r.pasPour} disabled={!!ecartEn} onClick={() => { void remettre(y.id); }}>{'Le remettre'}</button>
+            </div>
+          ))}
         </section>
       )}
 

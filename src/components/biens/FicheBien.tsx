@@ -40,7 +40,7 @@ import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
 import { CarteAcheteurs, FenEnvoiAcheteurs, modeAcheteurs } from './AcheteursBien';
-import { RapprochementBien, estSeance, lireSeance, resumeSeance } from './RapprochementBien';
+import { RapprochementBien, lireSeance, resumeSeance } from './RapprochementBien';
 import { FenEnvoiLot } from './LotBiens';
 import { DossierBien, type DestPropose } from './DossierBien';
 import { PastilleProprio } from './PastilleProprio';
@@ -988,6 +988,7 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       else if (d.avis === true) l.push({ cle: x.id, le: x.le, ic: 'envoyer', ton: 'ic_violet', titre: 'Avis de valeur envoyé', detail: x.commentaire || '', genre: 'etapes' });
       else if (d.cycleEstimation === true) l.push({ cle: x.id, le: x.le, ic: 'retour', ton: 'ic_gris', titre: 'Nouvelle estimation : la précédente est gardée ici', detail: x.commentaire || '', genre: 'etapes' });
       else if (d.pointVendeur === true) l.push({ cle: x.id, le: x.le, ic: 'megaphone', ton: 'ic_or', titre: 'Point vendeur envoyé', detail: x.commentaire || '', genre: 'etapes' });
+      else if (d.pasPourLui === true) l.push({ cle: x.id, le: x.le, ic: 'groupe', ton: 'ic_gris', genre: 'acheteurs', titre: `Pas pour ${x.qui || 'cet acheteur'} : écarté du rapprochement`, detail: 'Il n’est plus proposé dans les rapprochements de ce bien. « Le remettre », depuis l’onglet Rapprochement.' });
       else if (d.rapprochement === true) {
         /* V3.125 : un rapprochement, gardé daté (onglet Rapprochement). */
         const se = lireSeance(x);
@@ -1603,7 +1604,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
     { k: 'apercu', l: 'Résumé', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
     ...(avant || e === 'annonce_type' ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
-    { k: 'acheteurs', l: 'Rapprochement', n: tri.bons.length, ic: 'cible' },
+    /* V3.126 : sans chiffre — le compte en chiffres (avant toute relecture)
+       contredisait le résultat du rapprochement (Alexandre : « rien affiché »). */
+    { k: 'acheteurs', l: 'Rapprochement', ic: 'cible' },
     { k: 'documents', l: 'Documents', n: docsLies.length, ic: 'plume' }, { k: 'historique', l: 'Historique', ic: 'historique' },
   ];
 
@@ -2215,8 +2218,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {onglet === 'acheteurs' && (
         <div className={b.col}>
           <RapprochementBien key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} bien={bien} tri={tri} mode={mode} copies={detail?.copies || []}
-            seances={(detail?.suivi || []).filter(estSeance)}
-            onSeance={x => setDetail(d2 => (d2 ? { ...d2, suivi: [x, ...d2.suivi.filter(y => y.id !== x.id)] } : d2))}
+            suivi={detail?.suivi || []}
+            onSuivi={(ajout, retrait) => setDetail(d2 => (d2 ? { ...d2, suivi: [...(ajout ? [ajout] : []), ...d2.suivi.filter(y => y.id !== retrait && y.id !== ajout?.id)] } : d2))}
             onFiche={ouvrirClient}
             onAgir={mode === 'vente' || mode === 'avant' ? l => garde('presenter', () => setFen({ k: 'acheteurs', liste: l }))() : undefined}
             onAutre={mode === 'vente' || mode === 'avant' ? garde('presenter', () => setEnvoiAutre(true)) : undefined} />

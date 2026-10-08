@@ -48,7 +48,7 @@ import { Avatar, Illu, modeAcheteurs, teinte } from './AcheteursBien';
 import { AvecScore, AvisDetail, IconeAvis, MOT_IA, Progression, analyserIA, compareIA, type AvisIA, type AvisParBien } from './RapprochementIA';
 import { RAISONS_ETAPE, avantRdv } from './FenetresBien';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, acheteurChoisi, acheteursTries, changerEtape, rechercheOuverte, recherchesRappro, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
+  SEUIL_CORRESPOND, SEUIL_LISTE, acheteurChoisi, acheteursTries, changerEtape, estPasPourLui, rechercheOuverte, recherchesRappro, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
   instantPasse, mettreEnSelection, nomClient, solderDemandesDuBien, suiteEnvoi, type Acheteur, type ClientMini, type Copie, type ListeBiens, type RechercheMini,
 } from './outils';
 import l from './LotBiens.module.css';
@@ -196,11 +196,13 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
      à 50 % et plus (V3.125 : les recherches à compléter aussi, comme dans
      l'onglet Rapprochement d'un bien). */
   const lignes = useMemo(() => {
+    /* V3.126 : sans les acheteurs écartés de ce bien (« Pas pour lui »). */
+    const pasPour = new Set(liste.suivi.filter(estPasPourLui).map(x => `${x.bien_id}:${x.recherche_id}`));
     const m = new Map<string, Ligne>();
     for (const b of envoyables) {
       const copies = liste.copies.filter(c => c.bien_vente_id === b.id);
       for (const a of acheteursTries(b, recherchesRappro(liste), liste.clients, copies).retenus) {
-        if (a.corr.note < SEUIL_LISTE || manuels.includes(a.recherche.id)) continue;
+        if (a.corr.note < SEUIL_LISTE || manuels.includes(a.recherche.id) || pasPour.has(`${b.id}:${a.recherche.id}`)) continue;
         const x = m.get(a.recherche.id) || { cle: a.recherche.id, acheteur: a, items: [] };
         x.items.push({ bien: b, acheteur: a });
         m.set(a.recherche.id, x);

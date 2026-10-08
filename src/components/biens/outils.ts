@@ -892,6 +892,11 @@ export async function majSuivi(id: string, patch: Partial<SuiviVente>): Promise<
   if (error) lever('Le suivi n’a pas pu être modifié', error.message);
   return data as SuiviVente;
 }
+/* V3.126 — « Pas pour lui » : un acheteur écarté à la main des rapprochements
+   d'un bien. Une ligne de son suivi (type « note », `donnees.pasPourLui`,
+   avec la recherche et le client) : visible dans l'historique, et « Le
+   remettre » la supprime. */
+export const estPasPourLui = (x: Pick<SuiviVente, 'type' | 'donnees' | 'recherche_id'>) => x.type === 'note' && (x.donnees as Record<string, unknown> | null)?.pasPourLui === true && !!x.recherche_id;
 export async function supprimerSuivi(id: string): Promise<void> {
   const { error } = await supabase.from('biens_vente_suivi').delete().eq('id', id);
   if (error) lever('La ligne n’a pas pu être supprimée', error.message);
