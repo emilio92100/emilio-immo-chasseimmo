@@ -371,13 +371,35 @@ async function lireVentes(visites: any[]): Promise<Record<string, any>> {
   return out;
 }
 
+/* V3.138 — Revenir d'une fiche (Alexandre : « depuis l'agenda, j'ouvre sa
+   fiche acheteur ; quand je fais retour, je ne reviens pas sur la fiche qui
+   était ouverte »). En partant vers une fiche, l'agenda note dans l'adresse
+   le jour, la vue et le rendez-vous ouvert (`memoriserRetour`) : le retour
+   du navigateur y revient, et le bouton retour de la fiche aussi (il relit
+   la même adresse, gardée pour l'onglet). L'agenda les relit en s'ouvrant,
+   puis remet une adresse simple. */
+type RetourAgenda = { rdv: string; jour: string | null; vue: 'jour' | 'semaine' | 'mois' | null };
+function lireRetourAgenda(): RetourAgenda | null {
+  if (typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  const rdv = p.get('rdv');
+  if (p.get('page') !== 'agenda' || !rdv) return null;
+  const jour = p.get('jour'), vue = p.get('vue');
+  return { rdv, jour: jour && /^\d{4}-\d{2}-\d{2}$/.test(jour) ? jour : null, vue: vue === 'jour' || vue === 'semaine' || vue === 'mois' ? vue : null };
+}
+
 export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const etroit = useEtroit();
   const [maintenant, setMaintenant] = useState(() => new Date());
-  const [vue, setVue] = useState<'jour' | 'semaine' | 'mois'>('semaine');
-  const [jour, setJour] = useState(() => cleDe(new Date()));
+  const [vue, setVue] = useState<'jour' | 'semaine' | 'mois'>(() => lireRetourAgenda()?.vue || 'semaine');
+  const [jour, setJour] = useState(() => lireRetourAgenda()?.jour || cleDe(new Date()));
   const [masques, setMasques] = useState<Partial<Record<TypeRdv, boolean>>>({});
-  const [selCle, setSelCle] = useState<string | null>(null);
+  const [selCle, setSelCle] = useState<string | null>(() => lireRetourAgenda()?.rdv || null);
+  /* L'adresse relue : elle redevient simple (un rechargement plus tard ne
+     rouvre pas ce rendez-vous). */
+  useEffect(() => {
+    if (lireRetourAgenda()) window.history.replaceState(null, '', `${window.location.pathname}?page=agenda`);
+  }, []);
   const [modale, setModale] = useState<Modale>(null);
   const [rappelDe, setRappelDe] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
@@ -469,23 +491,34 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     try { window.sessionStorage.setItem('emi-cr', ev.ids[0]); } catch { /* sans effet */ }
     onNavigate('visites');
   };
+  /* V3.138 : avant d'ouvrir une fiche, l'adresse de l'agenda dit ce qui
+     était à l'écran — le retour y ramène (voir `lireRetourAgenda`). */
+  const memoriserRetour = () => {
+    if (!selCle) return;
+    const q = `?page=agenda&rdv=${encodeURIComponent(selCle)}&jour=${jour}&vue=${vue}`;
+    try {
+      window.history.replaceState(null, '', `${window.location.pathname}${q}`);
+      window.sessionStorage.setItem('emi-retour-agenda', q);
+    } catch { /* sans mémoire, le retour ramène à l'agenda du jour */ }
+  };
   /* V3.50 : un rendez-vous lié à un bien de l'agence (visite hors CRM,
      estimation) ouvre la fiche du bien. */
   const ouvrirBien = (ev: Ev) => {
     const b = bienDuRdv(ev);
     if (!b) return;
-    setSelCle(null);
-    onNavigate('biens', { bien: b });
+    memoriserRetour();
+    onNavigate('biens', { bien: b, depuis: 'agenda' });
   };
   /* V3.134 : le bien de l'agence d'une visite d'acheteur, d'un clic sur sa carte. */
   const ouvrirBienVente = (id: string) => {
-    setSelCle(null);
-    onNavigate('biens', { bien: id });
+    memoriserRetour();
+    onNavigate('biens', { bien: id, depuis: 'agenda' });
   };
   const ouvrirDossier = async (clientId: string | null) => {
     if (!clientId) return;
     const { data, error } = await supabase.from('clients').select('*').eq('id', clientId).maybeSingle();
     if (error || !data) { alert("Le dossier n'a pas pu être ouvert."); return; }
+    memoriserRetour();
     onNavigate('fiche', data);
   };
 
