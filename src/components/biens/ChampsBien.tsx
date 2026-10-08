@@ -552,9 +552,11 @@ function ChampProprio({ d, maj, off }: { d: Donnees; maj: Maj; off: boolean }) {
     maj('clientId', c.id);
     maj('proprioNouveau', false);
     maj('proprioSans', false);
-    /* Relié à un bien comme propriétaire : il devient « vendeur » dans ses
-       contacts. V3.50 : attendu, et un échec se dit. */
-    if (!(await marquerVendeur(c.id))) setErreur(`${nomClient(c)} est relié au bien, mais son type « vendeur » n’a pas pu être posé sur sa fiche.`);
+    /* Relié à un bien comme propriétaire : son type suit ses biens (V3.137 :
+       Vendeur si l'un est en vente, Propriétaire sinon). La base le refait
+       quand la fiche du bien est enregistrée avec lui. V3.50 : attendu, et
+       un échec se dit. */
+    if (!(await marquerVendeur(c.id))) setErreur(`${nomClient(c)} est relié au bien, mais son type de contact n’a pas pu être mis à jour sur sa fiche.`);
     /* Ses coordonnées remplacent ce qui est saisi : d'office si rien ne
        l'est (ou si l'on change de propriétaire), sinon après accord (un
        autre nom avait été tapé). */
