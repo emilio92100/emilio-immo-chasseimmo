@@ -1498,6 +1498,53 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.122 — 8 octobre 2026 · « Son parcours », et le rapprochement intelligent
+
+**SQL à passer** : `outils/sql/parcours-rapprochement-ia.sql`. Il ajoute deux colonnes jsonb,
+`recherches.parcours` et `biens_vente.rapprochement_ia`. Sans elles, rien ne casse : les critères
+s'enregistrent quand même et un message dit de passer le SQL ; l'analyse marche mais ses avis ne
+sont pas gardés.
+
+- **« Son parcours »** (`src/lib/parcours.ts`, `src/components/shared/Parcours.tsx`). Alexandre :
+  « je lui demande : vous visitez depuis longtemps, vous avez fait beaucoup de visites, qu'est-ce qui
+  n'a pas convenu, qu'est-ce qui est revenu souvent ». Maquette validée, puis condensée à sa demande
+  (« il y a beaucoup d'infos… une petite icône à côté pour bien me situer »).
+  - Une étape des critères, la 9e, avant « Contexte du projet » (`ORDRE_ETAPES_CRIT` donne le rang
+    d'une étape). Elle se remplit aussi à la création d'un contact.
+  - Le contenu de l'étape :
+    - « Il cherche depuis » et « Visites, environ », une pastille à choisir pour chacun ;
+    - « Ce qui n'a pas convenu » : 24 pastilles, chacune avec son icône (`ICONES_PARCOURS`).
+      Un appui = une fois, deux = revient souvent, trois = retiré ;
+    - « Ce qui lui a plu » : 12 pastilles ;
+    - « Autre chose » ajoute une pastille à soi, rangée comme un libellé de plus dans la forme
+      `{ depuis, visites, defauts: {libellé: 1|2}, plu: [], note }` ;
+    - un texte libre.
+  - Un bloc « Son parcours » dans « Sa recherche », sous les précisions ; vide, il invite à le
+    remplir. « Modifier » ouvre directement son étape.
+  - Il s'écrit **à part** des autres critères (`colonnesCriteres` ne le contient pas), pour qu'une
+    colonne pas encore créée ne bloque jamais l'enregistrement. Une ligne « 🧭 Son parcours noté »
+    va au Suivi.
+  - Privé : la page de l'espace choisit ses colonnes une à une, `parcours` n'en fait pas partie.
+- **Le rapprochement intelligent** (`/api/rapprochement-ia`, et la carte en tête de l'onglet
+  Rapprochement d'un bien).
+  - Alexandre : « est-ce que le rapprochement peut être aussi fiable que la veille… qu'il lise les
+    précisions, les comptes rendus de visite, les points négatifs, le bien, ses commentaires ».
+  - La note en chiffres fait toujours le premier tri. Ensuite, « Lancer l'analyse » envoie à l'IA
+    de Claude (`claude-sonnet-5-5`, repli sur `claude-haiku-4-5-20251001` si la clé ne connaît pas le
+    premier) les acheteurs retenus (« correspondent », « en partie », « à compléter »), par paquets
+    de 12, pour tenir sous la minute de Vercel.
+  - Ce qu'elle reçoit pour chacun : ses critères et indispensables, ses précisions, son parcours, ce
+    que ses visites ont appris (`apprisDe`), ses comptes rendus, ce qu'il a dit des biens montrés,
+    les annonces écartées avec leur motif.
+  - Ce qu'elle reçoit du bien : la fiche, la visite sur place, la description. Rien de nominatif :
+    ni nom, ni adresse exacte, ni téléphone, ni propriétaire.
+  - Elle rend « Oui » / « À voir » / « Non » et une phrase, affichés sur chaque ligne. Les « oui »
+    passent en tête et les « non » à la fin ; un « non » se décoche s'il n'a pas été coché à la main.
+  - La règle du budget est celle de la veille : jusqu'à environ 7 % au-dessus, c'est négociable.
+    Une information absente du bien n'est jamais un « non ».
+  - Les avis sont gardés sur le bien avec l'empreinte de ce qui a été lu : « Mettre à jour » ne relit
+    que ce qui a changé. Le coût est de quelques centimes par analyse.
+
 ### V3.121 — 8 octobre 2026 · « Envoyer » s'ouvre vide, un simple mail hors du CRM, et chaque fiche garde sa place
 
 Rien à passer dans Supabase.
