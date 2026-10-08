@@ -33,6 +33,7 @@ import { lireParcours, memeParcours, parcoursVide, texteParcours } from '@/lib/p
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes-visite';
+import { bienVisitable, poserVisites } from '@/lib/planifier-visite';
 import { TypesEnLigne } from '@/components/contacts/ChampsContact';
 import { BiensHero, useBiensBandeau } from '@/components/contacts/BiensBandeau';
 import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
@@ -1013,6 +1014,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       setLigneVisee(j.id);
     }
     const t1 = setTimeout(() => {
+      /* V3.129 : venu pour un bien précis (Visites › « Voir sur sa fiche ») :
+         c'est la liste des biens qui l'amène à l'écran (OngletBiens, `vise`). */
+      if (ouverture.bienId) return;
       const cible = (j && ouverture.onglet === 'suivi' && document.getElementById(`suivi-${j.id}`)) || document.querySelector('.fc-onglets');
       cible?.scrollIntoView({ block: j ? 'center' : 'start', behavior: 'smooth' });
     }, 380);
@@ -2730,24 +2734,8 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      pour une offre de secours, on le demande. Rend false si on s'arrête.
      Lecture impossible : on laisse faire (le bien a pu être vérifié avant). */
   async function venteAgenceVisitable(ids: string[]): Promise<boolean> {
-    const copies = biens.filter(b => ids.includes(b.id) && b.bien_vente_id);
-    if (!copies.length) return true;
-    const { data, error } = await supabase.from('biens_vente').select('id, etape, archive')
-      .in('id', copies.map(b => b.bien_vente_id as string));
-    if (error) return true;
-    const ventes = (data || []) as { id: string; etape: string | null; archive: boolean | null }[];
-    for (const b of copies) {
-      const v = ventes.find(x => x.id === b.bien_vente_id);
-      if (!v) continue;
-      const nom = b.titre || b.ville || 'Ce bien';
-      if (v.etape === 'vendu') { alert(`Ce bien est vendu.\n\n« ${nom} » ne peut plus être visité.`); return false; }
-      if (v.archive || v.etape === 'retire' || v.etape === 'suspendu') { alert(`Ce bien n’est plus en vente.\n\n« ${nom} » ne peut plus être visité.`); return false; }
-      if (v.etape === 'compromis' && !compromisAccepte.current.has(b.id)) {
-        if (!confirm(`Ce bien est sous compromis : une visite ne sert que pour une offre de secours. Continuer ?\n\n« ${nom} »`)) return false;
-        compromisAccepte.current.add(b.id);
-      }
-    }
-    return true;
+    /* V3.129 : la vérification est partagée avec la page Visites (src/lib/planifier-visite.ts). */
+    return bienVisitable(biens.filter(b => ids.includes(b.id)), compromisAccepte.current);
   }
 
   async function planifierVisite(bienId: string) {
@@ -3110,39 +3098,13 @@ ${signatureMail()}`,
     if (!(await venteAgenceVisitable(bien_ids))) return;
     /* Les biens déjà visités (une 2e visite), relevés avant l'ajout. */
     const revus = bien_ids.filter(id => visites.some(v => v.bien_id === id && (v.statut === 'effectuee' || v.statut === 'a_venir')));
-    /* Une ligne de visite par bien, toutes sur le même créneau : la table n'a
-       qu'un `bien_id`, et l'agenda comme les comptes rendus raisonnent bien
-       par bien. Ce qui est commun — date, heure, contact — est recopié. */
-    const { error: errVis } = await supabase.from('visites').insert(bien_ids.map(bien_id => ({
-      client_id: client.id, recherche_id: rechercheId || null, bien_id, statut: 'a_venir',
-      date_visite: date || null, heure: heure || null,
-      contact_agence: contact || null, commentaire: notes || null,
-    })));
-    if (errVis) { alert("La visite n'a pas pu être enregistrée.\n\n" + errVis.message); return; }
-    /* V3.50 : un bien « Offre faite » le reste (même règle que le compte
-       rendu, badgeApresVisite). Une 2e visite effaçait l'offre, dans le CRM
-       comme dans son espace, alors que la transaction restait ouverte. */
-    await verifie('La visite est enregistrée, mais l’état « visite » des biens', supabase.from('biens').update({ badge_retour: 'souhaite_visiter' })
-      .in('id', bien_ids).or('badge_retour.is.null,badge_retour.neq.offre_faite'));
-    /* S'il l'avait demandée depuis son espace, la demande est servie : la
-       relance « Veut visiter » se solde, et la page Visites la range dans
-       « À venir ». */
-    const errRel = await solderRelancesVisite(client.id, bien_ids.map(id => biens.find(b => b.id === id)?.titre));
-    if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
-    /* Une 2e visite répond à « Veut revoir » et « Il réfléchit » ; « Veut
-       faire une offre » reste, l'offre n'est pas encore là (V3.50). */
-    if (revus.length) {
-      const errRetour = await solderRelancesRetourVisite(client.id, revus.map(id => biens.find(b => b.id === id)?.titre), { garder: 'offre' });
-      if (errRetour) signalerEchec('La visite est enregistrée, mais les relances « Veut revoir » de ce bien', errRetour);
-    }
-    const noms = bien_ids
-      .map(id => biens.find(b => b.id === id))
-      .map(b => b?.titre || b?.ville || 'Bien')
-      .join(' · ');
-    const desc = [date ? `Le ${new Date(date).toLocaleDateString('fr-FR')}` : '', heure ? `à ${heure}` : '', contact ? `· Contact : ${contact}` : ''].filter(Boolean).join(' ');
-    await addJournal(client.id, 'visite_planifiee',
-      bien_ids.length > 1 ? `📅 Visite planifiée — ${bien_ids.length} biens : ${noms}` : `📅 Visite planifiée — ${noms}`,
-      desc, undefined, { rechercheId });
+    /* V3.129 : les écritures sont partagées avec la page Visites (src/lib/planifier-visite.ts). */
+    const ok = await poserVisites({
+      clientId: client.id, rechercheId: rechercheId || null,
+      biens: bien_ids.map(id => { const b = biens.find(x => x.id === id); return { id, titre: b?.titre, ville: b?.ville, bien_vente_id: b?.bien_vente_id }; }),
+      revus, date, heure, contact, notes,
+    });
+    if (!ok) return;
     setShowPlanVisite(false); chargerRelances(); load();
   }
 
@@ -5220,6 +5182,7 @@ ${signatureMail()}`,
         {tab === 'presentes' && (
           <div key="p-presentes" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
+            vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null}
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={async (id) => { await load(); openEnvoiBien(id); }}
             rafraichir={versionBiens}

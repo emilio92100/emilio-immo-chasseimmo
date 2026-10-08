@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { effacerPhotosBien } from '@/lib/photos';
@@ -142,9 +142,11 @@ interface Props {
   onMailGroupe?: (ids: string[]) => void;
   /** Change quand la fiche vient d'envoyer un mail : la liste se recharge. */
   rafraichir?: number;
+  /** V3.129 : le bien à amener à l'écran et à entourer un instant (Visites › « Voir sur sa fiche »). */
+  vise?: string | null;
 }
 
-export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0 }: Props) {
+export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [frise, setFrise] = useState<string | null>(null);
@@ -187,6 +189,21 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   }, [rechercheId, tick, rafraichir]);
 
   useEffect(() => { charger(); }, [charger, tick, rafraichir]);
+
+  /* V3.129 (Alexandre : « ouvrir la fiche, que ça renvoie directement sur la
+     recherche, présentés, il veut visiter, en se mettant sur le bien en
+     question ») : la liste lue, on descend jusqu'au bien, entouré un instant. */
+  const [eclaire, setEclaire] = useState<string | null>(null);
+  const viseFait = useRef(false);
+  useEffect(() => {
+    if (!vise || viseFait.current || chargement || !biens.some(b => b.id === vise)) return;
+    viseFait.current = true;
+    setFiltreP('tout');
+    setEclaire(vise);
+    /* Sans nettoyage : un rechargement de la liste ne doit pas annuler la descente. */
+    window.setTimeout(() => document.getElementById(`bien-${vise}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 700);
+    window.setTimeout(() => setEclaire(null), 6000);
+  }, [vise, chargement, biens]);
 
   const recharge = () => { setTick(t => t + 1); onChange?.(); };
 
@@ -316,6 +333,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 7 : 14 }}>
       <StylesEmilio />
+      {/* V3.129 : le bien qu'on vient voir, entouré en violet un instant. */}
+      {eclaire && <style>{`
+        .emi-vise { border-color: #7c3aed !important; animation: emiVise 1.6s ease-out 3 !important; }
+        @keyframes emiVise { 0% { box-shadow: 0 0 0 0 rgba(124,58,237,.5); } 70%, 100% { box-shadow: 0 0 0 14px rgba(124,58,237,0); } }
+        @media (prefers-reduced-motion: reduce) { .emi-vise { animation: none !important; box-shadow: 0 0 0 3px rgba(124,58,237,.35); } }
+      `}</style>}
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
         <span className="emi-titre-onglet" style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -.3 }}>
@@ -395,6 +418,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
           return (
             <Fragment key={b.id}>
               {enTeteDe(b, idx)}
+              <div id={`bien-${b.id}`} className={eclaire === b.id ? 'emi-vise' : undefined} style={{ borderRadius: 16 }}>
               <LigneCompacte
                 photo={(b.photos || [])[0]}
                 numero={idx + 1}
@@ -441,6 +465,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   </>
                 }
               />
+              </div>
             </Fragment>
           );
         }
@@ -448,7 +473,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         return (
           <Fragment key={b.id}>
           {enTeteDe(b, idx)}
-          <div className="emi-carte emi-arrivee"
+          <div id={`bien-${b.id}`} className={`emi-carte emi-arrivee${eclaire === b.id ? ' emi-vise' : ''}`}
             style={{
               ...CARTE, animationDelay: Math.min(idx, 6) * 55 + 'ms',
               ...(groupable && coches.includes(b.id) ? { borderColor: OR, boxShadow: `0 0 0 3px rgba(201,168,76,.18), ${CARTE.boxShadow}` } : {}),
