@@ -156,7 +156,6 @@ function quand(iso: string) {
   const jour = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', ...(autreAnnee ? { year: 'numeric' } : {}) });
   return `${jour} · ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
 }
-const jourCourt = (iso: string) => midi(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
 const delai = (j: number) => (j < 0 ? `en retard de ${-j} j` : j === 0 ? 'aujourd’hui' : j === 1 ? 'demain' : `dans ${j} j`);
 const moisDe = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 /* Le report (V3.85) : un jour à midi, en « aaaa-mm-jj » local. */
@@ -366,7 +365,8 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                 <span className={s.noeud} data-bord="oui" style={{ color: retard ? '#be123c' : '#a07c28', background: retard ? '#fff1f2' : '#fdf6e3', borderColor: retard ? '#fbd0d6' : '#efdcae' }}><IcSuivi n="cloche" t={16} /></span>
                 <div className={`${s.carte} ${s.carteRelance}`} data-retard={retard ? 'oui' : 'non'}>
                   <div className={s.carteTete}>
-                    <span className={s.titre}>{`Relance · ${jourCourt(r.date_echeance)}`}</span>
+                    {/* V3.127 (Alexandre : « relance à faire le », pour qu'on comprenne mieux). */}
+                    <span className={s.titre}>{`Relance à faire le ${midi(r.date_echeance).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}`}</span>
                     <span className={s.pastille} style={retard ? { color: '#be123c', background: '#fff1f2', borderColor: '#fbd0d6' } : { color: '#8a6a1f', background: '#fff', borderColor: '#efdcae' }}>{delai(j)}</span>
                     {onReporter && (
                       <button type="button" className={s.reporter} data-on={reportId === r.id ? 'oui' : 'non'} aria-expanded={reportId === r.id} onClick={() => ouvrirReport(r.id)} title="Reporter cette relance à un autre jour">
