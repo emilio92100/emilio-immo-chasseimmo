@@ -12,7 +12,7 @@ import { modele, aujourdhui, lirePersonnes, PERSONNE_VIDE, type Personne } from 
 import { correspondance, criteresDepuisRecherche, grouperSecteurs, type Correspondance } from '@/lib/correspondance';
 import { raisonEcart, type RaisonEcart } from '@/lib/ecart-acheteur';
 import { conjointDe } from '@/lib/foyer';
-import { TYPES_CONTACT, acheteurEnCours, colonneContactAbsente, typesDe } from '@/lib/contacts';
+import { ETAPES_EN_VENTE, TYPES_CONTACT, acheteurEnCours, colonneContactAbsente, typesDe, typesSelonBiens } from '@/lib/contacts';
 import {
   ETAPES_BIEN, apresReponse, argentBien, avantMandat, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
@@ -775,15 +775,11 @@ async function changementProprio(b: BienVente, ancien: string, nouveau: string |
         if (r.error) signalerEchec('Les relances du bien, chez le nouveau propriétaire', r.error.message);
       }
     }
-    const autres = await supabase.from('biens_vente').select('id').eq('client_id', ancien).neq('id', b.id).not('etape', 'in', '(vendu,retire)').limit(1);
-    if (!autres.error && !autres.data?.length) {
-      const { data: c } = await supabase.from('clients').select('types').eq('id', ancien).maybeSingle();
-      const t = c ? typesDe(c) : [];
-      if (t.includes('vendeur') && t.length > 1) {
-        const r = await supabase.from('clients').update({ types: t.filter(x => x !== 'vendeur') }).eq('id', ancien);
-        if (r.error) signalerEchec('Le type de l’ancien propriétaire', r.error.message);
-      }
-    }
+    /* V3.137 : l'ancien et le nouveau propriétaire prennent le type que
+       leurs biens leur donnent (Vendeur si l'un est en vente, Propriétaire
+       sinon). Le bien est déjà relié au nouveau en base. */
+    await marquerVendeur(ancien);
+    if (nouveau) await marquerVendeur(nouveau);
     await addJournal(ancien, 'statut_change', `🏠 N’est plus le propriétaire de ${titre}`, nouveau ? 'Un autre propriétaire a été relié au bien.' : 'Le bien n’a plus de propriétaire relié.');
     if (nouveau) await addJournal(nouveau, 'statut_change', `🏠 Propriétaire de ${titre}`, 'Relié au bien en cours de route : les relances du bien passent chez lui.');
   } catch (e) { signalerEchec('Le changement de propriétaire', (e as Error).message); }
@@ -926,6 +922,11 @@ export async function changerEtape(b: BienVente, etape: EtapeVente, o: {
     bien_id: b.id, type: 'etape', statut: etape, commentaire: o.commentaire || null,
     donnees: { de: b.etape, ...(o.infos || {}) },
   });
+  /* V3.137 : le bien entre en vente ou en sort — son propriétaire passe
+     Vendeur ou redevient Propriétaire (la base le fait aussi, voir
+     `marquerVendeur`). Vendu : « La vente est signée » décide. */
+  const proprio = (data as BienVente).client_id;
+  if (proprio && ETAPES_EN_VENTE.includes(b.etape) !== ETAPES_EN_VENTE.includes(etape)) await marquerVendeur(proprio);
   return { bien: data as BienVente, ligne };
 }
 
@@ -1667,8 +1668,9 @@ export async function vendeurSigne(clientId: string, bienId: string): Promise<bo
   try {
     const { data, error } = await supabase.from('clients').select('types').eq('id', clientId).maybeSingle();
     if (error || !data) { signalerEchec('Le type « Vendeur signé »', error?.message || 'contact introuvable'); return false; }
-    /* Un autre de ses biens encore en vente : il reste aussi « Vendeur ». */
-    const autres = await supabase.from('biens_vente').select('id').eq('client_id', clientId).neq('id', bienId).not('etape', 'in', '(vendu,retire)').limit(1);
+    /* Un autre de ses biens encore en vente : il reste aussi « Vendeur ».
+       V3.137 : « en vente » = mandat, sous offre ou sous compromis. */
+    const autres = await supabase.from('biens_vente').select('id').eq('client_id', clientId).neq('id', bienId).in('etape', ETAPES_EN_VENTE).eq('archive', false).limit(1);
     if (autres.error) signalerEchec('Les autres biens du vendeur', autres.error.message);
     const encore = !!autres.data?.length;
     const t: string[] = typesDe(data).filter(x => encore || x !== 'vendeur');
@@ -2027,9 +2029,11 @@ export async function estimationMiseDeCote(b: BienVente, raison: string, reprise
 }
 
 /* ══ Le propriétaire ═══════════════════════════════════════════════════ */
-/* Sa fiche, créée depuis le bien : le minimum, de type « vendeur » (et pas
-   un acheteur « actif » : il ne cherche rien). Avant le SQL des types de
-   contact, la colonne `types` manque : on crée sans elle. */
+/* Sa fiche, créée depuis le bien : le minimum, de type « propriétaire »
+   (V3.137 ; « vendeur » une fois relié à un bien en vente, voir
+   `marquerVendeur`) — et pas un acheteur « actif » : il ne cherche rien.
+   Avant le SQL des types de contact, la colonne `types` manque : on crée
+   sans elle. */
 export async function creerFicheProprio(p: Personne): Promise<ClientMini> {
   const reference = await genererReference();
   const ligne = {
@@ -2040,7 +2044,7 @@ export async function creerFicheProprio(p: Personne): Promise<ClientMini> {
     emails: p.email ? [p.email.trim().toLowerCase()] : [], telephones: p.telephone ? [p.telephone.trim()] : [],
     statut: 'prospect', statut_occupation: 'proprietaire', est_vendeur: true,
   };
-  let r = await supabase.from('clients').insert({ ...ligne, types: ['vendeur'] }).select(CLIENT_COLS).single();
+  let r = await supabase.from('clients').insert({ ...ligne, types: ['proprietaire'] }).select(CLIENT_COLS).single();
   if (r.error && colonneContactAbsente(r.error.message)) r = await supabase.from('clients').insert(ligne).select(CLIENT_COLS).single();
   if (r.error) throw new Error('La fiche du propriétaire n’a pas pu être créée : ' + r.error.message);
   return r.data as ClientMini;
@@ -2124,23 +2128,30 @@ export async function supprimerBrouillon(x: BienVente): Promise<void> {
   await supprimerBien(x);
 }
 
-/* Un contact relié à un bien comme propriétaire devient « vendeur ». Sans la
-   colonne des types (avant le SQL), rien à faire. */
-/* V3.50 : une lecture qui échoue se dit (avant : rien, et le contact
-   restait sans le type « vendeur ») ; rend `false` sur un échec. */
+/* Le type d'un propriétaire suit ses biens (V3.137, voir `typesSelonBiens`
+   dans src/lib/contacts.ts) : Vendeur quand un bien est en mandat, sous
+   offre ou sous compromis ; Propriétaire sinon. Appelée quand un contact est
+   relié à un bien et à chaque changement d'étape fait ici ; la base fait la
+   même chose toute seule (outils/sql/vendeurs-en-vente.sql), y compris pour
+   un mandat signé en ligne. Le nom est resté : avant la V3.137, tout
+   propriétaire relié devenait « vendeur ». Sans la colonne des types (avant
+   le SQL des types), rien à faire.
+   V3.50 : une lecture qui échoue se dit ; rend `false` sur un échec. */
 export async function marquerVendeur(clientId: string): Promise<boolean> {
-  const { data, error } = await supabase.from('clients').select('types').eq('id', clientId).maybeSingle();
+  const { data, error } = await supabase.from('clients').select('types, archive').eq('id', clientId).maybeSingle();
   if (error) {
     if (colonneContactAbsente(error.message)) return true;
     signalerEchec('Le type « vendeur » du contact', error.message);
     return false;
   }
   if (!data) { signalerEchec('Le type « vendeur » du contact', 'contact introuvable'); return false; }
-  const t = typesDe(data);
-  if (t.includes('vendeur')) return true;
-  /* Un « Vendeur signé » qui revend (V3.47) : il redevient « Vendeur ». Sa
-     vente d'avant reste dans son Suivi et dans la liste de ses biens. */
-  const { error: e2 } = await supabase.from('clients').update({ types: [...t.filter(x => x !== 'vendeur_signe'), 'vendeur'] }).eq('id', clientId);
+  /* Un archivé garde ses types (on le retrouve par type parmi les archivés). */
+  if ((data as { archive?: boolean | null }).archive === true) return true;
+  const { data: biens, error: eB } = await supabase.from('biens_vente').select('etape, archive').eq('client_id', clientId);
+  if (eB) { signalerEchec('Le type « vendeur » du contact', `ses biens n’ont pas pu être lus (${eB.message})`); return false; }
+  const n = typesSelonBiens(typesDe(data), (biens || []) as { etape: string | null; archive: boolean | null }[]);
+  if (!n) return true;
+  const { error: e2 } = await supabase.from('clients').update({ types: n }).eq('id', clientId);
   if (e2 && !colonneContactAbsente(e2.message)) { signalerEchec('Le type « vendeur » du contact', e2.message); return false; }
   return true;
 }
