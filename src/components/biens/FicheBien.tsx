@@ -1075,9 +1075,10 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
 }
 
 /* ══ LA FICHE ═════════════════════════════════════════════════════════════ */
-export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupprime, onModifier, onNavigate, onRecharger, onVendu, onOuvrir }: {
+export default function FicheBien({ bien: depart, liste, onRetour, retourLib = 'Biens', onMaj, onSupprime, onModifier, onNavigate, onRecharger, onVendu, onOuvrir }: {
   bien: BienVente; liste: ListeBiens;
-  onRetour: () => void; onMaj: (b: BienVente) => void; onSupprime: (id: string) => void;
+  /* V3.138 : « Agenda » quand le bien a été ouvert depuis l'agenda. */
+  onRetour: () => void; retourLib?: string; onMaj: (b: BienVente) => void; onSupprime: (id: string) => void;
   onModifier: (etape?: string) => void; onNavigate: (page: string, data?: unknown) => void; onRecharger: () => void;
   /* V3.47 : la vente signée ramène à la liste, avec un bandeau qui le dit. */
   onVendu?: (b: BienVente, texte: string) => void;
@@ -2008,7 +2009,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   return (
     <div className={b.fiche}>
       <div className={b.ficheBarre}>
-        <button type="button" className={b.retour} onClick={onRetour}><Ic n="retour" t={16} />Biens</button>
+        <button type="button" className={b.retour} onClick={onRetour}><Ic n="retour" t={16} />{retourLib}</button>
       </div>
 
       {/* V3.53 : à qui est ce bien, sur tous les onglets. La pastille est à
