@@ -941,7 +941,9 @@ export async function annulerMandatNote(b: BienVente, o: RetraitMandat): Promise
    Présenter le bien = le poser dans le dossier de l'acheteur (table biens,
    étape « presente »), exactement comme un bien trouvé pour lui. Il le voit
    dans son espace, avec la note de correspondance. */
-async function copieDe(b: BienVente, clientId: string, rechercheId: string, badge?: string): Promise<{ copie: Copie; neuve: boolean }> {
+/* V3.134 : exportée — l'agenda s'en sert quand une visite porte sur un bien
+   de l'agence qui n'est pas encore dans le dossier de l'acheteur. */
+export async function copieDe(b: BienVente, clientId: string, rechercheId: string, badge?: string): Promise<{ copie: Copie; neuve: boolean }> {
   const { data: deja, error: e1 } = await supabase.from('biens').select('*').eq('bien_vente_id', b.id).eq('recherche_id', rechercheId).limit(1);
   if (e1) lever('Le dossier de l’acheteur n’a pas pu être lu', e1.message);
   if (deja?.length) {
