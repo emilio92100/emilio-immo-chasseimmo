@@ -225,9 +225,11 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     prospect: '#8b5cf6', actif: '#10b981', suspendu: '#f59e0b',
     bien_trouve: '#3b82f6', perdu: '#ef4444', offre_ecrite: '#f59e0b',
   };
+  /* V3.134 : un point de couleur dessiné plutôt qu'un émoji (qui rendait une
+     bille 3D, différente d'un téléphone à l'autre). */
   const STATUT_LIB: Record<string, string> = {
-    prospect: '🟣 prospect', actif: '🟢 actif', suspendu: '⏸️ suspendu',
-    bien_trouve: '✅ bien trouvé', perdu: '🔴 perdu', offre_ecrite: '✍️ offre écrite',
+    prospect: 'Prospect', actif: 'Actif', suspendu: 'Suspendu',
+    bien_trouve: 'Bien trouvé', perdu: 'Perdu', offre_ecrite: 'Offre écrite',
   };
 
   function selectClient(client: any) {
@@ -321,16 +323,27 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                           propre ligne, pour qu'une adresse se lise en entier. */}
                       {raison && <div className={styles.searchRaison}>{raison}</div>}
                     </div>
-                    {estAcheteur(c) ? (
-                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: `${statutColor[c.statut] || '#94a3b8'}15`, color: statutColor[c.statut] || '#64748b', fontWeight: 600, border: `1px solid ${statutColor[c.statut] || '#94a3b8'}30`, whiteSpace: 'nowrap' }}>
-                        {STATUT_LIB[c.statut] || c.statut}
-                      </span>
-                    ) : (
-                      /* Un vendeur, un notaire… : son type, pas un statut d'acheteur. */
-                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: typeDe(typesDe(c)[0]).fond, color: typeDe(typesDe(c)[0]).c, fontWeight: 700 }}>
-                        {typeDe(typesDe(c)[0]).lib}
-                      </span>
-                    )}
+                    {/* V3.134 — tous ses types, et pour un acheteur l'état de
+                        son dossier à côté (« Acheteur – Actif »). Avant : un
+                        acheteur ne montrait que son statut, et un contact à
+                        plusieurs types que le premier — un propriétaire
+                        acheteur n'apparaissait pas comme propriétaire. */}
+                    <span className={styles.searchEtiq}>
+                      {typesDe(c).filter(k => k !== 'acheteur').map(k => {
+                        const t = typeDe(k);
+                        return <span key={k} className={styles.searchEtiqT} style={{ background: t.fond, color: t.c, borderColor: `color-mix(in srgb, ${t.c} 22%, transparent)` }}>{t.lib}</span>;
+                      })}
+                      {estAcheteur(c) && (() => {
+                        const coul = statutColor[c.statut] || '#94a3b8';
+                        const lib = STATUT_LIB[c.statut];
+                        return (
+                          <span className={styles.searchEtiqT} style={{ background: `${coul}14`, color: `color-mix(in srgb, ${coul} 78%, #1a2332)`, borderColor: `${coul}33` }}>
+                            <i style={{ background: coul }} />
+                            {lib ? `Acheteur – ${lib}` : 'Acheteur'}
+                          </span>
+                        );
+                      })()}
+                    </span>
                   </div>
                   {sesBiens.length > 0 && (
                     <div className={styles.searchBiens} style={{ animationDelay: `${Math.min(i, 8) * 28 + 40}ms` }}>
