@@ -1498,6 +1498,75 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.125 — 8 octobre 2026 · Le rapprochement en un bouton, et des résultats qui se lisent
+
+Rien à passer dans Supabase : les rapprochements datés vont dans `biens_vente_suivi`, qui existe.
+
+Alexandre : « quand j'appuie sur rapprochement, il y a la question qui, dans la base, pourrait
+acheter cet appartement, et ensuite juste le bouton… qu'on affiche les résultats, pas avant… dès
+que c'est fait, ça crée une ligne "Rapprochement" à cette date… déplier, replier », puis « le
+même procédé depuis Envoyer, depuis l'onglet du bien et depuis la fiche d'un client », et « les
+plus, les moins, le score potentiel de chaque personne mis à côté », et « les avatars, avec le
+score juste en bas ». À l'écran, on dit « le rapprochement » ou « la relecture », jamais « l'IA ».
+
+- **La route** `/api/rapprochement-ia` rend aussi, pour chaque couple, `s` (la note de potentiel
+  sur 100, bornée selon le verdict : oui 70 à 100, à voir 40 à 69, non 0 à 39), `p` (3 plus au
+  plus) et `m` (3 moins au plus). L'empreinte porte une version (`VERSION = 'v2'`) : les avis
+  d'avant se relisent une fois. Avant d'écrire `rapprochement_ia`, elle relit la colonne (les
+  paquets partent à trois en même temps).
+  - Ses messages d'erreur disent « la relecture », plus « l'IA ».
+- **`src/components/biens/RapprochementIA.tsx`**, les morceaux communs :
+  - `analyserIA(paires, onAvis)` : paquets de 8, trois à la fois ; un paquet raté n'arrête pas les
+    autres et `manquent` dit combien restent à relire. Plus de mémoire de session : les avis
+    gardés ne s'affichent plus avant le clic.
+  - `AvecScore` : l'avatar du contact (ou la photo du bien), cerclé à la couleur de l'avis, et la
+    note juste en dessous (« 92/100 · potentiel ») ;
+  - `AvisDetail` : la phrase, puis deux colonnes « Les plus » et « Les moins » (ou en pastilles,
+    `compact`) ; `IconeAvis` pour les titres des groupes ; `Progression` pour les étapes à
+    l'écran ; `dateRappro` ; `fr()` pour que « : » et « ? » ne passent jamais seuls à la ligne.
+  - `CarteIA`, `AvisLigne`, `avisDuBien`, `avisDesBiens` et le cercle de note ont disparu.
+- **L'onglet Rapprochement d'un bien** (`RapprochementBien.tsx`, refait) :
+  - avant le clic : la question, ce que fait le rapprochement, « Comment ça marche ? » et un bouton.
+    Plus de chiffres, de cases ni de liste ;
+  - au clic : le premier tri (triBien : correspondent, en partie, à compléter), puis la relecture de
+    tous ceux qui passent, les étapes à l'écran ;
+  - chaque rapprochement est gardé : une ligne `biens_vente_suivi` (type `note`, `donnees`
+    `{ rapprochement: true, total, tries, manquent, erreur?, lignes: [{ r, c, nom, v, s, t, p, m,
+    n }] }`). `estSeance`, `lireSeance` et `resumeSeance` la lisent ;
+  - les rapprochements datés, le plus récent déplié, les autres repliés. Dedans : Oui, À voir, puis
+    Non replié (« Voir pourquoi ») ;
+  - rien n'est coché d'office : il y a « Cocher les oui » ;
+  - « Écartées au premier tri » vient en direct, replié, avec « Envoyer » quand même ;
+  - le texte sous le bouton dit la date du dernier rapprochement et combien de recherches passent
+    le premier tri depuis.
+- **FicheBien** passe `seances` (son suivi) et `onSeance` (le nouveau rapprochement entre dans
+  l'historique sans relire la fiche). L'historique montre « Rapprochement : 3 oui · 2 à voir ·
+  2 non ».
+- **« Envoyer » depuis la liste** (`FenEnvoiLot`) : le même procédé.
+  - Le bouton fait le tri, puis la relecture, au plus 48 couples ; on retient
+    `acheteursTries().retenus` à 50 % et plus, donc aussi les recherches à compléter.
+  - Les acheteurs sont rangés par leur meilleur avis.
+  - La case « en partie » a disparu.
+  - Un acheteur coché reçoit les biens qui n'ont pas eu « non ». S'il n'a eu que des « non »,
+    tout part : c'est Alexandre qui l'a coché.
+  - Avec plusieurs biens, chaque bien a sa note, sa phrase et ses pastilles.
+- **Le rapprochement de la fiche d'un acheteur** : la relecture de ses mandats se fait pendant la
+  recherche, avec les étapes à l'écran.
+  - Ses biens en vente sont rangés Oui, À voir, puis Non replié, la note sous la photo.
+  - Les annonces des veilles suivent, à part, avec leur note de critères.
+  - Rien n'est coché d'office, sauf les mandats d'une alerte ; il y a « Cocher les oui ».
+  - L'aperçu d'un bien dit ce qu'en pense le rapprochement.
+
+### V3.124 — 8 octobre 2026 · La réponse de la relecture, par outil
+
+« La réponse de l'IA est illisible : relance » (capture d'Alexandre) : le tableau JSON écrit à la
+main se cassait sur un guillemet dans une phrase, ou sur une réponse coupée.
+
+- La route impose un outil (`rendre_avis`, `tool_choice`) : l'API rend un objet, jamais du texte à
+  relire. Il reste un repli sur le texte, et un message clair quand la réponse a été coupée.
+- `max_tokens` suit le nombre de couples.
+- « L'acheteur retenu » est au singulier quand il n'y en a qu'un.
+
 ### V3.123 — 8 octobre 2026 · Le rapprochement intelligent, partout
 
 Rien à passer dans Supabase : le SQL de la V3.122 suffit.
