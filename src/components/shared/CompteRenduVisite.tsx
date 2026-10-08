@@ -171,27 +171,35 @@ export default function CompteRenduVisite({ visite, titre, sous, prenom, onFerme
     <div className="crv-voile" onClick={e => { if (e.target === e.currentTarget && !enCours) onFermer(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(3px)' }}>
       <style>{`
-        .crv-boite{background:#fff;border-radius:18px;width:100%;max-width:800px;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 30px 60px -20px rgba(0,0,0,.45);font-family:inherit}
+        .crv-boite{background:#fff;border-radius:18px;width:100%;max-width:800px;max-height:94vh;max-height:94dvh;display:flex;flex-direction:column;box-shadow:0 30px 60px -20px rgba(0,0,0,.45);font-family:inherit}
         .crv-tuiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
         .crv-bas{display:grid;grid-template-columns:170px 1fr;gap:14px}
         .crv-pas:focus-visible,.crv-tuile:focus-visible{outline:2px solid ${OR};outline-offset:2px}
         @media (max-width:640px){
           .crv-voile{align-items:flex-end !important;padding:0 !important}
-          .crv-boite{border-radius:18px 18px 0 0;max-height:96vh}
+          /* V3.138 (Alexandre : « en haut, mardi, la date et le nom, on ne le
+             voit pas en entier ») : 96vh dépassait l'écran du téléphone quand
+             la barre d'adresse est affichée — le haut passait dessous. La
+             hauteur visible (dvh), comme les fenêtres de l'agenda. */
+          .crv-boite{border-radius:18px 18px 0 0;max-height:92vh;max-height:92dvh}
+          .crv-tete{padding:14px 16px 10px !important}
+          .crv-titre{font-size:17px !important}
           .crv-tuiles{grid-template-columns:1fr 1fr}
           .crv-bas{grid-template-columns:1fr}
           .crv-indice{display:none}
         }
       `}</style>
       <div className="crv-boite" role="dialog" aria-modal="true" aria-label="Compte rendu de visite">
-        <div style={{ padding: '18px 22px 12px', borderBottom: '1px solid #f1f5f9', position: 'relative' }}>
+        <div className="crv-tete" style={{ padding: '18px 22px 12px', borderBottom: '1px solid #f1f5f9', position: 'relative', flexShrink: 0 }}>
           <button type="button" onClick={onFermer} aria-label="Fermer" disabled={enCours}
             style={{ position: 'absolute', top: 14, right: 16, background: '#f1f5f9', border: 'none', borderRadius: 10, width: 34, height: 34, color: GRIS, fontSize: 16, cursor: 'pointer' }}>✕</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingRight: 44 }}>
             <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: 11, background: '#fffbeb', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📝</span>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800, color: NAVY }}>Compte rendu de visite</div>
-              <div style={{ fontSize: 12.5, color: CLAIR, marginTop: 1 }}>{[titre, sous].filter(Boolean).join(' · ')}</div>
+              <div className="crv-titre" style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800, color: NAVY }}>Compte rendu de visite</div>
+              {/* V3.138 : qui et quand d'abord, en entier ; le bien dessous. */}
+              {sous && <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, marginTop: 2, lineHeight: 1.35 }}>{(sous.charAt(0).toUpperCase() + sous.slice(1)).replace(' · à ', ' à ').replace(/ à (\d)/, ' à\u00a0$1')}</div>}
+              <div style={{ fontSize: 12.5, color: CLAIR, marginTop: 1, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{titre}</div>
             </div>
           </div>
         </div>
