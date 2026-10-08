@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { bienVisitable, poserVisites } from '@/lib/planifier-visite';
 import dv from './DemandesVisite.module.css';
+import cv from './CartesVisites.module.css';
+import { ficheClient } from '@/components/biens/outils';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import { ModaleRappelVisite, libelleRappel } from '@/components/shared/RappelVisite';
@@ -24,14 +26,21 @@ function Enveloppe() {
   );
 }
 
-/* Trois pictos dessinés pour les demandes de visite (V3.129). */
-function Picto({ n, t = 16 }: { n: 'cal' | 'fiche' | 'croix' | 'maison'; t?: number }) {
+/* Les pictos dessinés de la page : demandes de visite (V3.129), cartes des visites (V3.135). */
+type NomPicto = 'cal' | 'fiche' | 'croix' | 'maison' | 'tel' | 'check' | 'cr' | 'pin' | 'fleche' | 'etoile';
+function Picto({ n, t = 16, plein }: { n: NomPicto; t?: number; plein?: boolean }) {
   return (
-    <svg width={t} height={t} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
+    <svg width={t} height={t} viewBox="0 0 24 24" fill={plein ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
       {n === 'cal' && <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>}
       {n === 'fiche' && <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>}
       {n === 'croix' && <path d="M6 6l12 12M18 6 6 18" />}
       {n === 'maison' && <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></>}
+      {n === 'tel' && <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />}
+      {n === 'check' && <path d="M5 12.5l4.2 4.2L19 7" />}
+      {n === 'cr' && <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>}
+      {n === 'pin' && <><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></>}
+      {n === 'fleche' && <path d="m9 6 6 6-6 6" />}
+      {n === 'etoile' && <path d="m12 3.5 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />}
     </svg>
   );
 }
@@ -122,21 +131,236 @@ function FenetreVisite({ d, revu, onFermer, onFait }: { d: DemandeVisite; revu: 
   );
 }
 
-/* L'issue d'une visite faite, en pastille (voir src/lib/visites.ts). */
-function PastilleIssue({ i, offreFaite }: { i: Issue; offreFaite?: boolean }) {
-  const x = ISSUES[i];
+/* ═══ La carte d'une visite (V3.135, maquette A) ═══════════════════════════
+   Alexandre : « j'aime bien la première… quand on clique sur le nom de la
+   personne, ça renvoie sur la fiche de l'acheteur ; quand on clique sur le
+   bien, sur la photo du bien… ça arrive sur la fiche du bien ». La date en
+   grand à gauche, l'heure dedans ; la pastille dit QUAND (« Demain », « Il y
+   a 2 jours ») puisque le titre de la section dit déjà où en est la visite.
+   Les boutons font exactement ce qu'ils faisaient : compte rendu (la fenêtre
+   de la fiche), annulation (src/lib/annuler-visites.ts), rappel au client. */
+type Groupe = 'a_faire' | 'a_venir' | 'effectuee';
+
+/* Le nombre de jours entre la visite et aujourd'hui (à Paris) : 0 aujourd'hui, 1 demain, -1 hier. */
+function ecartJours(dateVisite: string, auj: string): number {
+  const [a, m, j] = String(dateVisite).slice(0, 10).split('-').map(Number);
+  const [A, M, J] = auj.split('-').map(Number);
+  return Math.round((Date.UTC(a, m - 1, j) - Date.UTC(A, M - 1, J)) / 86400000);
+}
+function quandRelatif(e: number): string {
+  if (e === 0) return 'Aujourd’hui';
+  if (e === 1) return 'Demain';
+  if (e === -1) return 'Hier';
+  return e > 1 ? `Dans ${e} jours` : `Il y a ${-e} jours`;
+}
+
+/* Les visites d'un même client le même jour, ensemble (dans l'ordre de la
+   liste ; à l'intérieur d'une journée, par heure). Sans regroupement, une
+   visite par paquet. */
+function parJournee(liste: any[], regrouper: boolean): any[][] {
+  if (!regrouper) return liste.map(v => [v]);
+  const paquets = new Map<string, any[]>();
+  for (const v of liste) {
+    const cle = v.date_visite ? `${v.clients?.id || v.client_id}|${String(v.date_visite).slice(0, 10)}` : `seule|${v.id}`;
+    const p = paquets.get(cle);
+    if (p) p.push(v); else paquets.set(cle, [v]);
+  }
+  const h = (v: any) => (v.heure ? String(v.heure).slice(0, 5) : '99:99');
+  return [...paquets.values()].map(p => p.sort((a, b) => h(a).localeCompare(h(b))));
+}
+
+function Etoiles({ n }: { n: number }) {
   return (
-    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: x.fond, color: x.couleur, border: `1px solid ${x.trait}` }}>
-      {`${x.e} ${i === 'offre' && offreFaite ? 'Offre faite' : x.crm}`}
+    <span className={cv.etoiles} aria-label={`${n} sur 5`}>
+      {[0, 1, 2, 3, 4].map(k => <span key={k} className={k < n ? cv.on : undefined}><Picto n="etoile" t={14} plein={k < n} /></span>)}
+      <small>{`${n}/5`}</small>
     </span>
   );
 }
-function Raisons({ l, non }: { l?: string[] | null; non?: boolean }) {
-  if (!l || !l.length) return null;
+
+function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, onRappel }: {
+  v: any; groupe: Groupe; auj: string; rang: number;
+  onClient: () => void; onBien: () => void; onCR: () => void; onAnnuler: () => void; onRappel: () => void;
+}) {
+  const ton = groupe === 'a_faire' ? { date: cv.dateAfaire, past: cv.pastAfaire } : groupe === 'a_venir' ? { date: cv.dateAvenir, past: cv.pastAvenir } : { date: cv.dateFaite, past: cv.pastFaite };
+  const iso = v.date_visite ? String(v.date_visite).slice(0, 10) : '';
+  const d = iso ? new Date(`${iso}T12:00:00Z`) : null;
+  const jourSem = d ? d.toLocaleDateString('fr-FR', { weekday: 'short', timeZone: 'UTC' }) : '';
+  const mois = d ? d.toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' }) : '';
+  const annee = iso && iso.slice(0, 4) !== auj.slice(0, 4) ? ` ${iso.slice(0, 4)}` : '';
+  const heure = /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '';
+  const nom = `${v.clients?.prenom || ''} ${v.clients?.nom || ''}`.trim() || 'Client';
+  const prenom = v.clients?.prenom || 'Le client';
+  const photo = v.biens?.photos?.[0];
+  const lieu = [v.biens?.quartier, v.biens?.ville].filter(Boolean).join(', ');
+  const issue = groupe === 'effectuee' ? issueDe(v) : null;
+  const repondu = groupe === 'a_faire' && v.avis_client_le && v.issue && ISSUES[v.issue as Issue] ? ISSUES[v.issue as Issue] : null;
+  const motifs: string[] = Array.isArray(v.motifs) ? v.motifs : [];
+  const aime: string[] = Array.isArray(v.aime) ? v.aime : [];
   return (
-    <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-      {l.map(m => <span key={m} style={{ fontSize: 11.5, fontWeight: 700, color: non ? '#9a3412' : '#334155', background: non ? '#fff4ef' : '#f1f5f9', border: `1px solid ${non ? '#fbd5c5' : '#e2e8f0'}`, borderRadius: 99, padding: '2px 8px' }}>{m}</span>)}
-    </span>
+    <div className={cv.carte} style={{ animationDelay: `${Math.min(rang, 6) * 40}ms` }}>
+      <div className={`${cv.date} ${ton.date}`}>
+        {d ? <><small>{jourSem}</small><b>{d.getUTCDate()}</b><small>{`${mois}${annee}`}</small></> : <small>Sans date</small>}
+        {heure && <em>{heure}</em>}
+      </div>
+
+      <div className={cv.milieu}>
+        <div className={cv.qui}>
+          <button type="button" className={cv.nom} onClick={onClient} title={`Ouvrir la fiche de ${nom}`}>
+            {v.clients && <AvatarContact c={v.clients} teinte={{ bg: '#eef2f8', fg: '#34496e' }} taille={34} />}
+            <b>{nom}</b>
+          </button>
+          {iso && <span className={`${cv.past} ${ton.past}`}><i />{quandRelatif(ecartJours(iso, auj))}</span>}
+        </div>
+
+        <button type="button" className={cv.bien} onClick={onBien} title="Ouvrir la fiche du bien">
+          {photo
+            ? <img src={photo} alt="" className={cv.photo} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
+            : <span className={`${cv.photo} ${cv.photoVide}`}><Picto n="maison" t={22} /></span>}
+          <span className={cv.bienTx}>
+            <b>{v.biens?.titre || lieu || 'Bien'}</b>
+            {lieu && <small><Picto n="pin" t={13} />{lieu}</small>}
+          </span>
+          <span className={cv.fleche}><Picto n="fleche" t={18} /></span>
+        </button>
+
+        <div className={cv.meta}>
+          {v.contact_agence && <span className={cv.m}><Picto n="tel" t={14} />{v.contact_agence}</span>}
+          {groupe === 'a_venir' && v.rappel_envoye_le && <span className={`${cv.m} ${cv.vert}`}><Picto n="check" t={14} />{libelleRappel(v.rappel_envoye_le)}</span>}
+        </div>
+
+        {/* Le client a déjà répondu dans son espace : le compte rendu part de là. */}
+        {repondu && (
+          <div className={cv.bulle}>
+            <small>{`${prenom}, dans son espace`}</small>
+            <b>{`A répondu : ${repondu.crm}`}</b>
+            {v.prix_envisage ? `, autour de ${Number(v.prix_envisage).toLocaleString('fr-FR')} €` : ''}
+            {v.mot_client ? <div>{`« ${v.mot_client} »`}</div> : null}
+            {motifs.length > 0 && <div className={cv.avis}>{motifs.map(m => <span key={m} className={`${cv.puce} ${v.issue === 'non' ? cv.puceNon : ''}`}>{m}</span>)}</div>}
+          </div>
+        )}
+
+        {/* Ce que la visite a donné */}
+        {groupe === 'effectuee' && (issue || v.note_etoiles > 0 || motifs.length > 0 || aime.length > 0) && (
+          <div className={cv.avis}>
+            {issue && (
+              <span className={cv.issue} style={{ color: ISSUES[issue].couleur, background: ISSUES[issue].fond, borderColor: ISSUES[issue].trait }}>
+                {issue === 'offre' && v.biens?.badge_retour === 'offre_faite' ? 'Offre faite' : ISSUES[issue].crm}
+              </span>
+            )}
+            {v.note_etoiles > 0 && <Etoiles n={Math.min(5, Number(v.note_etoiles))} />}
+            {motifs.map(m => <span key={`m-${m}`} className={`${cv.puce} ${issue === 'non' ? cv.puceNon : ''}`}>{m}</span>)}
+            {aime.map(m => <span key={`a-${m}`} className={`${cv.puce} ${cv.puceAime}`}>{m}</span>)}
+          </div>
+        )}
+        {groupe === 'effectuee' && v.mot_client && <div className={cv.bulle}><small>{`${prenom}, dans son espace`}</small>{v.mot_client}</div>}
+        {groupe === 'effectuee' && v.commentaire && <div className={cv.note}><Picto n="cr" t={14} /><span>{v.commentaire}</span></div>}
+      </div>
+
+      <div className={cv.actions}>
+        {groupe === 'a_faire' && <>
+          <button type="button" className={`${cv.btn} ${cv.btnOr}`} onClick={onCR}><Picto n="cr" t={15} /><span>Faire le compte rendu</span></button>
+          <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>
+          <button type="button" className={`${cv.btn} ${cv.btnDiscret}`} onClick={onAnnuler}><Picto n="croix" t={14} /><span>Annuler</span></button>
+        </>}
+        {groupe === 'a_venir' && <>
+          <button type="button" className={`${cv.btn} ${cv.btnBleu}`} onClick={onCR}><Picto n="check" t={15} /><span>Effectuée</span></button>
+          <button type="button" className={`${cv.btn} ${v.rappel_envoye_le ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{v.rappel_envoye_le ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>
+          <button type="button" className={`${cv.btn} ${cv.btnDiscret}`} onClick={onAnnuler}><Picto n="croix" t={14} /><span>Annuler</span></button>
+        </>}
+        {groupe === 'effectuee' && (
+          <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ Plusieurs visites du même client le même jour (V3.135) ═════════════
+   Alexandre : « s'il y a plusieurs visites pour la même personne… le nom de
+   la personne et en dessous plusieurs lignes du bien ». Une seule carte : la
+   date et le nom une fois, une ligne par bien avec son heure, sa photo et ses
+   propres boutons ; le rappel une fois (il regroupe déjà toutes les visites
+   du jour, voir ModaleRappelVisite). Les jours différents restent séparés. */
+function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, onRappel }: {
+  visites: any[]; groupe: 'a_faire' | 'a_venir'; auj: string; rang: number;
+  onClient: () => void; onBien: (v: any) => void; onCR: (v: any) => void; onAnnuler: (v: any) => void; onRappel: () => void;
+}) {
+  const v0 = visites[0];
+  const ton = groupe === 'a_faire' ? { date: cv.dateAfaire, past: cv.pastAfaire } : { date: cv.dateAvenir, past: cv.pastAvenir };
+  const iso = String(v0.date_visite).slice(0, 10);
+  const d = new Date(`${iso}T12:00:00Z`);
+  const annee = iso.slice(0, 4) !== auj.slice(0, 4) ? ` ${iso.slice(0, 4)}` : '';
+  const nom = `${v0.clients?.prenom || ''} ${v0.clients?.nom || ''}`.trim() || 'Client';
+  const prenom = v0.clients?.prenom || 'Le client';
+  const rappel = groupe === 'a_venir' ? visites.map(v => v.rappel_envoye_le).filter(Boolean).sort().pop() : null;
+  return (
+    <div className={`${cv.carte} ${cv.journee}`} style={{ animationDelay: `${Math.min(rang, 6) * 40}ms` }}>
+      <div className={`${cv.date} ${ton.date}`}>
+        <small>{d.toLocaleDateString('fr-FR', { weekday: 'short', timeZone: 'UTC' })}</small>
+        <b>{d.getUTCDate()}</b>
+        <small>{`${d.toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' })}${annee}`}</small>
+        <em>{`${visites.length} visites`}</em>
+      </div>
+
+      <div className={cv.milieu}>
+        <div className={cv.qui}>
+          <button type="button" className={cv.nom} onClick={onClient} title={`Ouvrir la fiche de ${nom}`}>
+            {v0.clients && <AvatarContact c={v0.clients} teinte={{ bg: '#eef2f8', fg: '#34496e' }} taille={34} />}
+            <b>{nom}</b>
+          </button>
+          <span className={`${cv.past} ${ton.past}`}><i />{quandRelatif(ecartJours(iso, auj))}</span>
+        </div>
+
+        <div className={cv.lignes}>
+          {visites.map(v => {
+            const heure = /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '';
+            const photo = v.biens?.photos?.[0];
+            const lieu = [v.biens?.quartier, v.biens?.ville].filter(Boolean).join(', ');
+            const repondu = groupe === 'a_faire' && v.avis_client_le && v.issue && ISSUES[v.issue as Issue] ? ISSUES[v.issue as Issue] : null;
+            return (
+              <div key={v.id} className={cv.ligne}>
+                <span className={cv.heureL}>{heure || '—'}</span>
+                <button type="button" className={cv.bien} onClick={() => onBien(v)} title="Ouvrir la fiche du bien">
+                  {photo
+                    ? <img src={photo} alt="" className={cv.photo} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
+                    : <span className={`${cv.photo} ${cv.photoVide}`}><Picto n="maison" t={22} /></span>}
+                  <span className={cv.bienTx}>
+                    <b>{v.biens?.titre || lieu || 'Bien'}</b>
+                    {lieu && <small><Picto n="pin" t={13} />{lieu}</small>}
+                    {v.contact_agence && <small><Picto n="tel" t={13} />{v.contact_agence}</small>}
+                  </span>
+                  <span className={cv.fleche}><Picto n="fleche" t={18} /></span>
+                </button>
+                <div className={cv.actL}>
+                  {groupe === 'a_faire'
+                    ? <button type="button" className={`${cv.btn} ${cv.btnOr} ${cv.btnPetit}`} onClick={() => onCR(v)}><Picto n="cr" t={14} /><span>Compte rendu</span></button>
+                    : <button type="button" className={`${cv.btn} ${cv.btnBleu} ${cv.btnPetit}`} onClick={() => onCR(v)}><Picto n="check" t={14} /><span>Effectuée</span></button>}
+                  <button type="button" className={`${cv.btn} ${cv.btnDiscret} ${cv.btnPetit}`} onClick={() => onAnnuler(v)} aria-label={`Annuler la visite de ${heure || 'ce bien'}`} title="Annuler cette visite"><Picto n="croix" t={14} /><span className={cv.surTel}>Annuler</span></button>
+                </div>
+                {repondu && (
+                  <div className={`${cv.bulle} ${cv.ligneBulle}`}>
+                    <small>{`${prenom}, dans son espace`}</small>
+                    <b>{`A répondu : ${repondu.crm}`}</b>
+                    {v.prix_envisage ? `, autour de ${Number(v.prix_envisage).toLocaleString('fr-FR')} €` : ''}
+                    {v.mot_client ? <div>{`« ${v.mot_client} »`}</div> : null}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {rappel && <div className={cv.meta}><span className={`${cv.m} ${cv.vert}`}><Picto n="check" t={14} />{libelleRappel(rappel)}</span></div>}
+      </div>
+
+      <div className={cv.actions}>
+        {groupe === 'a_venir' && (
+          <button type="button" className={`${cv.btn} ${rappel ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{rappel ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>
+        )}
+        <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>
+      </div>
+    </div>
   );
 }
 
@@ -177,7 +401,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     const [{ data }, dem] = await Promise.all([
       toutLire<any>((de, a) => supabase
         .from('visites')
-        .select('*, clients(id, prenom, nom, reference), biens(titre, ville, photos, badge_retour)')
+        .select('*, clients(*), biens(titre, ville, quartier, photos, badge_retour, bien_vente_id)')
         .order('date_visite', { ascending: true }).order('id').range(de, a)),
       chargerDemandesVisite().catch(() => [] as DemandeVisite[]),
     ]);
@@ -247,6 +471,29 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     demanderOuvertureFiche({ clientId: d.client.id, onglet: 'presentes', rechercheId: d.rechercheId, bienId: d.bien.id });
     onNavigate('fiche', d.client);
   }
+  /* V3.135 — Le nom ouvre la fiche de l'acheteur, sur ses visites. Le bien
+     ouvre sa fiche : celle du mandat quand c'est un bien de l'agence ; sinon
+     la fiche de l'acheteur, descendue jusqu'au bien dans ses biens présentés
+     (c'est là que vit un bien trouvé ailleurs). La fiche se charge entière
+     (ficheClient) : la ligne de la visite n'a pas tout ce qu'il lui faut. */
+  async function allerFiche(clientId: string) {
+    try { onNavigate('fiche', await ficheClient(clientId)); } catch (e) { alert((e as Error).message); }
+  }
+  function ouvrirClient(v: any) {
+    const id = v.clients?.id || v.client_id;
+    if (!id) return;
+    demanderOuvertureFiche({ clientId: id, onglet: 'visites', rechercheId: v.recherche_id || null });
+    void allerFiche(id);
+  }
+  function ouvrirBien(v: any) {
+    if (v.biens?.bien_vente_id) { onNavigate('biens', { bien: v.biens.bien_vente_id }); return; }
+    const id = v.clients?.id || v.client_id;
+    if (!id) return;
+    demanderOuvertureFiche({ clientId: id, onglet: 'presentes', rechercheId: v.recherche_id || null, bienId: v.bien_id || undefined });
+    void allerFiche(id);
+  }
+  const aujParis = maintenantParis(maintenant).slice(0, 10);
+
   /* Depuis quand il attend, en jours de calendrier. Au-delà de deux jours,
      l'attente s'écrit en rouge. */
   const attente = (iso: string) => {
@@ -374,129 +621,30 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
             </div>
           )}
 
-          {/* À VENIR — et celles dont la date est passée, qui attendent leur compte rendu */}
+          {/* COMPTE RENDU À FAIRE, À VENIR, EFFECTUÉES — la même carte (V3.135, maquette A) */}
           {([
-            { id: 'a_faire' as const, liste: aFaire, titre: 'Compte rendu à faire', c: '#b45309' },
-            { id: 'a_venir' as const, liste: aVenir, titre: 'À venir', c: '#3b82f6' },
+            { id: 'a_faire' as const, groupe: 'a_faire' as Groupe, liste: aFaire, titre: 'Compte rendu à faire', c: '#b45309', point: '#f59e0b' },
+            { id: 'a_venir' as const, groupe: 'a_venir' as Groupe, liste: aVenir, titre: 'À venir', c: '#2563eb', point: '#3b82f6' },
+            { id: 'effectuees' as const, groupe: 'effectuee' as Groupe, liste: effectuees, titre: 'Effectuées', c: '#0f9f6e', point: '#10b981' },
           ]).filter(g => g.liste.length > 0 && montrer(g.id)).map(g => (
             <div key={g.id}>
               <div style={{ fontSize: 11, fontWeight: 800, color: g.c, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.c, display: 'inline-block' }}></span>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.point, display: 'inline-block' }}></span>
                 {`${g.titre} — ${g.liste.length}`}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {g.liste.map(v => {
-                  const date = v.date_visite ? formatDate(v.date_visite) : null;
-                  const photo = v.biens?.photos?.[0];
-                  return (
-                    <div key={v.id} className="pv-carte" style={{ background: 'white', borderRadius: 16, border: '1px solid #e3e8f0', borderLeft: `3px solid ${g.c}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                      <div className="pv-ligne" style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
-                        {photo && <img src={photo} alt="" className="pv-photo" style={{ width: 90, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-                        <div className="pv-corps" style={{ flex: 1, padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                            {date && (
-                              <div style={{ background: 'var(--emilio-fond)', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 44, flexShrink: 0 }}>
-                                <div style={{ fontWeight: 800, fontSize: 18, color: 'white', lineHeight: 1 }}>{date.day}</div>
-                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>{date.mon} {date.year}</div>
-                              </div>
-                            )}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--emilio)' }}>{v.clients?.prenom} {v.clients?.nom}</div>
-                              <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{v.biens?.titre || v.biens?.ville || '—'}</div>
-                              {v.heure && <div style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700, marginTop: 4 }}>🕐 {v.heure}</div>}
-                              {v.contact_agence && <div style={{ fontSize: 12, color: '#94a3b8' }}>📞 {v.contact_agence}</div>}
-                              {g.id === 'a_faire' && v.avis_client_le && v.issue && ISSUES[v.issue as Issue] && (
-                                <div style={{ fontSize: 12.5, color: '#1e3a8a', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '7px 10px', marginTop: 9, lineHeight: 1.45 }}>
-                                  <b>{`${v.clients?.prenom || 'Le client'} a répondu : ${ISSUES[v.issue as Issue].crm}`}</b>
-                                  {v.prix_envisage ? `, autour de ${Number(v.prix_envisage).toLocaleString('fr-FR')} €` : ''}
-                                  {v.motifs?.length ? <div style={{ marginTop: 5 }}><Raisons l={v.motifs} non={v.issue === 'non'} /></div> : null}
-                                  {v.mot_client ? <div style={{ marginTop: 4 }}>{`« ${v.mot_client} »`}</div> : null}
-                                </div>
-                              )}
-                              {g.id === 'a_venir' && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                                  {v.rappel_envoye_le && (
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#047857', background: '#ecfdf5', borderRadius: 20, padding: '4px 10px' }}>
-                                      <span aria-hidden="true">✓</span><span>{libelleRappel(v.rappel_envoye_le)}</span>
-                                    </span>
-                                  )}
-                                  <button type="button" onClick={() => setRappelDe(v.id)}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: v.rappel_envoye_le ? 'white' : '#fffaf0', color: '#8a6a1f', border: `1px solid ${v.rappel_envoye_le ? '#e3e8f0' : '#ecdcae'}`, borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                                    <Enveloppe />{v.rappel_envoye_le ? 'Renvoyer' : 'Envoyer le rappel'}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="pv-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 14px 14px 0', justifyContent: 'center' }}>
-                          <button onClick={() => openCR(v.id)} style={{ background: g.id === 'a_faire' ? '#c9a84c' : 'var(--emilio)', color: g.id === 'a_faire' ? 'var(--emilio)' : 'white', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{g.id === 'a_faire' ? 'Compte rendu' : '✓ Effectuée'}</button>
-                          <button onClick={() => annuler(v.id)} style={{ background: 'white', color: '#64748b', border: '1px solid #e3e8f0', borderRadius: 10, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Annuler</button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className={cv.liste}>
+                {parJournee(g.liste, g.groupe !== 'effectuee').map((l, k) => l.length > 1 && g.groupe !== 'effectuee' ? (
+                  <CarteJournee key={l[0].id} visites={l} groupe={g.groupe} auj={aujParis} rang={k}
+                    onClient={() => ouvrirClient(l[0])} onBien={v => ouvrirBien(v)}
+                    onCR={v => openCR(v.id)} onAnnuler={v => { void annuler(v.id); }} onRappel={() => setRappelDe(l[0].id)} />
+                ) : (
+                  <CarteVisite key={l[0].id} v={l[0]} groupe={g.groupe} auj={aujParis} rang={k}
+                    onClient={() => ouvrirClient(l[0])} onBien={() => ouvrirBien(l[0])}
+                    onCR={() => openCR(l[0].id)} onAnnuler={() => { void annuler(l[0].id); }} onRappel={() => setRappelDe(l[0].id)} />
+                ))}
               </div>
             </div>
           ))}
-
-          {/* EFFECTUÉES */}
-          {effectuees.length > 0 && montrer('effectuees') && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                Effectuées — {effectuees.length}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {effectuees.map(v => {
-                  const date = v.date_visite ? formatDate(v.date_visite) : null;
-                  const photo = v.biens?.photos?.[0];
-                  const issue = issueDe(v);
-                  return (
-                    <div key={v.id} className="pv-carte" style={{ background: 'white', borderRadius: 16, border: '1px solid #e3e8f0', borderLeft: '3px solid #10b981', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                      <div className="pv-ligne" style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
-                        {photo && <img src={photo} alt="" className="pv-photo" style={{ width: 90, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-                        <div className="pv-corps" style={{ flex: 1, padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                            {date && (
-                              <div style={{ background: '#ecfdf5', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 44, flexShrink: 0 }}>
-                                <div style={{ fontWeight: 800, fontSize: 18, color: '#065f46', lineHeight: 1 }}>{date.day}</div>
-                                <div style={{ fontSize: 9, color: '#6ee7b7', textTransform: 'uppercase', letterSpacing: 1 }}>{date.mon} {date.year}</div>
-                              </div>
-                            )}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--emilio)' }}>{v.clients?.prenom} {v.clients?.nom}</div>
-                              <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{v.biens?.titre || v.biens?.ville || '—'}</div>
-                              {v.heure && <div style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700, marginTop: 4 }}>🕐 {v.heure}</div>}
-                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
-                                {issue && <PastilleIssue i={issue} offreFaite={v.biens?.badge_retour === 'offre_faite'} />}
-                                {v.note_etoiles > 0 && <span style={{ fontSize: 15 }}>{'⭐'.repeat(v.note_etoiles)} <span style={{ fontSize: 11, color: '#94a3b8' }}>{v.note_etoiles}/5</span></span>}
-                              </div>
-                              {(v.motifs?.length > 0 || v.aime?.length > 0) && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
-                                  <Raisons l={v.motifs} non={issue === 'non'} />
-                                  {v.aime?.length > 0 && <span style={{ fontSize: 12, color: '#166534' }}>{`Il a aimé : ${v.aime.join(', ')}`}</span>}
-                                </div>
-                              )}
-                              {v.mot_client && (
-                                <div style={{ fontSize: 12.5, color: '#1e3a8a', background: '#eff6ff', borderRadius: 9, padding: '7px 10px', marginTop: 8 }}>{`« ${v.mot_client} » — ${v.clients?.prenom || 'le client'}, dans son espace`}</div>
-                              )}
-                              {v.commentaire && (
-                                <div style={{ fontSize: 13, color: 'var(--emilio)', background: '#f0fdf4', borderRadius: 10, padding: '8px 12px', marginTop: 8, borderLeft: '3px solid #10b981' }}>
-                                  {v.commentaire}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* ANNULÉES — gardées pour mémoire, sans action */}
           {annulees.length > 0 && montrer('annulees') && (
