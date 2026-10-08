@@ -32,7 +32,7 @@
      faite) est laissé de côté, avec sa raison : c'est sur sa fiche qu'on la
      prend. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Ic } from '@/components/documents/ApercuActe';
 import { supabase } from '@/lib/supabase';
@@ -45,6 +45,7 @@ import { signalerEchec } from '@/lib/ecritures';
 import { CaseLigne, type Avancement } from '@/components/shared/Selection';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { Avatar, Illu, modeAcheteurs, teinte } from './AcheteursBien';
+import { AvisLigne, CarteIA, analyserIA, avisDesBiens, rangIA, type AvisParBien } from './RapprochementIA';
 import { RAISONS_ETAPE, avantRdv } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteurChoisi, acheteursPour, changerEtape, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
@@ -172,6 +173,12 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     const t = window.setTimeout(() => setRappro('ouvert'), 1100);
     return () => window.clearTimeout(t);
   }, [rappro]);
+  /* V3.123 — Le rapprochement intelligent (RapprochementIA.tsx) : les avis
+     déjà gardés sur ces biens, puis l'analyse, lancée d'elle-même avec le
+     rapprochement (Alexandre : « que ce soit fonctionnel partout »). */
+  const [ia, setIa] = useState<AvisParBien>(() => avisDesBiens(envoyables as unknown as ({ id: string } & Record<string, unknown>)[]));
+  const [iaEtat, setIaEtat] = useState<{ en: boolean; fait: number; erreur: string; info: string }>({ en: false, fait: 0, erreur: '', info: '' });
+  const avisDe = (bienId: string, rechId: string) => ia[bienId]?.[rechId] || null;
 
   /* Un acheteur (une recherche) par ligne, et les biens qui lui correspondent. */
   const lignes = useMemo(() => {
@@ -189,6 +196,26 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     const meilleure = (x: Ligne) => Math.max(...x.items.map(i => i.acheteur.corr.note));
     return [...m.values()].sort((p, q2) => bons(q2) - bons(p) || meilleure(q2) - meilleure(p));
   }, [envoyables, liste, manuels]);
+
+  /* Les couples que l'IA relit : chaque acheteur retenu, avec les biens qui
+     lui correspondent au moins en partie ; les meilleures notes d'abord,
+     48 au plus (quatre appels). */
+  const paires = useMemo(() => lignes
+    .flatMap(x => x.items.filter(i => i.acheteur.corr.note >= SEUIL_LISTE).map(i => ({ b: i.bien.id, r: x.cle, n: i.acheteur.corr.note })))
+    .sort((p, q) => q.n - p.n).slice(0, 48).map(({ b, r }) => ({ b, r })), [lignes]);
+  async function lancerIA() {
+    if (!paires.length || iaEtat.en) return;
+    setIaEtat({ en: true, fait: 0, erreur: '', info: '' });
+    const r = await analyserIA(paires, ia, (avis, fait) => { setIa(avis); setIaEtat(e => ({ ...e, fait })); });
+    setIaEtat(e => ({ ...e, en: false, erreur: r.erreur, info: r.info }));
+  }
+  const lanceIA = useRef(false);
+  useEffect(() => {
+    if (rappro !== 'ouvert' || lanceIA.current || !paires.length) return;
+    lanceIA.current = true;
+    void lancerIA();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rappro, paires.length]);
 
   /* Ceux qu'Alexandre a choisis : tous les biens, sauf le sien s'il en est le propriétaire. */
   const choisisMain = useMemo(() => manuels.map(id => {
@@ -239,7 +266,11 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const [avance, setAvance] = useState<Avancement | null>(null);
   const [bilan, setBilan] = useState('');
 
-  const auto = rappro === 'ouvert' ? lignes.filter(x => partiels || x.items.some(i => i.acheteur.corr.note >= SEUIL_CORRESPOND)) : [];
+  /* Avec les avis de l'IA : un « oui » en tête, un « non » partout à la fin. */
+  const rangLigne = (x: Ligne) => Math.min(...x.items.map(i => rangIA(avisDe(i.bien.id, x.cle))));
+  const auto = rappro === 'ouvert'
+    ? lignes.filter(x => partiels || x.items.some(i => i.acheteur.corr.note >= SEUIL_CORRESPOND)).map((x, k) => ({ x, k })).sort((p, q) => rangLigne(p.x) - rangLigne(q.x) || p.k - q.k).map(p => p.x)
+    : [];
   const nbCorrespondent = lignes.filter(x => x.items.some(i => i.acheteur.corr.note >= SEUIL_CORRESPOND)).length;
   const vues = [...choisisMain, ...auto];
   /* Des biens qui ne correspondent qu'en partie (50 à 69 %) : la case pour les ajouter. */
@@ -386,6 +417,11 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
               );
             }) : <span className={l.pastilleVide}>{'C’est le propriétaire : rien à lui envoyer.'}</span>}
           </div>
+          {(() => {
+            const vus = items.map(i => ({ i, a: avisDe(i.bien.id, x.cle) })).filter(y => y.a).slice(0, 3);
+            if (!vus.length) return null;
+            return <span className={l.avisIA}>{vus.map(y => <AvisLigne key={y.i.bien.id} avis={y.a!} avant={items.length > 1 ? bienCourt(y.i.bien) : undefined} />)}</span>;
+          })()}
         </div>
         <span className={l.combien}>{rien ? (x.items.length ? 'Déjà reçu' : '—') : n ? (n > 1 ? `${n} biens` : '1 bien') : 'En sélection'}</span>
       </div>
@@ -596,6 +632,9 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                   ) : (
                     <>
                       <div className={l.sousT}><b>{'Le rapprochement'}</b><span>{`${nbCorrespondent > 1 ? `${nbCorrespondent} acheteurs correspondent` : nbCorrespondent ? '1 acheteur correspond' : 'Aucun ne correspond tout à fait'}, sur ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} ouverte${nbRecherches > 1 ? 's' : ''}. Coche ceux à qui l’envoyer.`}</span></div>
+                      <CarteIA compact total={paires.length} avis={paires.map(p => avisDe(p.b, p.r)).filter((y): y is NonNullable<typeof y> => !!y)}
+                        en={iaEtat.en} fait={iaEtat.fait} erreur={iaEtat.erreur} info={iaEtat.info} onLancer={() => { void lancerIA(); }}
+                        texteRepos={'L’IA relit chaque acheteur retenu : ses indispensables, son parcours, ses comptes rendus de visite, et la fiche du bien.'} />
                       <div className={l.barreHaut}>
                         <CaseLigne on={tous} onBasculer={() => setChoisis(c => { const n = new Set(c); for (const x of possibles) { if (tous) n.delete(x.cle); else n.add(x.cle); } return n; })} titre={tous ? 'Tout décocher' : 'Tout cocher'} />
                         <span className={l.barreHautTx}>{tous ? 'Tout décocher' : 'Tout cocher'}</span>
