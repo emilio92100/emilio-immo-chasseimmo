@@ -1,5 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import AvatarContact from '@/components/contacts/AvatarContact';
+import { bienVisitable, poserVisites } from '@/lib/planifier-visite';
+import dv from './DemandesVisite.module.css';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import { ModaleRappelVisite, libelleRappel } from '@/components/shared/RappelVisite';
@@ -17,6 +21,104 @@ function Enveloppe() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 7.2a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9.6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="m3.6 7.6 8.4 5.8 8.4-5.8" />
     </svg>
+  );
+}
+
+/* Trois pictos dessinés pour les demandes de visite (V3.129). */
+function Picto({ n, t = 16 }: { n: 'cal' | 'fiche' | 'croix' | 'maison'; t?: number }) {
+  return (
+    <svg width={t} height={t} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
+      {n === 'cal' && <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>}
+      {n === 'fiche' && <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>}
+      {n === 'croix' && <path d="M6 6l12 12M18 6 6 18" />}
+      {n === 'maison' && <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></>}
+    </svg>
+  );
+}
+
+/* Le bien demandé, en petite carte (la carte de la demande et la fenêtre). */
+function BienDemande({ d }: { d: DemandeVisite }) {
+  const euros = (n: number) => n.toLocaleString('fr-FR').replace(/\u202f/g, '\u00a0') + '\u00a0€';
+  const lieu = [d.bien.quartier, d.bien.ville].filter(Boolean).join(', ');
+  const carac = [d.bien.surface ? `${d.bien.surface}\u00a0m²` : '', d.bien.nb_pieces ? `${d.bien.nb_pieces}\u00a0pièces` : ''].filter(Boolean).join(' · ');
+  const photo = d.bien.photos?.[0];
+  return (
+    <div className={dv.bien}>
+      {photo
+        ? <img src={photo} alt="" className={dv.photo} onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
+        : <span className={`${dv.photo} ${dv.photoVide}`}><Picto n="maison" t={22} /></span>}
+      <span className={dv.bienTx}>
+        <b>{d.bien.titre || lieu || 'Bien présenté'}</b>
+        {(lieu || carac) && <small>{[lieu, carac].filter(Boolean).join(' · ')}</small>}
+      </span>
+      {d.bien.prix ? <span className={dv.prix}>{euros(d.bien.prix)}</span> : null}
+    </div>
+  );
+}
+
+/* « Planifier la visite » sans quitter la page (V3.129, Alexandre : « ça
+   ouvre déjà un pop-up et je peux organiser directement la visite sans
+   ouvrir la fiche »). Les écritures sont celles de la fiche
+   (src/lib/planifier-visite.ts) : la relance « Veut visiter » se solde, le
+   Suivi note la visite, la demande passe dans « À venir ». */
+function FenetreVisite({ d, revu, onFermer, onFait }: { d: DemandeVisite; revu: boolean; onFermer: () => void; onFait: (texte: string) => void }) {
+  const [date, setDate] = useState('');
+  const [heure, setHeure] = useState('');
+  const [contact, setContact] = useState('');
+  const [notes, setNotes] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const acceptes = useRef<Set<string>>(new Set());
+  const nom = `${d.client?.prenom || ''} ${d.client?.nom || ''}`.trim() || 'le client';
+  const aujourdhui = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !envoi) onFermer(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [envoi, onFermer]);
+  const valider = async () => {
+    if (envoi || !d.client) return;
+    setEnvoi(true);
+    const bien = { id: d.bien.id, titre: d.bien.titre, ville: d.bien.ville, bien_vente_id: d.bien.bien_vente_id || null };
+    try {
+      if (!(await bienVisitable([bien], acceptes.current))) return;
+      const ok = await poserVisites({ clientId: d.client.id, rechercheId: d.rechercheId, biens: [bien], revus: revu ? [bien.id] : [], date, heure, contact, notes });
+      if (!ok) return;
+      const quand = date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+      onFait(`Visite planifiée avec ${nom}${quand ? ` le ${quand}` : ''}${heure ? ` à ${heure}` : ''}. Elle passe dans « À venir ».`);
+    } finally { setEnvoi(false); }
+  };
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className={dv.voile} onClick={e => { if (e.target === e.currentTarget && !envoi) onFermer(); }}>
+      <div className={dv.fenetre} role="dialog" aria-modal="true" aria-label="Planifier la visite">
+        <div className={dv.fTete}>
+          <span className={dv.fIc}><Picto n="cal" t={19} /></span>
+          <div style={{ minWidth: 0 }}>
+            <h2>Planifier la visite</h2>
+            <p>{`Avec ${nom}`}</p>
+          </div>
+          <button type="button" className={dv.fFermer} onClick={onFermer} aria-label="Fermer"><Picto n="croix" t={15} /></button>
+        </div>
+        <div className={dv.fCorps}>
+          <BienDemande d={d} />
+          {d.dispos && <div className={dv.dispo}><small>Ses disponibilités</small>{d.dispos}</div>}
+          <div className={dv.champs}>
+            <div className={dv.champ}><label htmlFor="pv-date">Date</label><input id="pv-date" type="date" min={aujourdhui} value={date} onChange={e => setDate(e.target.value)} /></div>
+            <div className={dv.champ}><label htmlFor="pv-heure">Heure</label><input id="pv-heure" type="time" value={heure} onChange={e => setHeure(e.target.value)} /></div>
+            <div className={`${dv.champ} ${dv.plein}`}><label htmlFor="pv-contact">Contact agence ou vendeur</label><input id="pv-contact" value={contact} onChange={e => setContact(e.target.value)} placeholder="Nom, téléphone, e-mail…" /></div>
+            <div className={`${dv.champ} ${dv.plein}`}><label htmlFor="pv-notes">Notes préparatoires</label><textarea id="pv-notes" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Points à vérifier, documents à apporter…" /></div>
+          </div>
+          <div className={dv.aide}>{'La visite va dans l’agenda et dans son espace. La demande quitte « Demandes » et passe dans « À venir ».'}</div>
+        </div>
+        <div className={dv.fPied}>
+          <button type="button" className={dv.btn} onClick={onFermer} disabled={envoi}>Annuler</button>
+          <button type="button" className={`${dv.btn} ${dv.btnV}`} onClick={() => { void valider(); }} disabled={envoi}>
+            <Picto n="cal" t={15} /><span>{envoi ? 'Enregistrement…' : 'Confirmer la visite'}</span>
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -52,6 +154,9 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   /* Le rappel au client : la fenêtre s'ouvre sur une visite et retrouve
      toutes celles du même jour pour ce client. */
   const [rappelDe, setRappelDe] = useState<string | null>(null);
+  /* V3.129 : la demande dont on planifie la visite (la fenêtre), et la phrase qui le confirme. */
+  const [aPlanifier, setAPlanifier] = useState<DemandeVisite | null>(null);
+  const [bravo, setBravo] = useState('');
 
   /* L'agenda envoie ici pour un compte rendu : la visite s'ouvre directement. */
   useEffect(() => {
@@ -138,7 +243,8 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
      est dans le groupe « Il veut visiter », avec de quoi caler la visite. */
   function ouvrirDemande(d: DemandeVisite) {
     if (!d.client) return;
-    demanderOuvertureFiche({ clientId: d.client.id, onglet: 'presentes', rechercheId: d.rechercheId });
+    /* V3.129 : la fiche descend jusqu'au bien et l'entoure un instant (OngletBiens, `vise`). */
+    demanderOuvertureFiche({ clientId: d.client.id, onglet: 'presentes', rechercheId: d.rechercheId, bienId: d.bien.id });
     onNavigate('fiche', d.client);
   }
   /* Depuis quand il attend, en jours de calendrier. Au-delà de deux jours,
@@ -201,6 +307,13 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
           { cle: 'annulees', lib: 'Annulées', n: annulees.length, couleur: '#94a3b8' },
         ]).filter(x => x.cle !== 'demandes' || demandes.length > 0)} />
 
+      {aPlanifier && (
+        <FenetreVisite d={aPlanifier}
+          revu={visites.some(v => v.bien_id === aPlanifier.bien.id && (v.statut === 'effectuee' || v.statut === 'a_venir'))}
+          onFermer={() => setAPlanifier(null)}
+          onFait={texte => { setAPlanifier(null); setBravo(texte); load(); window.setTimeout(() => setBravo(''), 9000); }} />
+      )}
+
       {loading ? (
         <div className={styles.empty}><div className={styles.emptySub}>Chargement...</div></div>
       ) : visites.length === 0 && demandes.length === 0 ? (
@@ -228,47 +341,32 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
               <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.45 }}>
                 {'Demandées par le client depuis son espace. Dès qu’une visite est calée sur le bien, la demande passe dans « À venir ».'}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {demandesTrouvees.map(d => {
-                  const photo = d.bien.photos?.[0];
+              {/* V3.129 (Alexandre, maquette 1) : le client, puis le bien en petite
+                  carte, ses disponibilités en bulle ; « Planifier la visite »
+                  ouvre la fenêtre ici, « Voir sur sa fiche » descend jusqu'au bien. */}
+              {bravo && <div className={dv.bravo} role="status" style={{ marginBottom: 10 }}><Picto n="cal" t={16} /><span>{bravo}</span></div>}
+              <div className={dv.liste}>
+                {demandesTrouvees.map((d, i) => {
                   const nom = `${d.client?.prenom || ''} ${d.client?.nom || ''}`.trim() || 'Le client';
                   const att = attente(d.quand);
-                  const lieu = [d.bien.quartier, d.bien.ville].filter(Boolean).join(', ');
-                  const carac = [d.bien.surface ? `${d.bien.surface}\u00a0m²` : '', d.bien.nb_pieces ? `${d.bien.nb_pieces}\u00a0pièces` : '', d.bien.prix ? euros(d.bien.prix) : ''].filter(Boolean).join(' · ');
                   return (
-                    <div key={d.id} className="pv-carte" role="button" tabIndex={0}
-                      onClick={() => ouvrirDemande(d)} onKeyDown={e => { if (e.key === 'Enter') ouvrirDemande(d); }}
-                      style={{ background: 'white', borderRadius: 16, border: '1px solid #fbd5d5', borderLeft: '3px solid #ef4444', overflow: 'hidden', boxShadow: '0 8px 22px -18px rgba(220,38,38,.7)', cursor: 'pointer' }}>
-                      <div className="pv-ligne" style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
-                        {photo
-                          ? <img src={photo} alt="" className="pv-photo" style={{ width: 96, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                          : <div className="pv-photo" style={{ width: 96, flexShrink: 0, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🏠</div>}
-                        <div className="pv-corps" style={{ flex: 1, padding: '14px 16px', minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 20, padding: '3px 9px', whiteSpace: 'nowrap' }}>{'👀 Veut visiter'}</span>
-                            <span style={{ fontSize: 12, fontWeight: att.vieux ? 700 : 500, color: att.vieux ? '#dc2626' : '#94a3b8' }}>{att.texte}</span>
-                          </div>
-                          <div style={{ fontSize: 15, color: 'var(--emilio)', marginTop: 8, lineHeight: 1.35 }}>
-                            <b>{nom}</b>{' souhaite visiter ce logement'}
-                          </div>
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#334155', marginTop: 3 }}>{d.bien.titre || lieu || 'Bien présenté'}</div>
-                          {(lieu || carac) && (
-                            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>{[lieu, carac].filter(Boolean).join(' · ')}</div>
-                          )}
-                          {d.dispos && (
-                            <div style={{ fontSize: 12.5, color: 'var(--emilio)', background: '#fff8f8', border: '1px solid #fde4e4', borderRadius: 10, padding: '7px 11px', marginTop: 9, lineHeight: 1.5 }}>
-                              <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, textTransform: 'uppercase', color: '#b91c1c', marginBottom: 2 }}>Ses disponibilités</span>
-                              {d.dispos}
-                            </div>
-                          )}
-                        </div>
-                        <div className="pv-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '14px 14px 14px 0', justifyContent: 'center' }}>
-                          <button type="button" onClick={e => { e.stopPropagation(); ouvrirDemande(d); }}
-                            style={{ background: 'var(--emilio-fond)', color: 'white', border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                            {'Ouvrir sa fiche →'}
-                          </button>
-                        </div>
+                    <div key={d.id} className={dv.carte} role="button" tabIndex={0} style={{ animationDelay: `${Math.min(i, 6) * 50}ms` }}
+                      onClick={() => ouvrirDemande(d)} onKeyDown={e => { if (e.key === 'Enter') ouvrirDemande(d); }}>
+                      <div className={dv.qui}>
+                        {d.client && <AvatarContact c={d.client} teinte={{ bg: '#eef2f8', fg: '#34496e' }} taille={42} />}
+                        <span className={dv.quiTx}><b>{nom}</b><span>veut visiter ce bien</span></span>
+                        <span className={`${dv.attente} ${att.vieux ? dv.attenteVieille : ''}`}><i />{att.texte}</span>
                       </div>
+                      <div className={dv.actions}>
+                        <button type="button" className={`${dv.btn} ${dv.btnV}`} onClick={e => { e.stopPropagation(); setBravo(''); setAPlanifier(d); }}>
+                          <Picto n="cal" t={15} /><span>Planifier la visite</span>
+                        </button>
+                        <button type="button" className={dv.btn} onClick={e => { e.stopPropagation(); ouvrirDemande(d); }}>
+                          <Picto n="fiche" t={15} /><span>Voir sur sa fiche</span>
+                        </button>
+                      </div>
+                      <BienDemande d={d} />
+                      {d.dispos && <div className={dv.dispo}><small>Ses disponibilités</small>{d.dispos}</div>}
                     </div>
                   );
                 })}

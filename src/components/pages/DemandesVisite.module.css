@@ -1,0 +1,90 @@
+/* ═══ Les demandes de visite (V3.129) ═══════════════════════════════════════
+   Voir PageVisites.tsx. Alexandre : « faire une présentation un peu
+   différente, j'aime pas la photo rectangulaire » (maquette 1 : le client,
+   puis le bien en petite carte, ses disponibilités en bulle) ; « planifier
+   une visite, ça ouvre déjà un pop-up ». Le violet est celui de « Veut
+   visiter » dans la fiche. */
+.liste { display: flex; flex-direction: column; gap: 10px; }
+.carte {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; padding: 14px; border-radius: 20px; cursor: pointer;
+  background: white; border: 1px solid #ece7fb; box-shadow: 0 14px 30px -24px rgba(124, 58, 237, .6);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; animation: entre .4s cubic-bezier(.2, .8, .2, 1) backwards;
+}
+.carte:hover { border-color: #ddd6fe; box-shadow: 0 18px 34px -24px rgba(124, 58, 237, .8); transform: translateY(-1px); }
+@keyframes entre { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.qui { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; min-width: 0; }
+.quiTx { display: flex; flex-direction: column; min-width: 0; }
+.quiTx b { font: 800 15.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.quiTx span { font-size: 13px; color: #6d28d9; font-weight: 700; }
+.attente {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 99px; white-space: nowrap;
+  background: #f8fafc; border: 1px solid #e3e8f0; color: #64748b; font-size: 12px; font-weight: 800;
+}
+.attente i { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
+.attenteVieille { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+.attenteVieille i { background: #dc2626; animation: pouls 1.8s ease-out infinite; }
+@keyframes pouls { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .6); } 80%, 100% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); } }
+.actions { grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 40px; padding: 0 15px; border-radius: 12px; white-space: nowrap;
+  border: 1px solid #e3e8f0; background: white; color: #334155; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; transition: background-color .2s, box-shadow .2s;
+}
+.btn:hover { background: #f8fafc; }
+.btnV { background: #7c3aed; border-color: #7c3aed; color: white; box-shadow: 0 10px 20px -12px rgba(124, 58, 237, .9); }
+.btnV:hover { background: #6d28d9; }
+.btn:disabled { opacity: .6; cursor: default; }
+.bien { grid-column: 1; display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 16px; background: #f8fafc; border: 1px solid #eef1f6; min-width: 0; }
+.photo { width: 64px; height: 64px; border-radius: 14px; flex: 0 0 auto; object-fit: cover; display: block; background: #e2e8f0; }
+.photoVide { display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; }
+.bienTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bienTx b { font-size: 14px; color: #1a2332; }
+.bienTx small { font-size: 12.5px; color: #64748b; }
+.prix { flex: 0 0 auto; font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #a07c28; }
+.dispo { grid-column: 1; position: relative; padding: 10px 13px 10px 34px; border-radius: 14px; background: #f5f3ff; border: 1px solid #ddd6fe; color: #3b2a6b; font-size: 13.5px; line-height: 1.5; white-space: pre-line; }
+.dispo::before { content: '“'; position: absolute; left: 11px; top: 2px; font: 800 28px 'Plus Jakarta Sans', sans-serif; color: #a78bfa; }
+.dispo small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #7c3aed; margin-bottom: 1px; }
+.bravo { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: #ecfdf5; border: 1px solid #bfe8d3; color: #0f7a4f; font-size: 13.5px; font-weight: 700; animation: entre .4s ease both; }
+
+/* La fenêtre « Planifier la visite » : au centre sur ordinateur, du bas au téléphone. */
+.voile { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(17, 35, 64, .45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: fondu .2s ease both; }
+@keyframes fondu { from { opacity: 0; } to { opacity: 1; } }
+.fenetre {
+  width: min(520px, 100%); max-height: calc(100dvh - 36px); overflow-y: auto; overscroll-behavior: contain; background: white; border-radius: 22px;
+  box-shadow: 0 30px 80px -20px rgba(17, 35, 64, .5); animation: monte .32s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes monte { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+.fTete { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid #f1f4f8; }
+.fIc { width: 38px; height: 38px; border-radius: 12px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; background: #f5f3ff; color: #7c3aed; }
+.fTete h2 { margin: 0; font: 800 17px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.fTete p { margin: 1px 0 0; font-size: 13px; color: #64748b; }
+.fFermer { margin-left: auto; width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e3e8f0; background: white; color: #64748b; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; }
+.fCorps { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 4px; }
+.fCorps .bien, .fCorps .dispo { grid-column: auto; }
+.champs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.champ { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.champ label { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #8896a8; }
+.champ input, .champ textarea {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1.5px solid #e3e8f0; background: #f8fafc;
+  font: 500 14px 'DM Sans', sans-serif; color: #1a2332; outline: none; transition: border-color .15s, background-color .15s;
+}
+.champ input:focus, .champ textarea:focus { border-color: #a78bfa; background: white; }
+.champ textarea { resize: vertical; min-height: 60px; }
+.plein { grid-column: 1 / -1; }
+.aide { font-size: 12px; color: #94a3b8; line-height: 1.45; }
+.fPied { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px 18px; }
+
+@media (max-width: 760px) {
+  .carte { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .actions { grid-column: 1; grid-row: auto; flex-direction: row; }
+  .actions .btn { flex: 1 1 0; padding: 0 10px; }
+  .bien, .dispo { grid-column: 1; }
+  .voile { align-items: flex-end; padding: 0; }
+  .fenetre { width: 100%; max-height: 92dvh; border-radius: 22px 22px 0 0; }
+  .champs { grid-template-columns: 1fr 1fr; }
+  .champ input, .champ textarea { font-size: 16px; }
+  .fPied { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .fPied .btn { flex: 1 1 0; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carte, .fenetre, .voile, .bravo, .attenteVieille i { animation: none; }
+}
