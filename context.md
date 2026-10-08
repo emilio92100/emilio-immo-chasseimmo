@@ -1498,6 +1498,26 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.140 — 8 octobre 2026 · L'aperçu du lien d'un bien (WhatsApp, Messenger, iMessage)
+
+Rien à passer dans Supabase.
+
+- **`/bien/<id>` a son aperçu** (Alexandre : un lien `espace.emilio-immo.com/bien/…` envoyé par
+  WhatsApp montrait « Emilio Immobilier — Outil Chasseur », sans photo) : `generateMetadata` dans
+  `src/app/bien/[id]/page.tsx` pose le titre du bien, une ligne pièces · surface · ville · prix
+  (le prix seulement s'il est affiché sur la page : pas avant le mandat) et la première photo.
+  « Ce bien a été vendu. » (ou sous compromis, plus en vente) en tête quand c'est le cas. Next met
+  ces balises dans l'en-tête pour les robots d'aperçu (WhatsApp, facebookexternalhit, LinkedInBot,
+  Twitterbot… : `HTML_LIMITED_BOT_UA_RE`). La lecture du bien est partagée avec la page
+  (`lireBien`, `cache` de React) : une seule requête.
+- **La photo de l'aperçu est allégée** : une photo rangée chez Supabase passe par
+  `/storage/v1/render/image/public/…?width=1080&quality=60` (moins de 250 Ko sur les 25 biens du
+  site, 137 Ko en moyenne, contre 200 à 600 Ko) ; WhatsApp laisse de côté les images trop lourdes.
+  Une photo d'un portail (bien de chasse) reste telle quelle.
+- Côté site (`emilio-immo.modernelovable`, même jour) : les pages `/biens/<numéro>` partent avec
+  leur titre, leur description et leur photo (fonction Vercel `api/page-bien.ts`, qui lit
+  `/api/flux-site`), avec la même photo allégée.
+
 ### V3.139 — 8 octobre 2026 · « Envoyer » sur la fiche d'un bien
 
 Rien à passer dans Supabase.
