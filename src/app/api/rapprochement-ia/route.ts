@@ -16,8 +16,14 @@ export const maxDuration = 60;
  * comptes rendus de visite, les points négatifs… et le bien, ses critères,
  * ses commentaires. Un matching plus précis, avec les mêmes règles ».
  *
- *   POST { bien_id, recherche_ids (12 au plus), forcer? }
- *        →  { ok, avis: { [recherche_id]: { v, r, le, cle } }, relues, modele, avertissement }
+ *   POST { paires: [{ bien_id, recherche_id }] (12 au plus), forcer? }
+ *        (ou { bien_id, recherche_ids } : un bien et ses acheteurs)
+ *        →  { ok, avis: { [bien_id]: { [recherche_id]: { v, r, le, cle } } }, relues, modele, avertissement }
+ *
+ * V3.123 (Alexandre : « que le rapprochement soit visible partout… que cette
+ * fonctionnalité soit fonctionnelle partout ») : des couples bien × recherche,
+ * pour l'onglet Rapprochement d'un bien, « Envoyer » depuis la liste des biens
+ * et le rapprochement de la fiche d'un acheteur (ses mandats).
  *
  * La note de correspondance (lib/correspondance.ts) fait le premier tri, en
  * chiffres. Ici, l'IA de Claude relit, pour chaque recherche retenue :
@@ -96,29 +102,34 @@ export async function POST(req: NextRequest) {
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return ko('Requête illisible'); }
-  const bienId = String(body.bien_id || '');
-  if (!UUID.test(bienId)) return ko('Bien inconnu');
-  const ids = [...new Set((Array.isArray(body.recherche_ids) ? body.recherche_ids : []).map(String).filter(x => UUID.test(x)))].slice(0, MAX);
-  if (!ids.length) return ko('Aucune recherche à relire');
+  /* Les couples à juger. Un bien et ses acheteurs (l'onglet Rapprochement),
+     plusieurs biens et leurs acheteurs (« Envoyer » depuis la liste), un
+     acheteur et des mandats (le rapprochement de sa fiche) : toujours des
+     couples bien × recherche. */
+  const brutes: { b: string; r: string }[] = Array.isArray(body.paires)
+    ? (body.paires as Record<string, unknown>[]).map(x => ({ b: String(x?.bien_id || ''), r: String(x?.recherche_id || '') }))
+    : (Array.isArray(body.recherche_ids) ? body.recherche_ids : []).map(r => ({ b: String(body.bien_id || ''), r: String(r) }));
+  const paires = brutes.filter((x, i, l) => UUID.test(x.b) && UUID.test(x.r) && l.findIndex(y => y.b === x.b && y.r === x.r) === i).slice(0, MAX);
+  if (!paires.length) return ko('Rien à relire');
+  const idsB = [...new Set(paires.map(x => x.b))];
+  const ids = [...new Set(paires.map(x => x.r))];
 
   try {
-    const { data: bien, error: eB } = await sb.from('biens_vente').select('*').eq('id', bienId).maybeSingle();
-    if (eB) return ko(eB.message, 500);
-    if (!bien) return ko('Bien introuvable', 404);
-    const [{ data: rs, error: eR }, { data: vs }, { data: cs }, { data: ps }] = await Promise.all([
+    const [{ data: lusB, error: eB }, { data: rs, error: eR }, { data: vs }, { data: cs }, { data: ps }] = await Promise.all([
+      sb.from('biens_vente').select('*').in('id', idsB),
       sb.from('recherches').select('*').in('id', ids),
       sb.from('visites').select('recherche_id, statut, issue, avis_client, motifs, aime, retenir, commentaire, mot_client, date_visite').in('recherche_id', ids).neq('statut', 'annulee').order('date_visite', { ascending: false }),
       sb.from('biens').select('recherche_id, titre, ville, badge_retour, retour_client, retour_le').in('recherche_id', ids).not('retour_client', 'is', null).order('retour_le', { ascending: false }),
       sb.from('veille_propositions').select('recherche_id, motif_ecart').in('recherche_id', ids).eq('statut', 'ecarte').not('motif_ecart', 'is', null).limit(300),
     ]);
+    if (eB) return ko(eB.message, 500);
     if (eR) return ko(eR.message, 500);
 
-    const b = bien as BienVente & { rapprochement_ia?: Record<string, Avis> | null };
-    const bienIA = bienPourIA(b);
-    const empreinteBien = JSON.stringify(bienIA);
+    type BienIA = BienVente & { rapprochement_ia?: Record<string, Avis> | null };
+    const biens = new Map(((lusB || []) as BienIA[]).map(b => [b.id, { b, x: bienPourIA(b) }]));
 
     /* Chaque recherche, ce qu'on sait d'elle, sans rien de nominatif. */
-    const dossiers = ((rs || []) as Record<string, unknown>[]).map(r => {
+    const dossiers = new Map(((rs || []) as Record<string, unknown>[]).map(r => {
       const rid = String(r.id);
       const visites = ((vs || []) as Record<string, unknown>[]).filter(v => v.recherche_id === rid);
       const appris = apprisDe(visites as Parameters<typeof apprisDe>[0], (r.appris_masques as string[] | null) || []);
@@ -137,24 +148,28 @@ export async function POST(req: NextRequest) {
       if (retours.length) x.ce_quil_a_dit_des_biens_montres = retours;
       const ecarts = [...new Set(((ps || []) as Record<string, unknown>[]).filter(p => p.recherche_id === rid).map(p => court(p.motif_ecart, 140)).filter(Boolean))].slice(0, 10);
       if (ecarts.length) x.annonces_ecartees_pour = ecarts;
-      const empreinte = createHash('sha256').update(empreinteBien + JSON.stringify(x)).digest('hex').slice(0, 16);
-      return { id: rid, x, empreinte };
-    });
+      return [rid, x] as const;
+    }));
 
-    /* Déjà relues, rien n'a bougé : on garde l'avis. */
-    const cache = (b.rapprochement_ia && typeof b.rapprochement_ia === 'object' ? b.rapprochement_ia : {}) as Record<string, Avis>;
+    /* L'empreinte de chaque couple : ce que l'IA a lu du bien et de la
+       recherche. Déjà relu, rien n'a bougé : on garde l'avis. */
     const forcer = body.forcer === true;
-    const aLire = dossiers.filter(d => forcer || cache[d.id]?.cle !== d.empreinte);
-    const avis: Record<string, Avis> = {};
-    for (const d of dossiers) if (!aLire.includes(d) && cache[d.id]) avis[d.id] = cache[d.id];
+    const couples = paires.filter(p => biens.has(p.b) && dossiers.has(p.r)).map(p => ({
+      ...p, empreinte: createHash('sha256').update(JSON.stringify(biens.get(p.b)!.x) + JSON.stringify(dossiers.get(p.r))).digest('hex').slice(0, 16),
+    }));
+    const cacheDe = (b: string) => { const c = biens.get(b)?.b.rapprochement_ia; return (c && typeof c === 'object' ? c : {}) as Record<string, Avis>; };
+    const aLire = couples.filter(c => forcer || cacheDe(c.b)[c.r]?.cle !== c.empreinte);
+    const avis: Record<string, Record<string, Avis>> = {};
+    const poser = (b: string, r: string, a: Avis) => { (avis[b] ||= {})[r] = a; };
+    for (const c of couples) if (!aLire.includes(c) && cacheDe(c.b)[c.r]) poser(c.b, c.r, cacheDe(c.b)[c.r]);
 
     let modele = '';
     if (aLire.length) {
-      const consigne = `Tu aides Alexandre, chasseur immobilier à Paris et dans les Hauts-de-Seine, à décider à quels acheteurs de sa base proposer un bien.
+      const consigne = `Tu aides Alexandre, chasseur immobilier à Paris et dans les Hauts-de-Seine, à décider à quels acheteurs de sa base proposer ses biens.
 
-Un premier tri en chiffres a déjà retenu ces recherches (budget, secteur, type, surface, chambres). Ton rôle : tout relire, comme le ferait Alexandre, et repérer ce que les chiffres ne voient pas.
+Un premier tri en chiffres a déjà retenu ces couples bien × acheteur (budget, secteur, type, surface, chambres). Ton rôle : tout relire, comme le ferait Alexandre, et repérer ce que les chiffres ne voient pas.
 
-Lis pour chaque recherche : ses critères et ses « exigences » (indispensable = bloquant), ses notes, « son_parcours » (ce qui ne lui a pas convenu, surtout ce qui « revient souvent », et ce qui lui a plu), ce que ses visites ont appris, ses comptes rendus, ce qu'il a dit des biens montrés, les annonces écartées et leur motif. Et pour le bien : toute la fiche, sa description, sa visite sur place (visiteAtouts, visiteDefauts), l'immeuble, l'étage et l'ascenseur, l'exposition, la vue, le vis-à-vis, l'état, les travaux.
+Lis pour chaque recherche : ses critères et ses « exigences » (indispensable = bloquant), ses notes, « son_parcours » (ce qui ne lui a pas convenu, surtout ce qui « revient souvent », et ce qui lui a plu), ce que ses visites ont appris, ses comptes rendus, ce qu'il a dit des biens montrés, les annonces écartées et leur motif. Et pour chaque bien : toute la fiche, sa description, sa visite sur place (visiteAtouts, visiteDefauts), l'immeuble, l'étage et l'ascenseur, l'exposition, la vue, le vis-à-vis, l'état, les travaux.
 
 Règles :
 - « non » : un point bloquant, ou exactement ce qu'il refuse souvent (ex. il cherche un accès PMR et l'immeuble ancien n'a qu'un petit ascenseur ; il a refusé trois biens pour le vis-à-vis et celui-ci est sur cour face à un immeuble).
@@ -164,17 +179,18 @@ Règles :
 - Une information absente de la fiche n'est jamais un « non » : c'est « a_voir », et tu dis quoi vérifier.
 - N'invente rien : ne t'appuie que sur ce qui est écrit.
 
-Pour chaque recherche, une phrase (140 caractères au plus), en français simple, qui cite le fait précis. Exemples : « Cherche un accès PMR : immeuble de 1932 au petit ascenseur. », « Lumineux et traversant, ce qu'il a aimé ; le budget passe. », « Exposition non renseignée : il a refusé deux biens trop sombres. »
+Pour chaque couple, une phrase (140 caractères au plus), en français simple, qui cite le fait précis. Exemples : « Cherche un accès PMR : immeuble de 1932 au petit ascenseur. », « Lumineux et traversant, ce qu'il a aimé ; le budget passe. », « Exposition non renseignée : il a refusé deux biens trop sombres. »
 
-Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"id":"…","verdict":"oui|a_voir|non","raison":"…"}], un objet par recherche, avec son id exact.`;
-      const contenu = `LE BIEN :\n${JSON.stringify(bienIA)}\n\nLES RECHERCHES :\n${aLire.map(d => JSON.stringify({ id: d.id, ...d.x })).join('\n')}`;
+Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"bien":"…","recherche":"…","verdict":"oui|a_voir|non","raison":"…"}], un objet par couple, avec leurs id exacts.`;
+      const bLus = [...new Set(aLire.map(c => c.b))], rLus = [...new Set(aLire.map(c => c.r))];
+      const contenu = `LES BIENS :\n${bLus.map(b => JSON.stringify({ id: b, ...biens.get(b)!.x })).join('\n')}\n\nLES RECHERCHES :\n${rLus.map(r => JSON.stringify({ id: r, ...dossiers.get(r) })).join('\n')}\n\nLES COUPLES À JUGER :\n${aLire.map(c => JSON.stringify({ bien: c.b, recherche: c.r })).join('\n')}`;
 
       let reponse: Response | null = null;
       for (const m of MODELES) {
         reponse = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: m, max_tokens: Math.min(4000, 300 + aLire.length * 130), system: consigne, messages: [{ role: 'user', content: contenu }] }),
+          body: JSON.stringify({ model: m, max_tokens: Math.min(4000, 300 + aLire.length * 150), system: consigne, messages: [{ role: 'user', content: contenu }] }),
           signal: AbortSignal.timeout(50_000),
         });
         modele = m;
@@ -186,23 +202,24 @@ Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"id":"…","verdi
       const data = await reponse.json() as { content?: { text?: string }[] };
       const brut = (data.content || []).map(c => c.text || '').join('').trim();
       const json = brut.slice(Math.max(0, brut.indexOf('[')), brut.lastIndexOf(']') + 1);
-      let lus: { id?: unknown; verdict?: unknown; raison?: unknown }[] = [];
+      let lus: { bien?: unknown; recherche?: unknown; id?: unknown; verdict?: unknown; raison?: unknown }[] = [];
       try { lus = JSON.parse(json); } catch { return ko('La réponse de l’IA est illisible : relance.', 502); }
       const le = new Date().toISOString();
       for (const x of Array.isArray(lus) ? lus : []) {
-        const d = aLire.find(y => y.id === String(x.id));
+        const r = String(x.recherche ?? x.id ?? '');
+        const c = aLire.find(y => y.r === r && (y.b === String(x.bien ?? '') || (!x.bien && bLus.length === 1)));
         const v = String(x.verdict);
-        if (!d || !['oui', 'a_voir', 'non'].includes(v)) continue;
-        avis[d.id] = { v: v as Avis['v'], r: court(x.raison, 220), le, cle: d.empreinte };
+        if (!c || !['oui', 'a_voir', 'non'].includes(v)) continue;
+        poser(c.b, c.r, { v: v as Avis['v'], r: court(x.raison, 220), le, cle: c.empreinte });
       }
     }
 
-    /* Gardés sur le bien. La colonne pas encore créée : on le dit, sans
+    /* Gardés sur chaque bien. La colonne pas encore créée : on le dit, sans
        perdre la réponse. */
     let avertissement = '';
-    if (aLire.length) {
-      const { error: eC } = await sb.from('biens_vente').update({ rapprochement_ia: { ...cache, ...avis } }).eq('id', bienId);
-      if (eC) avertissement = /rapprochement_ia/i.test(eC.message)
+    for (const b of [...new Set(aLire.map(c => c.b))]) {
+      const { error: eC } = await sb.from('biens_vente').update({ rapprochement_ia: { ...cacheDe(b), ...(avis[b] || {}) } }).eq('id', b);
+      if (eC && !avertissement) avertissement = /rapprochement_ia/i.test(eC.message)
         ? 'Les avis ne sont pas gardés : passe outils/sql/parcours-rapprochement-ia.sql dans Supabase.'
         : `Les avis ne sont pas gardés : ${eC.message}`;
     }
