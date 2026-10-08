@@ -4,8 +4,8 @@ import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import { enveloppeMail, MAIL as CHARTE } from '@/lib/mail-charte';
 import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
-import { bienPourSite, idSite } from '@/lib/flux-site';
-import { diffuseSur } from '@/lib/diffusion';
+import { bienPourSite } from '@/lib/flux-site';
+import { lienBienPublic } from '@/lib/jeton';
 import { avantMandat, type BienVente } from '@/lib/biens-vente';
 
 export const runtime = 'nodejs';
@@ -37,9 +37,12 @@ export const maxDuration = 60;
  * quelqu'un qui n'a pas d'espace — une personne hors du CRM (Alexandre :
  * « quelqu'un rencontré dans la rue »), ou un contact sans recherche
  * ouverte. Chaque bien en carte : sa photo, ce que dit l'annonce, son prix
- * (pas avant le mandat), et un bouton vers sa page sur emilio-immo.com s'il
- * y est publié — le seul lien public d'un bien de l'agence. Noté dans
+ * (pas avant le mandat), et un bouton « Voir le bien ». Noté dans
  * l'historique de chaque bien, et dans le Suivi du contact s'il est au CRM.
+ * V3.131 : le bouton mène à la fiche publique du bien (/bien/<id>, la même
+ * page que le « Partager » de l'espace acheteur), qu'il soit sur le site ou
+ * non. Avant, il menait à sa page sur emilio-immo.com, et seulement s'il y
+ * était publié.
  *
  * « envoyer » (V3.30) : des pièces du dossier partent par mail, depuis
  * l'onglet Documents du bien. Un mail par destinataire, au nom d'Alexandre.
@@ -247,7 +250,7 @@ export async function POST(req: NextRequest) {
       const fiches = biens.map(b => {
         const x = bienPourSite(b, null);
         const prix = !avantMandat(b.etape) && x.price > 0 ? x.price : null;
-        const lien = diffuseSur(b, 'site') ? `https://www.emilio-immo.com/biens/${encodeURIComponent(idSite(b))}` : '';
+        const lien = lienBienPublic(b.id);
         const carac = [x.surface ? `${x.surface} m²` : '', x.rooms ? `${x.rooms} pièce${x.rooms > 1 ? 's' : ''}` : '', x.bedrooms ? `${x.bedrooms} chambre${x.bedrooms > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
         const lieu = [b.quartier, x.city].filter(Boolean).join(', ');
         return { b, titre: x.title || 'Le bien', photo: x.images[0] || '', prix, lien, carac, lieu };
