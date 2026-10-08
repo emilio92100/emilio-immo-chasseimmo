@@ -1498,6 +1498,56 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.138 — 8 octobre 2026 · Le retour à l'agenda, le compte rendu au téléphone
+
+Rien à passer dans Supabase.
+
+- **Revenir d'une fiche à l'agenda, la visite rouverte** (Alexandre : « depuis l'agenda, j'appuie
+  sur sa fiche acheteur ; quand je fais retour, on ne revient pas sur la fiche qui était ouverte ») :
+  avant d'ouvrir la fiche acheteur ou celle du bien, l'agenda note dans l'adresse le rendez-vous
+  ouvert, le jour et la vue (`memoriserRetour` : `?page=agenda&rdv=…&jour=…&vue=…`, gardée aussi
+  dans `sessionStorage` `emi-retour-agenda`) ; il les relit en s'ouvrant (`lireRetourAgenda`),
+  puis remet une adresse simple. Le retour du navigateur (ou du téléphone) y revient tout seul ; le
+  bouton retour de la fiche aussi : `FicheOuverte.depuis = 'agenda'` (comme Relances en V3.102,
+  `fermerContact`), « ← Agenda » ; une fiche de bien ouverte depuis l'agenda
+  (`?page=biens&bien=…&depuis=agenda`) a son bouton « Agenda » (`retourLib` de `FicheBien`).
+- **Le compte rendu de visite au téléphone** (« en haut, mardi, la date et le nom, on ne le voit pas
+  en entier ») : la fenêtre faisait `96vh`, plus haut que l'écran quand la barre d'adresse est
+  affichée — le haut passait dessous. `92dvh` (la hauteur visible, comme les fenêtres de
+  l'agenda), et l'en-tête sur deux lignes : qui et quand (« Sylvie TRUCHOT · mardi 13 octobre à
+  18:30 »), puis le bien.
+
+### V3.137 — 8 octobre 2026 · « Vendeur » = un bien en vente, « Classer » la liste des contacts
+
+**À passer dans Supabase : `outils/sql/vendeurs-en-vente.sql`** (la règle, le déclencheur, la
+remise au propre des contacts d'aujourd'hui, puis le compte des Vendeurs et Propriétaires).
+
+- **Vendeur, c'est quelqu'un qui vend** (Alexandre : « dans les 162 vendeurs, ils ne sont pas tous
+  en vente… une estimation qui débouche sur une vente, sinon ça reste propriétaire »). Avant, tout
+  contact relié à un bien de la rubrique Biens devenait « Vendeur », même en estimation. Désormais
+  (`typesSelonBiens` dans `src/lib/contacts.ts`, la même règle en SQL dans `emilio_types_vente`) :
+  un bien en mandat, sous offre ou sous compromis → **Vendeur, à la place de Propriétaire** (les
+  deux listes ne se recouvrent plus) ; sinon (à suivre, estimation, en pause, retiré) →
+  **Propriétaire** ; son seul bien vient d'être vendu → rien, « La vente est signée » décide
+  (Vendeur signé) ; plus aucun bien → il quitte Vendeur (Propriétaire s'il ne lui reste rien). Un
+  contact archivé ne bouge pas.
+- **La base l'applique toute seule** : déclencheurs `biens_vente_types_vendeur_ajout` / `_maj` sur
+  `biens_vente` (création, suppression, changement d'étape, de propriétaire ou d'archivage), pour
+  l'ancien et le nouveau propriétaire — y compris un mandat signé en ligne ou noté depuis
+  Documents. Côté CRM, `marquerVendeur` (le nom est resté) applique la même règle quand un
+  propriétaire est relié, quand l'étape change (`changerEtape`) et quand le propriétaire change
+  (`changementProprio`). ⚠️ Les deux écritures de la règle doivent rester identiques.
+- Une fiche de propriétaire créée depuis un bien naît « Propriétaire » (`creerFicheProprio`) ; une
+  demande d'estimation du site aussi (`CATEGORIES` de `demandes-site.ts`) ; l'import des biens
+  d'ImmoFacile suit la règle. « Vendeur » ne peut toujours pas s'enlever à la main tant qu'un bien
+  est en mandat, sous offre ou sous compromis (`controlerTypes` ; « en pause » n'en fait plus partie).
+- **« Classer » sur la liste des autres types** (« pour vendeur, ce serait bien de classer ») :
+  le même bouton que le tableau des acheteurs, dans l'en-tête après « Contact »
+  (`EnteteContacts`, prop `classer`) — dernier échange (par défaut), nom, date d'ajout, étape de
+  son bien (le plus avancé d'abord : compromis, offre, en vente, estimation, à suivre, en pause,
+  retiré, vendu ; sans bien, à la fin). Retenu dans le navigateur (`emilio.tri.contacts`). Sur
+  ordinateur seulement, comme « Tout cocher » (l'en-tête est caché au téléphone).
+
 ### V3.136 — 8 octobre 2026 · Contacts : un clic va sur le type, la liste par paquets
 
 Rien à passer dans Supabase pour ce qui suit (voir la dernière puce pour le compte rendu).
