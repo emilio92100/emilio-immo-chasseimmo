@@ -1498,6 +1498,23 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.139 — 8 octobre 2026 · « Envoyer » sur la fiche d'un bien
+
+Rien à passer dans Supabase.
+
+- **« Envoyer », à côté de « Modifier »** (Alexandre : « envoyer ce bien à côté de Modifier, un
+  pop-up avec les différents choix : un client connu, par son nom ou son numéro, ou un mail non
+  connu, avec le lien public du bien ») : la fenêtre existait déjà, cachée dans l'onglet
+  Rapprochement (« Un autre client… », `FenEnvoiLot` de `LotBiens.tsx`). Le geste l'ouvre
+  (`ouvrirEnvoi`, après `garde('presenter')` : avant le mandat, « il le verra sans prix ») ;
+  aussi dans « ⋯ » (« Envoyer ce bien »). En vente, sous offre, sous compromis, à suivre, en
+  estimation ; pas en pause, vendu, retiré, ni pour une annonce type (`envoyable`). Au
+  téléphone (480 px et moins), « Modifier » passe dans « ⋯ » quand « Envoyer » est là : trois
+  icônes ne tenaient plus sur le rang de l'étape.
+- **Chercher un client par son téléphone** dans cette fenêtre : une saisie faite de chiffres
+  (trois au moins) cherche dans `telephones`, quelle que soit l'écriture (« 06 62 86… »,
+  « +33 6… », « 0033 6… » : `chiffresTel`).
+
 ### V3.138 — 8 octobre 2026 · Le retour à l'agenda, le compte rendu au téléphone
 
 Rien à passer dans Supabase.
