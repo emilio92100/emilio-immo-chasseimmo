@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './EnteteRubrique.module.css';
 
@@ -162,6 +162,34 @@ export default function EnteteRubrique({
     const g = on.offsetLeft - r.offsetLeft, d = g + on.offsetWidth;
     if (g < r.scrollLeft || d > r.scrollLeft + r.clientWidth) r.scrollLeft = Math.max(0, d - r.clientWidth + 12);
   }, [cleActive, tuiles.length, defiler]);
+
+  /* V3.132 (Alexandre : « quand on va sur diffusion en cours, ça ne fait pas
+     un slide joli avec une transition entre chaque onglet ; c'est brut ») :
+     dans la barre à cheval, la pastille bleue glisse d'une tuile à l'autre,
+     comme celle des onglets de la fiche d'un bien. Elle se recale si une
+     tuile change de largeur (un nombre qui arrive, « Autres étapes » qui
+     prend le nom de l'étape choisie). Au premier affichage, elle se pose
+     sans glisser. */
+  const [glisse, setGlisse] = useState<{ x: number; y: number; l: number; h: number } | null>(null);
+  const [anime, setAnime] = useState(false);
+  const cleTuiles = tuiles.map(t => `${t.cle}:${t.n}`).join('|');
+  useLayoutEffect(() => {
+    const r = rangee.current;
+    if (!aCheval || !r) return;
+    const caler = () => {
+      const on = r.querySelector<HTMLElement>('button[aria-pressed="true"]');
+      setGlisse(on ? { x: on.offsetLeft, y: on.offsetTop, l: on.offsetWidth, h: on.offsetHeight } : null);
+    };
+    caler();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(caler) : null;
+    if (ro) { ro.observe(r); r.querySelectorAll('button').forEach(b => ro.observe(b)); }
+    return () => ro?.disconnect();
+  }, [aCheval, cleActive, cleTuiles]);
+  useEffect(() => {
+    if (!glisse || anime) return;
+    const id = requestAnimationFrame(() => setAnime(true));
+    return () => cancelAnimationFrame(id);
+  }, [glisse, anime]);
   return (
     <section className={`${styles.bloc} ${aCheval && tuiles.length > 0 ? styles.cheval : ''}`}>
       {aCheval && tuiles.length > 0 && <span className={styles.lueurs} aria-hidden="true" />}
@@ -200,6 +228,10 @@ export default function EnteteRubrique({
       </div>
 
       {tuiles.length > 0 && <div ref={rangee} className={styles.rangee} role="group" aria-label={label}>
+        {aCheval && glisse && (
+          <span className={`${styles.glisse} ${anime ? styles.glisseAnime : ''}`} aria-hidden="true"
+            style={{ transform: `translate(${glisse.x}px, ${glisse.y}px)`, width: glisse.l, height: glisse.h }} />
+        )}
         {(() => {
           /* V3.78 : les tuiles `menu` sortent de la ligne ; « Autres types ▾ »
              prend leur place, juste avant le groupe de fin. */

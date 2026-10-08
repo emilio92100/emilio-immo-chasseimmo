@@ -267,3 +267,23 @@
   .cheval .arch.on .archIc { background: rgba(255, 255, 255, 0.14); color: #fff; }
   .cheval .arch.on .lib { color: #fff; }
 }
+
+/* ── V3.132 : la pastille qui glisse d'une tuile à l'autre ──────────────
+   Posée derrière les tuiles de la barre à cheval ; la tuile choisie devient
+   transparente et laisse voir la pastille, son texte passe au blanc en
+   douceur. Même courbe que les onglets de la fiche d'un bien. */
+.glisse { display: none; }
+@media (min-width: 761px) {
+  .glisse {
+    display: block; position: absolute; left: 0; top: 0; z-index: 0; border-radius: 11px; pointer-events: none;
+    background: var(--emilio-fond); box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85);
+  }
+  .glisseAnime { transition: transform .45s cubic-bezier(.16, 1, .3, 1), width .45s cubic-bezier(.16, 1, .3, 1), height .45s cubic-bezier(.16, 1, .3, 1); }
+  .cheval .tuile { z-index: 1; transition: background .2s, border-color .2s, transform .15s; }
+  .cheval .n, .cheval .lib, .cheval .teteIc, .cheval .archIc { transition: color .3s ease, background .3s ease; }
+  /* La pastille fait le fond : la tuile choisie s'efface derrière elle. */
+  .cheval .on, .cheval .on:hover, .cheval .tete.on, .cheval .tete.on:hover, .cheval .arch.on, .cheval .arch.on:hover {
+    background: transparent; border-color: transparent; box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) { .glisseAnime { transition: none; } }
