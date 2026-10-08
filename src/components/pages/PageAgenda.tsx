@@ -12,6 +12,11 @@ import { verifie, signalerEchec } from '@/lib/ecritures';
 import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes-visite';
 import { annulerVisites } from '@/lib/annuler-visites';
 import { annulerCoteBien, bienDuRdv, deplacerCoteBien, etatVenteDesCopies, poserEstimationSurBien, rdvLieAuBien } from '@/lib/rdv-bien';
+import { pourVisiteVide, visitePourCarte } from '@/components/biens/pour-visite';
+import type { PourVisite } from '@/components/biens/VueBien';
+import { adresseVente } from '@/lib/adresse-vente';
+import { etapeDe, type BienVente } from '@/lib/biens-vente';
+import { copieDe } from '@/components/biens/outils';
 
 /**
  * L'agenda du CRM (maquette A : petit calendrier à gauche, semaine au centre).
@@ -92,6 +97,8 @@ const TR: Record<string, string[]> = {
   stylo: ['M4 20l4-1 11-11-3-3L5 16z', 'M14 7l3 3'],
   estimer: ['M4 20V10l8-6 8 6v10', 'M9 20v-5h6v5', 'M15 3.5h4v4'],
   lune: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
+  loupe: ['c:10.5,10.5,6.5', 'M15.5 15.5 20.5 20.5'],
+  cle: ['c:7.5,15.5,3.5', 'M10 13 20 3', 'M16.5 6.5l2.5 2.5', 'M14 9l2 2'],
   alerte: ['M12 9v4.2', 'M12 17.2h.01', 'M10.3 3.9 2.4 17.6A1.9 1.9 0 0 0 4 20.5h16a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z'],
 };
 
@@ -138,7 +145,9 @@ const rdv = (n: number) => `${n} rendez-vous`;
 type Ev = {
   cle: string; source: 'visite' | 'rdv'; ids: string[]; type: TypeRdv; titre: string;
   debut: Date; fin: Date; jour: string; qui: string; lieu: string; contact: string; notes: string;
-  biens: { id: string; titre: string; photo?: string }[];
+  /* V3.134 : pour un bien de l'agence (`venteId`), son adresse complète et
+     ses indications de visite, lues sur le bien en vente. */
+  biens: { id: string; titre: string; photo?: string; venteId?: string | null; adresse?: string; visite?: PourVisite | null }[];
   clientId: string | null; rechercheId: string | null;
   fait: boolean; crAFaire: boolean; details: any; relanceId: string | null;
   /* Rendez-vous sur plusieurs jours, découpé jour par jour pour l'affichage :
@@ -191,7 +200,7 @@ function duJour(evs: Ev[], k: string): Ev[] {
   return out.sort((a, b) => a.debut.getTime() - b.debut.getTime());
 }
 
-function construire(visites: any[], rdvs: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date) {
+function construire(visites: any[], rdvs: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date, ventes: Record<string, any> = {}) {
   const evs: Ev[] = [];
   const taches: Tache[] = [];
 
@@ -216,12 +225,22 @@ function construire(visites: any[], rdvs: any[], transactions: any[], recherches
     const debut = depuisCle(jour); debut.setHours(h || 10, m || 0, 0, 0);
     const fin = new Date(debut.getTime() + (Number(v0.duree_min) || 60) * 60000);
     const qui = nomDe(v0.clients) || nomDe(clientsParId[v0.client_id]);
-    const biens = lot.map(v => ({ id: v.bien_id, titre: v.biens?.titre || v.biens?.ville || 'Bien', photo: v.biens?.photos?.[0] }));
+    /* V3.134 : un bien de l'agence donne son adresse complète (la copie du
+       dossier n'a que la ville : « Clamart ») et ses indications de visite. */
+    const biens = lot.map(v => {
+      const venteId: string | null = v.biens?.bien_vente_id || null;
+      const vt = venteId ? ventes[venteId] : null;
+      const pv = vt ? visitePourCarte(vt.donnees || {}) : null;
+      return {
+        id: v.bien_id, titre: v.biens?.titre || v.biens?.ville || 'Bien', photo: v.biens?.photos?.[0],
+        venteId, adresse: (vt && adresseVente(vt)) || lieuDuBien(v.biens), visite: pv && !pourVisiteVide(pv) ? pv : null,
+      };
+    });
     const toutesFaites = lot.every(v => v.statut === 'effectuee');
     evs.push({
       cle: 'v-' + k, source: 'visite', ids: lot.map(v => v.id), type: 'visite',
       titre: lot.length > 1 ? `${lot.length} visites · ${qui}` : `Visite · ${biens[0].titre}`,
-      debut, fin, jour, qui, lieu: lieuDuBien(v0.biens), contact: v0.contact_agence || '', notes: v0.commentaire && !toutesFaites ? v0.commentaire : '',
+      debut, fin, jour, qui, lieu: biens[0]?.adresse || lieuDuBien(v0.biens), contact: v0.contact_agence || '', notes: v0.commentaire && !toutesFaites ? v0.commentaire : '',
       biens, clientId: v0.client_id || null, rechercheId: v0.recherche_id || null,
       fait: fin <= maintenant, crAFaire: fin <= maintenant && lot.some(v => v.statut === 'a_venir'),
       details: { rappelLe: lot.map(v => v.rappel_envoye_le).filter(Boolean).sort().pop() || null }, relanceId: v0.rappel_relance_id || null,
@@ -330,13 +349,27 @@ const lireClients = async () => {
   return r.erreur && /archive/.test(r.erreur) ? lire('clients', 'id, prenom, nom, statut, emails, civilite, couple, conjoint') : r;
 };
 const lireAgenda = () => Promise.all([
-  lire('visites', '*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos)'),
+  lire('visites', '*, clients(id, prenom, nom), biens(id, titre, ville, quartier, adresse, adresse_probable, photos, bien_vente_id)'),
   lire('rendez_vous', '*'),
   lire('relances', '*', q => q.eq('statut', 'en_attente')),
   lire('transactions', '*'),
   lire('recherches', '*'),
   lireClients(),
 ]);
+
+/* V3.134 — les biens de l'agence visités : leur adresse et leurs indications
+   de visite. Une lecture ratée n'empêche pas l'agenda de s'afficher : la
+   visite garde alors la ville du bien, comme avant. */
+async function lireVentes(visites: any[]): Promise<Record<string, any>> {
+  const ids = [...new Set(visites.map(v => v.biens?.bien_vente_id).filter(Boolean))] as string[];
+  const out: Record<string, any> = {};
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase.from('biens_vente').select('id, adresse, code_postal, ville, donnees').in('id', ids.slice(i, i + 100));
+    if (error) { console.error('[agenda] les biens visités', error.message); return out; }
+    for (const b of data || []) out[b.id] = b;
+  }
+  return out;
+}
 
 export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, data?: unknown) => void }) {
   const etroit = useEtroit();
@@ -349,7 +382,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   const [rappelDe, setRappelDe] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
   const [tableAbsente, setTableAbsente] = useState(false);
-  const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[] }>({ visites: [], rdvs: [], relances: [], transactions: [], recherches: [], clients: [] });
+  const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[]; ventes: Record<string, any> }>({ visites: [], rdvs: [], relances: [], transactions: [], recherches: [], clients: [], ventes: {} });
 
   /* La ligne rouge avance toute seule. */
   useEffect(() => { const t = setInterval(() => setMaintenant(new Date()), 60000); return () => clearInterval(t); }, []);
@@ -357,10 +390,11 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   const charger = useCallback(async () => {
     const [v, r, rel, tx, rech, cl] = await lireAgenda();
+    const ventes = await lireVentes(v.data || []);
     /* Tant que le SQL de l'agenda n'a pas été lancé, la table n'existe pas :
        les visites s'affichent quand même, on prévient pour le reste. */
     setTableAbsente(!!r.erreur);
-    setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data });
+    setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data, ventes });
     setChargement(false);
   }, []);
   useEffect(() => { charger(); }, [charger]);
@@ -383,7 +417,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   const clientsParId = useMemo(() => Object.fromEntries(brut.clients.map(c => [c.id, c])), [brut.clients]);
   const { evs, taches } = useMemo(
-    () => construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, maintenant),
+    () => construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, maintenant, brut.ventes),
     [brut, clientsParId, maintenant],
   );
   const dossiers: Dossier[] = useMemo(() => dossiersDe(brut.recherches, clientsParId), [brut.recherches, clientsParId]);
@@ -442,6 +476,11 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
     if (!b) return;
     setSelCle(null);
     onNavigate('biens', { bien: b });
+  };
+  /* V3.134 : le bien de l'agence d'une visite d'acheteur, d'un clic sur sa carte. */
+  const ouvrirBienVente = (id: string) => {
+    setSelCle(null);
+    onNavigate('biens', { bien: id });
   };
   const ouvrirDossier = async (clientId: string | null) => {
     if (!clientId) return;
@@ -541,7 +580,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
         <Detail ev={sel} etroit={etroit} onFerme={() => setSelCle(null)}
           onModifier={() => { setModale({ mode: 'modifier', ev: sel }); setSelCle(null); }}
           onAnnuler={() => annuler(sel)} onCR={() => compteRendu(sel)} onDossier={() => ouvrirDossier(sel.clientId)}
-          onBien={() => ouvrirBien(sel)}
+          onBien={() => ouvrirBien(sel)} onBienVente={ouvrirBienVente}
           onRappel={() => setRappelDe(sel.ids[0])} />
       )}
       {rappelDe && (
@@ -582,20 +621,22 @@ function dossiersDe(recherches: any[], clientsParId: Record<string, any>): Dossi
    la fenêtre de l'agenda reçoit : les dossiers, les relances, et l'agenda
    lui-même pour signaler un chevauchement. */
 export function NouveauRdvPartout() {
-  const [creneau, setCreneau] = useState<{ jour: string; heure: string } | null>(null);
+  const [creneau, setCreneau] = useState<{ jour: string; heure: string; rechercheId?: string } | null>(null);
   const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[] } | null>(null);
   const [tableAbsente, setTableAbsente] = useState(false);
 
   useEffect(() => {
     let vivant = true;
-    const ouvrir = async () => {
+    const ouvrir = async (e: Event) => {
+      /* V3.134 : depuis la fiche d'un client, son dossier est déjà choisi. */
+      const rechercheId = (e as CustomEvent<{ rechercheId?: string }>).detail?.rechercheId || undefined;
       const [v, r, rel, tx, rech, cl] = await lireAgenda();
       if (!vivant) return;
       setTableAbsente(!!r.erreur);
       setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data });
       /* Comme le bouton de l'agenda : aujourd'hui, à l'heure pleine suivante. */
       const n = new Date(); const suiv = Math.min(20, Math.max(8, n.getHours() + 1));
-      setCreneau({ jour: cleDe(n), heure: `${pad(suiv)}:00` });
+      setCreneau({ jour: cleDe(n), heure: `${pad(suiv)}:00`, rechercheId });
     };
     window.addEventListener(EVT_NOUVEAU_RDV, ouvrir);
     return () => { vivant = false; window.removeEventListener(EVT_NOUVEAU_RDV, ouvrir); };
@@ -606,13 +647,13 @@ export function NouveauRdvPartout() {
     ? construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, new Date()).evs
     : []), [brut, clientsParId]);
   const dossiers = useMemo(() => dossiersDe(brut?.recherches || [], clientsParId), [brut, clientsParId]);
-  const modale = useMemo(() => (creneau ? { mode: 'nouveau' as const, jour: creneau.jour, heure: creneau.heure } : null), [creneau]);
+  const modale = useMemo(() => (creneau ? { mode: 'nouveau' as const, jour: creneau.jour, heure: creneau.heure, rechercheId: creneau.rechercheId } : null), [creneau]);
 
   if (!modale || !brut) return null;
   return (
     <>
       <StylesAgenda />
-      <ModaleRdv key={`${modale.jour}-${modale.heure}-${brut.rdvs.length}`} modale={modale} dossiers={dossiers} relances={brut.relances}
+      <ModaleRdv key={`${modale.jour}-${modale.heure}-${modale.rechercheId || ''}-${brut.rdvs.length}`} modale={modale} dossiers={dossiers} relances={brut.relances}
         tableAbsente={tableAbsente} evs={evs}
         onFerme={() => setCreneau(null)}
         onEnregistre={() => { setCreneau(null); signalerMaj(); window.dispatchEvent(new Event(EVT_RDV_ENREGISTRE)); }} />
@@ -635,6 +676,8 @@ function StylesAgenda() {
       .ag-appui{transition:transform .15s ease,background-color .15s ease,box-shadow .15s ease}
       .ag-appui:hover{transform:translateY(-1px)}
       .ag-appui:active{transform:scale(.98)}
+      .ag-lien:hover{background-color:#f6f8fb !important;transform:none}
+      .ag-lienBien:hover{border-color:#e6cf8f !important;background-color:#fffaf0 !important}
       .ag-case{transition:background-color .15s ease}
       .ag-case:hover{background-color:#f8f9fc !important}
       .ag-seg{transition:transform .38s cubic-bezier(.34,1.4,.5,1)}
@@ -1188,9 +1231,68 @@ function VueMois({ debutMois, evs, taches, auj, jourSel, onJour }: {
   );
 }
 
+/* ══ Les indications de visite d'un bien de l'agence (V3.134) ════
+   Les mêmes que la carte « Pour la visite » de la fiche du bien, en plus
+   serré : l'occupation, les codes en tuiles, la personne sur place avec son
+   numéro, les autres indications, puis le chemin et les consignes. */
+const telLisible = (t: string) => {
+  const c = t.replace(/[\s.-]+/g, '');
+  return /^0\d{9}$/.test(c) ? c.replace(/(\d{2})(?=\d)/g, '$1 ') : t;
+};
+function IndicationsVisite({ p, titre }: { p: PourVisite; titre: string }) {
+  const petit: React.CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: PALE };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 14, border: '1px solid #dbe7fb', background: '#f7faff' }}>
+      {titre && <b style={{ fontSize: 12.5, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{titre}</b>}
+      {(p.occupation || p.dispo) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {p.occupation && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: 'white', border: '1px solid #cfe0fb', color: '#1d4ed8', fontSize: 12, fontWeight: 800 }}><i style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb' }} />{p.occupation.l}</span>}
+          {p.dispo && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, color: DOUX, fontSize: 12, fontWeight: 700 }}><Ic n="calendrier" t={12} />{`Disponible ${p.dispo}`}</span>}
+        </div>
+      )}
+      {p.codes.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))', gap: 6 }}>
+          {p.codes.map(x => (
+            <div key={x.l} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '7px 10px', borderRadius: 10, background: 'white', border: '1px solid #dbe7fb', minWidth: 0 }}>
+              <small style={petit}>{x.l}</small>
+              <b style={{ fontFamily: JAK, fontSize: x.v.length > 12 ? 13.5 : 15, fontWeight: 800, color: NAVY, letterSpacing: .3, overflowWrap: 'break-word' }}>{x.v}</b>
+            </div>
+          ))}
+        </div>
+      )}
+      {p.contact && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px 7px 10px', borderRadius: 11, background: 'white', border: '1px solid #dbe7fb' }}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+            <small style={petit}>Sur place</small>
+            <b style={{ fontSize: 13, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.contact.nom || 'Contact sur place'}</b>
+          </span>
+          {p.contact.tel && (
+            <a className="ag-appui" href={`tel:${p.contact.tel.replace(/[\s.-]+/g, '')}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 11px', borderRadius: 9, background: NAVY, color: 'white', fontSize: 12.5, fontWeight: 800, textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              <Ic n="tel" t={13} />{telLisible(p.contact.tel)}
+            </a>
+          )}
+        </div>
+      )}
+      {p.infos.map(x => (
+        <div key={x.l} style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: 13 }}>
+          <small style={petit}>{x.l}</small>
+          <span style={{ color: NAVY, fontWeight: 600, overflowWrap: 'anywhere' }}>{x.v}</span>
+        </div>
+      ))}
+      {p.encarts.map(x => (
+        <div key={x.l} style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '9px 11px', borderRadius: 11, background: 'white', border: '1px solid #dbe7fb' }}>
+          <small style={petit}>{x.l}</small>
+          <span style={{ fontSize: 13, lineHeight: 1.5, color: DOUX, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{x.v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ══ Le détail d'un rendez-vous ════════════════════════════════ */
-function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, onBien, onRappel }: {
-  ev: Ev; etroit: boolean; onFerme: () => void; onModifier: () => void; onAnnuler: () => void; onCR: () => void; onDossier: () => void; onBien: () => void; onRappel: () => void;
+function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, onBien, onBienVente, onRappel }: {
+  ev: Ev; etroit: boolean; onFerme: () => void; onModifier: () => void; onAnnuler: () => void; onCR: () => void; onDossier: () => void; onBien: () => void;
+  onBienVente: (id: string) => void; onRappel: () => void;
 }) {
   const [monte, setMonte] = useState(false);
   useEffect(() => { setMonte(true); }, []);
@@ -1206,6 +1308,20 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
       <span style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingTop: 1, minWidth: 0 }}><b style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{fort}</b><span style={{ fontSize: 12, color: PALE }}>{fin}</span></span>
     </div>
   );
+  /* V3.134 — une ligne qu'on touche pour aller plus loin (Alexandre : « quand
+     on clique juste sur le nom de la personne en haut, ça amène directement
+     sur sa fiche acheteur »). Même dessin qu'une ligne, avec sa flèche. */
+  const ligneLien = (ico: string, fort: string, fin: string, onClick: () => void, aide: string) => (
+    <button type="button" className="ag-appui ag-lien" onClick={onClick} title={aide}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: 'calc(100% + 16px)', margin: '-6px -8px', padding: '6px 8px', borderRadius: 12, border: 'none', background: 'none', color: NAVY, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5 }}>
+      <span style={{ width: 34, height: 34, borderRadius: 10, background: CHOISI, color: DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n={ico} t={16} /></span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: 1 }}><b style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{fort}</b><span style={{ fontSize: 12, color: OR_FONCE, fontWeight: 700 }}>{fin}</span></span>
+      <span style={{ color: PALE, display: 'flex', flexShrink: 0 }}><Ic n="chevD" t={16} /></span>
+    </button>
+  );
+  const ficheDuNom = !!(ev.qui && ev.clientId);
+  const libFiche = ev.source === 'visite' ? 'Sa fiche acheteur' : ev.type === 'estimation' ? 'Sa fiche propriétaire' : 'Sa fiche';
+  const avecIndications = ev.biens.filter(b => b.visite);
   const bouton: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, padding: '0 14px', borderRadius: 12, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit' };
   const itineraire = ev.lieu && !/^(visio|téléphone)/i.test(ev.lieu) ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.lieu)}` : '';
   return createPortal(
@@ -1233,7 +1349,9 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
             : `${maj(jourLong(ev.debut))} · ${hhmm(ev.debut)} – ${hhmm(ev.fin)} (${duree(Math.round((ev.fin.getTime() - ev.debut.getTime()) / 60000))})`}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-          {ev.qui && ligne('personne', ev.qui, ev.type === 'estimation' ? 'Propriétaire' : 'Client')}
+          {ficheDuNom
+            ? ligneLien('personne', ev.qui, libFiche, onDossier, `Ouvrir la fiche de ${ev.qui}`)
+            : ev.qui && ligne('personne', ev.qui, ev.type === 'estimation' ? 'Propriétaire' : 'Client')}
           {ev.lieu && ligne('lieu', ev.lieu, 'Lieu')}
           {ev.contact && ligne('tel', ev.contact, ev.source === 'visite' ? 'Contact sur place' : 'Téléphone')}
           {ev.details?.mode && ligne(ev.details.mode === 'visio' ? 'visio' : 'tel', ev.details.mode === 'visio' ? 'Visio' : 'Téléphone', 'Comment')}
@@ -1242,14 +1360,34 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
         {ev.biens.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Etiquette>{ev.biens.length > 1 ? `${ev.biens.length} biens à visiter` : 'Bien visité'}</Etiquette>
-            {ev.biens.map(b => (
-              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: 7, borderRadius: 12, border: `1px solid ${LIGNE}` }}>
-                <span style={{ width: 52, height: 40, borderRadius: 9, overflow: 'hidden', background: '#eef2f8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
-                  {b.photo ? <img src={b.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic n="maison" t={16} />}
-                </span>
-                <b style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.titre}</b>
-              </div>
-            ))}
+            {/* V3.134 : la carte du bien s'ouvre d'un clic — la fiche du bien
+                pour un bien de l'agence, sinon le dossier de l'acheteur, où
+                le bien est rangé. */}
+            {ev.biens.map(b => {
+              const ouvrir = b.venteId ? () => onBienVente(b.venteId as string) : ev.clientId ? onDossier : null;
+              const dedans = (
+                <>
+                  <span style={{ width: 52, height: 40, borderRadius: 9, overflow: 'hidden', background: '#eef2f8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
+                    {b.photo ? <img src={b.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic n="maison" t={16} />}
+                  </span>
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                    <b style={{ fontSize: 13, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.titre}</b>
+                    {ouvrir && <span style={{ fontSize: 11.5, fontWeight: 700, color: OR_FONCE }}>{b.venteId ? 'Voir la fiche du bien' : 'Voir dans son dossier'}</span>}
+                  </span>
+                  {ouvrir && <span style={{ color: PALE, display: 'flex', flexShrink: 0 }}><Ic n="chevD" t={16} /></span>}
+                </>
+              );
+              const cadre: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 11, width: '100%', boxSizing: 'border-box', padding: 7, borderRadius: 12, border: `1px solid ${LIGNE}`, background: 'white', textAlign: 'left', fontFamily: 'inherit' };
+              return ouvrir
+                ? <button key={b.id} type="button" className="ag-appui ag-lienBien" onClick={ouvrir} title={b.venteId ? 'Ouvrir la fiche du bien' : 'Ouvrir son dossier'} style={{ ...cadre, cursor: 'pointer' }}>{dedans}</button>
+                : <div key={b.id} style={cadre}>{dedans}</div>;
+            })}
+          </div>
+        )}
+        {avecIndications.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Etiquette>Pour la visite</Etiquette>
+            {avecIndications.map(b => <IndicationsVisite key={b.id} p={b.visite as PourVisite} titre={avecIndications.length > 1 || ev.biens.length > 1 ? b.titre : ''} />)}
           </div>
         )}
         {ev.notes && (
@@ -1270,7 +1408,7 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
             <button type="button" className="ag-appui" onClick={onCR} style={{ ...bouton, gridColumn: 'span 2', background: OR, borderColor: OR, color: NAVY, fontWeight: 800 }}><Ic n="note" t={15} />Faire le compte rendu</button>
           )}
           {itineraire && <a className="ag-appui" href={itineraire} target="_blank" rel="noopener noreferrer" style={bouton}><Ic n="route" t={15} />Itinéraire</a>}
-          {ev.clientId && <button type="button" className="ag-appui" onClick={onDossier} style={bouton}><Ic n="dossier" t={15} />Le dossier</button>}
+          {ev.clientId && !ficheDuNom && <button type="button" className="ag-appui" onClick={onDossier} style={bouton}><Ic n="dossier" t={15} />Sa fiche</button>}
           {ev.source === 'rdv' && bienDuRdv(ev) && <button type="button" className="ag-appui" onClick={onBien} style={bouton}><Ic n="maison" t={15} />Ouvrir le bien</button>}
           {!ev.fait && <button type="button" className="ag-appui" onClick={onModifier} style={bouton}><Ic n="crayon" t={15} />Modifier</button>}
           {!ev.fait && <button type="button" className="ag-appui" onClick={onAnnuler} style={{ ...bouton, color: '#b42318' }}><Ic n="corbeille" t={15} />Annuler</button>}
@@ -1781,7 +1919,10 @@ function PanneauHeure({ valeur, onChoisir, onFini, prises }: { valeur: string; o
   ];
   const minutes = [0, 15, 30, 45].includes(mm) ? [0, 15, 30, 45] : [0, 15, 30, 45, mm].sort((a, b) => a - b);
   const ref = useMontrer<HTMLDivElement>();
-  const puce = (actif: boolean): React.CSSProperties => ({ position: 'relative', height: 40, borderRadius: 11, border: `1.5px solid ${actif ? NAVY : BORD}`, background: actif ? NAVY : 'white', color: actif ? OR : NAVY, fontFamily: JAK, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontVariantNumeric: 'tabular-nums' });
+  /* V3.134 : sans marge intérieure et sur une ligne — dans une fenêtre
+     étroite (« Planifier une visite » au téléphone), « 10 h » passait sur
+     deux lignes. */
+  const puce = (actif: boolean): React.CSSProperties => ({ position: 'relative', height: 40, padding: 0, whiteSpace: 'nowrap', minWidth: 0, borderRadius: 11, border: `1.5px solid ${actif ? NAVY : BORD}`, background: actif ? NAVY : 'white', color: actif ? OR : NAVY, fontFamily: JAK, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontVariantNumeric: 'tabular-nums' });
   return (
     <div ref={ref} className="ag-panneau" style={{ border: `1px solid ${BORD}`, borderRadius: 16, background: 'white', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
       {moments.map(m => (
@@ -1806,6 +1947,41 @@ function PanneauHeure({ valeur, onChoisir, onFini, prises }: { valeur: string; o
         </div>
       </div>
       <span style={{ fontSize: 11.5, color: PALE, display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d6543c' }} />déjà un rendez-vous à cette heure-là</span>
+    </div>
+  );
+}
+
+/* ══ « Quand », hors de l'agenda (V3.134) ═══════════════════════
+   Alexandre, sur « Planifier une visite » depuis un bien : « le calendrier
+   qui s'affiche, ce n'est pas le même que l'agenda […] l'heure, c'est très
+   moche ; la durée, pareil ». Les mêmes boutons, le même calendrier, la même
+   heure que la fenêtre de l'agenda, et la durée en pastilles. */
+export function ChoixQuand({ date, heure, duree, onDate, onHeure, onDuree, durees = DUREES }: {
+  date: string; heure: string; duree: number; onDate: (k: string) => void; onHeure: (h: string) => void; onDuree: (n: number) => void;
+  durees?: { v: number; lib: string }[];
+}) {
+  const [panneau, setPanneau] = useState<null | 'date' | 'heure'>(null);
+  const [hh, mm] = (heure || '10:00').split(':').map(Number);
+  const debut = depuisCle(date || cleDe(new Date())); debut.setHours(hh || 0, mm || 0, 0, 0);
+  const fin = new Date(debut.getTime() + duree * 60000);
+  const ecart = Math.round((depuisCle(date || cleDe(new Date())).getTime() - depuisCle(cleDe(new Date())).getTime()) / 86400000);
+  const relatif = ecart === 0 ? 'Aujourd’hui' : ecart === 1 ? 'Demain' : ecart === -1 ? 'Hier' : ecart > 1 ? `Dans ${ecart} jours` : `Il y a ${-ecart} jours`;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
+      <StylesAgenda />
+      <div className="ag-quand" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        <BoutonChamp ico="calendrier" etiquette="Date" ouvert={panneau === 'date'} onClick={() => setPanneau(p => (p === 'date' ? null : 'date'))}
+          valeur={maj(jourLong(debut))} aide={relatif} />
+        <BoutonChamp ico="horloge" etiquette="Heure" ouvert={panneau === 'heure'} onClick={() => setPanneau(p => (p === 'heure' ? null : 'heure'))}
+          valeur={heureFr(debut)} aide={`jusqu’à ${heureFr(fin)}`} />
+      </div>
+      {panneau === 'date' && <PanneauCalendrier valeur={date} occupes={{}} onChoisir={k => { onDate(k); setPanneau(null); }} />}
+      {panneau === 'heure' && <PanneauHeure valeur={heure} prises={new Set()} onChoisir={onHeure} onFini={() => setPanneau(null)} />}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Libelle texte="Durée" aide={`fin à ${hhmm(fin)}`} />
+        <Puces options={durees} valeur={duree} onChange={onDuree} />
+      </div>
+      <style>{`@media (max-width: 560px){.ag-quand{grid-template-columns:1fr !important}}`}</style>
     </div>
   );
 }
@@ -1892,6 +2068,48 @@ async function lireBiensAEstimer(): Promise<BienEstim[]> {
   });
 }
 
+/* ══ « Chercher un bien » pour une visite (V3.134) ════════════════
+   Alexandre : « je mets le prix, ou le nom du propriétaire, ou l'adresse, et
+   ça trouve ; je sélectionne un ou plusieurs biens […] si je ne l'ai pas mis
+   dans sa sélection, ça m'oblige à le mettre dans sélection ». La recherche
+   regarde son dossier ET les biens en vente de l'agence (mandat en cours,
+   sous offre, sous compromis) ; un bien de l'agence choisi entre dans son
+   dossier à l'enregistrement, comme depuis la fiche du bien. */
+type BienAgence = {
+  id: string; titre: string | null; adresse: string | null; code_postal: string | null; ville: string | null;
+  prix: number | null; reference: string | null; etape: string; photo: string | null; proprio: string;
+};
+async function lireBiensAgence(): Promise<BienAgence[]> {
+  const { data, error } = await supabase.from('biens_vente')
+    .select('id, titre, adresse, code_postal, ville, prix, reference, etape, archive, photo, client_id')
+    .in('etape', ['mandat', 'offre', 'compromis']);
+  if (error) { console.error('[agenda] les biens en vente', error.message); return []; }
+  const l = ((data || []) as any[]).filter(b => !b.archive);
+  const ids = Array.from(new Set(l.map(b => b.client_id).filter(Boolean))) as string[];
+  const noms: Record<string, string> = {};
+  if (ids.length) {
+    const { data: cs, error: eC } = await supabase.from('clients').select('id, prenom, nom').in('id', ids);
+    if (eC) console.error('[agenda] les propriétaires', eC.message);
+    for (const c of (cs || []) as any[]) noms[c.id] = [c.prenom, c.nom].filter(Boolean).join(' ');
+  }
+  return l.map(b => ({
+    id: b.id, titre: b.titre, adresse: b.adresse, code_postal: b.code_postal, ville: b.ville, prix: b.prix ?? null,
+    reference: b.reference, etape: b.etape, photo: b.photo, proprio: b.client_id ? noms[b.client_id] || '' : '',
+  }));
+}
+/* « 649 », « 649 000 », « Sygrie », « Mourradian », « EMI-V-2026-329 » :
+   chaque mot doit se trouver quelque part ; un nombre d'au moins trois
+   chiffres se cherche aussi dans le prix. */
+function trouveBien(champs: (string | null | undefined)[], prix: number | null | undefined, q: string): boolean {
+  const t = sansAccent(q.trim());
+  if (t.length < 2) return false;
+  const texte = sansAccent(champs.filter(Boolean).join(' '));
+  if (t.split(/\s+/).filter(Boolean).every(m => texte.includes(m))) return true;
+  const chiffres = q.replace(/\D/g, '');
+  return chiffres.length >= 3 && !!prix && String(Math.round(prix)).includes(chiffres);
+}
+const prixCourt = (n: number | null | undefined) => (n ? `${Math.round(n).toLocaleString('fr-FR')} €` : '');
+
 function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onEnregistre }: {
   modale: NonNullable<Modale>; dossiers: Dossier[]; relances: any[]; tableAbsente: boolean; evs: Ev[]; onFerme: () => void; onEnregistre: () => void;
 }) {
@@ -1921,6 +2139,11 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   }, [ev, modale, relances]);
   const [f, setF] = useState<Formulaire>(init);
   const [biens, setBiens] = useState<any[]>([]);
+  /* V3.134 : les biens en vente de l'agence (null : pas encore lus), ceux
+     choisis qui ne sont pas encore dans son dossier, et ce qui est tapé. */
+  const [agence, setAgence] = useState<BienAgence[] | null>(null);
+  const [ajouts, setAjouts] = useState<string[]>([]);
+  const [qBien, setQBien] = useState('');
   /* Les biens à estimer, lus quand on choisit « Estimation » (nouveau
      rendez-vous seulement). null : pas encore lus. */
   const [biensEstim, setBiensEstim] = useState<BienEstim[] | null>(null);
@@ -1973,15 +2196,56 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
     return () => { vivant = false; };
   }, [f.rechercheId, f.type]);
 
+  /* V3.134 : les biens en vente de l'agence, lus une fois, dès qu'une visite
+     a son client. */
+  useEffect(() => {
+    if (ev || f.type !== 'visite' || !f.rechercheId || agence !== null) return;
+    let vivant = true;
+    lireBiensAgence().then(l => { if (vivant) setAgence(l); }).catch(() => { if (vivant) setAgence([]); });
+    return () => { vivant = false; };
+  }, [ev, f.type, f.rechercheId, agence]);
+
   const choisis = biens.filter(b => f.choisis[b.id]);
+  /* Les biens de l'agence choisis qui ne sont pas (encore) dans son dossier :
+     ils y entrent à l'enregistrement. Un bien déjà copié dans son dossier se
+     coche comme les autres. */
+  const ajoutes = (agence || []).filter(a => ajouts.includes(a.id) && !biens.some(b => b.bien_vente_id === a.id));
+  const nbBiens = choisis.length + ajoutes.length;
+  const venteDe = (b: any) => (b?.bien_vente_id ? (agence || []).find(a => a.id === b.bien_vente_id) || null : null);
+  /* L'adresse complète d'un bien de l'agence ; sinon ce que sait le bien. */
+  const lieuChoisi = (b: any) => { const v = venteDe(b); return (v && adresseVente(v)) || lieuDuBien(b); };
+  const resultats = (() => {
+    if (f.type !== 'visite' || ev || qBien.trim().length < 2) return [] as { cle: string; dossier: boolean; id: string; titre: string; sous: string; photo: string | null; pastille: string; actif: boolean }[];
+    const duDossier = biens
+      .filter(b => { const v = venteDe(b); return trouveBien([b.titre, b.ville, b.quartier, b.adresse, b.agence_nom, v?.adresse, v?.code_postal, v?.reference, v?.proprio], b.prix_acquereur || b.prix_vendeur || v?.prix, qBien); })
+      .map(b => {
+        const v = venteDe(b);
+        return { cle: 'd-' + b.id, dossier: true, id: b.id, titre: b.titre || b.ville || 'Bien', photo: b.photos?.[0] || null, actif: !!f.choisis[b.id],
+          sous: [prixCourt(b.prix_acquereur || b.prix_vendeur), lieuChoisi(b), v?.proprio ? `Propriétaire : ${v.proprio}` : ''].filter(Boolean).join(' · '),
+          pastille: b.etape === 'presente' ? 'Présenté' : 'En sélection' };
+      });
+    const deLAgence = (agence || [])
+      .filter(a => !biens.some(b => b.bien_vente_id === a.id) && trouveBien([a.titre, a.adresse, a.code_postal, a.ville, a.reference, a.proprio], a.prix, qBien))
+      .map(a => ({ cle: 'a-' + a.id, dossier: false, id: a.id, titre: a.titre || a.ville || 'Bien', photo: a.photo, actif: ajouts.includes(a.id),
+        sous: [prixCourt(a.prix), adresseVente(a), a.proprio ? `Propriétaire : ${a.proprio}` : ''].filter(Boolean).join(' · '),
+        pastille: etapeDe(a.etape).court }));
+    return [...duDossier, ...deLAgence].slice(0, 8);
+  })();
+  const basculerResultat = (r: { dossier: boolean; id: string; actif: boolean }) => {
+    if (r.dossier) maj_({ choisis: { ...f.choisis, [r.id]: !r.actif }, titre: null, lieu: null, contact: null });
+    else { setAjouts(l => (r.actif ? l.filter(x => x !== r.id) : [...l, r.id])); maj_({ titre: null, lieu: null }); }
+  };
   const nom = dossier?.nom || personneLibre;
   /* Le titre et le lieu proposés, pour un nom donné (V3.106 : aussi à
      l'enregistrement, quand un nom tapé est gardé à la dernière seconde). */
   const autoPour = (n: string) => {
     let titreAuto = '', lieuAuto = '';
     if (f.type === 'visite') {
-      titreAuto = choisis.length > 1 ? `${choisis.length} visites · ${n}` : choisis.length === 1 ? `Visite · ${choisis[0].titre || choisis[0].ville || 'bien'}` : (n ? `Visite · ${n}` : 'Visite');
-      lieuAuto = choisis.length ? lieuDuBien(choisis[0]) : '';
+      /* V3.134 : plusieurs biens, « 2 visites · Mickaël Selema » ; un seul,
+         le bien ; les biens de l'agence ajoutés comptent aussi. */
+      const premier = choisis[0] ? (choisis[0].titre || choisis[0].ville) : ajoutes[0] ? (ajoutes[0].titre || ajoutes[0].ville) : '';
+      titreAuto = nbBiens > 1 ? `${nbBiens} visites${n ? ` · ${n}` : ''}` : nbBiens === 1 ? `Visite · ${premier || 'bien'}` : (n ? `Visite · ${n}` : 'Visite');
+      lieuAuto = choisis.length ? lieuChoisi(choisis[0]) : ajoutes.length ? adresseVente(ajoutes[0]) : '';
     } else if (f.type === 'client') { titreAuto = n ? `Rendez-vous · ${n}` : 'Rendez-vous client'; lieuAuto = 'Agence Emilio'; }
     else if (f.type === 'libre') { titreAuto = 'Rendez-vous'; lieuAuto = ''; }
     else if (f.type === 'appel') { titreAuto = `${f.mode === 'visio' ? 'Visio' : 'Appel'}${n ? ` · ${n}` : ''}`; lieuAuto = f.mode === 'visio' ? 'Visio' : 'Téléphone'; }
@@ -2021,7 +2285,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
   const ecartJours = Math.round((depuisCle(f.date || cleDe(new Date())).getTime() - depuisCle(cleDe(new Date())).getTime()) / 86400000);
   const relatif = ecartJours === 0 ? 'Aujourd’hui' : ecartJours === 1 ? 'Demain' : ecartJours === -1 ? 'Hier' : ecartJours > 1 ? `Dans ${ecartJours} jours` : `Il y a ${-ecartJours} jours`;
   const peutPrevenir = avecDossier && !!dossier && dossier.emails.length > 0;
-  const mail = peutPrevenir ? texteMail({ type: f.type, prenom: dossier!.prenom, debut, lieu, biens: choisis.map(b => ({ titre: b.titre || b.ville || 'Bien', lieu: lieuDuBien(b) })), mode: f.mode, etape: f.etape }) : null;
+  const mail = peutPrevenir ? texteMail({ type: f.type, prenom: dossier!.prenom, debut, lieu, biens: [...choisis.map(b => ({ titre: b.titre || b.ville || 'Bien', lieu: lieuChoisi(b) })), ...ajoutes.map(a => ({ titre: a.titre || a.ville || 'Bien', lieu: adresseVente(a) }))], mode: f.mode, etape: f.etape }) : null;
   const rdvImpossible = f.type !== 'visite' && tableAbsente;
 
   const effets: string[] = [`Ajouté à ton agenda le ${jourLong(debut)} à ${hhmm(debut)}.`];
@@ -2054,7 +2318,7 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
     const titre = f.titre !== null ? f.titre : autoPour(dossier?.nom || personneFinale).titreAuto;
     if (!f.date || !f.heure) { alert('Indique la date et l’heure.'); return; }
     if (dossierObligatoire && !dossier && !(ev && ev.source === 'visite')) { alert(enAttente ? `« ${enAttente} » n’est pas choisi : clique sur le bon dossier dans la liste.` : 'Choisis le dossier du client.'); return; }
-    if (f.type === 'visite' && !ev && !choisis.length) { alert('Coche au moins un bien à visiter.'); return; }
+    if (f.type === 'visite' && !ev && !nbBiens) { alert('Choisis au moins un bien à visiter : cherche-le, ou coche-le dans son dossier.'); return; }
     if (!titre.trim()) { alert('Donne un titre au rendez-vous.'); return; }
     if (rdvImpossible) { alert('Lance d’abord le SQL de l’agenda dans Supabase (agenda-rendez-vous.sql).'); return; }
     setEnvoi(true);
@@ -2065,10 +2329,10 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
        fiche du bien refusait déjà, l'agenda laissait passer. Vérifié avant
        le rappel, pour ne rien laisser derrière soi. */
     if (f.type === 'visite' && !ev) {
-      const etat = await etatVenteDesCopies(choisis);
-      if (etat.erreur && !window.confirm(`Je n'ai pas pu vérifier que ${choisis.length > 1 ? 'ces biens sont' : 'ce bien est'} toujours en vente.\n\n${etat.erreur}\n\nPlanifier la visite quand même ?`)) { setEnvoi(false); return; }
+      const etat = await etatVenteDesCopies([...choisis, ...ajoutes.map(a => ({ titre: a.titre, ville: a.ville, bien_vente_id: a.id }))]);
+      if (etat.erreur && !window.confirm(`Je n'ai pas pu vérifier que ${nbBiens > 1 ? 'ces biens sont' : 'ce bien est'} toujours en vente.\n\n${etat.erreur}\n\nPlanifier la visite quand même ?`)) { setEnvoi(false); return; }
       if (etat.bloque.length) {
-        const reste = choisis.length > etat.bloque.length ? `\n\nDécoche ${etat.bloque.length > 1 ? 'ces biens' : 'ce bien'} pour caler les autres.` : '';
+        const reste = nbBiens > etat.bloque.length ? `\n\nDécoche ${etat.bloque.length > 1 ? 'ces biens' : 'ce bien'} pour caler les autres.` : '';
         setEnvoi(false); alert(`${etat.bloque.join('\n')}\n\nLa visite n'est pas planifiée.${reste}`); return;
       }
       if (etat.secours.length) {
@@ -2148,7 +2412,19 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
           }
         }
       } else {
-        const { data: creees, error } = await supabase.from('visites').insert(choisis.map(b => ({
+        /* V3.134 : un bien de l'agence choisi par la recherche entre d'abord
+           dans son dossier (Présentés), comme depuis la fiche du bien. */
+        let tous: any[] = choisis;
+        if (ajoutes.length) {
+          const { data: bvs, error: eBv } = await supabase.from('biens_vente').select('*').in('id', ajoutes.map(a => a.id));
+          if (eBv || !bvs || bvs.length !== ajoutes.length) { await echec(`${ajoutes.length > 1 ? 'Les biens' : 'Le bien'} de l’agence n’${ajoutes.length > 1 ? 'ont' : 'a'} pas pu être lu${ajoutes.length > 1 ? 's' : ''}.\n\n${eBv?.message || 'Réponse incomplète.'}`); return; }
+          const copies: any[] = [];
+          try {
+            for (const bv of bvs as BienVente[]) copies.push((await copieDe(bv, dossier!.clientId, dossier!.rechercheId, 'souhaite_visiter')).copie);
+          } catch (e) { await echec(`Le bien n’a pas pu entrer dans son dossier : la visite n’est pas planifiée.\n\n${(e as Error).message}`); return; }
+          tous = [...choisis, ...copies];
+        }
+        const { data: creees, error } = await supabase.from('visites').insert(tous.map(b => ({
           client_id: dossier!.clientId, recherche_id: dossier!.rechercheId, bien_id: b.id, statut: 'a_venir',
           date_visite: f.date, heure: f.heure, duree_min: f.duree, contact_agence: contact || null,
           commentaire: f.notes || null, rappel_relance_id: relanceId,
@@ -2160,21 +2436,21 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
         }
         /* Comme depuis la fiche : le bien passe en « veut visiter », sauf
            s'il est déjà plus loin (visité, offre faite). */
-        const aMarquer = choisis.filter(b => !['visite', 'offre_faite'].includes(b.badge_retour)).map(b => b.id);
+        const aMarquer = tous.filter(b => !['visite', 'offre_faite', 'souhaite_visiter'].includes(b.badge_retour)).map(b => b.id);
         if (aMarquer.length) {
           const r = await supabase.from('biens').update({ badge_retour: 'souhaite_visiter' }).in('id', aMarquer);
           if (r.error) alert("La visite est enregistrée, mais le bien n'a pas pu passer en « veut visiter ».\n\n" + r.error.message);
         }
         /* Une demande de visite faite depuis l'espace est servie : sa relance
            « Veut visiter » se solde (voir src/lib/demandes-visite.ts). */
-        const errRel = await solderRelancesVisite(dossier!.clientId, choisis.map(b => b.titre));
+        const errRel = await solderRelancesVisite(dossier!.clientId, tous.map(b => b.titre));
         if (errRel) alert("La visite est enregistrée, mais la relance « Veut visiter » n'a pas pu être soldée.\n\n" + errRel);
         /* V3.50 : une 2e visite répond aussi à « Veut revoir » et « Il
            réfléchit ». « Veut faire une offre » reste : l'offre n'est pas faite. */
-        const errRetour = await solderRelancesRetourVisite(dossier!.clientId, choisis.map(b => b.titre), { garder: 'offre' });
+        const errRetour = await solderRelancesRetourVisite(dossier!.clientId, tous.map(b => b.titre), { garder: 'offre' });
         if (errRetour) alert("La visite est enregistrée, mais les relances « Veut revoir » ou « Il réfléchit » n'ont pas pu être soldées.\n\n" + errRetour);
         await addJournal(dossier!.clientId, 'visite_planifiee',
-          choisis.length > 1 ? `📅 Visite planifiée — ${choisis.length} biens : ${choisis.map(b => b.titre || b.ville).join(' · ')}` : `📅 Visite planifiée — ${choisis[0].titre || choisis[0].ville || ''}`,
+          tous.length > 1 ? `📅 Visite planifiée — ${tous.length} biens : ${tous.map(b => b.titre || b.ville).join(' · ')}` : `📅 Visite planifiée — ${tous[0].titre || tous[0].ville || ''}`,
           `Le ${debut.toLocaleDateString('fr-FR')} à ${f.heure}${contact ? ` · Contact : ${contact}` : ''}`, undefined, { rechercheId: dossier!.rechercheId });
       }
     } else {
@@ -2340,33 +2616,63 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
               <Section n={2} ico="personne" titre={dossierObligatoire ? 'Pour quel client' : 'Pour quel client (facultatif)'} rang={1}
                 aide={dossierObligatoire ? 'Le rendez-vous se range dans sa fiche.' : 'Laisse vide pour un rendez-vous sans client. Avec un client, il se range dans sa fiche.'}>
                 <ChoixDossier dossiers={dossiers} valeur={f.rechercheId} fige={!!ev && ev.source === 'visite'}
-                  onChange={id => { setSaisie(''); maj_({ rechercheId: id, personne: '', choisis: {}, titre: null, lieu: null, contact: null }); }}
+                  onChange={id => { setSaisie(''); setAjouts([]); setQBien(''); maj_({ rechercheId: id, personne: '', choisis: {}, titre: null, lieu: null, contact: null }); }}
                   libre={libreOk ? f.personne : ''} onSaisie={setSaisie}
                   onLibre={libreOk ? (n => { setSaisie(''); maj_({ personne: n, rechercheId: '', titre: null }); }) : undefined} />
-              {f.type === 'visite' && dossier && !ev && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Libelle texte="Biens à visiter" aide={choisis.length ? `${choisis.length} choisi${choisis.length > 1 ? 's' : ''} · Sélection et Présentés` : 'Sélection et Présentés'} />
-                  {biens.length === 0 && <span style={{ fontSize: 12.5, color: PALE }}>Ce dossier n’a pas encore de bien en Sélection ou en Présentés.</span>}
-                  {biens.map(b => {
-                    const actif = !!f.choisis[b.id];
-                    const prix = b.prix_acquereur || b.prix_vendeur;
-                    return (
-                      <button key={b.id} type="button" className="ag-appui" aria-pressed={actif}
-                        onClick={() => maj_({ choisis: { ...f.choisis, [b.id]: !actif }, titre: null, lieu: null, contact: null })}
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px 7px 7px', borderRadius: 14, border: `1.5px solid ${actif ? OR : BORD}`, background: actif ? '#fffaf0' : 'white', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit' }}>
-                        <span style={{ width: 54, height: 42, borderRadius: 9, overflow: 'hidden', background: '#eef2f8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
-                          {b.photos?.[0] ? <img src={b.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic n="maison" t={16} />}
-                        </span>
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: 1 }}>
-                          <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.titre || b.ville || 'Bien'}</b>
-                          <span style={{ fontSize: 12, color: DOUX }}>{[prix ? `${Number(prix).toLocaleString('fr-FR')} €` : '', b.etape === 'presente' ? 'Présenté' : 'En sélection'].filter(Boolean).join(' · ')}</span>
-                        </span>
-                        <span style={{ width: 22, height: 22, boxSizing: 'border-box', borderRadius: 7, border: `1.5px solid ${actif ? OR : '#c3ccda'}`, background: actif ? OR : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>{actif && <Ic n="coche" t={13} ep={3} />}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* V3.134 — « Chercher un bien » : son dossier et les biens en
+                  vente de l'agence, par le prix, l'adresse, le propriétaire ou
+                  la référence. Dessous, les biens choisis, puis son dossier. */}
+              {f.type === 'visite' && dossier && !ev && (() => {
+                const carte = (o: { cle: string; titre: string; sous: string; photo: string | null; actif: boolean; pastille?: string; onClick: () => void; retirer?: boolean }) => (
+                  <button key={o.cle} type="button" className="ag-appui" aria-pressed={o.actif} onClick={o.onClick}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 12px 7px 7px', borderRadius: 14, border: `1.5px solid ${o.actif ? OR : BORD}`, background: o.actif ? '#fffaf0' : 'white', cursor: 'pointer', textAlign: 'left', color: NAVY, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }}>
+                    <span style={{ width: 54, height: 42, borderRadius: 9, overflow: 'hidden', background: '#eef2f8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b6c1d1' }}>
+                      {o.photo ? <img src={o.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic n="maison" t={16} />}
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                      <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.titre}</b>
+                      {o.pastille && <span style={{ alignSelf: 'flex-start', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: '#eef1f6', color: DOUX, whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.pastille}</span>}
+                      <span style={{ fontSize: 12, color: DOUX, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{o.sous}</span>
+                    </span>
+                    {o.retirer
+                      ? <span aria-label="Retirer" style={{ width: 24, height: 24, borderRadius: 8, border: `1px solid ${BORD}`, background: 'white', color: DOUX, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="fermer" t={12} /></span>
+                      : <span style={{ width: 22, height: 22, boxSizing: 'border-box', borderRadius: 7, border: `1.5px solid ${o.actif ? OR : '#c3ccda'}`, background: o.actif ? OR : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>{o.actif && <Ic n="coche" t={13} ep={3} />}</span>}
+                  </button>
+                );
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Libelle texte="Biens à visiter" aide={nbBiens ? `${nbBiens} choisi${nbBiens > 1 ? 's' : ''}` : 'cherche-les, un ou plusieurs'} />
+                    <ChampIcone ico="loupe">
+                      <input className="ag-champ" value={qBien} onChange={e => setQBien(e.target.value)} placeholder="Prix, adresse, propriétaire, référence…"
+                        style={{ ...CHAMP, paddingLeft: 42 }} aria-label="Chercher un bien à visiter" autoComplete="off"
+                        onKeyDown={e => { if (e.key === 'Escape' && qBien) { e.stopPropagation(); setQBien(''); } }} />
+                    </ChampIcone>
+                    {qBien.trim().length >= 2 && (
+                      <div className="ag-panneau" style={{ display: 'flex', flexDirection: 'column', gap: 6, border: `1px solid ${BORD}`, borderRadius: 16, background: '#fbfcfe', padding: 8, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
+                        {agence === null
+                          ? <span style={{ fontSize: 12.5, color: PALE, padding: '6px 6px' }}>Je cherche dans tes biens…</span>
+                          : resultats.length === 0
+                            ? <span style={{ fontSize: 12.5, color: PALE, padding: '6px 6px', lineHeight: 1.5 }}>{`Rien ne correspond à « ${qBien.trim()} » : ni dans son dossier, ni dans tes biens en vente.`}</span>
+                            : resultats.map(r => carte({ cle: r.cle, titre: r.titre, sous: r.sous, photo: r.photo, actif: r.actif, pastille: r.dossier ? `Son dossier · ${r.pastille}` : r.pastille,
+                                onClick: () => { basculerResultat(r); setQBien(''); } }))}
+                      </div>
+                    )}
+                    {ajoutes.map(a => carte({ cle: 'aj-' + a.id, titre: a.titre || a.ville || 'Bien', photo: a.photo, actif: true, retirer: true,
+                      sous: [prixCourt(a.prix), adresseVente(a), 'entre dans son dossier'].filter(Boolean).join(' · '),
+                      onClick: () => { setAjouts(l => l.filter(x => x !== a.id)); maj_({ titre: null, lieu: null }); } }))}
+                    {biens.length > 0 ? (
+                      <>
+                        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: .8, textTransform: 'uppercase', color: PALE, paddingTop: 2 }}>Dans son dossier</span>
+                        {biens.map(b => carte({ cle: b.id, titre: b.titre || b.ville || 'Bien', photo: b.photos?.[0] || null, actif: !!f.choisis[b.id],
+                          sous: [prixCourt(b.prix_acquereur || b.prix_vendeur), b.etape === 'presente' ? 'Présenté' : 'En sélection'].filter(Boolean).join(' · '),
+                          onClick: () => maj_({ choisis: { ...f.choisis, [b.id]: !f.choisis[b.id] }, titre: null, lieu: null, contact: null }) }))}
+                      </>
+                    ) : !ajoutes.length && (
+                      <span style={{ fontSize: 12.5, color: PALE, lineHeight: 1.5 }}>Rien encore dans son dossier : cherche le bien ci-dessus, tes biens en vente y sont.</span>
+                    )}
+                  </div>
+                );
+              })()}
               {f.type === 'visite' && (dossier || ev) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <Libelle texte="Contact sur place" aide="l’agence ou le vendeur" />
