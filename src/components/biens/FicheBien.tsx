@@ -1535,6 +1535,13 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
     go();
   };
   const ouvrirVisite = garde('visite', () => setFen({ k: 'visite' }));
+  /* V3.139 (Alexandre : « envoyer ce bien, à côté de Modifier ; un pop-up avec
+     les différents choix ») : la fenêtre d'envoi de « Un autre client… »
+     (LotBiens) — un client du CRM par son nom ou son téléphone, ou une
+     adresse e-mail hors du CRM. En vente, ou avant le mandat (sans prix) ;
+     pas en pause, vendu, retiré, ni pour une annonce type. */
+  const envoyable = ['vente', 'avant'].includes(modeAcheteurs(e)) && e !== 'annonce_type';
+  const ouvrirEnvoi = garde('presenter', () => setEnvoiAutre(true));
   /* Les visites encore prévues : la vente, le retrait, la pause proposent de les annuler. */
   const prevues = visites.filter(v => v.statut === 'a_venir' && !passee(v)).map(v => ({ qui: v.qui, le: v.ymd }));
   const ouvrirOffre = garde('offre', () => setFen({ k: 'offre' }));
@@ -2068,7 +2075,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
             d'un seul bloc, séparés d'un trait. Au téléphone, les icônes. */}
         <div className={b.barreActions} data-gestes="">
           <div className={b.gestes} role="group" aria-label="Gestes du bien">
-            <button type="button" className={b.geste} onClick={() => onModifier()} aria-label="Modifier la fiche"><Ic n="crayon" t={15} /><span className={b.gesteTx}>Modifier</span></button>
+            <button type="button" className={`${b.geste} ${envoyable ? b.gesteModif : ''}`} onClick={() => onModifier()} aria-label="Modifier la fiche"><Ic n="crayon" t={15} /><span className={b.gesteTx}>Modifier</span></button>
+            {envoyable && <button type="button" className={`${b.geste} ${b.gesteEnvoi}`} onClick={ouvrirEnvoi} aria-label="Envoyer ce bien"><Ic n="envoyer" t={15} /><span className={b.gesteTx}>Envoyer</span></button>}
             {/* La note, en un clic (V3.81) ; Visite et Point vendeur sont dans « ⋯ ». */}
             <button type="button" className={`${b.geste} ${b.gesteNote}`} onClick={() => setFen({ k: 'note' })} aria-label="Ajouter une note"><Ic n="bulle" t={15} /><span className={b.gesteTx}>Note</span></button>
             <button type="button" className={`${b.geste} ${b.gestePlus}`} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')}><Ic n="points" t={16} e={2.6} /></button>
@@ -2076,6 +2084,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
           {menu === 'plus' && (
             <div className={b.menu} role="menu">
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); onModifier(); }}><Ic n="crayon" t={16} /><span><b>Modifier la fiche</b><small>Étape par étape ou tout sur une page</small></span></button>
+              {envoyable && <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); ouvrirEnvoi(); }}><Ic n="envoyer" t={16} /><span><b>Envoyer ce bien</b><small>Un client du CRM, ou une adresse e-mail</small></span></button>}
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); ouvrirVisite(); }}><Ic n="cle" t={16} /><span><b>Planifier une visite</b><small>Un acheteur suivi, ou quelqu’un hors du CRM</small></span></button>
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); ouvrirOffre(); }}><Ic n="euro" t={16} /><span><b>Enregistrer une offre</b><small>Montant, financement, validité</small></span></button>
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); garde('prix', () => setFen({ k: 'prix' }))(); }}><Ic n="etiquette" t={16} /><span><b>Changer le prix ou les honoraires</b><small>L’ancien reste dans l’historique</small></span></button>
