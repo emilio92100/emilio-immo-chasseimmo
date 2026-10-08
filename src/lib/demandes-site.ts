@@ -73,7 +73,9 @@ export const CATEGORIES: {
   /* Le type de contact qu'on propose à « Créer le contact ». */
   type: TypeContact | null;
 }[] = [
-  { k: 'estimation', lib: 'Estimation', court: 'Estimation', pluriel: 'Estimations', ic: 'euro', c: '#a07c28', fond: '#fbf6e9', trait: '#ecdcb0', type: 'vendeur' },
+  /* V3.137 : une demande d'estimation fait un Propriétaire ; il devient
+     Vendeur quand son bien passe en mandat (src/lib/contacts.ts). */
+  { k: 'estimation', lib: 'Estimation', court: 'Estimation', pluriel: 'Estimations', ic: 'euro', c: '#a07c28', fond: '#fbf6e9', trait: '#ecdcb0', type: 'proprietaire' },
   { k: 'mandat_recherche', lib: 'Accompagnement acheteur', court: 'Acheteur', pluriel: 'Accompagnements', ic: 'loupe', c: '#0f7a4f', fond: '#ecfdf5', trait: '#bfe8d3', type: 'acheteur' },
   { k: 'rappel_bien', lib: 'Info sur un bien', court: 'Info bien', pluriel: 'Infos sur un bien', ic: 'maison', c: '#2f5fb3', fond: '#eef4ff', trait: '#c9daf8', type: 'acheteur' },
   { k: 'contact', lib: 'Demande générale', court: 'Message', pluriel: 'Messages', ic: 'bulle', c: '#34496e', fond: '#eef2f8', trait: '#d3dcea', type: null },
