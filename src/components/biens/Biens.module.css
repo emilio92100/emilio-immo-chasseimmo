@@ -72,6 +72,19 @@
 .menuItem b { display: block; font-size: 14px; color: var(--emilio); }
 .menuItem small { display: block; margin-top: 1px; font-size: 12.5px; color: #64748b; line-height: 1.4; }
 .menuSep { height: 1px; background: #f1f4f8; margin: 4px 6px; }
+/* V3.132 (Alexandre : « le menu sur un bien, faut pas l'allonger aussi long,
+   faut le raccourcir et mettre un système de scroll dedans pour éviter qu'il
+   prenne tout l'écran ») : il s'arrête bien avant le bas de l'écran et défile
+   à l'intérieur ; une ombre en bas dit qu'il y a une suite, et s'efface
+   arrivé au bout (le fond blanc « local » la recouvre). */
+.menu {
+  max-height: min(430px, calc(100dvh - 230px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #d5dce6 transparent;
+  background:
+    linear-gradient(rgba(255,255,255,0), #fff 70%) center bottom / 100% 28px no-repeat local,
+    radial-gradient(farthest-side at 50% 100%, rgba(15,23,42,.16), rgba(15,23,42,0)) center bottom / 100% 12px no-repeat scroll,
+    #fff;
+}
+.menu .menuItem { padding: 8px 10px; }
 .menuDanger b { color: #b91c1c; }
 .voileMenu { position: fixed; inset: 0; z-index: 59; }
 
