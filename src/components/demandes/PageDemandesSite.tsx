@@ -11,6 +11,7 @@ import Depliant from '@/components/shared/Depliant';
 import ChoixDate, { texteDate } from '@/components/shared/ChoixDate';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import PictoBoite from './PictoBoite';
+import { lirePhotos } from '@/lib/biens-vente';
 import Clients from '@/components/clients/Clients';
 import p from '@/components/pages/Page.module.css';
 import s from './DemandesSite.module.css';
@@ -49,15 +50,18 @@ import {
    y dépose avec la clé publique, qui ne peut rien lire : c'est le CRM
    connecté qui lit et range. */
 
-type Filtre = 'toutes' | StatutDemande | 'archives';
+type Filtre = 'toutes' | StatutDemande | 'archives' | 'rappels';
 type Categorie = 'toutes' | CategorieDemande;
 type Teinte = { c: string; fond: string; trait: string };
 
 const teinte = (x: Teinte) => ({ '--c': x.c, '--fond': x.fond, '--trait': x.trait } as CSSProperties);
 const MARINE: Teinte = { c: '#34496e', fond: '#eef2f8', trait: '#d3dcea' };
 
+/* V3.127 : « À rappeler » — une date de rappel, pas encore traitée. */
+const aRappeler = (d: DemandeSite) => !d.archive && statutDe(d.statut).k !== 'traite' && !!d.a_rappeler_le;
 const dansFiltre = (d: DemandeSite, f: Filtre) =>
-  f === 'archives' ? d.archive : !d.archive && (f === 'toutes' || statutDe(d.statut).k === f);
+  f === 'rappels' ? aRappeler(d)
+    : f === 'archives' ? d.archive : !d.archive && (f === 'toutes' || statutDe(d.statut).k === f);
 const dansCategorie = (d: DemandeSite, c: Categorie) => c === 'toutes' || cleCategorie(d) === c;
 const pluriel = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`;
 
@@ -78,6 +82,17 @@ const PERIODES: { k: Periode; lib: string; court: string; phrase: string; jours:
   { k: 'tout', lib: 'Depuis le début', court: 'Tout', phrase: 'depuis le début', jours: null },
 ];
 const BLEU = '#22497c';
+/* La ponctuation française ne passe jamais seule à la ligne (V3.127). */
+/* « Reçue hier · mer. 7 oct. à 12:00 » : court, pour tenir sur la ligne du
+   nom à côté des boutons (la date complète est dans l'infobulle). */
+const recueLe = (iso: string, maintenant: number) => {
+  const x = new Date(iso);
+  const an = x.getFullYear() === new Date(maintenant).getFullYear() ? undefined : 'numeric';
+  const quand = `${x.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: an })} à ${x.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  const dep = depuis(iso, maintenant);
+  return /^(il y a|hier|à l)/.test(dep) ? `Reçue ${dep} · ${quand}` : `Reçue le ${quand}`;
+};
+const nb = (t: string) => t.replace(/« /g, '«\u00a0').replace(/ »/g, '\u00a0»').replace(/ ([:;?!])/g, '\u00a0$1');
 
 /* L'objet du mail, selon ce que le client a demandé. */
 function sujetMail(d: DemandeSite): string {
@@ -221,7 +236,10 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   const dansPer = useCallback((d: DemandeSite) => Date.parse(d.created_at) >= depuisLe, [depuisLe]);
   const trouvees = useMemo(() => demandes.filter(d => correspond(d, cherche)), [demandes, cherche]);
   const dansLaProv = trouvees.filter(d => dansProv(d) && dansPer(d));
-  const visibles = dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, cat));
+  /* « À rappeler » ne regarde pas la période : une demande d'il y a deux
+     mois à rappeler demain doit y être. La plus proche date d'abord. */
+  const rappelsProv = trouvees.filter(d => dansProv(d) && aRappeler(d)).sort((p2, q) => String(p2.a_rappeler_le).localeCompare(String(q.a_rappeler_le)));
+  const visibles = f === 'rappels' ? rappelsProv.filter(d => dansCategorie(d, cat)) : dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, cat));
   const ouverte = demandes.find(d => d.id === choisie) || null;
   /* La liste repart en fondu à chaque changement de filtre (V3.93). */
   const cleListe = `${prov}-${portail}-${f}-${cat}-${cherche ? 'q' : ''}`;
@@ -231,12 +249,13 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     const out: { titre: string; l: DemandeSite[] }[] = [];
     const now = new Date(maintenant);
     for (const d of visibles) {
-      const t = periode(d.created_at, now);
+      const r = f === 'rappels' ? rappel(d.a_rappeler_le, now) : null;
+      const t = f === 'rappels' ? (r === 'retard' ? 'En retard' : r === 'jour' ? 'Aujourd’hui' : 'Plus tard') : periode(d.created_at, now);
       const g = out[out.length - 1];
       if (g && g.titre === t) g.l.push(d); else out.push({ titre: t, l: [d] });
     }
     return out;
-  }, [visibles, maintenant]);
+  }, [visibles, maintenant, f]);
 
   /* ── La phrase de l'en-tête ── */
   const actives = demandes.filter(d => !d.archive);
@@ -259,10 +278,11 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
   const aTraiter = nouvellesProv.length;
 
   /* ── Les compteurs des filtres ── */
-  const nbFiltre = (k: Filtre) => dansLaProv.filter(d => dansFiltre(d, k) && dansCategorie(d, cat)).length;
+  const nbFiltre = (k: Filtre) => (k === 'rappels' ? rappelsProv : dansLaProv).filter(d => dansFiltre(d, k) && dansCategorie(d, cat)).length;
+  const nbRappelsDus = rappelsProv.filter(d => rappelDu(d.a_rappeler_le, new Date(maintenant))).length;
   const nbCat = (c: Categorie) => dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, c)).length;
   const STATS_FILTRES: { k: Filtre; lib: string; c: string }[] = [
-    { k: 'nouveau', lib: 'Nouvelles', c: BLEU }, { k: 'en_cours', lib: 'En cours', c: '#b45309' },
+    { k: 'nouveau', lib: 'Nouvelles', c: BLEU }, { k: 'en_cours', lib: 'En cours', c: '#b45309' }, { k: 'rappels', lib: 'À rappeler', c: '#c2410c' },
     { k: 'traite', lib: 'Traitées', c: '#0f7a4f' }, { k: 'archives', lib: 'Archivées', c: '#64748b' }, { k: 'toutes', lib: 'Toutes', c: '#34496e' },
   ];
   const robots = visibles.filter(robot);
@@ -298,8 +318,8 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     setAnnonce({ texte: 'Demande remise dans la liste', n: Date.now() });
   };
 
-  const supprimer = async (d: DemandeSite) => {
-    if (!confirm(`Supprimer définitivement la demande de ${d.name || 'ce contact'} ?\n\nElle disparaît de la base. Pour la garder de côté, utilisez plutôt « Archiver ».`)) return;
+  const supprimer = async (d: DemandeSite, confirme = false) => {
+    if (!confirme && !confirm(`Supprimer définitivement la demande de ${d.name || 'ce contact'} ?\n\nElle disparaît de la base. Pour la garder de côté, utilisez plutôt « Archiver ».`)) return;
     if (!(await verifie('La suppression de la demande', supabase.from(TABLE_DEMANDES).delete().eq('id', d.id).select('id'), { ligne: true }))) return;
     setDemandes(l => l.filter(x => x.id !== d.id));
     setChoisie(null);
@@ -376,7 +396,7 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     <Fiche key={ouverte.id} d={ouverte} maintenant={maintenant} onFermer={fermer}
       onStatut={changerStatut} onRappel={changerRappel} onNote={enregistrerNote}
       onArchiver={archiver} onDesarchiver={desarchiver} onSupprimer={supprimer}
-      onCreerContact={creerContact} onVoirFiche={voirFiche} />
+      onCreerContact={creerContact} onVoirFiche={voirFiche} onVoirBien={id => onNavigate('biens', { bien: id })} />
   ) : null;
 
   /* Les tuiles du tiroir : les formulaires du site, ou les portails. */
@@ -461,7 +481,7 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
               {STATS_FILTRES.map(x => (
                 <button key={x.k} type="button" role="tab" aria-selected={f === x.k} className={`${s.statutTab} ${f === x.k ? s.statutTabOn : ''}`}
                   style={{ ['--c' as string]: x.c } as CSSProperties} onClick={() => setFiltre(x.k)}>
-                  {x.k === 'nouveau' && nbFiltre('nouveau') > 0 && <span className={s.pouls} />}
+                  {((x.k === 'nouveau' && nbFiltre('nouveau') > 0) || (x.k === 'rappels' && nbRappelsDus > 0)) && <span className={s.pouls} />}
                   <span>{x.lib}</span><i>{nbFiltre(x.k)}</i>
                 </button>
               ))}
@@ -621,7 +641,7 @@ function CarteDemande({ d, on, eclair, maintenant, rang, onChoisir }: {
 }
 
 /* ── La demande ouverte ────────────────────────────────────────────────── */
-function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver, onDesarchiver, onSupprimer, onCreerContact, onVoirFiche }: {
+function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver, onDesarchiver, onSupprimer, onCreerContact, onVoirFiche, onVoirBien }: {
   d: DemandeSite;
   maintenant: number;
   onFermer?: () => void;
@@ -630,9 +650,11 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
   onNote: (d: DemandeSite, t: string) => Promise<boolean>;
   onArchiver: (d: DemandeSite) => void;
   onDesarchiver: (d: DemandeSite) => void;
-  onSupprimer: (d: DemandeSite) => void;
+  onSupprimer: (d: DemandeSite, confirme?: boolean) => void;
   onCreerContact: (d: DemandeSite) => void;
   onVoirFiche: (d: DemandeSite) => void;
+  /* V3.127 : la fiche du bien demandé, dans le CRM. */
+  onVoirBien?: (bienVenteId: string) => void;
 }) {
   const cat = categorieDe(d.form_type);
   const pv = provenanceDe(d);
@@ -666,6 +688,67 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
   const bot = robot(d);
   const aujourdhui = jourIso(new Date(maintenant));
 
+  /* V3.127 — La photo du bien demandé (« sur le bien demandé, il faut une
+     photo ») : la référence du site est celle du flux (lib/flux-site.ts,
+     idSite) — le numéro ImmoFacile, sinon la référence, sinon l'id. */
+  const [bienCrm, setBienCrm] = useState<{ id: string; photo: string; prix: number | null } | null>(null);
+  useEffect(() => {
+    const ref = String(d.property_ref || '').trim();
+    if (!ref || !/^[\w-]{1,64}$/.test(ref)) return;
+    let vivant = true;
+    const ou = [`reference.eq.${ref}`, `donnees->>idImmofacile.eq.${ref}`];
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref)) ou.push(`id.eq.${ref}`);
+    supabase.from('biens_vente').select('id, photo, prix, donnees').or(ou.join(',')).limit(1).then(({ data }) => {
+      const b = ((data || []) as { id: string; photo?: string | null; prix?: number | null; donnees?: Record<string, unknown> | null }[])[0];
+      if (!vivant || !b) return;
+      setBienCrm({ id: b.id, photo: b.photo || lirePhotos(b.donnees?.photos)[0]?.url || '', prix: b.prix ?? null });
+    });
+    return () => { vivant = false; };
+  }, [d.property_ref]);
+
+  /* Archiver ou supprimer : d'abord ce qui va se passer, puis « Oui ». */
+  const [confirme, setConfirme] = useState<'' | 'archiver' | 'supprimer'>('');
+  /* Un changement de statut se voit : « Enregistré » apparaît un instant. */
+  const [fait, setFait] = useState(0);
+  const choisir = async (k: StatutDemande) => { if (await onStatut(d, k)) setFait(Date.now()); };
+  /* Une date de rappel sur une nouvelle demande : elle passe « En cours ». */
+  const rappeler = async (v: string) => {
+    if (!(await onRappel(d, v))) return;
+    if (v && st.k === 'nouveau') await choisir('en_cours'); else setFait(Date.now());
+  };
+
+  /* V3.127 — Alexandre : « que le pop-up soit plus clair, plus lisible…
+     qu'est-ce que vous souhaitez faire de cette demande, avec les
+     explications : en cours, pourquoi ; traitée, pourquoi ; les
+     conséquences ». Chaque choix dit ce qu'il veut dire et ce qu'il change. */
+  const CHOIX: Record<StatutDemande, { titre: string; sous: string; suite: string }> = {
+    nouveau: { titre: 'Nouvelle', sous: 'Pas encore prise en main', suite: 'Elle reste comptée en rouge dans le menu, pour ne pas l’oublier.' },
+    en_cours: { titre: 'En cours', sous: 'Je m’en occupe', suite: 'Appelé, message laissé… Elle sort du compteur rouge et attend dans « En cours ».' },
+    traite: { titre: 'Traitée', sous: 'C’est réglé', suite: 'Réponse donnée, contact créé, ou pas sérieux. Elle passe dans « Traitées ».' },
+  };
+
+  /* Ce que le client a envoyé : le bien, son message, ses réponses. */
+  const leBien = pr.bien ? (() => {
+    const b = pr.bien;
+    return (
+      <div className={`${s.bien} ${s.bienCarte}`}>
+        {bienCrm?.photo
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img className={s.bienPhoto} src={bienCrm.photo} alt="" />
+          : <span className={s.bienIc}><Ic n="maison" t={19} /></span>}
+        <span className={s.bienTx}>
+          <span className={s.bienSur}>{'Le bien demandé'}</span>
+          <span className={s.bienTitre}>{b.titre}</span>
+          <span className={s.bienRef}>{[b.ref ? `Réf. ${b.ref}` : 'Bien du site', bienCrm?.prix ? `${bienCrm.prix.toLocaleString('fr-FR')} €` : ''].filter(Boolean).join(' · ')}</span>
+          <span className={s.bienLiens}>
+            {bienCrm && onVoirBien && <button type="button" className={s.bienLien} onClick={() => onVoirBien(bienCrm.id)}><Ic n="maison" t={13} e={2.2} /><span>{'Sa fiche'}</span></button>}
+            {b.lien && <a className={s.bienLien} href={b.lien} target="_blank" rel="noopener noreferrer"><Ic n="globe" t={13} e={2.2} /><span>{'L’annonce sur le site'}</span></a>}
+          </span>
+        </span>
+      </div>
+    );
+  })() : null;
+
   return (
     <article className={s.fiche} style={teinte(cat)}>
       <header className={s.tete}>
@@ -673,125 +756,145 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
           <span className={s.teteEtiq}>
             <span className={s.teteProv} style={{ color: pv.c }}>{pv.lib}</span>
             <span className={s.teteCat}><Ic n={cat.ic} t={14} e={2.1} /><span>{cat.lib}</span></span>
+            <span className={s.teteStatut} style={teinte(st)}><span className={s.pointStatut} /><span>{st.lib}</span></span>
           </span>
           {onFermer && (
             <button type="button" className={s.fermer} onClick={onFermer} aria-label="Fermer la demande"><Croix t={16} /></button>
           )}
         </div>
-        <div className={s.identite}>
-          <span className={s.grandAvatar}>{initiales(d.name)}</span>
-          <div style={{ minWidth: 0 }}>
-            <h2 className={s.grandNom}>{d.name || 'Sans nom'}</h2>
-            <div className={s.recue}>{`Reçue le ${dateLongue(d.created_at)} · ${depuis(d.created_at, maintenant).replace(/ /g, '\u00a0')}`}</div>
+        {/* Le nom, et sur la même ligne : appeler, écrire, copier, la fiche contact
+            (V3.127 : « tout doit tenir dans la fenêtre, sans faire défiler »). */}
+        <div className={s.identiteLigne}>
+          <div className={s.identite}>
+            <span className={s.grandAvatar}>{initiales(d.name)}</span>
+            <div style={{ minWidth: 0 }}>
+              <h2 className={s.grandNom}>{d.name || 'Sans nom'}</h2>
+              <div className={s.recue} title={`Reçue le ${dateLongue(d.created_at)}`}>{recueLe(d.created_at, maintenant)}</div>
+            </div>
           </div>
-        </div>
-        {tel || mail ? (
-          <div className={s.contacts}>
+          <div className={s.teteActions}>
             {tel && <a className={`${s.btnClair} ${s.btnOr}`} href={`tel:${tel.replace(/\s/g, '')}`}><Ic n="telephone" t={15} e={2.1} /><span>{tel}</span></a>}
             {mail && <a className={s.btnClair} href={lienMail}><Ic n="mail" t={15} e={2} /><span>Écrire</span></a>}
-            <button type="button" className={s.btnClair} onClick={copier}>
-              <Ic n={copie ? 'check' : 'copier'} t={15} e={2} /><span>{copie ? 'Copié' : 'Copier'}</span>
-            </button>
+            {(tel || mail) && (
+              <button type="button" className={s.btnClair} onClick={copier}>
+                <Ic n={copie ? 'check' : 'copier'} t={15} e={2} /><span>{copie ? 'Copié' : 'Copier'}</span>
+              </button>
+            )}
+            {d.client_id ? (
+              <button type="button" className={s.btnFiche} onClick={() => onVoirFiche(d)}>
+                <Ic n="personne" t={16} e={2} /><span>Voir sa fiche contact</span><Ic n="droite" t={15} e={2.2} />
+              </button>
+            ) : (
+              <button type="button" className={s.btnFiche} onClick={() => onCreerContact(d)} title="Crée sa fiche avec ce qu’il a envoyé, et passe la demande en « Traitée ».">
+                <Ic n="plus" t={16} e={2.4} /><span>Créer la fiche contact</span>
+              </button>
+            )}
           </div>
-        ) : (
-          <div className={s.sansCoord}>Aucun téléphone ni e-mail utilisable dans cette demande.</div>
-        )}
-        {/* La fiche contact : la créer depuis la demande, ou l'ouvrir. */}
-        <div className={s.ficheContact}>
-          {d.client_id ? (
-            <button type="button" className={s.btnFiche} onClick={() => onVoirFiche(d)}>
-              <Ic n="personne" t={16} e={2} /><span>Voir sa fiche contact</span><Ic n="droite" t={15} e={2.2} />
-            </button>
-          ) : (
-            <button type="button" className={s.btnFiche} onClick={() => onCreerContact(d)}>
-              <Ic n="plus" t={16} e={2.4} /><span>Créer la fiche contact</span>
-            </button>
-          )}
         </div>
+        {!tel && !mail && <div className={s.sansCoord}>Aucun téléphone ni e-mail utilisable dans cette demande.</div>}
       </header>
 
-      <div className={s.corps}>
+      {/* V3.127 — Une grille de rangées à deux cases de même hauteur (Alexandre :
+          « il y a trop de blanc à gauche ») : le bien et son message, ses
+          réponses, coordonnées et notes, puis la question sur toute la largeur
+          (« à la fin, plus bas »). Au téléphone, une colonne : le bien, le
+          message, la question, puis le reste. */}
+      <div className={`${s.corps2} ${leBien ? '' : s.sansBien}`}>
         {bot && (
-          <div className={s.robotAvis}>
+          <div className={`${s.robotAvis} ${s.zRobot}`}>
             <Ic n="alarme" t={18} />
             <span>
               <b>Ça ressemble à un robot.</b>{' '}<span>Le nom ou le message sont faits de lettres au hasard.</span>{' '}
-              <button type="button" className={`${s.lienAction} ${s.lienDanger}`} onClick={() => onSupprimer(d)}>Supprimer cette demande</button>
+              <button type="button" className={`${s.lienAction} ${s.lienDanger}`} onClick={() => setConfirme('supprimer')}>Supprimer cette demande</button>
             </span>
           </div>
         )}
 
-        <section className={s.section}>
-          <div className={s.sectionTitre}><Ic n="drapeau" t={14} e={2} /><span>Où en est cette demande</span></div>
-          <div className={s.statuts} role="radiogroup" aria-label="Statut de la demande">
-            {STATUTS.map(x => (
-              <button key={x.k} type="button" role="radio" aria-checked={st.k === x.k} style={teinte(x)}
-                className={`${s.statut} ${st.k === x.k ? s.statutOn : ''}`}
-                onClick={() => { if (st.k !== x.k) onStatut(d, x.k); }}>
-                <span className={s.pointStatut} /><span>{x.lib}</span>
-              </button>
-            ))}
+        {leBien && <div className={s.zBien}>{leBien}</div>}
+
+        <section className={`${s.section} ${s.zMessage}`}>
+          <div className={s.sectionTitre}><Ic n="bulle" t={14} e={2} /><span>Son message</span></div>
+          {pr.message
+            ? <p className={`${s.message} ${s.messageGrand}`}>{pr.message}</p>
+            : <p className={`${s.message} ${s.messageVide}`}>{'Pas de message : ses réponses sont juste en dessous.'}</p>}
+        </section>
+
+        <section className={`${s.decision} ${s.zDecision}`} aria-labelledby={`decision-${d.id}`}>
+          <div className={s.decisionTete}>
+            <h3 id={`decision-${d.id}`} className={s.decisionT}>{nb('Que souhaitez-vous faire de cette demande ?')}</h3>
+            {fait > 0 && <span key={fait} className={s.faitChip}><Ic n="check" t={12} e={2.6} /><span>{'Enregistré'}</span></span>}
           </div>
-          <div className={s.rappel}>
-            <b><Ic n="alarme" t={15} e={2} /><span>À rappeler</span></b>
-            <ChoixDate compact valeur={d.a_rappeler_le || ''} min={aujourdhui} placeholder="Choisir une date" onChange={v => { if (v) onRappel(d, v); }} />
-            {d.a_rappeler_le && <button type="button" className={s.lienAction} onClick={() => onRappel(d, '')}>Retirer</button>}
+          <div className={s.choixL} role="radiogroup" aria-label="Où en est cette demande">
+            {STATUTS.map(x => {
+              const on = st.k === x.k;
+              const c = CHOIX[x.k];
+              return (
+                <button key={x.k} type="button" role="radio" aria-checked={on} style={teinte(x)}
+                  className={`${s.choix} ${on ? s.choixOn : ''}`}
+                  onClick={() => { if (!on) void choisir(x.k); }}>
+                  <span className={s.choixIc}><Ic n={on ? 'check' : x.ic} t={16} e={2.3} /></span>
+                  <span className={s.choixTx}>
+                    <b>{c.titre}</b>
+                    <i>{c.sous}</i>
+                    <small>{nb(c.suite)}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* À rappeler (V3.127 : « le mettre plus en avant ») : des dates toutes prêtes. */}
+          <div className={s.rappelBloc}>
+            <span className={s.rappelIc}><Ic n="alarme" t={17} e={2} /></span>
+            <div className={s.rappelTx}>
+              <b>{d.a_rappeler_le ? `À rappeler le ${texteDate(d.a_rappeler_le, false)}` : 'La rappeler plus tard ?'}</b>
+              <small>{nb(st.k === 'nouveau'
+                ? 'Elle passe « En cours » ; le jour venu, elle remonte dans « À rappeler ».'
+                : 'Le jour venu, elle remonte dans « À rappeler », signalée dans le menu.')}</small>
+            </div>
+            <div className={s.rappelChoix}>
+              {[{ l: 'Demain', j: 1 }, { l: 'Dans 3 jours', j: 3 }, { l: 'Dans une semaine', j: 7 }].map(x => {
+                const v = jourIso(new Date(maintenant + x.j * 86_400_000));
+                return <button key={x.j} type="button" className={`${s.rappelPuce} ${d.a_rappeler_le?.slice(0, 10) === v ? s.rappelPuceOn : ''}`} onClick={() => { void rappeler(v); }}>{x.l}</button>;
+              })}
+              <ChoixDate compact valeur={d.a_rappeler_le || ''} min={aujourdhui} placeholder="Autre date" onChange={v => { if (v) void rappeler(v); }} />
+              {d.a_rappeler_le && <button type="button" className={s.lienAction} onClick={() => { void rappeler(''); }}>Retirer</button>}
+            </div>
           </div>
         </section>
 
-        {pr.bien && (() => {
-          const contenu = (
-            <>
-              <span className={s.bienIc}><Ic n="maison" t={19} /></span>
-              <span style={{ minWidth: 0 }}>
-                <span className={s.bienTitre} style={{ display: 'block' }}>{pr.bien.titre}</span>
-                <span className={s.bienRef} style={{ display: 'block' }}>{pr.bien.ref ? `Réf. ${pr.bien.ref}${pr.bien.lien ? ' · voir l’annonce sur le site' : ''}` : 'Bien du site'}</span>
-              </span>
-              {pr.bien.lien && <span className={s.bienFleche}><Ic n="droite" t={18} e={2.2} /></span>}
-            </>
-          );
-          return pr.bien.lien
-            ? <a className={s.bien} href={pr.bien.lien} target="_blank" rel="noopener noreferrer">{contenu}</a>
-            : <div className={s.bien}>{contenu}</div>;
-        })()}
-
-        {cat.k === 'estimation' && pr.dvf && (
-          <div className={`${s.dvf} ${pr.dvf.fourchette ? '' : s.dvfAucune}`}>
-            <span className={s.dvfIc}><Ic n="euro" t={19} /></span>
-            <div style={{ minWidth: 0 }}>
-              <div className={s.dvfLib}>Estimation DVF montrée sur le site</div>
-              <div className={s.dvfVal}>{pr.dvf.fourchette || 'Non disponible'}</div>
-              <div className={s.dvfSous}>{pr.dvf.ventes ? `D’après ${pluriel(Number(pr.dvf.ventes), 'vente', 'ventes')} autour du bien` : pr.dvf.fourchette ? 'D’après les ventes autour du bien' : 'Pas assez de ventes récentes autour du bien'}</div>
-            </div>
+        {(pr.rubriques.length > 0 || (cat.k === 'estimation' && pr.dvf)) && (
+          <div className={s.zReponses}>
+            {cat.k === 'estimation' && pr.dvf && (
+              <div className={`${s.dvf} ${pr.dvf.fourchette ? '' : s.dvfAucune}`}>
+                <span className={s.dvfIc}><Ic n="euro" t={19} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div className={s.dvfLib}>Estimation DVF montrée sur le site</div>
+                  <div className={s.dvfVal}>{pr.dvf.fourchette || 'Non disponible'}</div>
+                  <div className={s.dvfSous}>{pr.dvf.ventes ? `D’après ${pluriel(Number(pr.dvf.ventes), 'vente', 'ventes')} autour du bien` : pr.dvf.fourchette ? 'D’après les ventes autour du bien' : 'Pas assez de ventes récentes autour du bien'}</div>
+                </div>
+              </div>
+            )}
+            {pr.rubriques.map(r => (
+              <section key={r.titre} className={s.section}>
+                <div className={s.sectionTitre}><Ic n={r.ic} t={14} e={2} /><span>{r.titre}</span></div>
+                {r.champs.length > 0 && (
+                  <dl className={s.champs}>
+                    {r.champs.map((c, i) => <div key={i} className={s.champ}><dt>{c.l}</dt><dd>{c.v}</dd></div>)}
+                  </dl>
+                )}
+                {!!r.puces?.length && (
+                  <div className={s.puces}>
+                    {r.puces.map((x, i) => (
+                      <span key={i} className={s.puce}>{r.numerotees && <span className={s.puceN}>{i + 1}</span>}<span>{x}</span></span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ))}
           </div>
         )}
 
-        {pr.rubriques.map(r => (
-          <section key={r.titre} className={s.section}>
-            <div className={s.sectionTitre}><Ic n={r.ic} t={14} e={2} /><span>{r.titre}</span></div>
-            {r.champs.length > 0 && (
-              <dl className={s.champs}>
-                {r.champs.map((c, i) => <div key={i} className={s.champ}><dt>{c.l}</dt><dd>{c.v}</dd></div>)}
-              </dl>
-            )}
-            {!!r.puces?.length && (
-              <div className={s.puces}>
-                {r.puces.map((x, i) => (
-                  <span key={i} className={s.puce}>{r.numerotees && <span className={s.puceN}>{i + 1}</span>}<span>{x}</span></span>
-                ))}
-              </div>
-            )}
-          </section>
-        ))}
-
-        {pr.message && (
-          <section className={s.section}>
-            <div className={s.sectionTitre}><Ic n="bulle" t={14} e={2} /><span>Son message</span></div>
-            <p className={s.message}>{pr.message}</p>
-          </section>
-        )}
-
-        <section className={s.section}>
+        <section className={`${s.section} ${s.zCoord}`}>
           <div className={s.sectionTitre}><Ic n="personne" t={14} e={2} /><span>Coordonnées</span></div>
           <dl className={s.champs}>
             <div className={s.champ}><dt>Téléphone</dt><dd>{d.phone ? joliTel(d.phone) : '—'}</dd></div>
@@ -799,36 +902,58 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
           </dl>
         </section>
 
-        <section className={s.section}>
-          <div className={s.sectionTitre}><Ic n="crayon" t={14} e={2} /><span>Mes notes</span></div>
+        <section className={`${s.section} ${s.zNotes}`}>
+          <div className={s.sectionTitre}><Ic n="crayon" t={14} e={2} /><span>Mes notes</span><em className={s.titreAide}>{'· visibles par vous seul, jamais par le client'}</em></div>
           <textarea className={s.notes} value={note} onBlur={garderNote}
             onChange={e => { setNote(e.target.value); setEtatNote('rien'); }}
             placeholder="Ce qu’il a dit au téléphone, la suite à donner…" aria-label="Mes notes sur cette demande" />
-          <div className={s.notesPied}>
+          {(modifiee || etatNote === 'fait') && <div className={s.notesPied}>
             {etatNote === 'fait' && !modifiee
               ? <span className={s.enregistre}><Ic n="check" t={14} e={2.4} /><span>Note enregistrée</span></span>
-              : <span className={s.aide}>{modifiee ? 'Enregistrée en quittant le champ' : 'Visibles par vous seul, jamais par le client'}</span>}
+              : <span className={s.aide}>{'Enregistrée en quittant le champ'}</span>}
             {modifiee && (
               <button type="button" className={`${s.btn} ${s.btnPetit}`} onClick={garderNote} disabled={etatNote === 'envoi'}>
                 {etatNote === 'envoi' ? 'Enregistrement…' : 'Enregistrer'}
               </button>
             )}
-          </div>
+          </div>}
         </section>
 
-        <div className={s.actions}>
-          <div className={s.actionsLigne}>
-            {d.archive ? (
-              <button type="button" className={s.btn} onClick={() => onDesarchiver(d)}>
-                <Ic n="haut" t={16} e={2} /><span>Remettre dans la liste</span>
-              </button>
-            ) : (
-              <button type="button" className={s.btn} onClick={() => onArchiver(d)}>
-                <Ic n="archive" t={16} e={2} /><span>Archiver</span>
-              </button>
-            )}
-          </div>
-          <button type="button" className={`${s.lienAction} ${s.lienDanger} ${s.supprimer}`} onClick={() => onSupprimer(d)}>Supprimer définitivement</button>
+        {/* Archiver, supprimer : une confirmation qui dit ce qui va se passer
+            (Alexandre : « toujours expliquer »). */}
+        <div className={`${s.piedFiche} ${s.zActions}`}>
+          {confirme ? (
+            <div key={confirme} ref={el => { el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }} className={s.confirme} data-k={confirme} role="alertdialog" aria-label={confirme === 'archiver' ? 'Archiver cette demande ?' : 'Supprimer définitivement ?'}>
+              <span className={s.confirmeIc}><Ic n={confirme === 'archiver' ? 'archive' : 'corbeille'} t={17} e={2} /></span>
+              <span className={s.confirmeTx}>
+                <b>{confirme === 'archiver' ? 'Archiver cette demande ?' : 'Supprimer définitivement ?'}</b>
+                <small>{nb(confirme === 'archiver'
+                  ? 'Elle quitte la liste et va dans « Archivées ». Rien n’est effacé : vous pourrez la remettre quand vous voulez.'
+                  : 'Elle disparaît de la base, sans retour possible. Pour la garder de côté, archivez-la plutôt.')}</small>
+              </span>
+              <span className={s.confirmeBtns}>
+                <button type="button" className={`${s.btn} ${s.btnPetit}`} onClick={() => setConfirme('')}>Annuler</button>
+                <button type="button" className={`${s.btn} ${s.btnPetit} ${confirme === 'supprimer' ? s.btnDanger : s.btnPlein}`}
+                  onClick={() => { const k = confirme; setConfirme(''); if (k === 'archiver') onArchiver(d); else onSupprimer(d, true); }}>
+                  {confirme === 'archiver' ? 'Oui, archiver' : 'Oui, supprimer'}
+                </button>
+              </span>
+            </div>
+          ) : (
+            <>
+              {d.archive ? (
+                <button type="button" className={`${s.btn} ${s.btnPetit}`} onClick={() => onDesarchiver(d)}>
+                  <Ic n="haut" t={15} e={2} /><span>Remettre dans la liste</span>
+                </button>
+              ) : (
+                <button type="button" className={`${s.btn} ${s.btnPetit}`} onClick={() => setConfirme('archiver')}>
+                  <Ic n="archive" t={15} e={2} /><span>Archiver</span>
+                </button>
+              )}
+              <span className={s.aide}>{d.archive ? 'Archivée : elle n’apparaît plus dans la liste.' : 'Elle quitte la liste, sans être effacée.'}</span>
+              <button type="button" className={`${s.lienAction} ${s.lienDanger} ${s.piedSuppr}`} onClick={() => setConfirme('supprimer')}>Supprimer définitivement</button>
+            </>
+          )}
         </div>
       </div>
     </article>

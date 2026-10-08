@@ -592,3 +592,170 @@
   .carte, .carteEclair, .tuileProv, .liste, .modale, .voileModale, .pointNeuf, .pouls { animation: none; }
   .curseur, .tiroirProv::before, .prov, .carte, .tuileProv { transition: none; }
 }
+
+/* ═══ V3.127 — La demande ouverte, plus large et plus claire ═══════════════
+   Alexandre : « plus rectangulaire… mieux voir son message… qu'est-ce que
+   vous souhaitez faire de cette demande, avec les explications et les
+   conséquences… créer la fiche contact à côté du nom… pas tout l'écran…
+   trop de blanc à gauche ». Une grille de rangées à deux cases de même
+   hauteur : le bien et son message ; ses réponses ; coordonnées et notes ;
+   puis la question, sur toute la largeur (« à la fin, plus bas ») ; le pied. */
+.modale { width: min(900px, 100%); max-height: calc(100dvh - 36px); }
+@media (min-width: 761px) { .voileModale { padding: 18px; } }
+@media (max-width: 760px) { .modale { max-height: 92dvh; } }
+.teteStatut {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 99px;
+  background: var(--fond); color: var(--c); font-size: 12px; font-weight: 800; white-space: nowrap; transition: background-color .3s ease, color .3s ease;
+}
+.identiteLigne { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
+.identiteLigne > .identite { flex: 1 1 240px; }
+/* Appeler, écrire, copier, la fiche : sur la ligne du nom (« tout doit
+   tenir sans faire défiler »). */
+.teteActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: 0 1 auto; }
+.teteActions > .btnFiche { height: 36px; }
+
+/* Une tête plus serrée dans la fenêtre : la place va au contenu. */
+.modale .fiche { overflow: visible; }
+.modale .tete { padding: 14px 20px 15px; }
+.modale .teteHaut { margin-bottom: 10px; }
+.modale .grandAvatar { width: 44px; height: 44px; font-size: 15px; }
+.modale .grandNom { font-size: 19px; }
+.modale .recue { margin-top: 2px; }
+.modale .sansCoord { margin-top: 10px; }
+.titreAide { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11.5px; color: #a3afbf; }
+
+.corps2 {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; row-gap: 0; padding: 14px 20px 0; align-items: stretch;
+  grid-template-areas: "robot robot" "bien message" "reponses reponses" "coord notes" "decision decision" "actions actions";
+}
+.sansBien { grid-template-areas: "robot robot" "message message" "reponses reponses" "coord notes" "decision decision" "actions actions"; }
+.corps2 > * { margin-bottom: 10px; min-width: 0; }
+.corps2 .section { gap: 7px; }
+.corps2 .champ { padding: 8px 12px; }
+.zRobot { grid-area: robot; }
+.zBien { grid-area: bien; display: flex; }
+.zBien > .bien { flex: 1; }
+.zMessage { grid-area: message; }
+.zMessage > .message { flex: 1; margin: 0; }
+.zDecision { grid-area: decision; }
+/* Ses réponses côte à côte (Le bien · Où · Son projet) plutôt qu'une par
+   rangée : la même chose sur deux fois moins de hauteur. */
+.zReponses { grid-area: reponses; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 18px; align-items: start; }
+.zReponses .champ { grid-template-columns: minmax(70px, 40%) minmax(0, 1fr); }
+.zCoord { grid-area: coord; }
+.zNotes { grid-area: notes; }
+.zActions { grid-area: actions; margin-bottom: 0; }
+
+.bienSur { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #5b7299; margin-bottom: 2px; }
+.messageGrand { font-size: 15px; line-height: 1.6; padding: 12px 16px; background: #fffcf4; border-left-width: 4px; border-radius: 14px; color: #1a2332; }
+.messageVide { font-size: 13.5px; color: #94a3b8; font-style: italic; background: #f8fafc; }
+
+/* La question, sur toute la largeur : trois choix côte à côte. */
+.decision { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-radius: 18px; background: #f8fafc; border: 1px solid #e3e8f0; }
+.decisionTete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.decisionT { margin: 0; font: 800 17px/1.3 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.choixL { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.choix {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 14px; text-align: left; cursor: pointer;
+  border: 1.5px solid #e3e8f0; background: white; color: #1a2332; font-family: inherit;
+  transition: border-color .28s ease, background-color .28s ease, box-shadow .28s ease, transform .28s cubic-bezier(.2, .8, .2, 1);
+}
+.choix:hover:not(.choixOn) { border-color: var(--trait); transform: translateY(-2px); box-shadow: 0 10px 22px -18px rgba(30, 45, 75, .6); }
+.choixOn, .choixOn:hover { border-color: var(--c); background: var(--fond); box-shadow: 0 12px 26px -18px rgba(30, 45, 75, .7); }
+.choixIc { width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; background: var(--fond); color: var(--c); transition: background-color .28s ease, color .28s ease; }
+.choixOn .choixIc { background: var(--c); color: white; animation: choixPop .42s cubic-bezier(.2, .8, .2, 1.4) both; }
+@keyframes choixPop { 0% { transform: scale(.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.choixTx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.choixTx b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; transition: color .28s ease; }
+.choixOn .choixTx b { color: var(--c); }
+.choixTx i { font-style: normal; font-weight: 700; font-size: 12.5px; color: #475569; }
+.choixTx small { margin-top: 2px; font-size: 12px; line-height: 1.4; color: #64748b; }
+
+/* À rappeler : des dates toutes prêtes. */
+.rappelBloc { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; padding: 9px 12px; border-radius: 14px; background: white; border: 1px dashed #f3c48b; }
+.rappelIc { width: 34px; height: 34px; border-radius: 11px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; background: #fff7ed; color: #c2410c; }
+.rappelTx { flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rappelTx b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.rappelTx small { font-size: 12px; line-height: 1.45; color: #64748b; }
+.rappelChoix { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rappelPuce {
+  height: 34px; padding: 0 12px; border-radius: 99px; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412;
+  font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; transition: background-color .2s, border-color .2s, transform .2s;
+}
+.rappelPuce:hover { background: #ffedd5; transform: translateY(-1px); }
+.rappelPuceOn, .rappelPuceOn:hover { background: #c2410c; border-color: #c2410c; color: white; }
+
+.zNotes .notes { min-height: 0; height: 100%; flex: 1 1 64px; }
+.zNotes { display: flex; flex-direction: column; }
+.piedFiche { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 10px 0 12px; border-top: 1px solid #eef1f6; }
+/* Sur ordinateur, le pied reste collé en bas de la fenêtre : Archiver et
+   Supprimer sont visibles dès l'ouverture, même pour une longue demande. */
+.zActions { position: sticky; bottom: 0; z-index: 2; background: white; }
+.piedSuppr { margin-left: auto; }
+
+/* « Archiver ? », « Supprimer ? » : ce qui va se passer, puis la confirmation. */
+.confirme {
+  flex: 1 1 100%; display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 14px;
+  background: #f1f5fb; border: 1px solid #d5e0f0; animation: confirmeEntre .28s cubic-bezier(.2, .8, .2, 1) both;
+}
+.confirme[data-k="supprimer"] { background: #fef2f2; border-color: #fecaca; }
+.confirmeIc {
+  width: 34px; height: 34px; border-radius: 11px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: white; color: var(--emilio); border: 1px solid #d5e0f0;
+}
+.confirme[data-k="supprimer"] .confirmeIc { color: #b91c1c; border-color: #fecaca; }
+.confirmeTx { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.confirmeTx b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.confirmeTx small { font-size: 12.5px; line-height: 1.45; color: #475569; }
+.confirmeBtns { display: flex; gap: 8px; margin-left: auto; flex: 0 0 auto; }
+.btnDanger { background: #dc2626; border-color: #dc2626; color: white; }
+.btnDanger:hover { background: #b91c1c; border-color: #b91c1c; }
+@keyframes confirmeEntre { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Le bien demandé avec sa photo ; « Enregistré » un instant. */
+.bienCarte { align-items: stretch; padding: 10px; gap: 12px; }
+.bienPhoto { width: 104px; min-height: 80px; border-radius: 11px; object-fit: cover; flex: 0 0 auto; display: block; background: #dbe6f7; }
+.bienCarte .bienIc { width: 76px; height: 76px; border-radius: 11px; }
+.bienTx { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; justify-content: center; }
+.bienLiens { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.bienLien {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid #c9daf8;
+  background: white; color: #2f5fb3; font: 700 12px 'DM Sans', sans-serif; text-decoration: none; cursor: pointer; transition: background-color .2s, border-color .2s;
+}
+.bienLien:hover { background: #f5f8ff; border-color: #9dbbf0; }
+.faitChip {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 99px;
+  background: #ecfdf5; color: #0f7a4f; font-size: 11.5px; font-weight: 800; animation: faitVu 2.2s ease both;
+}
+@keyframes faitVu { 0% { opacity: 0; transform: translateY(4px) scale(.9); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+@media (max-width: 860px) {
+  /* Au téléphone : une colonne, dans l'ordre de lecture — le bien, son
+     message, puis la question, puis le reste. */
+  .corps2 { display: flex; flex-direction: column; gap: 16px; padding: 16px 14px calc(24px + env(safe-area-inset-bottom)); }
+  .corps2 > * { margin-bottom: 0; }
+  .messageGrand { font-size: 15px; padding: 14px 15px; }
+  .decision { padding: 14px 12px; }
+  .decisionT { font-size: 16px; }
+  .choixL { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .choix { padding: 11px 12px; }
+  .rappelChoix { width: 100%; }
+  .bienPhoto { width: 84px; min-height: 72px; }
+  .bienCarte .bienIc { width: 64px; height: 64px; }
+  .piedSuppr { margin-left: 0; }
+  .zActions { position: static; padding-bottom: 0; }
+  .zNotes .notes { min-height: 84px; }
+  .modale .tete { padding: 16px 16px 16px; }
+  .teteActions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; flex: 1 1 100%; }
+  .teteActions > .btnClair { justify-content: center; height: 42px; }
+  .teteActions > .btnOr, .teteActions > .btnFiche { grid-column: 1 / -1; }
+  .teteActions > .btnFiche { height: 44px; }
+  .confirmeTx { flex-basis: 200px; }
+  .confirmeBtns { width: 100%; }
+  .confirmeBtns > .btn { flex: 1 1 0; height: 42px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .choixOn .choixIc, .faitChip { animation: none; }
+  .choix, .rappelPuce { transition: none; }
+  .confirme { animation: none; }
+}
