@@ -1163,6 +1163,7 @@ export function versCorrespondance(b: BienVente): BienCorr {
     ascenseur: imm.includes('ascenseur'), gardien: imm.includes('gardien'),
     exterieur: ext || null, surfaceTerrasse: nb(d, 'surfTerrasse'), surfaceBalcon: nb(d, 'surfBalcon'),
     equipConnus: { annexes: ann.length > 0, immeuble: imm.length > 0 },
+    quartierSur: true,
   };
 }
 /* Le type de bien tel que les recherches l'écrivent (« Appartement, Maison »). */

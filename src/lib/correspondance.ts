@@ -19,6 +19,10 @@ export type BienCorr = {
   /* V3.45 : la fiche dit-elle ses annexes, son immeuble ? Sinon un équipement
      « non annoncé » n'écarte personne (src/lib/ecart-acheteur.ts). */
   equipConnus?: { annexes: boolean; immeuble: boolean };
+  /* V3.128 : un de vos mandats — son quartier est écrit avec les vôtres, pas
+     découpé par un portail. Hors des quartiers demandés, le secteur passe en
+     « presque » (src/lib/biens-vente.ts, versCorrespondance). */
+  quartierSur?: boolean;
 };
 /* Ce que la note lit d'une recherche : le sous-ensemble des `Criteres` de l'espace. */
 export type CriteresCorr = {
@@ -130,7 +134,14 @@ export function correspondance(b: BienCorr, c: CriteresCorr | null | undefined):
     const demande = villes.length === 1
       ? (villes[0].quartiers.length ? deuxEtLeReste(villes[0].quartiers, '') : villes[0].ville)
       : deuxEtLeReste(villes.map(x => x.ville), villes.length > 3 ? ' villes' : ' ville');
-    L.push({ ico: 'lieu', lib: 'Secteur', demande, valeur: q || b.quartier || b.ville, etat: v ? 'oui' : 'non', poids: 2 });
+    /* V3.128 (Alexandre : « ma cliente recherchait Boulogne-Nord… il m'a
+       proposé un bien qui n'était pas dans son secteur ») : pour un de vos
+       mandats, un quartier renseigné qui n'est pas parmi ceux demandés passe
+       le secteur en « presque » — la ville est la bonne, le quartier non. Un
+       début de nom suffit (« Silly » pour « Silly-Gallieni »). Les annonces
+       des portails gardent la règle d'avant. */
+    const horsQuartiers = !!(v && b.quartierSur && b.quartier && v.quartiers.length && !q);
+    L.push({ ico: 'lieu', lib: 'Secteur', demande, valeur: horsQuartiers ? `${b.quartier} · hors de ses quartiers` : q || b.quartier || b.ville, etat: !v ? 'non' : horsQuartiers ? 'presque' : 'oui', poids: 2 });
   }
 
   /* Le trajet : minutes à pied jusqu'à la station, quand l'annonce permet de le dire. */
