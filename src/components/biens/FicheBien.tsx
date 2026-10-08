@@ -1672,7 +1672,6 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       let relie = false;
       if (deja && confirm(`${nomClient(deja)} est déjà dans tes contacts${[deja.telephones?.[0], deja.emails?.[0]].filter(Boolean).length ? ` (${[deja.telephones?.[0], deja.emails?.[0]].filter(Boolean).join(' · ')})` : ''}.\n\nRelier sa fiche à ce bien, plutôt que d’en créer une seconde ?`)) {
         c = deja; relie = true;
-        await marquerVendeur(c.id);
       } else {
         if (deja && !confirm(`Créer quand même une nouvelle fiche pour ${qui} ?`)) return;
         c = await creerFicheProprio(net);
@@ -1681,8 +1680,11 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       setBien(prev => ({ ...prev, client_id: c.id, donnees: { ...(prev.donnees || {}), clientId: c.id, proprioNouveau: false, proprioSans: false } }));
       enregistrerDansLOrdre(bien.id, { ...avantD, clientId: c.id, proprioNouveau: false, proprioSans: false }, avantD);
       await file.current;
+      /* V3.137 : son type suit l'étape du bien (Vendeur s'il est en vente,
+         Propriétaire sinon) — une fois le bien relié, pas avant. */
+      await marquerVendeur(c.id);
       onRecharger();
-      setMessage({ t: relie ? `La fiche de ${nomClient(c)} est reliée à ce bien.` : `La fiche de ${nomClient(c)} est créée dans tes contacts (vendeur) et reliée à ce bien.`, ok: true });
+      setMessage({ t: relie ? `La fiche de ${nomClient(c)} est reliée à ce bien.` : `La fiche de ${nomClient(c)} est créée dans tes contacts et reliée à ce bien.`, ok: true });
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   };
   const faites = visites.filter(v => v.statut !== 'annulee' && passee(v));
