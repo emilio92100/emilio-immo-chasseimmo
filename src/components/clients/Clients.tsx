@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { toutLire } from '@/lib/registre';
@@ -87,6 +87,41 @@ const TUILE_TRI: { cle: Categorie; lib: string; couleur?: string } = { cle: 'tri
 function lireCats(v: string | null): Categorie[] {
   const l = (v || '').split('+').filter((k): k is Categorie => k === 'archives' || k === 'tri' || CATEGORIES.some(x => x.cle === k));
   return l.length ? l : ['tous'];
+}
+
+/* ── V3.136 : la liste par paquets ──
+   Alexandre : « ce n'est pas fluide […] peut-être qu'il y a trop de contacts
+   à charger ». Les contacts sont lus une seule fois ; mais chaque clic sur
+   une tuile redessinait toute la liste d'un coup — 700 lignes pour
+   « Propriétaires », 1 100 pour « Tous » —, et la tuile ne s'allumait
+   qu'après. Les 60 premières s'affichent tout de suite, les suivantes en
+   descendant. Les compteurs, « Tout cocher » et la recherche portent
+   toujours sur la liste entière. */
+const PAQUET = 60;
+/* Le bas de la liste approche : le paquet suivant. Observé dans la zone qui
+   défile (le contenu du CRM, pas la fenêtre), avec une avance d'un écran ;
+   le bouton reste là si l'observateur manque. */
+function SuiteListe({ reste, onSuite }: { reste: number; onSuite: () => void }) {
+  const ici = useRef<HTMLDivElement | null>(null);
+  const suite = useRef(onSuite);
+  suite.current = onSuite;
+  useEffect(() => {
+    const el = ici.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    let zone: HTMLElement | null = el.parentElement;
+    while (zone && !/(auto|scroll)/.test(getComputedStyle(zone).overflowY)) zone = zone.parentElement;
+    const io = new IntersectionObserver(e => { if (e.some(x => x.isIntersecting)) suite.current(); }, { root: zone, rootMargin: '0px 0px 900px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reste]);
+  return (
+    <div ref={ici} style={{ display: 'flex', justifyContent: 'center', padding: '14px 0 6px' }}>
+      <button type="button" onClick={onSuite}
+        style={{ border: '1px solid #e3e8f0', background: 'white', color: '#475569', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+        {`Afficher la suite · encore ${reste} contact${reste > 1 ? 's' : ''}`}
+      </button>
+    </div>
+  );
 }
 /* L'emoji des blocs propres à un type, dans la fenêtre de création (les
    autres blocs en ont un). */
@@ -522,6 +557,10 @@ export default function Clients({ onNavigate, fenetre }: {
   const [lot, setLot] = useState<{ quoi: 'supprimer' | 'archiver' | 'desarchiver'; cibles: Client[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null; verifie: boolean } | null>(null);
   /* V3.89 : « Changer de statut » de plusieurs acheteurs. */
   const [statutLot, setStatutLot] = useState<{ statut: StatutLot; cibles: Client[]; ignores: { nom: string; pourquoi: string }[]; avancement: Avancement | null } | null>(null);
+  /* V3.136 : combien de lignes sont dessinées, pour quelle liste (`cle`) —
+     une autre tuile, une autre recherche, un autre ordre repartent du
+     premier paquet. */
+  const [montres, setMontres] = useState<{ cle: string; n: number }>({ cle: '', n: PAQUET });
   const basculerChoix = useCallback((id: string) => setChoisis(l => { const n = new Set(l); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
   const viderChoix = useCallback(() => setChoisis(new Set()), []);
   useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
@@ -535,8 +574,12 @@ export default function Clients({ onNavigate, fenetre }: {
     window.addEventListener(EVT_DEMANDE_VUE, demande);
     return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
   }, []);
-  const choisirCat = (k: Categorie) => setCats(l => {
+  /* V3.136 (Alexandre : « quand j'appuie sur 162 vendeurs, ça ne se met pas
+     sur vendeurs ») : un clic va sur ce type seul, comme le menu de gauche.
+     Ctrl + clic (⌘ sur Mac) l'ajoute à ceux déjà allumés, comme avant. */
+  const choisirCat = (k: Categorie, ajouter = false) => setCats(l => {
     if (k === 'tous' || k === 'archives' || k === 'tri') return [k];
+    if (!ajouter) return [k];
     /* « Acheteurs non filtrés » est une partie des acheteurs : l'un remplace
        l'autre, sinon le second clic ne changerait rien. */
     const base = l.filter(x => x !== 'tous' && x !== 'archives' && x !== 'tri' && !(k === 'acheteur' && x === 'non_filtre') && !(k === 'non_filtre' && x === 'acheteur'));
@@ -811,12 +854,22 @@ export default function Clients({ onNavigate, fenetre }: {
     ...typesDe(c).map(k => typeDe(k).lib)].filter(Boolean).join(' ')).includes(q0) || (c.couple ? normer(nomFoyer(c)).includes(q0) : false); };
   const visibles = clients.filter(c => !estArchive(c));
   const triSet = new Set(triIds);
-  const nbCat = (k: Categorie) => k === 'tous' ? visibles.length
-    : k === 'archives' ? clients.filter(c => estArchive(c)).length
-    : k === 'tri' ? visibles.filter(c => triSet.has(c.id)).length
-      : k === 'acheteur' ? visibles.filter(c => estAcheteur(c)).length
-        : k === 'non_filtre' ? visibles.filter(c => estAcheteur(c) && sansCriteres(c)).length
-          : visibles.filter(c => typesDe(c).includes(k as TypeContact)).length;
+  /* V3.136 : les chiffres des tuiles comptés une fois par lecture, pas à
+     chaque dessin de la page (un survol de ligne la redessine). */
+  const comptes = useMemo(() => {
+    const m = new Map<Categorie, number>();
+    const tri = new Set(triIds);
+    const plus = (k: Categorie) => m.set(k, (m.get(k) || 0) + 1);
+    for (const c of clients) {
+      if (estArchive(c)) { plus('archives'); continue; }
+      plus('tous');
+      if (tri.has(c.id)) plus('tri');
+      if (estAcheteur(c)) { plus('acheteur'); if (sansCriteres(c)) plus('non_filtre'); }
+      for (const t of new Set(typesDe(c))) if (t !== 'acheteur') plus(t as Categorie);
+    }
+    return m;
+  }, [clients, triIds]);
+  const nbCat = (k: Categorie) => comptes.get(k) || 0;
   /* Le dernier échange : la dernière ligne du journal, sinon la dernière
      modification de la fiche. */
   const derniere = (c: Client) => stats[c.id]?.dernierContact || (c as { updated_at?: string }).updated_at || (c as { created_at?: string }).created_at || null;
@@ -1059,6 +1112,12 @@ export default function Clients({ onNavigate, fenetre }: {
   });
 
   const acheteursCat = clients.filter(c => estAcheteur(c) && !estArchive(c) && (!seulsNonFiltres || sansCriteres(c)));
+
+  /* V3.136 — la liste par paquets (voir `SuiteListe`). La clé dit de quelle
+     liste il s'agit : en changer repart des 60 premières. */
+  const cleListe = [importes ? 'importes' : cats.join('+'), filtre, filtreSit, search, JSON.stringify(fa), tri.cle, tri.sens, typeArchVu].join('|');
+  const nMontres = montres.cle === cleListe ? montres.n : PAQUET;
+  const voirSuite = () => setMontres({ cle: cleListe, n: nMontres + PAQUET });
 
   /* V3.88 — La sélection : ce qui est affiché (pour « Tout sélectionner »),
      et les contacts cochés, où qu'ils soient. */
@@ -1645,8 +1704,8 @@ export default function Clients({ onNavigate, fenetre }: {
         recherche={{ valeur: search, onChange: setSearch, placeholder: 'Nom, e-mail, agence, secteur, référence…', label: 'Chercher un contact' }}
         bouton={{ lib: 'Nouveau contact', onClick: openModal }}
         bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
-        phrase="Clique plusieurs types pour les voir ensemble."
-        label="Filtrer par type de contact" aCheval actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
+        phrase="Ctrl + clic (⌘ sur Mac) pour voir plusieurs types ensemble." phraseOrdi
+        label="Filtrer par type de contact" aCheval actif={cats} onChoisir={(k, ajouter) => { setImportes(null); choisirCat(k as Categorie, ajouter); }}
         tuiles={[...ORDRE_TUILES.map(k => CATEGORIES.find(x => x.cle === k)).filter((x): x is (typeof CATEGORIES)[number] => !!x), TUILE_TRI, CATEGORIES[0], { cle: 'archives' as Categorie, lib: 'Archivés' }]
           /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
              quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
@@ -1772,7 +1831,7 @@ export default function Clients({ onNavigate, fenetre }: {
               </div>
 
               <div className={styles.list} key={`${cats.join('+')}:${filtre}:${filtreSit}:${search}:${JSON.stringify(fa)}`}>
-                {ordonne.map((client, rang) => {
+                {ordonne.slice(0, nMontres).map((client, rang) => {
                   const st = stats[client.id];
                   const sig = signalDe(client, st);
                   const t = TEINTE[client.statut] || TEINTE.actif;
@@ -1884,6 +1943,7 @@ export default function Clients({ onNavigate, fenetre }: {
                   );
                 })}
               </div>
+              {ordonne.length > nMontres && <SuiteListe reste={ordonne.length - nMontres} onSuite={voirSuite} />}
             </div>
               )}
             </div>
@@ -1923,8 +1983,9 @@ export default function Clients({ onNavigate, fenetre }: {
               )}
               <EnteteContacts tout={{ n: autres.filter(c => choisis.has(c.id)).length, total: autres.length,
                 onTout: () => setChoisis(l => new Set([...l, ...autres.map(c => c.id)])), onRien: () => setChoisis(l => { const n = new Set(l); autres.forEach(c => n.delete(c.id)); return n; }) }} />
-              {autres.map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
+              {autres.slice(0, nMontres).map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
                 selection={{ on: choisis.has(c.id), mode: modeChoix, onBasculer: () => basculerChoix(c.id) }} />)}
+              {autres.length > nMontres && <SuiteListe reste={autres.length - nMontres} onSuite={voirSuite} />}
             </div>
           ) : (
             importes ? (
