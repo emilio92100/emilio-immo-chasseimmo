@@ -13,6 +13,7 @@ import { Croix, Ic } from '@/components/documents/ApercuActe';
 import PictoBoite from './PictoBoite';
 import { lirePhotos } from '@/lib/biens-vente';
 import Clients from '@/components/clients/Clients';
+import { FenetreMail, type AdresseMail, type ContactMail } from '@/components/pages/PageMail';
 import p from '@/components/pages/Page.module.css';
 import s from './DemandesSite.module.css';
 import {
@@ -676,7 +677,22 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
   const tel = telUtile(d.phone) ? joliTel(d.phone) : '';
   const mail = emailUtile(d.email) ? d.email.trim() : '';
   const { prenom } = prenomNom(d.name);
-  const lienMail = mail ? `mailto:${mail}?subject=${encodeURIComponent(sujetMail(d))}&body=${encodeURIComponent(`Bonjour${prenom ? ` ${prenom}` : ''},\n\n`)}` : '';
+  /* V3.131 (Alexandre : « quand on clique sur Écrire, un pop-up de nouveau
+     mail qui reprend le mail… et joindre un fichier ou pas ») : la fenêtre
+     « Nouveau mail » du CRM, l'adresse, le bonjour et l'objet déjà mis. Sa
+     fiche existe et porte cette adresse : le mail part à son nom de contact,
+     et se range dans son Suivi. Avant : un lien mailto, vers la messagerie
+     de l'ordinateur. */
+  const [ecrire, setEcrire] = useState<{ contact: ContactMail | null; adresse: AdresseMail | null } | null>(null);
+  const ouvrirMail = async () => {
+    const adresse: AdresseMail = { email: mail, prenom: prenom || undefined, objet: sujetMail(d) };
+    if (d.client_id) {
+      const { data } = await supabase.from('clients').select('*').eq('id', d.client_id).maybeSingle();
+      const c = data as ContactMail | null;
+      if (c && (c.emails || []).some(e => String(e).trim().toLowerCase() === mail.toLowerCase())) { setEcrire({ contact: c, adresse: null }); return; }
+    }
+    setEcrire({ contact: null, adresse });
+  };
   const copier = async () => {
     try {
       await navigator.clipboard.writeText([d.name, tel, mail].filter(Boolean).join('\n'));
@@ -788,7 +804,7 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
           </div>
           <div className={s.teteActions}>
             {tel && <a className={`${s.btnClair} ${s.btnOr}`} href={`tel:${tel.replace(/\s/g, '')}`}><Ic n="telephone" t={15} e={2.1} /><span>{tel}</span></a>}
-            {mail && <a className={s.btnClair} href={lienMail}><Ic n="mail" t={15} e={2} /><span>Écrire</span></a>}
+            {mail && <button type="button" className={s.btnClair} onClick={() => { void ouvrirMail(); }}><Ic n="mail" t={15} e={2} /><span>Écrire</span></button>}
             {(tel || mail) && (
               <button type="button" className={s.btnClair} onClick={copier}>
                 <Ic n={copie ? 'check' : 'copier'} t={15} e={2} /><span>{copie ? 'Copié' : 'Copier'}</span>
@@ -991,6 +1007,11 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
           )}
         </div>
       </div>
+      {ecrire && (
+        <FenetreMail contact={ecrire.contact} adresse={ecrire.adresse} objet={sujetMail(d)} onFermer={() => setEcrire(null)}
+          /* Un mail envoyé à une nouvelle demande : elle est prise en main. */
+          onEnvoye={() => { signalerMaj(); if (st.k === 'nouveau') void choisir('en_cours'); }} />
+      )}
     </article>
   );
 }
