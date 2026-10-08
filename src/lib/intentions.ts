@@ -47,6 +47,12 @@ export const EVT_RDV_ENREGISTRE = 'emilio:rdv-enregistre';
 export function demanderNouveauRdv() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVT_NOUVEAU_RDV));
 }
+/* V3.134 : « Organiser une visite » depuis la fiche d'un client. La même
+   fenêtre, son dossier déjà choisi : il ne reste qu'à chercher les biens et
+   le créneau. */
+export function demanderVisitePour(rechercheId: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVT_NOUVEAU_RDV, { detail: { rechercheId } }));
+}
 
 /* « Envoyer un mail », de n'importe quel écran (V3.87) : la fenêtre de
    rédaction s'ouvre par-dessus l'écran en cours (NouveauMailPartout, montée
