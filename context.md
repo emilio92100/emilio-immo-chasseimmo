@@ -1498,6 +1498,73 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.127 — 8 octobre 2026 · La fenêtre d'une demande Internet, plus large et plus claire
+
+Rien à passer dans Supabase.
+
+Alexandre : « que le pop-up soit plus clair, plus lisible… qu'est-ce que vous souhaitez faire de
+cette demande, avec les explications : en cours pourquoi, traitée pourquoi, les conséquences…
+créer la fiche contact à côté du nom… son message, qu'on le voie mieux ».
+
+- Sur ordinateur, la fenêtre fait 900 px. C'est une grille de rangées à deux cases de même
+  hauteur (Alexandre : « trop de blanc à gauche ») :
+  - le bien demandé et son message ;
+  - ses réponses ;
+  - coordonnées et notes ;
+  - plus bas, la question, sur toute la largeur, avec ses trois choix côte à côte (à la demande
+    d'Alexandre) ;
+  - un pied pour archiver ou supprimer.
+  - Au téléphone, l'ordre reste celui qu'il a validé : le bien, le message, la question, puis le
+    reste.
+  - Les rangées se règlent par `grid-template-areas` (`.corps2`, `.sansBien`).
+- Les trois statuts deviennent trois grands choix. Chacun dit ce qu'il veut dire et ce qu'il
+  change :
+  - **Nouvelle** reste comptée en rouge dans le menu ;
+  - **En cours** sort du compteur et attend dans « En cours » ;
+  - **Traitée** passe dans « Traitées » ; « Créer la fiche contact » l'y range d'office.
+  - La date de rappel et « Archiver » ont aussi leur ligne d'explication.
+- Dans l'en-tête, « Créer la fiche contact » (ou « Voir sa fiche contact ») est sur la ligne du
+  nom, et le statut s'affiche en pastille à côté de la provenance.
+- Au téléphone, tout tient sur une colonne, dans l'ordre de lecture : le bien, le message, la
+  question, puis le reste.
+- Retouches demandées sur les premières captures :
+  - **Le bien demandé a sa photo.** La référence du site est celle du flux (`idSite` : le numéro
+    ImmoFacile, sinon la référence, sinon l'id) : on retrouve le bien du CRM, avec sa photo, son
+    prix, « Sa fiche » et « L'annonce sur le site ».
+  - **La fenêtre fait 900 px**, pas toute la largeur.
+  - **Du mouvement** : les choix changent de couleur en douceur, l'icône du choix retenu
+    « rebondit », et « Enregistré » apparaît un instant.
+  - **« À rappeler le » sur une demande nouvelle la passe « En cours »** : prendre une date, c'est
+    l'avoir prise en main. La date ne va pas dans Relances, car une relance appartient à une fiche
+    contact.
+  - **Les rappels mieux en avant** (« comment ça se passe quand la date arrive ? »).
+    - Le bloc « La rappeler plus tard ? » propose des dates toutes prêtes : Demain, Dans 3 jours,
+      Dans une semaine, ou une autre date.
+    - Un onglet « À rappeler » s'ajoute dans la liste. Il ne tient pas compte de la période, va de
+      la plus proche date à la plus lointaine, et se range en En retard, Aujourd'hui, Plus tard.
+    - La pastille du menu compte aussi les rappels dus, aujourd'hui ou en retard, pas encore
+      traités : rouge s'il y a du nouveau, dorée s'il n'y a que des rappels (Sidebar,
+      `siteRappels`).
+- Le Suivi d'un contact, « À venir » : « Relance · jeu. 8 oct. » devient « Relance à faire le jeudi
+  8 octobre » (FriseSuivi).
+- **Sur ordinateur, une demande « Info sur un bien » tient sans faire défiler** (Alexandre : « il ne
+  faut pas qu'on doive scroller… archiver, supprimer, affiché dès qu'on arrive »). Vérifié en
+  1280 × 900 et en 1130 × 785 ; une estimation très remplie peut défiler, c'est accepté.
+  - Appeler, Écrire, Copier et la fiche contact sont sur la ligne du nom (`.teteActions`) ; la
+    date de réception est courte (« Reçue hier · mer. 7 oct. à 12:00 », `recueLe`), la date
+    complète est dans l'infobulle.
+  - « Visibles par vous seul, jamais par le client » passe dans le titre « Mes notes »
+    (`.titreAide`) ; la ligne sous les notes n'apparaît que pendant une modification.
+  - Les réponses d'une estimation (Le bien · Où · Son projet) se rangent côte à côte (`.zReponses`
+    en grille) au lieu d'une par rangée.
+  - Le pied reste collé en bas de la fenêtre (`.zActions`, `position: sticky`) : Archiver et
+    Supprimer sont toujours visibles, même quand le contenu défile. Pas au téléphone.
+- **Archiver et Supprimer expliquent avant d'agir** (« toujours expliquer ») : un clic ouvre, à la
+  place du pied, ce qui va se passer, puis « Annuler » ou « Oui, archiver » / « Oui, supprimer »
+  (`.confirme`, état `confirme` dans `Fiche`). Le `confirm()` du navigateur n'est plus utilisé
+  depuis la fenêtre (`supprimer(d, true)`) ; le lien « Supprimer cette demande » du bandeau robot
+  passe par la même confirmation.
+
 ### V3.126 — 8 octobre 2026 · Sans chiffre sur l'onglet, « Pas pour lui », les rapprochements datés côté acheteur
 
 Rien à passer dans Supabase.
