@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { lirePlace, retenirPlace } from '@/lib/place-fiche';
+import { IcoP } from '@/components/shared/Parcours';
 import { Ic } from '@/components/documents/ApercuActe';
 import { euros } from '@/lib/mandat';
 import type { BienVente } from '@/lib/biens-vente';
@@ -34,6 +35,21 @@ import r from './RapprochementBien.module.css';
 
 const presente = (c: Copie | null) => !!c && c.etape !== 'selection';
 const pl = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+
+/* ── Le rapprochement intelligent (V3.122, route /api/rapprochement-ia) ──
+   L'IA relit chaque recherche retenue et le bien, et rend « oui », « à voir »
+   ou « non », avec une phrase. Gardé sur le bien (`rapprochement_ia`), et ici
+   le temps de la session : l'onglet se remonte après chaque envoi. */
+type AvisIA = { v: 'oui' | 'a_voir' | 'non'; r: string; le: string };
+const MEMOIRE_IA = new Map<string, Record<string, AvisIA>>();
+const PAR_APPEL = 12;
+const ORDRE_IA: Record<string, number> = { oui: 0, a_voir: 1, non: 3 };
+const MOT_IA: Record<AvisIA['v'], string> = { oui: 'Oui', a_voir: 'À voir', non: 'Non' };
+const ETINCELLE = 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z';
+const ilYa = (iso: string) => {
+  const j = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+  return !Number.isFinite(j) ? '' : j <= 0 ? 'aujourd’hui' : j === 1 ? 'hier' : `il y a ${j} jours`;
+};
 const ICONE_CACHE: Record<RaisonCache, string> = {
   secteur: 'lieu', type: 'maison', budget: 'euro', surface: 'regle', chambres: 'lit', indispensable: 'cadenas', loin: 'cible', peu: 'info',
 };
@@ -87,6 +103,47 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
     if (touche.current) retenirPlace(`bien:${bien.id}`, { rappro: { cle: cleCopies, ouverts: [...ouverts], choisis } });
   }, [bien.id, cleCopies, ouverts, choisis]);
   const tous = useMemo(() => [...tri.bons, ...tri.partiels, ...tri.incomplets], [tri]);
+
+  /* L'avis de l'IA : celui de la session, sinon celui gardé sur le bien. */
+  const [ia, setIa] = useState<Record<string, AvisIA>>(() => {
+    const garde = MEMOIRE_IA.get(bien.id) || ((bien as unknown as { rapprochement_ia?: Record<string, AvisIA> | null }).rapprochement_ia || {});
+    return Object.fromEntries(Object.entries(garde).filter(([, a]) => a && ['oui', 'a_voir', 'non'].includes(a.v)));
+  });
+  const [iaEtat, setIaEtat] = useState<{ en: boolean; fait: number; total: number; erreur: string; info: string }>({ en: false, fait: 0, total: 0, erreur: '', info: '' });
+  const aRelire = tous.map(x => x.recherche.id);
+  const relus = aRelire.filter(id => ia[id]);
+  const nIa = (v: AvisIA['v']) => relus.filter(id => ia[id].v === v).length;
+  const dernier = relus.map(id => ia[id].le).sort().pop() || '';
+  async function lancerIA(forcer: boolean) {
+    if (!aRelire.length || iaEtat.en) return;
+    const paquets: string[][] = [];
+    for (let i = 0; i < aRelire.length; i += PAR_APPEL) paquets.push(aRelire.slice(i, i + PAR_APPEL));
+    setIaEtat({ en: true, fait: 0, total: aRelire.length, erreur: '', info: '' });
+    let cumul: Record<string, AvisIA> = { ...ia };
+    let fait = 0, info = '';
+    for (const ids of paquets) {
+      try {
+        const res = await fetch('/api/rapprochement-ia', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bien_id: bien.id, recherche_ids: ids, forcer }),
+        });
+        const j = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; avis?: Record<string, AvisIA>; avertissement?: string };
+        if (!res.ok || !j.ok) throw new Error(j.erreur || `erreur ${res.status}`);
+        cumul = { ...cumul, ...(j.avis || {}) };
+        if (j.avertissement) info = j.avertissement;
+        MEMOIRE_IA.set(bien.id, cumul);
+        setIa(cumul);
+        /* Un « non » de l'IA se décoche, tant qu'Alexandre n'a pas touché aux cases. */
+        if (!touche.current) setChoisis(c => c.filter(id => cumul[id]?.v !== 'non'));
+        fait += ids.length;
+        setIaEtat(e => ({ ...e, fait }));
+      } catch (e) {
+        setIaEtat({ en: false, fait, total: aRelire.length, erreur: (e as Error).message, info });
+        return;
+      }
+    }
+    setIaEtat({ en: false, fait, total: aRelire.length, erreur: '', info });
+  }
   const coches = tous.filter(x => choisis.includes(x.recherche.id) && !presente(x.copie));
   const basculer = (id: string) => { touche.current = true; setChoisis(c => (c.includes(id) ? c.filter(y => y !== id) : [...c, id])); };
   const ouvrir = (k: string) => { touche.current = true; setOuverts(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; }); };
@@ -137,6 +194,12 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
           </div>
           {/* « Tout correspond » : les critères cochés le disent déjà. */}
           {!e.ok && <span className={r.ecartKo}>{e.t}</span>}
+          {ia[x.recherche.id] && (
+            <span className={r.iaAvis} data-v={ia[x.recherche.id].v}>
+              <b className={r.iaMot}><IcoP d={ETINCELLE} t={12} e={2} />{MOT_IA[ia[x.recherche.id].v]}</b>
+              <span>{ia[x.recherche.id].r}</span>
+            </span>
+          )}
           {et && <span className={et.ton === 'nouveau' ? r.etatNouveau : r.etat}>{et.ton === 'nouveau' && <i className={r.ping} />}{et.t}</span>}
         </div>
         <div className={r.actions}>
@@ -162,7 +225,10 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
     if (!l.length) return null;
     const max = 5;
     const tout = ouverts.has(cle);
-    const vus = tout ? l : l.slice(0, max);
+    /* Avec l'avis de l'IA : les « oui » en tête, les « non » à la fin. */
+    const rang = (a: Acheteur) => (ia[a.recherche.id] ? ORDRE_IA[ia[a.recherche.id].v] : 2);
+    const tries = relus.length ? [...l].sort((a, b) => rang(a) - rang(b)) : l;
+    const vus = tout ? tries : tries.slice(0, max);
     return (
       <section id={id} className={r.rubrique} aria-label={titre}>
         <div className={r.rubT}>
@@ -249,6 +315,31 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
           </>
         )}
       </section>
+
+      {/* Le rapprochement intelligent (V3.122) */}
+      {!tri.vide && aRelire.length > 0 && (
+        <section className={r.ia} data-en={iaEtat.en ? 'oui' : undefined} aria-label="Rapprochement intelligent">
+          <span className={r.iaIc}>{iaEtat.en ? <span className={r.iaTourne} aria-hidden="true" /> : <IcoP d={ETINCELLE} t={20} e={1.9} />}</span>
+          <div className={r.iaTx}>
+            <b>{'Rapprochement intelligent'}</b>
+            <span role="status">
+              {iaEtat.en
+                ? `L’IA relit les recherches, leurs comptes rendus et la fiche du bien… ${Math.min(iaEtat.fait, iaEtat.total)} sur ${iaEtat.total}`
+                : relus.length
+                  ? `${relus.length} ${pl(relus.length, 'acheteur relu', 'acheteurs relus')} ${dernier ? ilYa(dernier) : ''} : ${nIa('oui')} oui · ${nIa('a_voir')} à voir · ${nIa('non')} non.${relus.length < aRelire.length ? ` ${aRelire.length - relus.length} pas encore.` : ''}`
+                  : `L’IA relit les ${aRelire.length} ${pl(aRelire.length, 'acheteur retenu', 'acheteurs retenus')} comme tu le ferais : leurs indispensables, leur parcours, leurs comptes rendus de visite, ce qu’ils ont dit des biens montrés, et toute la fiche du bien.`}
+            </span>
+            {iaEtat.erreur && <span className={r.iaErreur}>{iaEtat.erreur}</span>}
+            {iaEtat.info && <span className={r.iaInfo}>{iaEtat.info}</span>}
+          </div>
+          {!iaEtat.en && (
+            <button type="button" className={relus.length ? r.iaBtnDoux : r.iaBtn} onClick={() => { void lancerIA(false); }}
+              title={relus.length ? 'Ne relit que les acheteurs nouveaux, ou ceux dont la recherche ou le bien ont changé' : undefined}>
+              <IcoP d={ETINCELLE} t={15} e={2} />{relus.length ? (relus.length < aRelire.length ? 'Relire les autres' : 'Mettre à jour') : 'Lancer l’analyse'}
+            </button>
+          )}
+        </section>
+      )}
 
       {rubrique('rb-bons', 'bons', 'Ils correspondent', '70 % et plus de leurs critères : à appeler en premier.', COULEURS.bons, tri.bons, 0)}
       {rubrique('rb-partiels', 'partiels', 'En partie', 'Un critère n’est pas tenu : ça peut se discuter avec eux.', COULEURS.partiels, tri.partiels, tri.bons.length)}

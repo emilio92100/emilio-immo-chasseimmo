@@ -158,8 +158,33 @@
 .btnOr:disabled { opacity: .45; cursor: default; }
 .btnN { display: none; }
 
+/* ── Le rapprochement intelligent (V3.122) ── */
+.ia { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 20px; border: 1.5px solid #d9d2f5; background: radial-gradient(120% 160% at 0% 0%, #f4f0ff 0%, #fbfaff 50%, #ffffff 100%); }
+.ia[data-en='oui'] { border-color: #b9aef0; }
+.iaIc { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #34496e; color: #f2dfa6; box-shadow: 0 6px 14px -8px rgba(26, 35, 50, .6); }
+.iaTourne { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(242, 223, 166, .3); border-top-color: #f2dfa6; animation: iaTourne .8s linear infinite; }
+@keyframes iaTourne { to { transform: rotate(360deg); } }
+.iaTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.iaTx > b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.iaTx > span { font-size: 13px; line-height: 1.5; color: #475569; }
+.iaErreur { color: #b91c1c !important; font-weight: 700; }
+.iaInfo { color: #a16207 !important; font-weight: 600; }
+.iaBtn, .iaBtnDoux { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 16px; border-radius: 12px; cursor: pointer; font: 700 13.5px 'DM Sans', sans-serif; }
+.iaBtn { border: 1px solid #34496e; background: #34496e; color: #fff; }
+.iaBtn:hover { background: #2e4166; }
+.iaBtnDoux { border: 1px solid #d9d2f5; background: #fff; color: #34496e; }
+.iaBtnDoux:hover { border-color: #b9aef0; background: #fbfaff; }
+.iaAvis { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; line-height: 1.45; color: #334155; }
+.iaMot { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 21px; padding: 0 8px; border-radius: 99px; font: 800 11px 'DM Sans', sans-serif; }
+.iaAvis[data-v='oui'] .iaMot { background: #dcfce7; color: #166534; }
+.iaAvis[data-v='a_voir'] .iaMot { background: #fef3c7; color: #92400e; }
+.iaAvis[data-v='non'] .iaMot { background: #fee2e2; color: #991b1b; }
+.iaAvis[data-v='non'] > span { color: #7f1d1d; }
+
 /* ── Téléphone ── */
 @media (max-width: 760px) {
+  .ia { flex-wrap: wrap; padding: 14px; gap: 12px; }
+  .iaBtn, .iaBtnDoux { width: 100%; justify-content: center; height: 44px; }
   .hero { padding: 14px; }
   .heroL { flex-wrap: wrap; gap: 10px; }
   .heroL > svg { display: none; }
@@ -197,4 +222,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ligne, .aide, .ping { animation: none; }
+  .iaTourne { animation-duration: 2.4s; }
 }
