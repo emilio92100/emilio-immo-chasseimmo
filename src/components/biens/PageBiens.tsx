@@ -89,6 +89,7 @@ const lireBienUrl = () => (typeof window === 'undefined' ? null : new URLSearchP
 function ecrireBienUrl(id: string | null) {
   const p = new URLSearchParams(window.location.search);
   if (id) p.set('bien', id); else p.delete('bien');
+  p.delete('depuis');
   p.set('page', 'biens');
   const url = `${window.location.pathname}?${p.toString()}`;
   if (url !== window.location.pathname + window.location.search) window.history.pushState(null, '', url);
@@ -166,6 +167,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
      silhouette le temps de lire la liste. */
   const [retour, setRetour] = useState(false);
   const [attendu] = useState(() => lireBienUrl());
+  /* V3.138 : le bien ouvert depuis l'agenda (« Voir la fiche du bien ») :
+     son bouton retour ramène à l'agenda, la visite rouverte. */
+  const [depuisAgenda] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('depuis') === 'agenda');
   /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
      place, sans recharger ; une fiche de bien ouverte se referme (V3.25). */
   useEffect(() => {
@@ -464,7 +468,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
     return (
       <>
         <div key={bienOuvert.id} className="ecran-avant">
-        <FicheBien bien={bienOuvert} liste={liste} onRetour={() => ouvrir(null)} onMaj={majBien}
+        <FicheBien bien={bienOuvert} liste={liste} onMaj={majBien}
+          onRetour={() => (depuisAgenda && bienOuvert.id === attendu ? onNavigate('agenda', { retour: true }) : ouvrir(null))}
+          retourLib={depuisAgenda && bienOuvert.id === attendu ? 'Agenda' : undefined}
           onSupprime={id => { setListe(l => (l ? { ...l, biens: l.biens.filter(x => x.id !== id) } : l)); ouvrir(null); }}
           onModifier={etape => setEdition({ bien: bienOuvert, etape })} onNavigate={onNavigate} onRecharger={() => { void charger(); }}
           onOuvrir={id => ouvrir(id)}
