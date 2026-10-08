@@ -2,7 +2,7 @@
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { estArchive, lirePro, lireStructure, reventePossible, typeDe, typesDe } from '@/lib/contacts';
+import { estAcheteur, estArchive, lirePro, lireStructure, reventePossible, typeDe, typesDe } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
@@ -18,7 +18,7 @@ import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
-import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi, demanderNouveauBien, demanderOngletBien } from '@/lib/intentions';
+import { signalerMaj, demanderRendezVous, lireOuvertureFiche, oublierOuvertureFiche, filtreDuSuivi, demanderNouveauBien, demanderOngletBien, demanderVisitePour, EVT_RDV_ENREGISTRE } from '@/lib/intentions';
 import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
 import CloreRelances, { relancesACocher } from '@/components/shared/CloreRelances';
 import { jetonEspace, BIENS_PAR_MAIL } from '@/lib/jeton';
@@ -1378,6 +1378,17 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      chargée — ou le perdait. `flushTx` lit la transaction affichée tout de
      suite, avant le chargement de la nouvelle. */
   useEffect(() => { flushTx(); setVueEtape(null); if (rechercheId) load(); }, [rechercheId]);
+  /* V3.134 : une visite organisée d'ici (menu ⋯, onglet Visites) passe par
+     la fenêtre « Nouveau rendez-vous » posée par-dessus la fiche ; une fois
+     enregistrée, la fiche se relit (ses biens, ses visites, son suivi). */
+  const loadRef = useRef<() => void>(() => {});
+  loadRef.current = () => { if (rechercheId) void load(); };
+  useEffect(() => {
+    const relire = () => loadRef.current();
+    window.addEventListener(EVT_RDV_ENREGISTRE, relire);
+    return () => window.removeEventListener(EVT_RDV_ENREGISTRE, relire);
+  }, []);
+  const organiserVisite = () => { if (rechercheId) demanderVisitePour(rechercheId); };
   /* Sans transaction, plus rien d'une ancienne ne doit rester affiché. */
   useEffect(() => { txRef.current = transaction; setTxData(transaction || {}); }, [transaction]);
   /* En quittant la fiche, on écrit ce qui attendait encore : sinon la dernière
@@ -3659,6 +3670,16 @@ ${signatureMail()}`,
         <Portail>
           <div onClick={() => setMenuPlus(null)} style={{ position: 'fixed', inset: 0, zIndex: 190 }} />
           <div className={`emilio-menu ${styles.menuPlus}`} role="menu" style={{ left: menuPlus.x, top: menuPlus.y }}>
+            {/* V3.134 : le raccourci vers une visite, le client déjà choisi. */}
+            {estAcheteur(client) && rechercheId && (
+              <>
+                <button type="button" role="menuitem" className={styles.menuPlusL} onClick={() => { setMenuPlus(null); organiserVisite(); }}>
+                  <span className={styles.menuPlusIc}><Icone nom="calendrier" taille={16} epaisseur={2} /></span>
+                  <span><b>Organiser une visite</b><small>Ses biens ou tes biens en vente, la date et l’heure</small></span>
+                </button>
+                <div className={styles.menuPlusSep} />
+              </>
+            )}
             <button type="button" role="menuitem" className={styles.menuPlusL} onClick={() => { setMenuPlus(null); setCf(cfDe(client)); setShowContact(true); }}>
               <span className={styles.menuPlusIc}><Icone nom="crayon" taille={16} epaisseur={2} /></span>
               <span><b>Modifier ses coordonnées</b><small>Téléphone, e-mail, adresse</small></span>
@@ -4752,7 +4773,7 @@ ${signatureMail()}`,
             masques={((rechercheActive as any)?.appris_masques as string[] | null) || []}
             rechercheId={rechercheId}
             onCompteRendu={(v: any) => setCrVisite(v)} onAnnuler={annulerVisite}
-            onRecharger={load} onMasques={loadRecherches} />
+            onRecharger={load} onMasques={loadRecherches} onOrganiser={organiserVisite} />
         )}
 
         {/* ═══ TAB TRANSACTION ═══ */}
