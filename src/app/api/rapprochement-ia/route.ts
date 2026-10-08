@@ -1,0 +1,214 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
+import { avantMandat, type BienVente } from '@/lib/biens-vente';
+import { lireParcours, texteParcours } from '@/lib/parcours';
+import { apprisDe } from '@/lib/visites';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
+/**
+ * Le rapprochement intelligent (V3.122).
+ *
+ * Alexandre : « le rapprochement, il peut être aussi fiable que la veille ?
+ * Qu'il lise tout ce qu'il y a dans les précisions de la recherche, les
+ * comptes rendus de visite, les points négatifs… et le bien, ses critères,
+ * ses commentaires. Un matching plus précis, avec les mêmes règles ».
+ *
+ *   POST { bien_id, recherche_ids (12 au plus), forcer? }
+ *        →  { ok, avis: { [recherche_id]: { v, r, le, cle } }, relues, modele, avertissement }
+ *
+ * La note de correspondance (lib/correspondance.ts) fait le premier tri, en
+ * chiffres. Ici, l'IA de Claude relit, pour chaque recherche retenue :
+ * ses critères et ses indispensables, ses précisions, « Son parcours »
+ * (lib/parcours.ts), ce que ses visites ont appris, ses comptes rendus, ce
+ * qu'il a dit des biens qu'on lui a montrés, les annonces écartées avec leur
+ * motif ; et la fiche du bien, jusqu'à sa visite sur place. Elle rend un avis
+ * par recherche : « oui », « à voir », « non », avec une phrase.
+ *
+ * Rien de nominatif ne part : ni nom, ni adresse exacte, ni téléphone, ni
+ * propriétaire. Les avis sont gardés sur le bien (`biens_vente.rapprochement_ia`,
+ * outils/sql/parcours-rapprochement-ia.sql) avec l'empreinte de ce qui a été
+ * lu : relancer ne relit que les recherches (ou le bien) qui ont bougé.
+ *
+ * Protégée par le code d'accès, comme le reste du CRM (src/proxy.ts).
+ */
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/* Par appel : de quoi répondre en moins d'une minute (la limite de Vercel).
+   L'onglet enchaîne les appels quand il y en a plus. */
+const MAX = 12;
+const MODELES = ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'];
+const ko = (erreur: string, status = 400) => NextResponse.json({ ok: false, erreur }, { status });
+
+type Avis = { v: 'oui' | 'a_voir' | 'non'; r: string; le: string; cle: string };
+
+const plein = (v: unknown) => v !== null && v !== undefined && v !== '' && v !== false && !(Array.isArray(v) && !v.length) && !(typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
+function garder(o: Record<string, unknown>, cles: string[]): Record<string, unknown> {
+  const x: Record<string, unknown> = {};
+  for (const k of cles) if (plein(o[k])) x[k] = o[k];
+  return x;
+}
+const court = (t: unknown, n: number) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+/* La fiche du bien, ce qu'une visite en dirait : ni adresse exacte, ni
+   propriétaire, ni code, ni mandat. */
+const CLES_BIEN = [
+  'typeBien', 'surface', 'carrez', 'pieces', 'chambres', 'sejour', 'sdb', 'salleseau', 'wc', 'etage', 'etages', 'niveaux', 'immeuble', 'accesAscenseur',
+  'annee', 'constructionType', 'standing', 'style', 'etat', 'etatCommuns', 'etatExterieur', 'cuisine', 'cuisineEquip', 'chauffageMode', 'chauffageEnergie',
+  'vitrage', 'volets', 'annexes', 'surfBalcon', 'surfTerrasse', 'surfJardin', 'surfLoggia', 'surfCave', 'nbParking', 'stationnement', 'expo', 'vue', 'visAVis',
+  'situation', 'proxMetro', 'proxBus', 'proxRer', 'proxTram', 'proxEcole', 'proxCommerces', 'dpe', 'ges', 'chargesAn', 'taxeFonciere', 'lots',
+  'travaux', 'travauxVotes', 'coproAVenir', 'equipements', 'interieurNote', 'exterieurNote', 'visiteAtouts', 'visiteDefauts', 'quartier', 'ville', 'cp',
+];
+function bienPourIA(b: BienVente): Record<string, unknown> {
+  const d = (b.donnees || {}) as Record<string, unknown>;
+  const x = garder(d, CLES_BIEN);
+  if (!x.ville && b.ville) x.ville = b.ville;
+  if (!x.cp && b.code_postal) x.cp = b.code_postal;
+  const prix = b.prix ?? (typeof d.prix === 'number' ? d.prix : null);
+  if (avantMandat(b.etape)) {
+    if (d.estimBasse || d.estimHaute) x.estimation = [d.estimBasse, d.estimHaute].filter(Boolean).join(' à ');
+  } else if (prix) x.prix = prix;
+  if (Array.isArray(d.detailPieces)) {
+    x.pieces_detail = (d.detailPieces as Record<string, unknown>[]).slice(0, 20)
+      .map(p => [p.nom, p.surface ? `${p.surface} m²` : '', p.niveau, court(p.note, 120)].filter(Boolean).join(' · ')).filter(Boolean);
+  }
+  const texte = court(d.annonceTexte, 2500);
+  if (texte) x.description = texte;
+  return x;
+}
+
+const CLES_RECHERCHE = [
+  'type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'surface_sejour_min', 'nb_pieces_min', 'nb_pieces_max', 'chambres_min',
+  'secteurs', 'transport_minutes', 'etage_min', 'etage_max', 'etage_max_sans_ascenseur', 'rdc_exclu', 'dernier_etage', 'exposition_souhaitee',
+  'etat_souhaite', 'annee_construction_min', 'dpe_max', 'cuisine_type', 'exterieur_surface_min', 'exigences', 'parking', 'cave', 'balcon',
+  'terrasse', 'jardin', 'ascenseur', 'gardien', 'urgence', 'notes',
+];
+
+export async function POST(req: NextRequest) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!url || !cle) return ko('Variables Supabase manquantes', 500);
+  if (!apiKey) return ko('La clé de l’IA (ANTHROPIC_API_KEY) manque dans Vercel', 500);
+  const sb = createClient(url, cle, { auth: { persistSession: false } });
+
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { return ko('Requête illisible'); }
+  const bienId = String(body.bien_id || '');
+  if (!UUID.test(bienId)) return ko('Bien inconnu');
+  const ids = [...new Set((Array.isArray(body.recherche_ids) ? body.recherche_ids : []).map(String).filter(x => UUID.test(x)))].slice(0, MAX);
+  if (!ids.length) return ko('Aucune recherche à relire');
+
+  try {
+    const { data: bien, error: eB } = await sb.from('biens_vente').select('*').eq('id', bienId).maybeSingle();
+    if (eB) return ko(eB.message, 500);
+    if (!bien) return ko('Bien introuvable', 404);
+    const [{ data: rs, error: eR }, { data: vs }, { data: cs }, { data: ps }] = await Promise.all([
+      sb.from('recherches').select('*').in('id', ids),
+      sb.from('visites').select('recherche_id, statut, issue, avis_client, motifs, aime, retenir, commentaire, mot_client, date_visite').in('recherche_id', ids).neq('statut', 'annulee').order('date_visite', { ascending: false }),
+      sb.from('biens').select('recherche_id, titre, ville, badge_retour, retour_client, retour_le').in('recherche_id', ids).not('retour_client', 'is', null).order('retour_le', { ascending: false }),
+      sb.from('veille_propositions').select('recherche_id, motif_ecart').in('recherche_id', ids).eq('statut', 'ecarte').not('motif_ecart', 'is', null).limit(300),
+    ]);
+    if (eR) return ko(eR.message, 500);
+
+    const b = bien as BienVente & { rapprochement_ia?: Record<string, Avis> | null };
+    const bienIA = bienPourIA(b);
+    const empreinteBien = JSON.stringify(bienIA);
+
+    /* Chaque recherche, ce qu'on sait d'elle, sans rien de nominatif. */
+    const dossiers = ((rs || []) as Record<string, unknown>[]).map(r => {
+      const rid = String(r.id);
+      const visites = ((vs || []) as Record<string, unknown>[]).filter(v => v.recherche_id === rid);
+      const appris = apprisDe(visites as Parameters<typeof apprisDe>[0], (r.appris_masques as string[] | null) || []);
+      const x: Record<string, unknown> = garder(r, CLES_RECHERCHE);
+      if (Array.isArray(r.transport_arrets) && r.transport_arrets.length) {
+        x.arrets = (r.transport_arrets as { nom?: string; minutes?: number }[]).map(a => `${a.nom || ''}${a.minutes ? ` (${a.minutes} min à pied)` : ''}`);
+      }
+      const parcours = texteParcours(lireParcours(r.parcours));
+      if (parcours) x.son_parcours = parcours;
+      if (appris.eviter.length) x.ses_visites_refusees_pour = appris.eviter.slice(0, 8).map(a => `${a.t}${a.n > 1 ? ` (${a.n} fois)` : ''}`);
+      if (appris.aime.length) x.ses_visites_lui_ont_plu_pour = appris.aime.slice(0, 8).map(a => `${a.t}${a.n > 1 ? ` (${a.n} fois)` : ''}`);
+      const crs = visites.map(v => [court(v.commentaire, 300), court(v.mot_client, 200)].filter(Boolean).join(' — ')).filter(Boolean).slice(0, 6);
+      if (crs.length) x.comptes_rendus = crs;
+      const retours = ((cs || []) as Record<string, unknown>[]).filter(c => c.recherche_id === rid).slice(0, 8)
+        .map(c => `${court(c.titre || c.ville, 60)} : ${court(c.retour_client, 220)}${c.badge_retour === 'refuse' ? ' (pas pour lui)' : ''}`);
+      if (retours.length) x.ce_quil_a_dit_des_biens_montres = retours;
+      const ecarts = [...new Set(((ps || []) as Record<string, unknown>[]).filter(p => p.recherche_id === rid).map(p => court(p.motif_ecart, 140)).filter(Boolean))].slice(0, 10);
+      if (ecarts.length) x.annonces_ecartees_pour = ecarts;
+      const empreinte = createHash('sha256').update(empreinteBien + JSON.stringify(x)).digest('hex').slice(0, 16);
+      return { id: rid, x, empreinte };
+    });
+
+    /* Déjà relues, rien n'a bougé : on garde l'avis. */
+    const cache = (b.rapprochement_ia && typeof b.rapprochement_ia === 'object' ? b.rapprochement_ia : {}) as Record<string, Avis>;
+    const forcer = body.forcer === true;
+    const aLire = dossiers.filter(d => forcer || cache[d.id]?.cle !== d.empreinte);
+    const avis: Record<string, Avis> = {};
+    for (const d of dossiers) if (!aLire.includes(d) && cache[d.id]) avis[d.id] = cache[d.id];
+
+    let modele = '';
+    if (aLire.length) {
+      const consigne = `Tu aides Alexandre, chasseur immobilier à Paris et dans les Hauts-de-Seine, à décider à quels acheteurs de sa base proposer un bien.
+
+Un premier tri en chiffres a déjà retenu ces recherches (budget, secteur, type, surface, chambres). Ton rôle : tout relire, comme le ferait Alexandre, et repérer ce que les chiffres ne voient pas.
+
+Lis pour chaque recherche : ses critères et ses « exigences » (indispensable = bloquant), ses notes, « son_parcours » (ce qui ne lui a pas convenu, surtout ce qui « revient souvent », et ce qui lui a plu), ce que ses visites ont appris, ses comptes rendus, ce qu'il a dit des biens montrés, les annonces écartées et leur motif. Et pour le bien : toute la fiche, sa description, sa visite sur place (visiteAtouts, visiteDefauts), l'immeuble, l'étage et l'ascenseur, l'exposition, la vue, le vis-à-vis, l'état, les travaux.
+
+Règles :
+- « non » : un point bloquant, ou exactement ce qu'il refuse souvent (ex. il cherche un accès PMR et l'immeuble ancien n'a qu'un petit ascenseur ; il a refusé trois biens pour le vis-à-vis et celui-ci est sur cour face à un immeuble).
+- « a_voir » : ça peut lui plaire mais un point est à vérifier ou à discuter avec lui (une information manque sur le bien, un critère est juste à la limite).
+- « oui » : rien ne s'y oppose, et de préférence le bien a ce qui lui a plu.
+- Budget : la même règle que la veille. Jusqu'à environ 7 % au-dessus de son budget, c'est négociable (900 000 € → jusqu'à 960 000 €) : ce n'est pas une raison de dire « non ». Au-delà de 10 %, « non » sauf s'il a dit être souple.
+- Une information absente de la fiche n'est jamais un « non » : c'est « a_voir », et tu dis quoi vérifier.
+- N'invente rien : ne t'appuie que sur ce qui est écrit.
+
+Pour chaque recherche, une phrase (140 caractères au plus), en français simple, qui cite le fait précis. Exemples : « Cherche un accès PMR : immeuble de 1932 au petit ascenseur. », « Lumineux et traversant, ce qu'il a aimé ; le budget passe. », « Exposition non renseignée : il a refusé deux biens trop sombres. »
+
+Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"id":"…","verdict":"oui|a_voir|non","raison":"…"}], un objet par recherche, avec son id exact.`;
+      const contenu = `LE BIEN :\n${JSON.stringify(bienIA)}\n\nLES RECHERCHES :\n${aLire.map(d => JSON.stringify({ id: d.id, ...d.x })).join('\n')}`;
+
+      let reponse: Response | null = null;
+      for (const m of MODELES) {
+        reponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: m, max_tokens: Math.min(4000, 300 + aLire.length * 130), system: consigne, messages: [{ role: 'user', content: contenu }] }),
+          signal: AbortSignal.timeout(50_000),
+        });
+        modele = m;
+        /* Un modèle que la clé ne connaît pas : le suivant. */
+        if (reponse.status === 404 || reponse.status === 400) { const t = await reponse.text().catch(() => ''); if (/model/i.test(t)) continue; return ko(`L’IA a refusé la demande (${reponse.status}) : ${t.slice(0, 200)}`, 502); }
+        break;
+      }
+      if (!reponse || !reponse.ok) return ko(`L’IA n’a pas répondu (${reponse?.status || 'aucune réponse'})`, 502);
+      const data = await reponse.json() as { content?: { text?: string }[] };
+      const brut = (data.content || []).map(c => c.text || '').join('').trim();
+      const json = brut.slice(Math.max(0, brut.indexOf('[')), brut.lastIndexOf(']') + 1);
+      let lus: { id?: unknown; verdict?: unknown; raison?: unknown }[] = [];
+      try { lus = JSON.parse(json); } catch { return ko('La réponse de l’IA est illisible : relance.', 502); }
+      const le = new Date().toISOString();
+      for (const x of Array.isArray(lus) ? lus : []) {
+        const d = aLire.find(y => y.id === String(x.id));
+        const v = String(x.verdict);
+        if (!d || !['oui', 'a_voir', 'non'].includes(v)) continue;
+        avis[d.id] = { v: v as Avis['v'], r: court(x.raison, 220), le, cle: d.empreinte };
+      }
+    }
+
+    /* Gardés sur le bien. La colonne pas encore créée : on le dit, sans
+       perdre la réponse. */
+    let avertissement = '';
+    if (aLire.length) {
+      const { error: eC } = await sb.from('biens_vente').update({ rapprochement_ia: { ...cache, ...avis } }).eq('id', bienId);
+      if (eC) avertissement = /rapprochement_ia/i.test(eC.message)
+        ? 'Les avis ne sont pas gardés : passe outils/sql/parcours-rapprochement-ia.sql dans Supabase.'
+        : `Les avis ne sont pas gardés : ${eC.message}`;
+    }
+    return NextResponse.json({ ok: true, avis, relues: aLire.length, modele, avertissement });
+  } catch (e) {
+    const m = (e as Error).name === 'TimeoutError' ? 'L’IA a mis trop de temps : relance, elle reprendra là où elle en est.' : ((e as Error).message || 'Erreur');
+    return ko(m, 500);
+  }
+}
