@@ -281,7 +281,10 @@ export async function deposerSeLoger(o: { forcer?: boolean } = {}): Promise<Resu
       if (Date.now() - debut > BUDGET_MS) { partiel = true; break; }
       const g = etat.annonces[id];
       const rep = await appelAviv(sb, a, 'DELETE', `/classifieds/${encodeURIComponent(g.classifiedId)}`, undefined, f);
-      if ((rep.status >= 200 && rep.status < 300) || rep.status === 404) { delete etat.annonces[id]; r.retires++; }
+      /* Déjà supprimée chez SeLoger (refus d'un DELETE sur une annonce effacée) :
+         c'est fait aussi. */
+      const partie = (rep.status >= 200 && rep.status < 300) || rep.status === 404 || await supprimee(sb, a, g.classifiedId, f);
+      if (partie) { delete etat.annonces[id]; r.retires++; }
       else r.erreurs.push(`${g.reference || id} (retrait) : ${erreurDe(rep)}`);
     }
   } catch (e) {

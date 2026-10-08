@@ -10,8 +10,11 @@
 
    Ce qui sort, et ce qui ne sort pas :
      · l'identifiant de l'annonce chez SeLoger (`offererEstateId`) ne change
-       jamais : le numéro ImmoFacile pour un bien repris, sinon la référence
-       du CRM — le même que pour Jinka (lib/poliris.ts, `idJinka`) ;
+       jamais : la référence du CRM (EMI-V-…). V3.100 (8 octobre) : avant,
+       c'était le numéro ImmoFacile, comme pour Jinka ; SeLoger a alors
+       raccroché nos annonces à celles d'ImmoFacile (« Duplicated
+       classified »), les a supprimées avec elles quand ImmoFacile a été
+       coupé, et refuse depuis toute nouvelle annonce sous ces numéros ;
      · l'adresse et la position partent, comme ImmoFacile les envoyait :
        SeLoger s'en sert pour la carte et la recherche, et montre la
        position floutée dans le quartier (`PARTIAL`) ; ce qu'il affiche de
@@ -26,7 +29,6 @@ import { liste, num, txt } from '@/lib/actes';
 import { argentBien, lirePhotos, type BienVente } from '@/lib/biens-vente';
 import { diffuseSur } from '@/lib/diffusion';
 import { bienPourSite, gpsFiche } from '@/lib/flux-site';
-import { idJinka } from '@/lib/poliris';
 
 export const SELOGER_LOGICIEL = 'EmilioImmoCRM';
 export const SELOGER_VERSION_LOGICIEL = '3.98';
@@ -45,8 +47,10 @@ export function rueEtNumero(adresse: string): { houseNumber: string; street: str
 export type Portail = 'SL' | 'BD';
 type Json = Record<string, unknown>;
 
-/* Le même identifiant que chez Jinka : il ne change jamais. */
-export const idSeLoger = (b: Pick<BienVente, 'id' | 'reference' | 'donnees'>) => idJinka(b);
+/* La référence du CRM : elle ne change jamais (V3.100 — plus le numéro
+   ImmoFacile, que SeLoger garde attaché aux annonces supprimées). */
+export const idSeLoger = (b: Pick<BienVente, 'id' | 'reference' | 'donnees'>) =>
+  ((b.reference || '').trim() || b.id.replace(/-/g, '')).slice(0, 60);
 
 /* Les portails d'un bien : SeLoger (et donc Logic-Immo), Belles Demeures. */
 export function portailsDe(b: Pick<BienVente, 'etape' | 'archive' | 'donnees'>): Portail[] {
