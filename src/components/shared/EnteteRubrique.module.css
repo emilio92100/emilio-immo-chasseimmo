@@ -223,3 +223,47 @@
   .menuLib { font-size: 14.5px; }
 }
 @media (prefers-reduced-motion: reduce) { .menu { animation: none; } .chevron { transition: none; } }
+
+/* ── V3.131 : les tuiles « à cheval » (Biens) ───────────────────────────
+   Ordinateur : la rangée devient une barre blanche, posée à moitié sur le
+   bas du bandeau bleu, comme les onglets de la fiche d'un bien. Le bandeau
+   ne coupe plus ce qui dépasse : ses lueurs passent dans `.lueurs`, qui,
+   elle, garde le bord arrondi. La tuile choisie prend le bleu du CRM. */
+.lueurs { display: none; }
+@media (min-width: 761px) {
+  .cheval { overflow: visible; margin-bottom: 34px; }
+  .cheval::before, .cheval::after { display: none; }
+  .lueurs { display: block; position: absolute; inset: 0; z-index: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+  .lueurs::before, .lueurs::after { content: ''; position: absolute; border-radius: 50%; }
+  .lueurs::before { width: 360px; height: 360px; right: -90px; top: -210px; background: radial-gradient(circle, rgba(201, 168, 76, 0.22), transparent 64%); }
+  .lueurs::after { width: 320px; height: 320px; left: -60px; bottom: -230px; background: radial-gradient(circle, rgba(125, 185, 255, 0.12), transparent 66%); }
+  .cheval .haut { padding-bottom: 18px; }
+  .cheval .rangee {
+    align-items: center; gap: 4px; margin: 0 16px -25px; padding: 5px; border-radius: 16px;
+    background: #fff; border: 1px solid #e6ebf2; box-shadow: 0 16px 32px -20px rgba(26, 35, 50, 0.5), 0 2px 6px rgba(26, 35, 50, 0.05);
+  }
+  .cheval .tuile { padding: 8px 13px; border-radius: 11px; background: transparent; border-color: transparent; }
+  .cheval .tuile:hover { background: #f4f6f9; border-color: transparent; }
+  .cheval .n { color: #1a2332; }
+  .cheval .lib { color: #475569; }
+  .cheval .on, .cheval .on:hover { background: var(--emilio-fond); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85); }
+  .cheval .on .n { color: #e7cf8a; }
+  .cheval .on .lib { color: #fff; }
+  .cheval .vide { opacity: 0.5; }
+  .cheval .alerte { background: #fffaf0; }
+  .cheval .alerte .n { color: #b45309; }
+  .cheval .alerte .lib { color: #92400e; }
+  .cheval .tete { background: #fdf8ec; border-color: #f1e3bd; }
+  .cheval .tete:hover { background: #faf1da; border-color: #ead49a; }
+  .cheval .tete::after { background: #e3e8f0; }
+  .cheval .tete .lib { color: #1a2332; }
+  .cheval .tete.on, .cheval .tete.on:hover { background: var(--emilio-fond); border-color: transparent; }
+  .cheval .tete.on .lib { color: #fff; }
+  .cheval .arch { border-color: #d5dce6; border-style: dashed; }
+  .cheval .arch:hover { background: #f6f8fb; border-color: #b8c3d3; }
+  .cheval .arch .lib { color: #64748b; }
+  .cheval .archIc { background: #f1f4f8; color: #64748b; }
+  .cheval .arch.on, .cheval .arch.on:hover { background: var(--emilio-fond); border-style: solid; border-color: transparent; }
+  .cheval .arch.on .archIc { background: rgba(255, 255, 255, 0.14); color: #fff; }
+  .cheval .arch.on .lib { color: #fff; }
+}

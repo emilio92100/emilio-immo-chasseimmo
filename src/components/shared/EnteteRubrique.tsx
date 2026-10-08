@@ -122,7 +122,7 @@ function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif:
 }
 
 export default function EnteteRubrique({
-  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true,
+  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true, aCheval = false,
 }: {
   titre: string;
   icone: ReactNode;
@@ -144,6 +144,11 @@ export default function EnteteRubrique({
      s'en passe : « Tout » est au bout, et les tuiles qui pressent (en retard,
      aujourd'hui) doivent rester visibles à l'arrivée. */
   defiler?: boolean;
+  /* V3.131 (Alexandre, dans Biens : « que ça chevauche un peu la partie
+     bleue… pour faire plus joli », comme les onglets de la fiche d'un bien) :
+     sur ordinateur, les tuiles passent dans une barre blanche posée à cheval
+     sur le bas du bandeau. Au téléphone, rien ne change. */
+  aCheval?: boolean;
 }) {
   /* V3.77 : sur téléphone, la rangée défile au doigt ; la tuile allumée
      (« Tous » est maintenant en fin de rangée) vient se montrer. */
@@ -158,7 +163,8 @@ export default function EnteteRubrique({
     if (g < r.scrollLeft || d > r.scrollLeft + r.clientWidth) r.scrollLeft = Math.max(0, d - r.clientWidth + 12);
   }, [cleActive, tuiles.length, defiler]);
   return (
-    <section className={styles.bloc}>
+    <section className={`${styles.bloc} ${aCheval && tuiles.length > 0 ? styles.cheval : ''}`}>
+      {aCheval && tuiles.length > 0 && <span className={styles.lueurs} aria-hidden="true" />}
       <div className={styles.haut}>
         <div className={styles.titreZone}>
           <span className={styles.icone} aria-hidden="true">{icone}</span>
