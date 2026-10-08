@@ -300,3 +300,59 @@
 .ligne { align-items: start; }
 .ligne > .coche { margin-top: 18px; }
 .ligne > .oeil { margin-top: 10px; }
+
+/* V3.126 — Au téléphone, les biens d'abord (Alexandre : « on ne voit pas l'essentiel ») :
+   le pied tient en une ligne de trois boutons courts, l'en-tête et les filtres se resserrent. */
+.optCourt { display: none; }
+@media (max-width: 720px) {
+  .optLong, .optTx small, .piedQ { display: none; }
+  .optCourt { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .optCourt i { font-style: normal; font: 600 10.5px 'DM Sans', sans-serif; color: #64748b; }
+  .piedChoix { gap: 8px; padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .piedChoixT { gap: 8px; }
+  .piedChoixT .piedN { font-size: 13px; flex-basis: auto; }
+  .piedChoixT .piedN b { min-width: 24px; height: 24px; font-size: 12.5px; margin-right: 6px; }
+  .opts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .opt { flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; text-align: center; min-height: 0; }
+  .optIc { width: 30px; height: 30px; border-radius: 9px; }
+  .optTx { align-items: center; }
+  .optTx b { font-size: 13px; }
+  .tete { padding: 12px 14px 8px; }
+  .teteTx h2 { font-size: 17px; }
+  .teteTx p { font-size: 12px; line-height: 1.4; margin-top: 2px; }
+  .filtres { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+  .filtres::-webkit-scrollbar { display: none; }
+  .filtres > * { flex-shrink: 0; }
+}
+
+/* ═══ V3.126 — Les rapprochements faits, datés et dépliables (RapprochementsFaits) ═══ */
+.rf { display: flex; flex-direction: column; gap: 8px; }
+.rfLigne { border: 1px solid #e3e8f0; border-radius: 14px; background: #fff; overflow: hidden; }
+.rfOuvert { border-color: #ecdcb0; }
+.rfT { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: none; background: none; cursor: pointer; text-align: left; font-family: inherit; color: inherit; }
+.rfT:disabled { cursor: default; }
+.rfT:hover:not(:disabled) { background: #fafbfd; }
+.rfOuvert .rfT { background: #fffcf4; border-bottom: 1px solid #f1e6c6; }
+.rfIc { width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: #64748b; }
+.rfOuvert .rfIc { background: #34496e; color: #f2dfa6; }
+.rfTitre { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rfTitre b { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.rfTitre small { font-size: 12px; color: #64748b; line-height: 1.4; }
+.rfChev { flex-shrink: 0; display: inline-flex; color: #94a3b8; transition: transform .2s; }
+.rfOuvert .rfChev { transform: rotate(180deg); color: #a07c28; }
+.rfC { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+.rfGroupe { display: flex; flex-direction: column; gap: 4px; }
+.rfGroupeT { display: flex; align-items: center; gap: 6px; padding: 0 2px 2px; }
+.rfGroupeT b { font: 800 12.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.rfGroupeT i { font-style: normal; font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #94a3b8; }
+.rfBien { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 11px; border: 1px solid #eef1f6; background: #fafbfd; text-align: left; font-family: inherit; color: inherit; text-decoration: none; cursor: pointer; }
+div.rfBien { cursor: default; }
+.rfBien:hover { border-color: #ecdcb0; background: #fffcf4; }
+.rfNote { flex-shrink: 0; min-width: 34px; height: 24px; padding: 0 7px; box-sizing: border-box; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #fff; background: #94a3b8; margin-top: 1px; }
+.rfNote[data-v='oui'] { background: #16a34a; }
+.rfNote[data-v='a_voir'] { background: #d97706; }
+.rfNote[data-v='non'] { background: #dc2626; }
+.rfNote[data-v='aucun'] { background: #eef2f8; color: #34496e; }
+.rfTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rfTx > b { font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.rfTx > small { font-size: 12px; color: #64748b; }

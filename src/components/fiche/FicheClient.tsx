@@ -299,7 +299,7 @@ import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
-import Rapprochement, { GuideRapprochement, type DepartRappro } from './Rapprochement';
+import Rapprochement, { GuideRapprochement, RapprochementsFaits, type DepartRappro } from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
 
@@ -3869,7 +3869,7 @@ ${signatureMail()}`,
                   { k: 'ensemble', l: 'Vue d’ensemble', ic: <Icone nom="oeil" taille={15} epaisseur={2} /> },
                   { k: 'recherche', l: recherches.length > 1 ? 'Ses recherches' : 'Sa recherche', n: recherches.length > 1 ? recherches.length : undefined, ic: <Icone nom="loupe" taille={15} epaisseur={2} /> },
                   /* Le rapprochement (V3.32) : pour un acheteur, dès qu'il a une recherche. */
-                  ...(rechercheActive ? [{ k: 'rapprochement' as VueFiche, l: 'Rapprochement', n: mandatsOk?.n || undefined, ic: <Icone nom="etoile" taille={15} epaisseur={2} /> }] : []),
+                  ...(rechercheActive ? [{ k: 'rapprochement' as VueFiche, l: 'Rapprochement', ic: <Icone nom="etoile" taille={15} epaisseur={2} /> }] : []),
                   { k: 'espace', l: 'Son espace', ic: <Icone nom="mobile" taille={15} epaisseur={2} /> },
                   { k: 'documents', l: 'Documents', n: nbDocs || undefined, ic: <Icone nom="doc" taille={15} epaisseur={2} /> },
                   { k: 'suivi', l: 'Suivi', n: suiviCount || undefined, ic: <Icone nom="horloge" taille={15} epaisseur={2} /> },
@@ -4159,14 +4159,8 @@ ${signatureMail()}`,
                         {rapprochements.length > 0 && <i className={styles.rapproCompte}>{rapprochements.length}</i>}
                       </div>
                       {rapprochements.length ? (
-                        <div className={styles.derniers}>
-                          {rapprochements.slice(0, 8).map(j => (
-                            <div key={j.id} className={styles.dernier}>
-                              <span className={styles.dernierQuand}>{jourRappro(j.created_at)}</span>
-                              <span className={styles.rapproFait}><b>{`${j.metadata?.n ?? 0} bien${(j.metadata?.n ?? 0) > 1 ? 's' : ''} trouvé${(j.metadata?.n ?? 0) > 1 ? 's' : ''}`}</b>{j.description ? <small>{j.description}</small> : null}</span>
-                            </div>
-                          ))}
-                        </div>
+                        /* V3.126 : chaque rapprochement se déplie sur ce qui a été proposé. */
+                        <RapprochementsFaits liste={rapprochements.slice(0, 8)} prenom={client.prenom || 'ce client'} onBien={id => onNavigate('biens', { bien: id })} />
                       ) : <p className={styles.situNotes}>{`Aucun pour l’instant. Le premier compare la recherche de ${client.prenom || 'ce client'} avec vos mandats en cours et les biens trouvés par vos veilles.`}</p>}
                     </div>
                   </div>
