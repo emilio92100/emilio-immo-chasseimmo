@@ -7,7 +7,7 @@ import { euros } from '@/lib/mandat';
 import { nomFoyer } from '@/lib/foyer';
 import { demanderNouveauBien } from '@/lib/intentions';
 import {
-  FORMES_SOCIETE, METIERS, STATUTS_PRO, TYPES_CONTACT, aUnBien, colonneContactAbsente, ligneContact, typeDe, typesDe,
+  ETAPES_EN_VENTE, FORMES_SOCIETE, METIERS, STATUTS_PRO, TYPES_CONTACT, aUnBien, colonneContactAbsente, ligneContact, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
@@ -53,13 +53,14 @@ export function Puce({ k }: { k: TypeContact }) {
    Partagé par les pastilles (fiche d'un acheteur, fiche d'un contact) et
    « Modifier » de la fiche d'un contact.
    · « Vendeur » ne s'enlève pas tant qu'un de ses biens est en vente (mandat,
-     sous offre, sous compromis, en pause) : sa fiche de bien et son mandat
-     perdraient leur vendeur. On dit pourquoi.
+     sous offre, sous compromis — V3.137 : plus « en pause », qui fait un
+     Propriétaire) : sa fiche de bien et son mandat perdraient leur vendeur.
+     On dit pourquoi.
    · « Acheteur » enlevé : ses recherches encore ouvertes s'arrêtent (plus de
      point automatique ni d'alerte), après confirmation. Son statut ne bouge pas.
    Rend `null` si on peut enregistrer (et `arreter` : les recherches à
    fermer ensuite), sinon le message à afficher (vide : il a dit non). */
-const EN_VENTE = ['mandat', 'offre', 'compromis', 'suspendu'];
+const EN_VENTE = ETAPES_EN_VENTE;
 export async function controlerTypes(clientId: string, avant: TypeContact[], apres: TypeContact[], prenom?: string | null):
   Promise<{ erreur: string | null; arreter: boolean }> {
   if (avant.includes('vendeur') && !apres.includes('vendeur')) {
@@ -381,10 +382,12 @@ function resumeRecherche(x: ContactListe): string {
 }
 
 /* V3.89 : « Tout cocher », au-dessus de la colonne des cases. */
-export function EnteteContacts({ tout }: { tout?: { n: number; total: number; onTout: () => void; onRien: () => void } }) {
+/* V3.137 : `classer` — le bouton « Classer » de la liste, après « Contact »
+   (comme celui du tableau des acheteurs). */
+export function EnteteContacts({ tout, classer }: { tout?: { n: number; total: number; onTout: () => void; onRien: () => void }; classer?: ReactNode }) {
   return (
     <div className={c.lEntete}>
-      <span className={c.lQui}>{tout && <CaseTout {...tout} />}Contact</span>
+      <span className={c.lQui}>{tout && <CaseTout {...tout} />}Contact{classer}</span>
       <span className={c.lSuivi}>Ce qu’on suit</span>
       <span className={c.lJoindre}>Le joindre</span>
       <span className={c.lDepuis}>Dernier échange</span>
