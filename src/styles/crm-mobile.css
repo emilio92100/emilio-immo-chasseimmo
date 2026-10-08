@@ -309,17 +309,7 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
   /* Trois types par ligne sur ordinateur, deux sur téléphone. */
   html.crm .fc-types-action { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 
-  /* ═══ PAGE VISITES ══════════════════════════════════════════════════ */
-
-  html.crm .pv-carte { border-radius: 18px !important; }
-  html.crm .pv-ligne { flex-wrap: wrap; }
-  html.crm .pv-photo { width: 84px !important; min-height: 96px; }
-  html.crm .pv-corps { flex: 1 1 0 !important; min-width: 0; padding: 13px 14px !important; }
-  html.crm .pv-actions {
-    flex-direction: row !important; width: 100%;
-    padding: 0 14px 14px !important; gap: 8px !important;
-  }
-  html.crm .pv-actions > button { flex: 1 1 0; padding: 11px 10px !important; font-size: 13.5px !important; border-radius: 12px !important; }
+  /* PAGE VISITES : les cartes ont leurs propres règles téléphone (CartesVisites.module.css, V3.135). */
 }
 
 @keyframes crmDeplie { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
