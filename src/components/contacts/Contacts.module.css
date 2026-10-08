@@ -32,7 +32,7 @@
 .modifTypes { border: none; background: none; padding: 2px 4px; font: 700 12px 'DM Sans', sans-serif; color: #a07c28; cursor: pointer; }
 .pucesSombre .modifTypes { color: rgba(255,255,255,.5); }
 .modifTypes:hover { text-decoration: underline; text-underline-offset: 3px; }
-.popTypes { position: fixed; z-index: 1200; width: min(340px, calc(100vw - 24px)); background: white; border: 1px solid #e3e8f0; border-radius: 16px; box-shadow: 0 18px 44px rgba(15,23,42,.2); padding: 8px; }
+.popTypes { position: fixed; z-index: 1200; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); background: white; border: 1px solid #e3e8f0; border-radius: 16px; box-shadow: 0 18px 44px rgba(15,23,42,.2); padding: 8px; }
 .popT { padding: 6px 8px 8px; font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 800; color: #94a3b8; }
 .popL { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: none; border-radius: 10px; background: none; text-align: left; font-family: inherit; cursor: pointer; }
 .popL:hover { background: #fbf8ef; }
