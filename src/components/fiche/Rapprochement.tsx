@@ -31,6 +31,7 @@ import {
   type SourceRappro, type PeriodeVeille, type Trouve,
 } from '@/lib/rapprochement';
 import { SEUIL_CORRESPOND, suiteEnvoi } from '@/components/biens/outils';
+import { AvisLigne, CarteIA, analyserIA, avisDesBiens, rangIA, type AvisParBien } from '@/components/biens/RapprochementIA';
 import s from './Rapprochement.module.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,6 +112,12 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   const [filtre, setFiltre] = useState<'tout' | 'mandat' | 'veille'>('tout');
   const [apercu, setApercu] = useState<Trouve | null>(null);
   const [pose, setPose] = useState<'' | 'selection' | 'espace' | 'mail'>('');
+  /* V3.123 — Le rapprochement intelligent, pour ses mandats (les biens des
+     veilles ont déjà été lus par la veille) : lancé de lui-même avec les
+     résultats, les avis déjà gardés sur les biens d'abord. */
+  const [ia, setIa] = useState<AvisParBien>({});
+  const [iaEtat, setIaEtat] = useState<{ en: boolean; fait: number; erreur: string; info: string }>({ en: false, fait: 0, erreur: '', info: '' });
+  const avisDe = (t: Trouve) => (t.vente ? ia[t.vente.id]?.[String(recherche.id)] || null : null);
 
   useEffect(() => {
     let vivant = true;
@@ -147,6 +154,8 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
       const reste = 1400 - (Date.now() - debut);
       if (reste > 0) await new Promise(ok => setTimeout(ok, reste));
       setRes(r);
+      const ventes = r.trouves.filter(t => t.vente).map(t => t.vente!);
+      setIa(avisDesBiens(ventes as unknown as ({ id: string } & Record<string, unknown>)[]));
       /* Les « correspondent » sont cochés d'office : c'est eux qu'on garde le plus souvent. */
       const aCocher = new Set((depart?.cocher || []).map(id => `m-${id}`));
       setChoisis(new Set(r.trouves.filter(t => (!nouveautes || !vusSet.has(t.cle)) && (t.corr.note >= SEUIL_CORRESPOND || aCocher.has(t.cle))).map(t => t.cle)));
@@ -181,8 +190,31 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   const nouveaux = useMemo(() => (res?.trouves || []).filter(t => !nouveautes || !vusSet.has(t.cle)), [res, nouveautes, vusSet]);
   const anciens = useMemo(() => (nouveautes ? (res?.trouves || []).filter(t => vusSet.has(t.cle)) : []), [res, nouveautes, vusSet]);
   const liste = useMemo(() => nouveaux.filter(t => filtre === 'tout' || t.source === filtre), [nouveaux, filtre]);
-  const bons = liste.filter(t => t.corr.note >= SEUIL_CORRESPOND);
-  const partiels = liste.filter(t => t.corr.note < SEUIL_CORRESPOND);
+  /* Avec les avis de l'IA : les « oui » en tête, les « non » à la fin, puis la note. */
+  const parAvis = (l: Trouve[]) => l.map((t, k) => ({ t, k })).sort((p, q) => rangIA(avisDe(p.t)) - rangIA(avisDe(q.t)) || p.k - q.k).map(p => p.t);
+  const bons = parAvis(liste.filter(t => t.corr.note >= SEUIL_CORRESPOND));
+  const partiels = parAvis(liste.filter(t => t.corr.note < SEUIL_CORRESPOND));
+  /* Les couples que l'IA relit : ses mandats parmi les résultats, 24 au plus. */
+  const paires = useMemo(() => nouveaux.filter(t => t.vente).slice(0, 24).map(t => ({ b: t.vente!.id, r: String(recherche.id) })), [nouveaux, recherche.id]);
+  async function lancerIA() {
+    if (!paires.length || iaEtat.en) return;
+    setIaEtat({ en: true, fait: 0, erreur: '', info: '' });
+    const r = await analyserIA(paires, ia, (avis, fait) => {
+      setIa(avis); setIaEtat(e => ({ ...e, fait }));
+      /* Un « non » de l'IA se décoche. */
+      setChoisis(c => { const n = new Set(c); for (const t of nouveaux) if (t.vente && avis[t.vente.id]?.[String(recherche.id)]?.v === 'non') n.delete(t.cle); return n; });
+    });
+    setIaEtat(e => ({ ...e, en: false, erreur: r.erreur, info: r.info }));
+  }
+  const lanceIA = useRef('');
+  useEffect(() => {
+    if (etape !== 'resultats' || !paires.length) return;
+    const cle = paires.map(p => p.b).join();
+    if (lanceIA.current === cle) return;
+    lanceIA.current = cle;
+    void lancerIA();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etape, paires]);
   const nbM = nouveaux.filter(t => t.source === 'mandat').length;
   const nbV = nouveaux.filter(t => t.source === 'veille').length;
 
@@ -201,6 +233,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
             <b>{t.titre}</b>
             {t.lieu && <span>{t.lieu}</span>}
             <span className={e.ok ? s.ecartOk : s.ecartKo}>{e.texte}</span>
+            {avisDe(t) && <AvisLigne avis={avisDe(t)!} />}
           </span>
           <span className={s.ligneD}>
             <b>{EUR(t.prix) || 'Prix non indiqué'}</b>
@@ -317,6 +350,11 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
               </div>
             )}
             <div className={s.liste}>
+              {paires.length > 0 && (
+                <CarteIA compact total={paires.length} avis={paires.map(p => ia[p.b]?.[p.r]).filter((y): y is NonNullable<typeof y> => !!y)}
+                  en={iaEtat.en} fait={iaEtat.fait} erreur={iaEtat.erreur} info={iaEtat.info} onLancer={() => { void lancerIA(); }}
+                  texteRepos={`L’IA relit chacun de tes mandats face à tout ce qu’on sait de ${prenom} : ses indispensables, son parcours, ses comptes rendus de visite.`} />
+              )}
               {nouveaux.length === 0 && anciens.length > 0 ? (
                 <div className={s.vide}>
                   <span className={s.videIc}><Icone nom="loupe" taille={26} epaisseur={2} /></span>
