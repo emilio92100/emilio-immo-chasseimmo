@@ -92,10 +92,33 @@ function Source({ t }: { t: Trouve }) {
 }
 
 export type DepartRappro = { source: SourceRappro; cocher?: string[]; periode?: PeriodeVeille; nouveautes?: boolean };
+
+/* V3.128 — « Fiche du bien », puis retour sur la fiche du client : le
+   rapprochement reprend là où il était (Alexandre : « quand je reviens sur la
+   fiche, il fallait que je refasse le tout »). La fiche du client se remonte
+   à chaque retour ; ce qui a été trouvé, relu et coché est gardé ici, dans la
+   mémoire de la page, le temps d'y revenir. Rien en base : la ligne du Suivi
+   garde déjà ce qui a été proposé. */
+type Garde = {
+  le: number; depart: DepartRappro | null; source: SourceRappro; periode: PeriodeVeille;
+  res: { trouves: Trouve[]; compares: number; dejaLa: number }; choisis: string[]; filtre: 'tout' | 'mandat' | 'veille';
+  ia: AvisParBien; iaEtat: { fait: number; total: number; erreur: string; info: string; manquent: number; trouves: number; mandats: number };
+  voirNon: boolean; voirAnciens: boolean; pasPour: number; apercu: string | null; vus?: string[]; dernierLe?: string | null;
+};
+const gardes = new Map<string, Garde>();
+const GARDE_MS = 30 * 60_000; // comme la place de la fiche (src/lib/place-fiche.ts)
+function garde(rechercheId: string): Garde | null {
+  const g = gardes.get(rechercheId);
+  if (g && Date.now() - g.le > GARDE_MS) { gardes.delete(rechercheId); return null; }
+  return g || null;
+}
+/* Un rapprochement attend-il cette recherche ? La fiche du client le rouvre. */
+export const rapproAReprendre = (rechercheId: string) => !!garde(String(rechercheId));
+export const oublierRappro = (rechercheId: string) => { gardes.delete(String(rechercheId)); };
 const jourLong = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '');
 const pl = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
 
-export default function Rapprochement({ client, recherche, resume, onFermer, onFini, onFicheBien, depart, vus, dernierLe }: {
+export default function Rapprochement({ client, recherche, resume, onFermer, onFini, onFicheBien, depart, vus: vusRecus, dernierLe: dernierRecu }: {
   client: Ligne; recherche: Ligne; resume: string;
   onFermer: () => void;
   /* Les biens sont posés dans son dossier : la fiche recharge, puis ouvre la
@@ -109,27 +132,43 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   vus?: string[]; dernierLe?: string | null;
 }) {
   const prenom = client.prenom || 'ce client';
-  const [etape, setEtape] = useState<'choix' | 'cherche' | 'resultats'>('choix');
-  const [source, setSource] = useState<SourceRappro>(depart?.source || 'deux');
-  const [periode, setPeriode] = useState<PeriodeVeille>(depart?.periode ?? 90);
-  const nouveautes = !!depart?.nouveautes && !!vus?.length;
+  /* Revenu de « Fiche du bien » (V3.128) : tout reprend où c'était. */
+  const [g0] = useState(() => garde(String(recherche.id)));
+  const dep = depart ?? g0?.depart ?? null;
+  /* Ce qui était « déjà vu » avant CE rapprochement : au retour, la fiche le
+     compterait comme vu (il vient d'être noté au Suivi). */
+  const vus = g0 ? g0.vus : vusRecus;
+  const dernierLe = g0 ? g0.dernierLe : dernierRecu;
+  const [etape, setEtape] = useState<'choix' | 'cherche' | 'resultats'>(g0 ? 'resultats' : 'choix');
+  const [source, setSource] = useState<SourceRappro>(g0?.source || dep?.source || 'deux');
+  const [periode, setPeriode] = useState<PeriodeVeille>(g0?.periode ?? dep?.periode ?? 90);
+  const nouveautes = !!dep?.nouveautes && !!vus?.length;
   const vusSet = useMemo(() => new Set(vus || []), [vus]);
-  const [voirAnciens, setVoirAnciens] = useState(false);
+  const [voirAnciens, setVoirAnciens] = useState(g0?.voirAnciens ?? false);
   const [comptes, setComptes] = useState<{ mandats: number; veilles: Record<number, number> } | null>(null);
-  const [res, setRes] = useState<{ trouves: Trouve[]; compares: number; dejaLa: number } | null>(null);
+  const [res, setRes] = useState<{ trouves: Trouve[]; compares: number; dejaLa: number } | null>(g0?.res ?? null);
   const [erreur, setErreur] = useState('');
-  const [choisis, setChoisis] = useState<Set<string>>(new Set());
-  const [filtre, setFiltre] = useState<'tout' | 'mandat' | 'veille'>('tout');
-  const [apercu, setApercu] = useState<Trouve | null>(null);
+  const [choisis, setChoisis] = useState<Set<string>>(() => new Set(g0?.choisis || []));
+  const [filtre, setFiltre] = useState<'tout' | 'mandat' | 'veille'>(g0?.filtre ?? 'tout');
+  const [apercu, setApercu] = useState<Trouve | null>(() => (g0?.apercu ? g0.res.trouves.find(x => x.cle === g0.apercu) || null : null));
   const [pose, setPose] = useState<'' | 'selection' | 'espace' | 'mail'>('');
   /* V3.123 → V3.125 — La relecture de ses mandats (les biens des veilles ont
      déjà été lus par la veille), pendant la recherche : les résultats
      n'arrivent qu'une fois relus. */
-  const [ia, setIa] = useState<AvisParBien>({});
-  const [phase, setPhase] = useState<'tri' | 'relit' | 'fin'>('tri');
-  const [iaEtat, setIaEtat] = useState<{ fait: number; total: number; erreur: string; info: string; manquent: number; trouves: number; mandats: number }>({ fait: 0, total: 0, erreur: '', info: '', manquent: 0, trouves: 0, mandats: 0 });
-  const [voirNon, setVoirNon] = useState(false);
-  const [pasPour, setPasPour] = useState(0);
+  const [ia, setIa] = useState<AvisParBien>(g0?.ia ?? {});
+  const [phase, setPhase] = useState<'tri' | 'relit' | 'fin'>(g0 ? 'fin' : 'tri');
+  const [iaEtat, setIaEtat] = useState<{ fait: number; total: number; erreur: string; info: string; manquent: number; trouves: number; mandats: number }>(g0?.iaEtat ?? { fait: 0, total: 0, erreur: '', info: '', manquent: 0, trouves: 0, mandats: 0 });
+  const [voirNon, setVoirNon] = useState(g0?.voirNon ?? false);
+  const [pasPour, setPasPour] = useState(g0?.pasPour ?? 0);
+  /* La reprise ne sert qu'une fois : fermer la fenêtre l'oublie. */
+  useEffect(() => { oublierRappro(String(recherche.id)); }, [recherche.id]);
+  /* « Fiche du bien » : on garde tout, puis on y va. */
+  const versFiche = (bienId: string) => {
+    if (res) gardes.set(String(recherche.id), {
+      le: Date.now(), depart: dep, source, periode, res, choisis: [...choisis], filtre, ia, iaEtat, voirNon, voirAnciens, pasPour, apercu: apercu?.cle || null, vus, dernierLe,
+    });
+    onFicheBien?.(bienId);
+  };
   const avisDe = (t: Trouve) => (t.vente ? ia[t.vente.id]?.[String(recherche.id)] || null : null);
 
   useEffect(() => {
@@ -145,8 +184,9 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
     return () => document.removeEventListener('keydown', k);
   }, [apercu, pose, onFermer]);
 
-  /* Depuis une alerte : on cherche tout de suite, une seule fois. */
-  const parti = useRef(false);
+  /* Depuis une alerte : on cherche tout de suite, une seule fois (pas au
+     retour d'une fiche de bien : les résultats sont déjà là). */
+  const parti = useRef(!!g0);
   useEffect(() => {
     if (!depart || parti.current) return;
     parti.current = true;
@@ -187,7 +227,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
       await new Promise(ok => setTimeout(ok, 350));
       setRes(r);
       /* V3.125 : rien de coché d'office, sauf les mandats d'une alerte (« un acheteur arrive »). */
-      const aCocher = new Set((depart?.cocher || []).map(id => `m-${id}`));
+      const aCocher = new Set((dep?.cocher || []).map(id => `m-${id}`));
       setChoisis(new Set(r.trouves.filter(t => aCocher.has(t.cle)).map(t => t.cle)));
       setEtape('resultats');
       /* V3.126 : ce qui a été proposé, gardé avec la ligne du Suivi. */
@@ -525,7 +565,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
             <div className={s.apercuPied}>
               {apercu.url && <a className={s.btn} href={apercu.url} target="_blank" rel="noopener noreferrer"><Icone nom="lien" taille={15} epaisseur={2.1} />Voir l’annonce</a>}
               {apercu.source === 'mandat' && apercu.vente && onFicheBien && (
-                <button type="button" className={s.btn} onClick={() => onFicheBien(apercu.vente!.id)}><Icone nom="maison" taille={15} epaisseur={2.1} />Fiche du bien</button>
+                <button type="button" className={s.btn} onClick={() => versFiche(apercu.vente!.id)}><Icone nom="maison" taille={15} epaisseur={2.1} />Fiche du bien</button>
               )}
               <span style={{ flexGrow: 1 }} />
               <button type="button" className={`${s.btn} ${choisis.has(apercu.cle) ? '' : s.btnOr}`} onClick={() => basculer(apercu.cle)}>

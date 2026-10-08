@@ -2,7 +2,7 @@
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { estArchive, lirePro, lireStructure, reventePossible, typesDe } from '@/lib/contacts';
+import { estArchive, lirePro, lireStructure, reventePossible, typeDe, typesDe } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
@@ -67,6 +67,17 @@ function Portail({ children }: { children: React.ReactNode }) {
   useEffect(() => { setPret(true); }, []);
   if (!pret) return null;
   return createPortal(children, document.body);
+}
+
+/* Trois points et une boîte d'archive (V3.128) : absents de la table d'Icone. */
+function IcoFiche({ n, t = 16 }: { n: 'points' | 'archive'; t?: number }) {
+  return (
+    <svg width={t} height={t} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: 'block' }} aria-hidden="true">
+      {n === 'points'
+        ? <><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" /></>
+        : <><rect x="3" y="4" width="18" height="5" rx="1.5" /><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9" /><path d="M10 13h4" /></>}
+    </svg>
+  );
 }
 
 /* Un budget se lit toujours en entier, séparateurs compris : « 380 000 € »,
@@ -299,7 +310,7 @@ import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
-import Rapprochement, { GuideRapprochement, RapprochementsFaits, type DepartRappro } from './Rapprochement';
+import Rapprochement, { GuideRapprochement, RapprochementsFaits, rapproAReprendre, type DepartRappro } from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
 
@@ -928,7 +939,14 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      l'enregistrement des critères : le rapprochement part tout seul, sur vos
      mandats, ceux-là déjà cochés. Remis à zéro à la fermeture. */
   const [rapproDepart, setRapproDepart] = useState<DepartRappro | null>(null);
-  const [toastRappro, setToastRappro] = useState<{ titre: string; texte: string; ids: string[] } | null>(null);
+  /* V3.128 — Après une modification des critères, un simple rappel : plus de
+     proposition ni de rapprochement lancé d'ici (Alexandre : « c'est à moi
+     d'aller dans le rapprochement »). Il entre et repart en bulle (`sort`). */
+  const [toastRappro, setToastRappro] = useState<{ titre: string; texte: string; sort?: boolean } | null>(null);
+  const fermerToast = useCallback(() => {
+    setToastRappro(x => (x && !x.sort ? { ...x, sort: true } : x));
+    setTimeout(() => setToastRappro(x => (x?.sort ? null : x)), 260);
+  }, []);
   const [veilleCount, setVeilleCount] = useState(0);
 
   const chargerVeilleCount = useCallback(async () => {
@@ -1120,6 +1138,50 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      était coupé en deux. Il s'ouvre maintenant par-dessus la page, à l'aplomb
      du bouton — d'où la position retenue ici. */
   const [menuStatut, setMenuStatut] = useState<{ x: number; y: number } | null>(null);
+  /* V3.128 — La barre à cheval (maquette C) : le menu « ⋯ », et la barre qui
+     se replie dans le haut de la page une fois qu'on a défilé (les gestes
+     restent à portée, comme avant). */
+  const [menuPlus, setMenuPlus] = useState<{ x: number; y: number } | null>(null);
+  const chevalRef = useRef<HTMLDivElement>(null);
+  const [chevalCache, setChevalCache] = useState(false);
+  useEffect(() => {
+    const el = chevalRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => setChevalCache(!e.isIntersecting && e.boundingClientRect.top < 120), { rootMargin: '-66px 0px 0px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [init.id]);
+  /* L'étiquette « En cours » / « En pause », posée sur le bord de l'onglet
+     « Sa recherche » : dessinée hors de la barre d'onglets (qui défile au
+     téléphone, et rognerait ce qui dépasse), à l'aplomb de l'onglet. */
+  const ongletsRef = useRef<HTMLDivElement>(null);
+  const [etiqX, setEtiqX] = useState<number | null>(null);
+  /* En cours : il cherche (acheteur actif, ou prospect qu'on accompagne déjà).
+     En pause : dossier suspendu, ou plus aucune recherche qui tourne. Rien
+     une fois le dossier clos. */
+  const stDossier = String(client.statut || '');
+  const etatRecherche: '' | 'cours' | 'pause' = !recherches.length || stDossier === 'bien_trouve' || stDossier === 'perdu' ? ''
+    : stDossier === 'suspendu' || (stDossier !== 'prospect' && !recherches.some(r => r.active !== false)) ? 'pause' : 'cours';
+  useEffect(() => {
+    const zone = ongletsRef.current;
+    const nav = zone?.querySelector('nav');
+    if (!zone || !nav || !etatRecherche) { setEtiqX(null); return; }
+    const place = () => {
+      const b = nav.querySelector<HTMLElement>('[data-k="recherche"]');
+      if (!b) { setEtiqX(null); return; }
+      const x = nav.offsetLeft + b.offsetLeft - nav.scrollLeft + b.offsetWidth / 2;
+      setEtiqX(x >= 34 && x <= nav.offsetLeft + nav.clientWidth - 34 ? Math.round(x) : null);
+    };
+    place();
+    nav.addEventListener('scroll', place, { passive: true });
+    window.addEventListener('resize', place);
+    void document.fonts?.ready.then(place);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(place) : null;
+    ro?.observe(nav);
+    const b0 = nav.querySelector<HTMLElement>('[data-k="recherche"]');
+    if (b0) ro?.observe(b0);
+    return () => { nav.removeEventListener('scroll', place); window.removeEventListener('resize', place); ro?.disconnect(); };
+  }, [etatRecherche, recherches.length]);
   /* « Sa société » ouverte depuis le bandeau, avant qu'elle soit notée (V3.31). */
   const [societeOuverte, setSocieteOuverte] = useState(false);
   /* Chaque « Ajouter » repart d'un formulaire neuf (le bloc reste monté, V3.32). */
@@ -1270,11 +1332,20 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     setRapproDepart(ouverture.rappro);
     setRappro(true);
   }, [ouverture, rechercheActive]);
+  /* V3.128 — Revenu de « Fiche du bien » : le rapprochement se rouvre où il
+     était, résultats, relecture et cases cochées compris (Rapprochement.tsx). */
+  const repriseLue = useRef(false);
   useEffect(() => {
-    if (!toastRappro) return;
-    const t = setTimeout(() => setToastRappro(null), 14000);
+    if (repriseLue.current || !rechercheActive || !rapproAReprendre(String(rechercheActive.id))) return;
+    repriseLue.current = true;
+    setRappro(true);
+  }, [rechercheActive]);
+  const toastVisible = !!toastRappro && !toastRappro.sort;
+  useEffect(() => {
+    if (!toastVisible) return;
+    const t = setTimeout(fermerToast, 12000);
     return () => clearTimeout(t);
-  }, [toastRappro]);
+  }, [toastVisible, fermerToast]);
   const [envoiMode, setEnvoiMode] = useState<'unique' | 'multi' | 'libre'>('unique');
   const [envoiForm, setEnvoiForm] = useState({ destinataires: '', objet: '', corps: '' });
   /* La signature et le modèle « Sélection de biens » des Paramètres (V3.20) :
@@ -2079,17 +2150,12 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
           description: change, metadata: {},
         }));
         load();
-        /* Un de vos mandats lui correspond déjà ? On le dit tout de suite
-           (V3.29), sans rien lancer. */
-        mandatsPour(data as unknown as Record<string, unknown>, client.id).then(r => {
-          if (!r.n) return;
-          const m = r.liste[0];
-          setToastRappro({
-            titre: `Recherche de ${[client.prenom, client.nom].filter(Boolean).join(' ')} enregistrée`,
-            texte: r.n > 1 ? `${r.n} de vos mandats lui correspondent, jusqu’à ${r.meilleure}\u00a0%.` : `« ${m.titre} »${m.ville ? ` à ${m.ville}` : ''} lui correspond à ${m.note}\u00a0%.`,
-            ids: r.liste.map(x => x.id),
-          });
-        }).catch(() => { /* le bandeau de la Vue d'ensemble le dira */ });
+        /* V3.128 : un rappel, rien de plus — le rapprochement se relance
+           depuis son onglet, quand Alexandre le décide. */
+        setToastRappro({
+          titre: 'Critères enregistrés',
+          texte: 'Pensez à relancer un rapprochement dans l’onglet «\u00a0Rapprochement\u00a0» : de nouveaux biens peuvent correspondre à ses nouveaux critères.',
+        });
       }
     }
     setSaving(false); setShowCriteres(false);
@@ -3580,58 +3646,73 @@ ${signatureMail()}`,
     : transaction.etape_actuelle === 'finalise' ? 'acte'
     : ORDRE_ETAPES[Math.max(0, ORDRE_ETAPES.indexOf(transaction.etape_actuelle) - 1)];
 
+  /* V3.128 — Les gestes du contact, collés en un bloc (comme Modifier · Note ·
+     ⋯ sur un bien) : sur la barre à cheval, et repliés dans le haut de la
+     page une fois qu'on a défilé (`mini`). Supprimer et Archiver sont dans « ⋯ ». */
+  const libEnvoyer = client.prenom && client.prenom.length <= 14 ? `Envoyer à ${client.prenom}` : 'Lui envoyer';
+  const gestesFiche = (mini: boolean) => (
+    <div className={`${styles.gestes} ${mini ? styles.gestesMini : ''}`} role="group" aria-label="Gestes du contact">
+      {/* V3.87 — Un seul bouton (Alexandre : « Envoyer, envoyer quoi ? ») :
+          il ouvre le choix, un mail, des biens, un compte rendu de visite. */}
+      <button type="button" className={`${styles.geste} ${styles.gesteEnv}`} onClick={() => setShowEnvoi(true)} aria-label={libEnvoyer}>
+        <Icone nom="envoi" taille={16} epaisseur={2} /><span className={styles.gesteTx}>{libEnvoyer}</span>
+      </button>
+      <button type="button" className={styles.geste} onClick={() => nouvelleAction()} aria-label="Noter une action">
+        <Icone nom="note" taille={16} epaisseur={2} /><span className={styles.gesteTx}>Action</span>
+      </button>
+      <button type="button" className={styles.geste} onClick={() => setShowBien(true)} aria-label="Ajouter un bien">
+        <Icone nom="maison" taille={16} epaisseur={2} /><span className={styles.gesteTx}>Ajouter un bien</span>
+      </button>
+      <button type="button" className={`${styles.geste} ${styles.gestePlus}`} aria-label="Plus d’actions" aria-haspopup="menu" aria-expanded={!!menuPlus}
+        onClick={ev => {
+          if (menuPlus) { setMenuPlus(null); return; }
+          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+          setMenuPlus({ x: Math.max(12, Math.min(r.right - 300, window.innerWidth - 312)), y: r.bottom + 8 });
+        }}>
+        <IcoFiche n="points" t={17} />
+      </button>
+    </div>
+  );
+
   return (
     <div className={styles.page}>
 
-      <div className={styles.pageHeader}>
+      {/* V3.128 — Le haut de la page : le retour, et rien d'autre tant que la
+          barre à cheval est visible. Une fois qu'on a défilé, le nom et les
+          gestes s'y replient (Alexandre, V3.x : « Action et Ajouter un bien
+          disparaissaient dès le premier tour de molette »). */}
+      <div className={`${styles.pageHeader} ${chevalCache ? styles.pageHeaderPlie : ''}`}>
         <div className={styles.fil} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className={styles.backBtn} onClick={onBack} aria-label={retourVers === 'relances' ? 'Retour aux relances' : 'Retour aux contacts'}>
             <span className={styles.surBureau}>{retourVers === 'relances' ? '← Relances' : '← Contacts'}</span>
             <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
           </button>
-          <span className={styles.filSep} style={{ color: '#94a3b8' }}>/</span>
-          <span className={styles.filNom} style={{ fontWeight: 600, color: 'var(--emilio)', fontSize: 14 }}>{nomFoyer(client)}</span>
-          {etiquetteRelance && (
-            <span className={styles.filRelance} title={etiquetteRelance.note} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px',
-              borderRadius: 99, fontSize: 12, fontWeight: 700,
-              color: etiquetteRelance.couleur, background: etiquetteRelance.fond,
-              border: `1px solid ${etiquetteRelance.trait}`,
-            }}>🔔 {etiquetteRelance.label}</span>
-          )}
+          <span className={`${styles.filSep} ${styles.filPlie}`} style={{ color: '#94a3b8' }}>/</span>
+          <span className={`${styles.filNom} ${styles.filPlie}`} style={{ fontWeight: 600, color: 'var(--emilio)', fontSize: 14 }}>{nomFoyer(client)}</span>
         </div>
-        {/* Sur téléphone, les quatre gestes deviennent une rangée de boutons
-            à pictogramme, tous visibles sans défiler. */}
-        <div className={styles.actionsFiche} style={{ display: 'flex', gap: 8 }}>
-          {/* V3.87 — Un seul bouton (Alexandre : « Envoyer, envoyer quoi ? et
-              Mail fait doublon ») : « Envoyer à Camille » ouvre le choix, un
-              mail, des biens, un compte rendu de visite. */}
-          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => setShowEnvoi(true)} style={{ background: '#fef9c3', border: '1px solid #fde68a', color: '#854d0e', fontWeight: 700 }}>
-            <span className={styles.surBureau}>{`📤 ${client.prenom && client.prenom.length <= 14 ? `Envoyer à ${client.prenom}` : 'Lui envoyer'}`}</span>
-            <span className={styles.surMobile}><Icone nom="envoi" taille={20} epaisseur={1.9} /><span>Envoyer</span></span>
-          </button>
-          {/* V3.87 : « Relance J+5 » est parti (Alexandre : « ça ne sert à rien,
-              on pose déjà la prochaine relance en notant l'action dans le Suivi »). */}
-          <button className={`${styles.btn} ${styles.actionFiche}`} onClick={() => nouvelleAction()}>
-            <span className={styles.surBureau}>+ Action</span>
-            <span className={styles.surMobile}><Icone nom="note" taille={20} epaisseur={1.9} /><span>Action</span></span>
-          </button>
-          <button className={`${styles.btn} ${styles.btnPrimary} ${styles.actionFiche}`} onClick={() => setShowBien(true)}>
-            <span className={styles.surBureau}>+ Ajouter un bien</span>
-            <span className={styles.surMobile}><Icone nom="maison" taille={20} epaisseur={1.9} /><span>Ajouter un bien</span></span>
-          </button>
-          {/* Effacer une personne ne se met pas à côté des actions du quotidien :
-              discret, gris, et rouge seulement quand la souris s'y arrête. */}
-          <button className={styles.actionSuppr} aria-label="Supprimer ce client" onClick={() => { setSupprNom(''); ouvrirSuppressionClient(); }}
-            title="Supprimer définitivement ce client et tout son dossier"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 15, padding: '0 6px', alignSelf: 'center' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#cbd5e1')}>
-            <span className={styles.surBureau}>🗑️</span>
-            <span className={styles.surMobile}><Icone nom="corbeille" taille={19} epaisseur={1.8} /></span>
-          </button>
-        </div>
+        <div className={styles.gestesHaut} aria-hidden={!chevalCache}>{gestesFiche(true)}</div>
       </div>
+
+      {menuPlus && (
+        <Portail>
+          <div onClick={() => setMenuPlus(null)} style={{ position: 'fixed', inset: 0, zIndex: 190 }} />
+          <div className={`emilio-menu ${styles.menuPlus}`} role="menu" style={{ left: menuPlus.x, top: menuPlus.y }}>
+            <button type="button" role="menuitem" className={styles.menuPlusL} onClick={() => { setMenuPlus(null); setCf(cfDe(client)); setShowContact(true); }}>
+              <span className={styles.menuPlusIc}><Icone nom="crayon" taille={16} epaisseur={2} /></span>
+              <span><b>Modifier ses coordonnées</b><small>Téléphone, e-mail, adresse</small></span>
+            </button>
+            <button type="button" role="menuitem" className={styles.menuPlusL} onClick={() => { setMenuPlus(null); void basculerArchive(); }}>
+              <span className={styles.menuPlusIc}><IcoFiche n="archive" /></span>
+              <span><b>{estArchive(client) ? 'Sortir des archives' : 'Archiver le contact'}</b><small>{estArchive(client) ? 'Il revient dans la liste des contacts.' : 'Il quitte la liste, sans rien perdre : retrouvable dans « Archivés ».'}</small></span>
+            </button>
+            <div className={styles.menuPlusSep} />
+            <button type="button" role="menuitem" className={`${styles.menuPlusL} ${styles.menuPlusDanger}`} onClick={() => { setMenuPlus(null); setSupprNom(''); ouvrirSuppressionClient(); }}>
+              <span className={styles.menuPlusIc}><Icone nom="corbeille" taille={16} epaisseur={2} /></span>
+              <span><b>Supprimer le contact</b><small>Définitif : sa fiche, ses recherches et son historique. Une confirmation vous est demandée.</small></span>
+            </button>
+          </div>
+        </Portail>
+      )}
 
       {/* V3.73 : un acheteur archivé le dit tout en haut, avec la sortie. */}
       {estArchive(client) && (
@@ -3707,6 +3788,111 @@ ${signatureMail()}`,
         );
         return (
           <div className={styles.teteZone}>
+            {/* V3.128 — La barre à cheval sur le bandeau, comme sur la fiche
+                d'un bien (Alexandre, maquette C) : qui il est et où en est son
+                dossier (un clic : le menu de l'état, et ses types), sa
+                relance, puis les gestes. Le bandeau ne garde que le nom. */}
+            <div ref={chevalRef} className={styles.chevalHaut}>
+              <button type="button" className={styles.pastilleQui} style={{ ['--stC' as string]: teinte } as React.CSSProperties}
+                aria-haspopup="menu" aria-expanded={!!menuStatut} title="L’état du dossier, et le type de contact"
+                onClick={(ev) => {
+                  if (menuStatut) { setMenuStatut(null); return; }
+                  const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                  setMenuStatut({ x: Math.max(12, Math.min(r.left, window.innerWidth - 300)), y: r.bottom + 8 });
+                }}>
+                <span className={styles.pastilleQuiIc}><Icone nom="cible" taille={17} epaisseur={2} /></span>
+                <span className={styles.pastilleQuiTx}>
+                  <small>{typesDe(client).map(k => typeDe(k).lib).join(' · ') || 'Contact'}</small>
+                  <b><span>{`${ETATS_CLIENT.find(x => x.cle === st)?.nom || st}${st === 'suspendu' && lireSuspension(client) ? ` jusqu'au ${jourLisible(lireSuspension(client)!.jusqu_au)}` : ''}`}</span><Icone nom="chevron" taille={14} epaisseur={2.4} /></b>
+                </span>
+              </button>
+              {menuStatut && (
+                <Portail>
+                  <div onClick={() => setMenuStatut(null)} style={{ position: 'fixed', inset: 0, zIndex: 190 }} />
+                  <div className="emilio-menu" role="menu" style={{ position: 'fixed', left: menuStatut.x, top: menuStatut.y, zIndex: 191, width: 286, maxHeight: `calc(100dvh - ${Math.round(menuStatut.y)}px - 12px)`, background: 'white', border: '1px solid #e3e8f0', borderRadius: 15, boxShadow: '0 3px 8px rgba(15,22,35,.06), 0 18px 44px rgba(15,22,35,.2)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
+                    {/* V3.128 : ses types (acheteur, vendeur…) montent ici, avec la pastille. */}
+                    <div style={{ padding: '10px 15px 11px', borderBottom: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>Ce contact est</span>
+                      <TypesEnLigne client={client} onMaj={tt => { setClient(c => ({ ...c, types: tt } as Client)); if (!tt.includes('acheteur')) onNavigate('fiche', { ...client, types: tt }); }} />
+                    </div>
+                    <div style={{ padding: '10px 15px 9px', borderBottom: '1px solid #f1f5f9', background: '#fbfcfe' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>État du dossier</span>
+                    </div>
+                    {ETATS_CLIENT.map(e => {
+                      const courant = e.cle === st;
+                      return (
+                        <button key={e.cle} onClick={() => {
+                          setMenuStatut(null);
+                          if (e.cle === 'suspendu') {
+                            const s = lireSuspension(client);
+                            setSuspendre(s ? { choix: 'date', date: s.jusqu_au } : { choix: 'sans', date: '' });
+                          } else changeStatut(e.cle);
+                        }}
+                          style={{ display: 'flex', alignItems: 'flex-start', gap: 11, width: '100%', textAlign: 'left', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5, boxShadow: courant ? `0 0 0 3px ${e.point}26` : 'none' }} />
+                          <span style={{ flexGrow: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: 'var(--emilio)' }}>{e.nom}</span>
+                            <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 1, lineHeight: 1.35 }}>{e.quand}</span>
+                          </span>
+                          {courant && <span style={{ color: '#10b981', fontSize: 13, flexShrink: 0, marginTop: 3 }}>✓</span>}
+                        </button>
+                      );
+                    })}
+
+                    {/* Ce ne sont pas des états, ce sont des gestes : ils se détachent. */}
+                    <div style={{ padding: '9px 15px 7px', background: '#fbfcfe', borderTop: '1px solid #eef2f7' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>Actions</span>
+                    </div>
+                    {dossierClos ? (
+                      <button onClick={() => { setMenuStatut(null); rouvrirDossier(); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#f0fdf4', cursor: 'pointer', fontFamily: 'inherit', color: '#0f7a4f', fontWeight: 700, fontSize: 13 }}>
+                        ↩️ Rouvrir le dossier
+                      </button>
+                    ) : (
+                      <>
+                        {/* Il y avait deux portes vers la même pièce : cette
+                            « offre écrite », et « Créer une transaction » dans
+                            l'onglet. La première ouvrait un formulaire à part et
+                            posait au client un statut « offre_ecrite » qui n'existe
+                            plus dans ce menu — il disparaissait du filtre « Actifs ».
+                            Une seule porte, maintenant. */}
+                        <button onClick={() => {
+                          setMenuStatut(null); setTab('transaction');
+                          if (!transaction && biensPourTx().length > 0) setShowChoixTx('creer');
+                        }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
+                          💼 {transaction ? 'Voir la transaction' : 'Ouvrir une transaction'}
+                        </button>
+                        <button onClick={() => { setMenuStatut(null); setShowCloture(true); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--emilio)', fontWeight: 700, fontSize: 13 }}>
+                          🏁 Clôturer la recherche
+                        </button>
+                      </>
+                    )}
+                    {/* V3.73 : l'archive, comme pour les autres contacts. */}
+                    <button onClick={() => { setMenuStatut(null); void basculerArchive(); }}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderTop: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#475569', fontWeight: 700, fontSize: 13 }}>
+                      <span>🗄️</span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <span>{estArchive(client) ? 'Sortir des archives' : 'Archiver le contact'}</span>
+                        <span style={{ fontSize: 11.5, fontWeight: 500, color: '#94a3b8' }}>{estArchive(client) ? 'Il revient dans la liste des contacts' : 'Retrouvable ensuite dans « Archivés »'}</span>
+                      </span>
+                    </button>
+                  </div>
+                </Portail>
+              )}
+              {etiquetteRelance && (
+                <button type="button" className={styles.relanceCheval} data-urgent={/^Relance dans/.test(etiquetteRelance.label) ? undefined : 'oui'}
+                  title={etiquetteRelance.note ? `${etiquetteRelance.note} · Voir dans le Suivi` : 'Voir dans le Suivi'}
+                  style={{ ['--rC' as string]: etiquetteRelance.couleur, ['--rF' as string]: etiquetteRelance.fond, ['--rT' as string]: etiquetteRelance.trait } as React.CSSProperties}
+                  onClick={() => setVue('suivi')}>
+                  <span className={styles.relanceCloche}><Icone nom="cloche" taille={15} epaisseur={2.1} /></span>
+                  <span className={styles.relanceLong}>{etiquetteRelance.label}</span>
+                  <span className={styles.relanceCourt}>{(x => x.charAt(0).toUpperCase() + x.slice(1))(etiquetteRelance.label.replace(/^Relance /, ''))}</span>
+                </button>
+              )}
+              <div className={styles.gestesZone}>{gestesFiche(false)}</div>
+            </div>
             <div className={styles.tete}>
               <span aria-hidden className={styles.teteFond}><span className={styles.teteHalo1} /><span className={styles.teteHalo2} /></span>
               <div className={styles.teteG}>
@@ -3720,94 +3906,8 @@ ${signatureMail()}`,
                       <div className="fc-id-nom" style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 24, color: 'white', letterSpacing: -0.6, lineHeight: 1.15 }}>
                         {nomFoyer(client)}
                       </div>
-                      {/* Le menu natif s'ouvrait en blanc brut sur le bandeau sombre.
-                          Celui-ci nomme chaque état et dit ce qu'il veut dire. */}
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        <button onClick={(ev) => {
-                          if (menuStatut) { setMenuStatut(null); return; }
-                          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-                          setMenuStatut({ x: Math.max(12, Math.min(r.left, window.innerWidth - 300)), y: r.bottom + 8 });
-                        }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: '1px solid rgba(255,255,255,.16)', background: menuStatut ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.82)', outline: 'none', transition: 'background .15s' }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: teinte, flexShrink: 0 }} />
-                          {`${ETATS_CLIENT.find(x => x.cle === st)?.nom || st}${st === 'suspendu' && lireSuspension(client) ? ` jusqu'au ${jourLisible(lireSuspension(client)!.jusqu_au)}` : ''}`}
-                          <span style={{ fontSize: 8, color: 'rgba(255,255,255,.5)' }}>▼</span>
-                        </button>
-                        {menuStatut && (
-                          <Portail>
-                            <div onClick={() => setMenuStatut(null)} style={{ position: 'fixed', inset: 0, zIndex: 190 }} />
-                            <div className="emilio-menu" style={{ position: 'fixed', left: menuStatut.x, top: menuStatut.y, zIndex: 191, width: 286, background: 'white', border: '1px solid #e3e8f0', borderRadius: 15, boxShadow: '0 3px 8px rgba(15,22,35,.06), 0 18px 44px rgba(15,22,35,.2)', overflow: 'hidden' }}>
-                              <div style={{ padding: '10px 15px 9px', borderBottom: '1px solid #f1f5f9', background: '#fbfcfe' }}>
-                                <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>État du dossier</span>
-                              </div>
-                              {ETATS_CLIENT.map(e => {
-                                const courant = e.cle === st;
-                                return (
-                                  <button key={e.cle} onClick={() => {
-                                    setMenuStatut(null);
-                                    if (e.cle === 'suspendu') {
-                                      const s = lireSuspension(client);
-                                      setSuspendre(s ? { choix: 'date', date: s.jusqu_au } : { choix: 'sans', date: '' });
-                                    } else changeStatut(e.cle);
-                                  }}
-                                    style={{ display: 'flex', alignItems: 'flex-start', gap: 11, width: '100%', textAlign: 'left', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: courant ? '#f8fafc' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
-                                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.point, flexShrink: 0, marginTop: 5, boxShadow: courant ? `0 0 0 3px ${e.point}26` : 'none' }} />
-                                    <span style={{ flexGrow: 1, minWidth: 0 }}>
-                                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: courant ? 800 : 700, color: 'var(--emilio)' }}>{e.nom}</span>
-                                      <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 1, lineHeight: 1.35 }}>{e.quand}</span>
-                                    </span>
-                                    {courant && <span style={{ color: '#10b981', fontSize: 13, flexShrink: 0, marginTop: 3 }}>✓</span>}
-                                  </button>
-                                );
-                              })}
-
-                              {/* Ce ne sont pas des états, ce sont des gestes : ils se détachent. */}
-                              <div style={{ padding: '9px 15px 7px', background: '#fbfcfe', borderTop: '1px solid #eef2f7' }}>
-                                <span style={{ fontSize: 10, fontWeight: 800, color: '#a3b0c2', textTransform: 'uppercase', letterSpacing: 1.1 }}>Actions</span>
-                              </div>
-                              {dossierClos ? (
-                                <button onClick={() => { setMenuStatut(null); rouvrirDossier(); }}
-                                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#f0fdf4', cursor: 'pointer', fontFamily: 'inherit', color: '#0f7a4f', fontWeight: 700, fontSize: 13 }}>
-                                  ↩️ Rouvrir le dossier
-                                </button>
-                              ) : (
-                                <>
-                                  {/* Il y avait deux portes vers la même pièce : cette
-                                      « offre écrite », et « Créer une transaction » dans
-                                      l'onglet. La première ouvrait un formulaire à part et
-                                      posait au client un statut « offre_ecrite » qui n'existe
-                                      plus dans ce menu — il disparaissait du filtre « Actifs ».
-                                      Une seule porte, maintenant. */}
-                                  <button onClick={() => {
-                                    setMenuStatut(null); setTab('transaction');
-                                    if (!transaction && biensPourTx().length > 0) setShowChoixTx('creer');
-                                  }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderBottom: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#a9822f', fontWeight: 700, fontSize: 13 }}>
-                                    💼 {transaction ? 'Voir la transaction' : 'Ouvrir une transaction'}
-                                  </button>
-                                  <button onClick={() => { setMenuStatut(null); setShowCloture(true); }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', background: '#fdfaf1', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--emilio)', fontWeight: 700, fontSize: 13 }}>
-                                    🏁 Clôturer la recherche
-                                  </button>
-                                </>
-                              )}
-                              {/* V3.73 : l'archive, comme pour les autres contacts. */}
-                              <button onClick={() => { setMenuStatut(null); void basculerArchive(); }}
-                                style={{ display: 'flex', alignItems: 'flex-start', gap: 9, width: '100%', textAlign: 'left', padding: '11px 15px', border: 'none', borderTop: '1px solid #f4f7fb', background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#475569', fontWeight: 700, fontSize: 13 }}>
-                                <span>🗄️</span>
-                                <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                  <span>{estArchive(client) ? 'Sortir des archives' : 'Archiver le contact'}</span>
-                                  <span style={{ fontSize: 11.5, fontWeight: 500, color: '#94a3b8' }}>{estArchive(client) ? 'Il revient dans la liste des contacts' : 'Retrouvable ensuite dans « Archivés »'}</span>
-                                </span>
-                              </button>
-                            </div>
-                          </Portail>
-                        )}
-                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
-                      {/* Ses types de contact : acheteur, et peut-être vendeur, propriétaire… */}
-                      <TypesEnLigne client={client} sombre onMaj={t => { if (!t.includes('acheteur')) onNavigate('fiche', { ...client, types: t }); }} />
                       {/* Il achète pour une société (V3.31) : dit ici, détaillé dans la Vue d'ensemble. */}
                       {(() => {
                         const st = lireStructure(lirePro((client as unknown as { pro?: unknown }).pro).structure);
@@ -3863,7 +3963,14 @@ ${signatureMail()}`,
                 </div>
               )}
             </div>
-            <div className={`${styles.ongletsTete} fc-onglets`}>
+            <div ref={ongletsRef} className={`${styles.ongletsTete} fc-onglets`}>
+              {/* V3.128 (Alexandre, aperçu 1) : « En cours » posé sur le bord de
+                  l'onglet, qui déborde sur le bleu ; « En pause » en orange. */}
+              {etatRecherche && etiqX !== null && (
+                <span className={styles.etiqRecherche} data-etat={etatRecherche} style={{ left: etiqX }} aria-hidden="true">
+                  <i />{etatRecherche === 'pause' ? 'En pause' : 'En cours'}
+                </span>
+              )}
               <BarreOnglets<VueFiche> label="Rubriques du contact" actif={vue} onChoisir={setVue}
                 onglets={[
                   { k: 'ensemble', l: 'Vue d’ensemble', ic: <Icone nom="oeil" taille={15} epaisseur={2} /> },
@@ -5759,14 +5866,16 @@ ${signatureMail()}`,
 
       {/* Le petit message après l'enregistrement des critères (V3.29). */}
       {toastRappro && !rappro && (
-        <div role="status" className={styles.toastRappro}>
+        <div role="status" className={`${styles.toastRappro} ${toastRappro.sort ? styles.toastSort : ''}`}>
           <span className={styles.toastRapproIc}><Icone nom="etoile" taille={16} epaisseur={2.2} /></span>
           <div className={styles.toastRapproTx}>
             <b>{toastRappro.titre}</b>
             <span>{toastRappro.texte}</span>
-            <button type="button" onClick={() => { setRapproDepart({ source: 'mandats', cocher: toastRappro.ids }); setToastRappro(null); setRappro(true); }}>Voir</button>
+            {rechercheActive && vue !== 'rapprochement' && (
+              <button type="button" onClick={() => { setVue('rapprochement'); fermerToast(); document.querySelector('.fc-onglets')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{'Aller à l’onglet Rapprochement'}</button>
+            )}
           </div>
-          <button type="button" className={styles.toastRapproX} aria-label="Fermer" onClick={() => setToastRappro(null)}><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
+          <button type="button" className={styles.toastRapproX} aria-label="Fermer" onClick={fermerToast}><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
         </div>
       )}
 
