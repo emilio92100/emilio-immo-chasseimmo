@@ -1498,6 +1498,20 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.133 — 8 octobre 2026 · Les charges à l'année chez l'acheteur, le Résumé d'une annonce type
+
+Rien à passer dans Supabase.
+
+- **Les charges d'un bien de l'agence, chez l'acheteur** (« les charges, je les mets à l'année ») :
+  son espace et la fiche publique `/bien/<id>` disaient « 900 € par trimestre » (la copie n'a que
+  `charges_trimestrielles`). Pour un bien de l'agence, ils lisent maintenant le montant annuel
+  saisi dans le CRM (`biens_vente.donnees.chargesAn`) : « 3 600 € · par an · 300 € par mois »,
+  comme la fiche du CRM. Les biens trouvés sur les portails gardent le trimestre de l'annonce.
+- **Le Résumé d'une annonce type** : plus de cartes « Visites et offres » ni « Pour la visite »
+  (ni visite ni offre sur une annonce type) ; à la place, un encadré qui dit ce qu'elle est et si
+  elle est en ligne. Le bas de page ne montre plus « Prochaines visites », seulement
+  « Dernièrement ».
+
 ### V3.132 — 8 octobre 2026 · La barre à cheval partout, sa pastille qui glisse, le menu du bien raccourci
 
 Rien à passer dans Supabase.
