@@ -62,10 +62,12 @@ function Titre({ t, c, n, sous }: { t: string; c: string; n: number; sous?: stri
   );
 }
 
-export default function OngletVisites({ visites, biens, prenom, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques }: {
+export default function OngletVisites({ visites, biens, prenom, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser }: {
   visites: any[]; biens: any[]; prenom: string; masques: string[]; rechercheId: string;
   onCompteRendu: (v: any) => void; onAnnuler: (v: any) => void;
   onRecharger: () => void; onMasques: () => void;
+  /* V3.134 : « Organiser une visite », le client déjà choisi. */
+  onOrganiser?: () => void;
 }) {
   const maintenant = new Date();
   const vivantes = visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee');
@@ -99,12 +101,23 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
     await verifie(quoi, supabase.from('visites').update(champs).eq('id', id).select('id'), { ligne: true });
   }
 
+  /* V3.134 (Alexandre : « dans l'onglet Visites, c'est vide quand il n'y a
+     rien ; crée un bouton ») : le même bouton en tête de l'onglet, vide ou pas. */
+  const boutonOrganiser = (grand: boolean) => onOrganiser ? (
+    <button type="button" className="fc-organiser" onClick={onOrganiser}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: grand ? 44 : 40, padding: grand ? '0 20px' : '0 16px', borderRadius: 12, border: 'none', background: 'var(--emilio-fond, #34496e)', color: 'white', fontSize: 13.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 16px -8px rgba(26,35,50,.55)' }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e3c872" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M3 10h18" /><path d="M8 3v4" /><path d="M16 3v4" /><path d="M12 13.5v4" /><path d="M10 15.5h4" /></svg>
+      Organiser une visite
+    </button>
+  ) : null;
+
   if (vivantes.length === 0) {
     return (
       <div className={styles.emptyTab}>
         <div style={{ fontSize: 32, marginBottom: 10 }}>📅</div>
         <div style={{ fontWeight: 700, color: NAVY }}>Aucune visite</div>
-        <div style={{ color: CLAIR, fontSize: 13 }}>{visites.length > 0 ? 'Les visites annulées ne s’affichent plus ici.' : 'Planifiez depuis l’onglet Biens'}</div>
+        <div style={{ color: CLAIR, fontSize: 13, marginBottom: onOrganiser ? 16 : 0 }}>{visites.length > 0 ? 'Les visites annulées ne s’affichent plus ici.' : onOrganiser ? 'Ses biens ou tes biens en vente : tu les cherches par le prix, l’adresse ou le propriétaire.' : 'Planifiez depuis l’onglet Biens'}</div>
+        {boutonOrganiser(true)}
       </div>
     );
   }
@@ -235,6 +248,7 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {onOrganiser && <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{boutonOrganiser(false)}</div>}
       <div className="fv-compteurs" style={{ display: 'grid', gridTemplateColumns: `repeat(${compteurs.length}, 1fr)`, gap: 8 }}>
         {compteurs.map(([t, n, c]) => (
           <div key={t} className={styles.card} style={{ padding: '10px 12px', borderTop: `3px solid ${c}` }}>
