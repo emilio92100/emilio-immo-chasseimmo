@@ -6,6 +6,7 @@ import { tauxDe, forfaitDe, honorairesCourt, honorairesDuPrix, DUREE, RETRACTATI
 import { ecritServeur } from '@/lib/ecritures';
 import { personnaliser, conseillerDe } from '@/lib/mail-variables';
 import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
+import { adresseVente } from '@/lib/adresse-vente';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -827,16 +828,18 @@ function lieuMail(b: BienVisite | null): string {
   if (adresse) return ville && !adresse.toLowerCase().includes(ville.toLowerCase()) ? `${adresse}, ${ville}` : adresse;
   return [b.quartier, ville].filter(Boolean).join(', ');
 }
-function quandMail(l: LigneVisite, plusieursJours: boolean): string {
+/* V3.134 : la date toujours à côté de l'heure (« Mardi 13 octobre · 18 h 30 »).
+   Alexandre : « à côté de l'horaire, remettre la date ». Avant, elle n'y
+   était que si les visites tombaient sur plusieurs jours. */
+function quandMail(l: LigneVisite): string {
   const h = l.heure ? heureMail(l.heure) : 'Heure à confirmer';
-  if (!plusieursJours || !l.date_visite) return h;
+  if (!l.date_visite) return h;
   const j = jourMail(l.date_visite);
   return `${j.charAt(0).toUpperCase() + j.slice(1)} · ${h}`;
 }
 
 function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string | null; recherche?: string | null }): string {
   const corpsHtml = escapeHtml(o.corps).replace(/\n/g, '<br/>');
-  const plusieursJours = new Set(o.lignes.map(l => (l.date_visite || '').slice(0, 10))).size > 1;
   const hairline = `<tr><td class="bord" style="padding:0 28px;"><div style="border-top:1px solid #E8EDF3;line-height:0;font-size:0;">&nbsp;</div></td></tr>`;
   const rows = o.lignes.map((l, i) => {
     const b = l.bien;
@@ -855,7 +858,7 @@ function buildVisites(o: { corps: string; lignes: LigneVisite[]; token?: string 
             ${photo ? `<img src="${escapeHtml(photo)}" alt="" width="150" class="miimg" style="width:150px;height:115px;object-fit:cover;display:block;border-radius:10px;border:0;" />` : `<div class="miimg" style="width:150px;height:115px;background:${BLEU};border-radius:10px;"></div>`}
           </td>
           <td class="mibody" style="vertical-align:top;padding-left:16px;">
-            <div style="display:inline-block;background:${BLEU};color:#ffffff;font-size:13px;font-weight:800;padding:5px 11px;border-radius:8px;margin-bottom:9px;">${escapeHtml(quandMail(l, plusieursJours))}</div>
+            <div style="display:inline-block;background:${BLEU};color:#ffffff;font-size:13px;font-weight:800;padding:5px 11px;border-radius:8px;margin-bottom:9px;">${escapeHtml(quandMail(l))}</div>
             <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:4px;line-height:1.35;">${escapeHtml(titre)}</div>
             ${adresse ? `<div style="font-size:13px;color:#5B6B80;margin-bottom:9px;line-height:1.5;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(adresse)}</div>` : ''}
             ${liens ? `<div>${liens}</div>` : ''}
@@ -918,12 +921,11 @@ Alexandre Rogelet · Emilio Immobilier · 06 58 95 76 32`;
 }
 
 function texteVisites(corps: string, lignes: LigneVisite[], token?: string | null): string {
-  const plusieursJours = new Set(lignes.map(l => (l.date_visite || '').slice(0, 10))).size > 1;
   const liste = lignes.map(l => {
     const b = l.bien;
     const titre = b?.titre || b?.ville || 'Visite';
     const adresse = lieuMail(b);
-    return `- ${quandMail(l, plusieursJours)} : ${titre}${adresse ? ` (${adresse})` : ''}`;
+    return `- ${quandMail(l)} : ${titre}${adresse ? ` (${adresse})` : ''}`;
   }).join('\n');
   return `${corps}\n\n${liste}\n\n---\nAlexandre Rogelet · Emilio Immobilier · 06 58 95 76 32${
     lienFin(token) ? `\nVous n'êtes plus en recherche ? Dites-le-nous : ${lienFin(token)}` : ''
@@ -946,7 +948,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode, visites_ids } = body as {
+    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode, visites_ids, apercu } = body as {
       client_ids: string[];
       recherche_id?: string;
       objet: string;
@@ -955,7 +957,11 @@ export async function POST(req: NextRequest) {
       destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
       mode?: 'libre' | 'biens' | 'bienvenue' | 'lien' | 'visites' | 'mandat'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'lien' = le lien de l'espace renvoyé (V3.110), 'visites' = rappel de visites, 'mandat' = mandat prêt à signer, 'biens' = défaut
       visites_ids?: string[];         // mode 'visites' : les visites à annoncer
+      apercu?: boolean;               // mode 'visites' (V3.134) : rend le mail tel que le client le recevra, sans rien envoyer ni noter
     };
+    /* L'aperçu n'existe que pour le rappel de visite (V3.134) : ailleurs, il
+       ne doit jamais être pris pour un envoi. */
+    if (apercu && mode !== 'visites') return NextResponse.json({ error: 'Aperçu possible seulement pour un rappel de visite' }, { status: 400 });
     /* Le mail de bienvenue s'écrit tout seul : ni objet ni corps à saisir,
        et surtout aucun bien. On le traite donc avant les contrôles. */
     const bienvenue = mode === 'bienvenue';
@@ -1097,10 +1103,22 @@ export async function POST(req: NextRequest) {
       const idsBiens = [...new Set(vis.map(v => v.bien_id).filter(Boolean))] as string[];
       const { data: bs } = idsBiens.length
         ? await supabase.from('biens')
-          .select('id, titre, ville, code_postal, quartier, adresse, adresse_probable, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos')
+          .select('id, titre, ville, code_postal, quartier, adresse, adresse_probable, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, bien_vente_id')
           .in('id', idsBiens)
         : { data: [] as BienVisite[] };
-      const parId = Object.fromEntries(((bs || []) as BienVisite[]).map(b => [b.id, b]));
+      /* V3.134 : un bien de l'agence n'a que sa ville dans le dossier de
+         l'acheteur ; le mail annonçait « l'adresse est juste en dessous » et
+         ne montrait que « Clamart ». L'adresse complète vient du bien en vente. */
+      const idsVente = [...new Set(((bs || []) as (BienVisite & { bien_vente_id?: string | null })[]).map(b => b.bien_vente_id).filter(Boolean))] as string[];
+      const { data: vs, error: eVentes } = idsVente.length
+        ? await supabase.from('biens_vente').select('id, adresse, code_postal, ville').in('id', idsVente)
+        : { data: [] as { id: string; adresse: string | null; code_postal: string | null; ville: string | null }[], error: null };
+      if (eVentes) console.error('[send-mail] adresse des biens visités', eVentes.message);
+      const ventes = Object.fromEntries((vs || []).map(x => [x.id, x]));
+      const parId = Object.fromEntries(((bs || []) as (BienVisite & { bien_vente_id?: string | null })[]).map(b => {
+        const complete = b.bien_vente_id ? adresseVente(ventes[b.bien_vente_id]) : '';
+        return [b.id, complete ? { ...b, adresse: complete } : b];
+      }));
       const cle = (v: { date_visite: string | null; heure: string | null }) => `${(v.date_visite || '').slice(0, 10)} ${(v.heure || '99:99').slice(0, 5)}`;
       const authV = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
       const resultats: { client_id: string; success: boolean; error?: string }[] = [];
@@ -1110,7 +1128,7 @@ export async function POST(req: NextRequest) {
         const sourceEmails = Array.isArray(destinataires_override) && destinataires_override.length > 0
           ? destinataires_override : (client.emails || []);
         const emails = sourceEmails.filter((e: string) => e && e.includes('@'));
-        if (emails.length === 0) { resultats.push({ client_id: client.id, success: false, error: 'Pas d\'email valide' }); continue; }
+        if (emails.length === 0 && !apercu) { resultats.push({ client_id: client.id, success: false, error: 'Pas d\'email valide' }); continue; }
         const lignes: LigneVisite[] = vis
           .filter(v => !v.client_id || v.client_id === client.id)
           .sort((a, b) => cle(a).localeCompare(cle(b)))
@@ -1120,6 +1138,16 @@ export async function POST(req: NextRequest) {
         const jeton = ((client as any).token_espace as string) || tokenEspace;
         const corpsPerso = personnaliser(corps || '', client, conseiller);
         const sujetV = personnaliser(objet, client, conseiller);
+        /* V3.134 — l'aperçu (Alexandre : « montre-moi l'aperçu que le client
+           reçoit […] si je ne le vois pas, c'est compliqué de se donner une
+           idée »). Le même mail, construit de la même façon, rendu à la
+           fenêtre du rappel : rien ne part chez Mailjet, rien n'est noté. */
+        if (apercu) {
+          return NextResponse.json({
+            success: true, apercu: true, objet: sujetV, destinataires: emails,
+            html: buildVisites({ corps: corpsPerso, lignes, token: jeton, recherche: recherche_id || null }),
+          });
+        }
         try {
           const mjRes = await fetch('https://api.mailjet.com/v3.1/send', {
             method: 'POST',
@@ -1156,7 +1184,7 @@ export async function POST(req: NextRequest) {
           await ecritServeur('L’historique du client', supabase.from('journal').insert({
             client_id: client.id, recherche_id: dossierDe(client.id), type: 'mail_envoye',
             titre: `📅 Mail envoyé — ${sujetV}`,
-            description: `À : ${emails.join(', ')}\n\n${corpsPerso}\n\n${lignes.map(l => `- ${quandMail(l, false)} : ${l.bien?.titre || 'Visite'}`).join('\n')}`,
+            description: `À : ${emails.join(', ')}\n\n${corpsPerso}\n\n${lignes.map(l => `- ${quandMail(l)} : ${l.bien?.titre || 'Visite'}`).join('\n')}`,
           }), avertissements);
           resultats.push({ client_id: client.id, success: true });
         } catch (e) {
