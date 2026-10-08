@@ -81,6 +81,8 @@ export type OuvertureFiche = {
      (ces mandats déjà cochés). */
   envoi?: string[];
   rappro?: { source: 'mandats' | 'veilles' | 'deux'; cocher?: string[] };
+  /* V3.129 : le bien à amener à l'écran (Visites › « Voir sur sa fiche »). */
+  bienId?: string;
 };
 const CLE_FICHE = 'emi-fiche';
 

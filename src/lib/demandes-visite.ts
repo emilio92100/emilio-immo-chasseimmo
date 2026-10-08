@@ -26,6 +26,8 @@ export type DemandeVisite = {
   bien: {
     id: string; titre: string | null; ville: string | null; quartier: string | null;
     photos: string[] | null; prix: number | null; surface: number | null; nb_pieces: number | null;
+    /* V3.129 : un mandat de l'agence — la page Visites vérifie qu'il est encore en vente avant de caler. */
+    bien_vente_id?: string | null;
   };
   client: any;              // la ligne complète : la fiche s'ouvre avec
 };
@@ -87,6 +89,7 @@ export async function chargerDemandesVisite(): Promise<DemandeVisite[]> {
         bien: {
           id: b.id, titre: b.titre, ville: b.ville, quartier: b.quartier, photos: b.photos,
           prix: b.prix_acquereur || b.prix_vendeur || null, surface: b.surface, nb_pieces: b.nb_pieces,
+          bien_vente_id: b.bien_vente_id || null,
         },
         client: client.get(l.client_id),
       };
