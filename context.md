@@ -1498,6 +1498,59 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.128 — 8 octobre 2026 · La barre à cheval du contact, « En cours » sur sa recherche, le rapprochement qui reprend, les quartiers
+
+Rien à passer dans Supabase.
+
+- **La barre du haut d'un acheteur, à cheval sur le bandeau, comme sur un bien** (Alexandre :
+  « est-ce qu'on pourrait faire pareil pour un client… plus joli » ; maquette C choisie sur
+  aperçus). `.chevalHaut` dans FicheClient, trois blocs de 46 px :
+  - **la pastille** « ACHETEUR / Prospect ▾ » (`.pastilleQui`, teintée de la couleur de l'état) :
+    elle ouvre le menu de l'état, qui commence maintenant par « Ce contact est » (`TypesEnLigne`,
+    sorti du bandeau) ;
+  - **la relance** (`.relanceCheval`), rouge en retard, orange aujourd'hui, grise plus tard ; la
+    cloche sonne quand elle est due ; un clic ouvre le Suivi ;
+  - **les gestes collés** (`gestesFiche`) : Envoyer à … · Action · Ajouter un bien · ⋯.
+    « ⋯ » (`menuPlus`) : Modifier ses coordonnées, Archiver (ou Sortir des archives), Supprimer
+    le contact ; chacun dit ce qu'il fait. La corbeille du haut est partie.
+  - Le haut de la page ne garde que « ← Contacts ». Une fois qu'on a défilé (IntersectionObserver
+    sur la barre, `chevalCache`), il blanchit et reprend le nom et les gestes en petit
+    (`.gestesHaut`) : « Action » et « Ajouter un bien » restent à portée, comme le voulait la
+    barre collante d'avant.
+  - Moins de place (requête de conteneur sur la barre) : la relance se dit court (« En retard de
+    2j »), puis Action et Ajouter un bien passent en icônes. Au téléphone, deux rangs comme sur un
+    bien : la pastille et la relance à cheval, les gestes en icônes dessous, sur le bandeau.
+- **« En cours » sur l'onglet « Sa recherche »** (aperçu 1, « le faire bouger légèrement plus ») :
+  une étiquette verte posée sur le bord de l'onglet, qui déborde sur le bleu, flotte et se penche
+  doucement. « En pause » en orange quand le dossier est suspendu ou qu'aucune recherche ne tourne
+  (un prospect est « En cours »). Rien une fois le dossier clos. Elle est dessinée hors de la barre
+  d'onglets (qui défile au téléphone et rognerait ce qui dépasse), à l'aplomb de l'onglet
+  (`etiqX`, recalculé au défilement de la barre).
+- **Après une modification des critères, un simple rappel** (Alexandre : « c'est à moi d'aller
+  dans le rapprochement ») : « Critères enregistrés. Pensez à relancer un rapprochement dans
+  l'onglet Rapprochement… » et un bouton qui y mène, sans rien lancer. Plus de « N de vos mandats
+  lui correspondent · Voir ». Dans le bleu Emilio (« un peu en noir » avant) ; il arrive et repart
+  en bulle (`toastBulle`, `toastSort`).
+- **Le rapprochement reprend où il était** (« je suis allé voir le bien… quand je reviens sur la
+  fiche, il fallait que je refasse le tout ») : « Fiche du bien » garde en mémoire de la page ce
+  qui a été trouvé, relu, coché, l'aperçu ouvert et ce qui était « déjà vu » (`gardes`,
+  Rapprochement.tsx, 30 minutes comme la place de la fiche) ; la fiche du client, remontée au
+  retour, rouvre la fenêtre (`rapproAReprendre`). Fermer la fenêtre l'oublie. L'onglet, les
+  sous-onglets et la hauteur étaient déjà gardés depuis la V3.121 (`place-fiche.ts`) ; les autres
+  fenêtres ouvertes (un mail, une action, les critères) se perdent toujours au changement d'écran.
+- **Les quartiers comptent dans le rapprochement** (« ma cliente recherchait Boulogne-Nord… il m'a
+  proposé un bien qui n'était pas dans son secteur ») :
+  - le quartier d'un bien est un champ saisi (Modifier → Le bien → Quartier, ou ImmoFacile), pas
+    calculé depuis l'adresse ;
+  - pour un de vos mandats (`quartierSur`, versCorrespondance), un quartier renseigné qui n'est
+    pas parmi ceux de la recherche passe la ligne Secteur en « presque » : « Silly-Gallieni ·
+    hors de ses quartiers ». Un début de nom suffit (« Silly »), sans majuscules, accents ni tirets.
+    Les annonces des portails gardent la règle d'avant (ils ne découpent pas les villes comme nous) ;
+  - la relecture (route rapprochement-ia, `VERSION` v3 : les avis déjà rendus sont relus une fois)
+    a la même règle — jamais « oui » hors de ses quartiers — et doit tenir compte d'un secteur
+    écrit dans ses notes (« Boulogne-Nord »), « à voir » quand elle ne peut pas savoir. Elle ne
+    regarde aucune carte : le nom de la rue ne lui a pas été donné, ce ne serait pas fiable.
+
 ### V3.127 — 8 octobre 2026 · La fenêtre d'une demande Internet, plus large et plus claire
 
 Rien à passer dans Supabase.
