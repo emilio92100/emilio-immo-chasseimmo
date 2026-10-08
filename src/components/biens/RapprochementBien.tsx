@@ -278,7 +278,9 @@ export function RapprochementBien({ bien, tri, mode, copies, onFiche, onAgir, on
       {!tri.vide && aRelire.length > 0 && (
         <CarteIA total={aRelire.length} avis={relus.map(id => ia[id])} en={iaEtat.en} fait={iaEtat.fait} erreur={iaEtat.erreur} info={iaEtat.info}
           onLancer={() => { void lancerIA(); }}
-          texteRepos={`L’IA relit les ${aRelire.length} ${pl(aRelire.length, 'acheteur retenu', 'acheteurs retenus')} comme tu le ferais : leurs indispensables, leur parcours, leurs comptes rendus de visite, ce qu’ils ont dit des biens montrés, et toute la fiche du bien.`} />
+          texteRepos={aRelire.length > 1
+            ? `L’IA relit les ${aRelire.length} acheteurs retenus comme tu le ferais : leurs indispensables, leur parcours, leurs comptes rendus de visite, ce qu’ils ont dit des biens montrés, et toute la fiche du bien.`
+            : 'L’IA relit l’acheteur retenu comme tu le ferais : ses indispensables, son parcours, ses comptes rendus de visite, ce qu’il a dit des biens montrés, et toute la fiche du bien.'} />
       )}
 
       {rubrique('rb-bons', 'bons', 'Ils correspondent', '70 % et plus de leurs critères : à appeler en premier.', COULEURS.bons, tri.bons, 0)}
