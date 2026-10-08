@@ -12,6 +12,7 @@ import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { signalerEchec } from '@/lib/ecritures';
 import { etatDiffusion } from '@/lib/diffusion';
 import { SaisieNombre, lireClients } from './ChampsBien';
+import { ChoixQuand } from '@/components/pages/PageAgenda';
 import {
   ajouterSuivi, annulerMandatNote, changerEtape, cloreRelancesEstimation, estimationMiseDeCote, noterRdvEstimation, planifierEstimation, poserDansBien, type FaitRdv, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
   corrigerActe, creneauxPris, deplacerVisiteCRM, deplacerVisiteLibre, creerFicheProprio, donneesProprio, doublonsContact, marquerVendeur, finaliserAcquereur, finaliserTransactionsAcquereur, ligneNotaires, lireNotaire, majPrixDansAnnonces, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, nouvelleVente, offresTombees, retirerAutresAcceptees, annulerVisitesPrevues, solderDemandesDuBien, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
@@ -95,10 +96,13 @@ export type ChoixA = { mode: 'crm'; o: OptionAcheteur } | { mode: 'libre'; nom: 
 
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
-  options: OptionAcheteur[]; recherches: RechercheMini[]; choix: ChoixA; onChoix: (c: ChoixA) => void; libre: string;
+/* V3.134 : `suggestions={false}` (« Planifier une visite ») — pas
+   d'acheteurs proposés d'office (Alexandre : « il ne faut pas les mettre,
+   juste chercher un client du CRM ») ; la liste vient quand on tape. */
+function ChoixAcheteur({ options, recherches, choix, onChoix, libre, suggestions = true }: {
+  options: OptionAcheteur[]; recherches: RechercheMini[]; choix: ChoixA; onChoix: (c: ChoixA) => void; libre: string; suggestions?: boolean;
 }) {
-  const [mode, setMode] = useState<'crm' | 'libre'>(choix?.mode === 'crm' ? 'crm' : choix?.mode === 'libre' || !options.length ? 'libre' : 'crm');
+  const [mode, setMode] = useState<'crm' | 'libre'>(choix?.mode === 'crm' ? 'crm' : choix?.mode === 'libre' || (!options.length && suggestions) ? 'libre' : 'crm');
   const [q, setQ] = useState('');
   const [clients, setClients] = useState<ClientMini[] | null>(null);
   useEffect(() => {
@@ -110,7 +114,10 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
   const liste = useMemo(() => {
     const t = sansAccent(q.trim());
     /* L'acquéreur déjà choisi (une offre qu'on corrige, V3.45) reste en tête. */
-    if (t.length < 2) return choix?.mode === 'crm' && !options.some(o => o.cle === choix.o.cle) ? [choix.o, ...options.slice(0, 7)] : options.slice(0, 8);
+    if (t.length < 2) {
+      if (!suggestions) return choix?.mode === 'crm' ? [choix.o] : [];
+      return choix?.mode === 'crm' && !options.some(o => o.cle === choix.o.cle) ? [choix.o, ...options.slice(0, 7)] : options.slice(0, 8);
+    }
     const dejaLa = options.filter(o => sansAccent(o.nom).includes(t));
     const autres = (clients || []).filter(c => !options.some(o => o.clientId === c.id) && sansAccent(`${c.prenom} ${c.nom} ${c.nom} ${c.prenom}`).includes(t)).slice(0, 6)
       .map(c => {
@@ -118,7 +125,7 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
         return { cle: `c-${c.id}`, clientId: c.id, rechercheId: r?.id || null, nom: nomClient(c), sous: r ? `Recherche : ${r.nom || 'en cours'}` : 'Aucune recherche active' };
       });
     return [...dejaLa, ...autres];
-  }, [q, options, clients, recherches, choix]);
+  }, [q, options, clients, recherches, choix, suggestions]);
   const libreNom = choix?.mode === 'libre' ? choix.nom : '';
   const libreTel = choix?.mode === 'libre' ? choix.tel : '';
 
@@ -133,7 +140,7 @@ function ChoixAcheteur({ options, recherches, choix, onChoix, libre }: {
         <>
           <input className={s.cherche} value={q} onChange={e => setQ(e.target.value)} placeholder="Chercher un client du CRM…" aria-label="Chercher un client" />
           <div className={b.qui}>
-            {liste.length === 0 && <div className={b.vide}>{q.trim().length >= 2 ? 'Aucun client à ce nom.' : 'Aucun acheteur ne connaît encore ce bien : cherche-le par son nom.'}</div>}
+            {liste.length === 0 && <div className={b.vide}>{q.trim().length >= 2 ? 'Aucun client à ce nom.' : suggestions ? 'Aucun acheteur ne connaît encore ce bien : cherche-le par son nom.' : 'Tape le nom de l’acheteur.'}</div>}
             {liste.map(o => {
               const on = choix?.mode === 'crm' && choix.o.cle === o.cle;
               return (
@@ -1853,22 +1860,18 @@ function AlerteCreneau({ date, heure, duree, sauf }: { date: string; heure: stri
 }
 
 /* ══ Une visite ════════════════════════════════════════════════════════
-   V3.50 : la date passée et un créneau déjà pris le disent ; le dernier
-   acheteur choisi revient d'office (s'il connaît ce bien) ; `pour` : une
-   2e visite, l'acheteur déjà choisi. */
+   V3.50 : la date passée et un créneau déjà pris le disent ; `pour` : une
+   2e visite, l'acheteur déjà choisi. V3.134 : le dernier acheteur choisi ne
+   revient plus d'office. */
 const CLE_DERNIER = 'emilio.biens.dernierAcheteur';
-const lireDernier = (options: OptionAcheteur[]): ChoixA => {
-  try {
-    const x = JSON.parse(localStorage.getItem(CLE_DERNIER) || 'null') as { clientId?: string; rechercheId?: string | null } | null;
-    const o = x ? options.find(y => y.clientId === x.clientId && (y.rechercheId || null) === (x.rechercheId || null)) : undefined;
-    return o ? { mode: 'crm', o } : null;
-  } catch { return null; }
-};
+const DUREES_VISITE = [{ v: 30, lib: '30 min' }, { v: 45, lib: '45 min' }, { v: 60, lib: '1 h' }, { v: 90, lib: '1 h 30' }];
 export function FenVisite({ bien, options, recherches, pour, onFermer, onFait }: {
   bien: BienVente; options: OptionAcheteur[]; recherches: RechercheMini[]; onFermer: () => void; onFait: () => void;
   pour?: ChoixA;
 }) {
-  const [choix, setChoix] = useState<ChoixA>(() => pour ?? lireDernier(options));
+  /* V3.134 : plus d'acheteur repris d'office (le dernier choisi revenait,
+     coché, et la visite pouvait partir au mauvais nom) : on le cherche. */
+  const [choix, setChoix] = useState<ChoixA>(() => pour ?? null);
   const [date, setDate] = useState(aujourdhui());
   const [heure, setHeure] = useState('18:00');
   const [duree, setDuree] = useState(45);
@@ -1896,14 +1899,11 @@ export function FenVisite({ bien, options, recherches, pour, onFermer, onFait }:
     <Fenetre sur="Visite" couleur="#8b5cf6" titre={pour ? 'Planifier une 2e visite' : 'Planifier une visite'} sous={resume(bien)} occupe={occupe} onFermer={onFermer}
       pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
         <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Enregistrer la visite'}</button></>}>
-      <ChoixAcheteur options={options} recherches={recherches} choix={choix} onChoix={setChoix} libre="Qui visite" />
+      <ChoixAcheteur options={options} recherches={recherches} choix={choix} onChoix={setChoix} libre="Qui visite" suggestions={false} />
       <div className={b.groupe}>
         <div className={b.groupeT}><Ic n="calendrier" t={14} />Quand</div>
-        <div className={b.g3}>
-          <Ch lib="Date"><input className={s.input} type="date" value={date} onChange={e => setDate(e.target.value)} /></Ch>
-          <Ch lib="Heure"><input className={s.input} type="time" value={heure} onChange={e => setHeure(e.target.value)} /></Ch>
-          <Ch lib="Durée"><select className={b.select} value={duree} onChange={e => setDuree(Number(e.target.value))}>{[30, 45, 60, 90].map(x => <option key={x} value={x}>{`${x} min`}</option>)}</select></Ch>
-        </div>
+        {/* V3.134 : le calendrier, l'heure et la durée de l'agenda. */}
+        <ChoixQuand date={date} heure={heure} duree={duree} onDate={setDate} onHeure={setHeure} onDuree={setDuree} durees={DUREES_VISITE} />
         <AlerteCreneau date={date} heure={heure} duree={duree} />
         <Ch lib="Note (facultatif)"><input className={s.input} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex : vient avec son père ; deuxième visite" /></Ch>
       </div>
