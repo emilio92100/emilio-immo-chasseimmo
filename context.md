@@ -1498,6 +1498,38 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.135 — 8 octobre 2026 · Les cartes de la page Visites (maquette A), le nom et le bien cliquables
+
+Rien à passer dans Supabase.
+
+- **Une seule carte pour Compte rendu à faire, À venir et Effectuées** (Alexandre, maquette A sur
+  trois : « comme les demandes de visite ») — `CarteVisite` dans `PageVisites.tsx`, styles dans
+  `CartesVisites.module.css`. La date en grand à gauche (jour, numéro, mois, l'heure dans une
+  pastille ; ambre à faire, bleu à venir, vert faite) ; le client en titre avec son avatar ; une
+  pastille qui dit QUAND (« Demain », « Dans 5 jours », « Il y a 2 jours », calculé à l'heure de
+  Paris), puisque le titre de la section dit déjà où en est la visite ; le bien en petite carte
+  avec sa photo carrée (fini la photo collée au bord, « je n'aime pas la photo rectangulaire ») ;
+  le contact et « Rappel envoyé » dessous ; les boutons à droite (au téléphone, en ligne dessous).
+  Les annulées gardent leur ligne grise.
+- **Plusieurs visites du même client le même jour = une seule carte** (`CarteJournee`, Alexandre :
+  « le nom de la personne et en dessous plusieurs lignes du bien ») : la date (« 2 visites » dans
+  la pastille) et le nom une fois, une ligne par bien avec son heure, sa photo, son contact et ses
+  propres boutons (Effectuée ou Compte rendu, Annuler) ; le rappel une seule fois, il regroupe
+  déjà les visites du jour. Regroupement par client et par jour (`parJournee`), à faire et à venir
+  seulement : une visite faite garde sa carte, avec son avis. Au téléphone, les lignes prennent
+  toute la largeur sous la date et le nom.
+- **Pictos dessinés** à la place des émojis 🕐 📞 ⭐ et des émojis des issues (« À revoir »,
+  « Veut faire une offre »…) ; les étoiles de la note sont dessinées.
+- **Le nom ouvre la fiche de l'acheteur, sur ses visites** ; **le bien ouvre sa fiche** : celle du
+  mandat (`onNavigate('biens', { bien })`) quand la visite porte sur un bien de l'agence
+  (`biens.bien_vente_id`), sinon la fiche de l'acheteur descendue jusqu'au bien dans ses biens
+  présentés (`demanderOuvertureFiche`, `bienId`). La fiche se charge entière (`ficheClient`).
+  « Voir sa fiche » en bouton sur les cartes à faire et faites.
+- Les boutons font exactement ce qu'ils faisaient : compte rendu (la fenêtre commune avec la
+  fiche), annulation (`annulerVisites`), rappel (`ModaleRappelVisite`). La requête lit
+  `clients(*)` (pour l'avatar) et `biens(…, quartier, bien_vente_id)`.
+- Les anciennes règles `.pv-*` de `crm-mobile.css` sont retirées (plus aucune carte ne les porte).
+
 ### V3.133 — 8 octobre 2026 · Les charges à l'année chez l'acheteur, le Résumé d'une annonce type
 
 Rien à passer dans Supabase.
