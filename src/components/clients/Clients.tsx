@@ -1646,7 +1646,7 @@ export default function Clients({ onNavigate, fenetre }: {
         bouton={{ lib: 'Nouveau contact', onClick: openModal }}
         bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
         phrase="Clique plusieurs types pour les voir ensemble."
-        label="Filtrer par type de contact" actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
+        label="Filtrer par type de contact" aCheval actif={cats} onChoisir={k => { setImportes(null); choisirCat(k as Categorie); }}
         tuiles={[...ORDRE_TUILES.map(k => CATEGORIES.find(x => x.cle === k)).filter((x): x is (typeof CATEGORIES)[number] => !!x), TUILE_TRI, CATEGORIES[0], { cle: 'archives' as Categorie, lib: 'Archivés' }]
           /* Pas de tuile « 0 » : « Tous » toujours, les autres dès qu'il y a
              quelqu'un dedans — ou si elle est allumée (« Mes propriétaires »
