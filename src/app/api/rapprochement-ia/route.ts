@@ -38,6 +38,13 @@ export const maxDuration = 60;
  * outils/sql/parcours-rapprochement-ia.sql) avec l'empreinte de ce qui a été
  * lu : relancer ne relit que les recherches (ou le bien) qui ont bougé.
  *
+ * V3.125 (Alexandre : « il faut que les résultats soient bien présentés…
+ * qu'on comprenne ce que dit l'outil, les plus, les moins, le score
+ * potentiel aussi de chaque personne mis à côté ») : chaque avis porte aussi
+ * ses plus (`p`), ses moins (`m`) et une note de potentiel sur 100 (`s`).
+ * L'empreinte change de version : les avis d'avant, sans note, se relisent
+ * une fois.
+ *
  * Protégée par le code d'accès, comme le reste du CRM (src/proxy.ts).
  */
 
@@ -48,9 +55,12 @@ const MAX = 12;
 const MODELES = ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'];
 const ko = (erreur: string, status = 400) => NextResponse.json({ ok: false, erreur }, { status });
 
-type Avis = { v: 'oui' | 'a_voir' | 'non'; r: string; le: string; cle: string };
+/* `s` : la note de potentiel (0 à 100) ; `p`, `m` : les plus, les moins (V3.125). */
+type Avis = { v: 'oui' | 'a_voir' | 'non'; r: string; le: string; cle: string; s?: number; p?: string[]; m?: string[] };
+/* La version de ce qui est demandé : la changer fait relire les avis gardés. */
+const VERSION = 'v2';
 
-/* La forme de la réponse, imposée à l'IA (V3.124). */
+/* La forme de la réponse, imposée à l'IA (V3.124 ; plus, moins, note : V3.125). */
 const OUTIL = {
   name: 'rendre_avis',
   description: 'Rend un avis pour chaque couple bien × recherche à juger.',
@@ -65,9 +75,12 @@ const OUTIL = {
             bien: { type: 'string', description: 'L’id exact du bien' },
             recherche: { type: 'string', description: 'L’id exact de la recherche' },
             verdict: { type: 'string', enum: ['oui', 'a_voir', 'non'] },
+            score: { type: 'integer', minimum: 0, maximum: 100, description: 'Ses chances d’être intéressé, sur 100' },
             raison: { type: 'string', description: 'Une phrase de 140 caractères au plus, qui cite le fait précis' },
+            plus: { type: 'array', items: { type: 'string' }, description: 'De 0 à 3 points forts pour lui, 6 mots au plus chacun' },
+            moins: { type: 'array', items: { type: 'string' }, description: 'De 0 à 3 points faibles ou à vérifier, 6 mots au plus chacun' },
           },
-          required: ['bien', 'recherche', 'verdict', 'raison'],
+          required: ['bien', 'recherche', 'verdict', 'score', 'raison', 'plus', 'moins'],
         },
       },
     },
@@ -122,7 +135,7 @@ export async function POST(req: NextRequest) {
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!url || !cle) return ko('Variables Supabase manquantes', 500);
-  if (!apiKey) return ko('La clé de l’IA (ANTHROPIC_API_KEY) manque dans Vercel', 500);
+  if (!apiKey) return ko('La clé de la relecture (ANTHROPIC_API_KEY) manque dans Vercel', 500);
   const sb = createClient(url, cle, { auth: { persistSession: false } });
 
   let body: Record<string, unknown>;
@@ -180,7 +193,7 @@ export async function POST(req: NextRequest) {
        recherche. Déjà relu, rien n'a bougé : on garde l'avis. */
     const forcer = body.forcer === true;
     const couples = paires.filter(p => biens.has(p.b) && dossiers.has(p.r)).map(p => ({
-      ...p, empreinte: createHash('sha256').update(JSON.stringify(biens.get(p.b)!.x) + JSON.stringify(dossiers.get(p.r))).digest('hex').slice(0, 16),
+      ...p, empreinte: createHash('sha256').update(VERSION + JSON.stringify(biens.get(p.b)!.x) + JSON.stringify(dossiers.get(p.r))).digest('hex').slice(0, 16),
     }));
     const cacheDe = (b: string) => { const c = biens.get(b)?.b.rapprochement_ia; return (c && typeof c === 'object' ? c : {}) as Record<string, Avis>; };
     const aLire = couples.filter(c => forcer || cacheDe(c.b)[c.r]?.cle !== c.empreinte);
@@ -204,7 +217,13 @@ Règles :
 - Une information absente de la fiche n'est jamais un « non » : c'est « a_voir », et tu dis quoi vérifier.
 - N'invente rien : ne t'appuie que sur ce qui est écrit.
 
-Pour chaque couple, une phrase (140 caractères au plus), en français simple, qui cite le fait précis. Exemples : « Cherche un accès PMR : immeuble de 1932 au petit ascenseur. », « Lumineux et traversant, ce qu'il a aimé ; le budget passe. », « Exposition non renseignée : il a refusé deux biens trop sombres. »
+Pour chaque couple, Alexandre lit d'un coup d'œil :
+- « raison » : une phrase (140 caractères au plus), en français simple, qui résume ton avis et cite le fait précis. Exemples : « Cherche un accès PMR : immeuble de 1932 au petit ascenseur. », « Lumineux et traversant, ce qu'il a aimé ; le budget passe. », « Exposition non renseignée : il a refusé deux biens trop sombres. »
+- « plus » : de 0 à 3 points forts POUR CET ACHETEUR, 6 mots au plus chacun, du plus fort au moins fort. Ce qui colle à ce qu'il cherche ou à ce qui lui a plu : « Traversant et lumineux », « 3e étage avec ascenseur », « Dans son secteur », « Budget respecté ».
+- « moins » : de 0 à 3 points faibles ou à vérifier, 6 mots au plus chacun, le plus gênant d'abord : « Pas de balcon », « 6 % au-dessus du budget », « Exposition non renseignée ». Rien de gênant : une liste vide.
+- « score » : ses chances d'être intéressé, sur 100, selon tout ce que tu as lu. Cohérent avec le verdict : « oui » de 70 à 100, « a_voir » de 40 à 69, « non » de 0 à 39. Deux « oui » ne se valent pas : départage-les.
+
+Ne répète pas la phrase dans les plus et les moins : ils la complètent.
 
 Réponds avec l'outil « rendre_avis » : un avis par couple, avec leurs id exacts.`;
       const bLus = [...new Set(aLire.map(c => c.b))], rLus = [...new Set(aLire.map(c => c.r))];
@@ -220,7 +239,7 @@ Réponds avec l'outil « rendre_avis » : un avis par couple, avec leurs id exac
              coupée. L'outil impose la forme : l'API rend un objet, jamais
              du texte à relire. */
           body: JSON.stringify({
-            model: m, max_tokens: Math.min(6000, 800 + aLire.length * 220), system: consigne,
+            model: m, max_tokens: Math.min(8000, 800 + aLire.length * 340), system: consigne,
             tools: [OUTIL], tool_choice: { type: 'tool', name: OUTIL.name },
             messages: [{ role: 'user', content: contenu }],
           }),
@@ -228,12 +247,12 @@ Réponds avec l'outil « rendre_avis » : un avis par couple, avec leurs id exac
         });
         modele = m;
         /* Un modèle que la clé ne connaît pas : le suivant. */
-        if (reponse.status === 404 || reponse.status === 400) { const t = await reponse.text().catch(() => ''); if (/model/i.test(t)) continue; return ko(`L’IA a refusé la demande (${reponse.status}) : ${t.slice(0, 200)}`, 502); }
+        if (reponse.status === 404 || reponse.status === 400) { const t = await reponse.text().catch(() => ''); if (/model/i.test(t)) continue; return ko(`La relecture a été refusée (${reponse.status}) : ${t.slice(0, 200)}`, 502); }
         break;
       }
-      if (!reponse || !reponse.ok) return ko(`L’IA n’a pas répondu (${reponse?.status || 'aucune réponse'})`, 502);
+      if (!reponse || !reponse.ok) return ko(`La relecture n’a pas répondu (${reponse?.status || 'aucune réponse'})`, 502);
       const data = await reponse.json() as { stop_reason?: string; content?: { type?: string; text?: string; input?: { avis?: unknown } }[] };
-      type Lu = { bien?: unknown; recherche?: unknown; id?: unknown; verdict?: unknown; raison?: unknown };
+      type Lu = { bien?: unknown; recherche?: unknown; id?: unknown; verdict?: unknown; raison?: unknown; score?: unknown; plus?: unknown; moins?: unknown };
       let lus: Lu[] = [];
       const outil = (data.content || []).find(c => c.type === 'tool_use');
       if (outil && Array.isArray(outil.input?.avis)) lus = outil.input!.avis as Lu[];
@@ -243,7 +262,7 @@ Réponds avec l'outil « rendre_avis » : un avis par couple, avec leurs id exac
         const json = brut.slice(Math.max(0, brut.indexOf('[')), brut.lastIndexOf(']') + 1);
         try { lus = JSON.parse(json); } catch {
           console.error('[rapprochement-ia] réponse illisible', data.stop_reason, brut.slice(0, 600));
-          return ko(data.stop_reason === 'max_tokens' ? 'La réponse de l’IA a été coupée : relance, elle reprendra là où elle en est.' : 'La réponse de l’IA est illisible : relance.', 502);
+          return ko(data.stop_reason === 'max_tokens' ? 'La relecture a été coupée : relance, elle reprendra là où elle en est.' : 'La relecture a rendu une réponse illisible : relance.', 502);
         }
       }
       const le = new Date().toISOString();
@@ -252,22 +271,33 @@ Réponds avec l'outil « rendre_avis » : un avis par couple, avec leurs id exac
         const c = aLire.find(y => y.r === r && (y.b === String(x.bien ?? '') || (!x.bien && bLus.length === 1)));
         const v = String(x.verdict);
         if (!c || !['oui', 'a_voir', 'non'].includes(v)) continue;
-        poser(c.b, c.r, { v: v as Avis['v'], r: court(x.raison, 220), le, cle: c.empreinte });
+        /* La note suit le verdict, même si l'IA s'en écarte un peu. */
+        const borne: Record<string, [number, number]> = { oui: [70, 100], a_voir: [40, 69], non: [0, 39] };
+        const brut = Number(x.score);
+        const [mi, ma] = borne[v];
+        const s = Number.isFinite(brut) ? Math.min(ma, Math.max(mi, Math.round(brut))) : Math.round((mi + ma) / 2);
+        const liste = (l: unknown) => (Array.isArray(l) ? l : []).map(t => court(t, 60)).filter(Boolean).slice(0, 3);
+        poser(c.b, c.r, { v: v as Avis['v'], r: court(x.raison, 220), le, cle: c.empreinte, s, p: liste(x.plus), m: liste(x.moins) });
       }
     }
 
     /* Gardés sur chaque bien. La colonne pas encore créée : on le dit, sans
-       perdre la réponse. */
+       perdre la réponse. V3.125 : les relectures partent à plusieurs en même
+       temps ; on relit la colonne juste avant d'écrire, pour ne pas effacer
+       ce qu'une autre vient d'y mettre. */
     let avertissement = '';
     for (const b of [...new Set(aLire.map(c => c.b))]) {
-      const { error: eC } = await sb.from('biens_vente').update({ rapprochement_ia: { ...cacheDe(b), ...(avis[b] || {}) } }).eq('id', b);
+      const { data: frais } = await sb.from('biens_vente').select('rapprochement_ia').eq('id', b).maybeSingle();
+      const avant = (frais as { rapprochement_ia?: unknown } | null)?.rapprochement_ia;
+      const base = avant && typeof avant === 'object' ? (avant as Record<string, Avis>) : cacheDe(b);
+      const { error: eC } = await sb.from('biens_vente').update({ rapprochement_ia: { ...base, ...(avis[b] || {}) } }).eq('id', b);
       if (eC && !avertissement) avertissement = /rapprochement_ia/i.test(eC.message)
         ? 'Les avis ne sont pas gardés : passe outils/sql/parcours-rapprochement-ia.sql dans Supabase.'
         : `Les avis ne sont pas gardés : ${eC.message}`;
     }
     return NextResponse.json({ ok: true, avis, relues: aLire.length, modele, avertissement });
   } catch (e) {
-    const m = (e as Error).name === 'TimeoutError' ? 'L’IA a mis trop de temps : relance, elle reprendra là où elle en est.' : ((e as Error).message || 'Erreur');
+    const m = (e as Error).name === 'TimeoutError' ? 'La relecture a mis trop de temps : relance, elle reprendra là où elle en est.' : ((e as Error).message || 'Erreur');
     return ko(m, 500);
   }
 }
