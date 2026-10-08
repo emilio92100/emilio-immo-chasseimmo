@@ -224,7 +224,7 @@ export default function AppLayout() {
          garde la sienne. */
       const f = ficheDeContact(c);
       const de = pageRef.current;
-      if (de !== 'fiche') f.depuis = de === 'relances' ? 'relances' : undefined;
+      if (de !== 'fiche') f.depuis = de === 'relances' ? 'relances' : de === 'agenda' ? 'agenda' : undefined;
       setFicheClient(c);
       setFiches(l => ajouterFiche(l, f));
       setChargeFiche(false);
@@ -243,6 +243,15 @@ export default function AppLayout() {
     if (page === 'relances' && data && typeof data === 'object' && (data as { retour?: boolean }).retour) {
       window.history.replaceState(null, '', `${window.location.pathname}?page=relances&retour=1`);
     }
+    /* V3.138 — Le retour à l'agenda (Alexandre : « quand on fait retour, on
+       ne revient pas sur la fiche qui était ouverte depuis l'agenda ») :
+       l'agenda a noté, en partant, le jour, la vue et le rendez-vous ouvert
+       (PageAgenda, `memoriserRetour`) ; il les relit dans l'adresse. */
+    if (page === 'agenda' && data && typeof data === 'object' && (data as { retour?: boolean }).retour) {
+      let q: string | null = null;
+      try { q = window.sessionStorage.getItem('emi-retour-agenda'); } catch { /* sans mémoire, l'agenda du jour */ }
+      if (q && q.startsWith('?page=agenda')) window.history.replaceState(null, '', `${window.location.pathname}${q}`);
+    }
     /* « Mes vendeurs », « Mes estimations »… (le menu de gauche, V3.24) : la
        rubrique s'ouvre sur cette catégorie. */
     const vue = (page === 'clients' || page === 'biens') && data && typeof data === 'object' ? (data as { vue?: string }).vue : undefined;
@@ -250,7 +259,9 @@ export default function AppLayout() {
     /* Un bien en vente précis (« Voir le bien ») : Biens en vente le lit
        dans l'URL en s'ouvrant. */
     const bienId = page === 'biens' && data && typeof data === 'object' ? (data as { bien?: string }).bien : undefined;
-    if (bienId) window.history.replaceState(null, '', `${window.location.pathname}?page=biens&bien=${encodeURIComponent(bienId)}`);
+    /* V3.138 : ouvert depuis l'agenda, son bouton retour y ramène. */
+    const depuisAgenda = !!bienId && (data as { depuis?: string }).depuis === 'agenda';
+    if (bienId) window.history.replaceState(null, '', `${window.location.pathname}?page=biens&bien=${encodeURIComponent(bienId)}${depuisAgenda ? '&depuis=agenda' : ''}`);
     /* « Voir sur la carte » depuis une fiche (V3.26) : la carte s'ouvre sur
        ce contact ou ce bien (« c:<id> », « b:<id> »). */
     if (focusCarte) window.history.replaceState(null, '', `${window.location.pathname}?page=carte&focus=${encodeURIComponent(focusCarte)}`);
@@ -301,6 +312,7 @@ export default function AppLayout() {
      la barre n'est pas) fait de même. */
   const fermerContact = useCallback((f?: FicheOuverte) => {
     if (f?.depuis === 'relances') handleNavigate('relances', { retour: true });
+    else if (f?.depuis === 'agenda') handleNavigate('agenda', { retour: true });
     else handleNavigate('clients');
   }, [handleNavigate]);
   const ficheAffichee = ficheClient ? fiches.find(x => x.k === 'contact' && x.id === ficheClient.id) : undefined;
