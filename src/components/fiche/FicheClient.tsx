@@ -26,8 +26,10 @@ import { nomFoyer, conjointDe } from '@/lib/foyer';
 import {
   BasculeCriteres, CorpsCriteres, CRIT_VIDE, EXPOSITIONS, etapesCriteres,
   FINANCEMENTS, FriseCriteres, ICONE_EXPO, lireModeCrit, ecrireModeCrit,
-  texteChoix, texteEtats, URGENCES, CUISINES,
+  texteChoix, texteEtats, URGENCES, CUISINES, ORDRE_ETAPES_CRIT,
 } from '@/components/shared/CriteresRecherche';
+import { BlocParcours } from '@/components/shared/Parcours';
+import { lireParcours, memeParcours, parcoursVide, texteParcours } from '@/lib/parcours';
 import type { CritForm, ModeCrit, Niveau } from '@/components/shared/CriteresRecherche';
 import type { Arret } from '@/lib/arrets';
 import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes-visite';
@@ -1027,6 +1029,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   useEffect(() => { setModeCrit(lireModeCrit()); }, []);
   const changerModeCrit = (m: ModeCrit) => { setModeCrit(m); setEtapeCrit(0); setSensCrit(1); ecrireModeCrit(m); };
   const ouvrirCriteres = (etape = 0) => { setEtapeCrit(etape); setSensCrit(1); setShowCriteres(true); };
+  /* V3.122 : « Son parcours » de la fiche ouvre son étape, en mode étape par
+     étape (le choix d'affichage enregistré, lui, ne bouge pas). */
+  const ouvrirEtapeCrit = (id: string) => { setModeCrit('etapes'); ouvrirCriteres(Math.max(0, ORDRE_ETAPES_CRIT.indexOf(id))); };
   const [showMandat, setShowMandat] = useState(false);
   /* La dernière signature en ligne de la recherche affichée. Une
      rétractation se voit sur le bouton du mandat (en rouge, avec une pastille
@@ -1330,6 +1335,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       etat_souhaite: r.etat_souhaite || '', exposition_souhaitee: r.exposition_souhaitee || '',
       surface_sejour_min: r.surface_sejour_min?.toString() || '',
       urgence: r.urgence || '', financement: r.financement || '', apport: r.apport?.toString() || '',
+      parcours: lireParcours((r as unknown as { parcours?: unknown }).parcours),
     });
     setMandat({
       date_signature: r.mandat_date_signature || '', duree: r.mandat_duree?.toString() || '3',
@@ -2039,7 +2045,27 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       alert(`Les critères n'ont pas pu être enregistrés.\n\n${error.message}\n\nSi le message parle d'une colonne inconnue, c'est la migration SQL qui n'a pas encore été passée.`);
       return;
     }
-    if (data) {
+    /* V3.122 : son parcours, à part. Une colonne pas encore créée dans
+       Supabase ne bloque pas le reste des critères : elle le dit. */
+    let ligne = data as Recherche | null;
+    const parcours = lireParcours(crit.parcours);
+    if (ligne && !memeParcours(lireParcours(avant?.parcours), parcours)) {
+      const { data: d2, error: e2 } = await supabase.from('recherches').update({ parcours: parcoursVide(parcours) ? null : parcours }).eq('id', cible).select().single();
+      if (e2 || !d2) {
+        signalerEchec('Son parcours', e2 && /parcours/i.test(e2.message)
+          ? 'la colonne n’existe pas encore dans Supabase : passe outils/sql/parcours-rapprochement-ia.sql, puis enregistre de nouveau. Le reste des critères est enregistré.'
+          : `${e2?.message || 'aucune ligne modifiée'}. Le reste des critères est enregistré.`);
+      } else {
+        ligne = d2 as Recherche;
+        await verifie('L’historique du client', supabase.from('journal').insert({
+          client_id: client.id, recherche_id: cible,
+          type: 'criteres_modifies', titre: '🧭 Son parcours noté',
+          description: texteParcours(parcours) || 'Parcours effacé', metadata: {},
+        }));
+      }
+    }
+    if (ligne) {
+      const data = ligne;
       setRecherches(rs => rs.map(r => r.id === cible ? (data as Recherche) : r));
       const change = resumeChangements(avant, data as unknown as Record<string, unknown>);
       if (change) {
@@ -4542,6 +4568,9 @@ ${signatureMail()}`,
                       <div style={{ fontSize: 14, color: 'var(--emilio)', lineHeight: 1.6 }}>{cr.notes}</div>
                     </div>
                   )}
+
+                  {/* V3.122 — Son parcours : visible d'Alexandre seul. */}
+                  <BlocParcours parcours={lireParcours((rechercheActive as unknown as { parcours?: unknown } | null)?.parcours)} onModifier={() => ouvrirEtapeCrit('parcours')} />
                   </div>
                 </div>
               ) : (
@@ -5316,7 +5345,7 @@ ${signatureMail()}`,
               })}
             </div>
             <div className={`${styles.modalFooter} ${styles.critNav}`}>
-              <button className={styles.btn} onClick={() => { setShowHisto(false); ouvrirCriteres(8); }}
+              <button className={styles.btn} onClick={() => { setShowHisto(false); ouvrirCriteres(ORDRE_ETAPES_CRIT.indexOf('contexte')); }}
                 title="La note est la vôtre : c'est vous qui la réécrivez pour lui">✏️ Modifier ma note</button>
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setShowHisto(false)}>Fermer</button>
             </div>
