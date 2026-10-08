@@ -35,6 +35,7 @@ import { BarreSelection, CaseLigne, CaseTout, ConfirmerLot, STYLE_CHOISI, type A
 import { STATUTS_LOT, archiverContact, changerStatutContact, effacerContact, empecheSuppression, type StatutLot } from '@/lib/supprimer-contacts';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
+import { lireParcours, parcoursVide } from '@/lib/parcours';
 
 const STATUTS = [
   { key: 'tous',        label: 'Tous',       color: '' },
@@ -976,7 +977,7 @@ export default function Clients({ onNavigate, fenetre }: {
         /* Vérifié (V3.17) : un contact sans recherche a une fiche vide et
            aucune veille. Le contact existe déjà : on le dit, et comment
            rattraper (les critères de sa fiche recréent la recherche). */
-        const { error: eRech } = await supabase.from('recherches').insert({
+        const { data: rech, error: eRech } = await supabase.from('recherches').insert({
           client_id: data.id,
           nom: 'Recherche principale',
           /* L'adresse interne de la recherche. Elle ne s'envoie plus au
@@ -992,8 +993,14 @@ export default function Clients({ onNavigate, fenetre }: {
           mandat_date_signature: form.sans_mandat ? null : (form.mandat_date_signature || null),
           mandat_duree: form.sans_mandat ? null : ent(form.mandat_duree),
           mandat_honoraires: form.sans_mandat ? null : (form.mandat_honoraires || null),
-        });
+        }).select('id').maybeSingle();
         if (eRech) signalerEchec('Le contact est créé, mais sa recherche', `${eRech.message}. Ouvre sa fiche et enregistre ses critères : la recherche se crée alors.`);
+        /* V3.122 : son parcours, à part (une colonne pas encore créée ne fait
+           pas échouer la recherche). */
+        const parcours = lireParcours(cr.parcours);
+        if (!eRech && rech && !parcoursVide(parcours)) {
+          await verifie('Son parcours', supabase.from('recherches').update({ parcours }).eq('id', (rech as { id: string }).id).select('id'), { ligne: true });
+        }
         await addJournal(data.id, 'creation', 'Dossier créé', `Référence : ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
       }
       const versBien = !!data && !acheteur && form.creerBien && (form.types.includes('vendeur') || form.types.includes('proprietaire'));
