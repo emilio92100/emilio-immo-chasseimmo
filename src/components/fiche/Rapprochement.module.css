@@ -273,3 +273,30 @@
   .lancer { padding: 12px; }
   .lancer .btn { width: 100%; }
 }
+
+/* ═══ V3.125 — Le même procédé partout : les étapes, puis rangé par avis ═══ */
+.cherche > div { width: min(540px, 100%); text-align: left; }
+.ligneCorps { grid-template-columns: 76px minmax(0, 1fr) auto; }
+.ligneTx { gap: 5px; }
+.ligneCorps { align-items: start; }
+.alerte { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 6px; padding: 10px 12px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; font-size: 13px; line-height: 1.45; color: #92400e; }
+.alerte svg { margin-top: 2px; flex-shrink: 0; }
+.cocherOui { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 11px; border: 1px solid #86efac; background: #f0fdf4; color: #166534; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.cocherOui:hover { background: #dcfce7; }
+.groupe { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.groupeT { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 4px 12px 2px; }
+.groupeT > b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.groupeT > strong { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #64748b; }
+.groupeT > span { font-size: 13px; color: #64748b; }
+.groupeT > em { margin-left: auto; font-style: normal; font: 700 12.5px 'DM Sans', sans-serif; color: #34496e; }
+.groupeBtn { width: 100%; padding: 10px 12px; border: 1px dashed #fecaca; border-radius: 12px; background: #fffafa; cursor: pointer; text-align: left; font-family: inherit; align-items: center; }
+.groupeBtn:hover { background: #fef2f2; }
+.apercuAvis { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 720px) {
+  .ligneCorps { grid-template-columns: 64px minmax(0, 1fr); }
+  .groupeT > em { margin-left: 0; }
+  .cherche { padding: 20px 14px 30px; }
+}
+.ligne { align-items: start; }
+.ligne > .coche { margin-top: 18px; }
+.ligne > .oeil { margin-top: 10px; }

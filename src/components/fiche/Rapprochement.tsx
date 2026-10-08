@@ -21,7 +21,16 @@
      précédent (`vus`, notés au Suivi) sont repliés à part, « Déjà vus » ;
    · le pied dit ce que fait chaque bouton : « Le mettre dans sa sélection »
      (rien ne part), « Le mettre dans son espace » (V3.116 : présenté sans
-     mail) ou « Le lui envoyer par mail » (il passe dans Présentés). */
+     mail) ou « Le lui envoyer par mail » (il passe dans Présentés).
+
+   V3.125 (Alexandre : « le même procédé… depuis la fiche d'un acheteur dans
+   rapprochement ») : « Lancer » fait le premier tri PUIS la relecture de ses
+   biens en vente (RapprochementIA.tsx), les étapes à l'écran ; les résultats
+   n'arrivent qu'ensuite. Tes biens en vente sont rangés par avis — Oui, À
+   voir, puis Non replié — avec leur note de potentiel, leurs plus et leurs
+   moins ; les annonces des veilles (déjà lues par la veille) suivent, à
+   part, avec leur note de critères. Rien n'est coché d'office : « Cocher
+   les oui ». */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -31,7 +40,7 @@ import {
   type SourceRappro, type PeriodeVeille, type Trouve,
 } from '@/lib/rapprochement';
 import { SEUIL_CORRESPOND, suiteEnvoi } from '@/components/biens/outils';
-import { AvisLigne, CarteIA, analyserIA, avisDesBiens, rangIA, type AvisParBien } from '@/components/biens/RapprochementIA';
+import { AvecScore, AvisDetail, IconeAvis, MOT_IA, Progression, analyserIA, compareIA, type AvisIA, type AvisParBien } from '@/components/biens/RapprochementIA';
 import s from './Rapprochement.module.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -112,11 +121,13 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   const [filtre, setFiltre] = useState<'tout' | 'mandat' | 'veille'>('tout');
   const [apercu, setApercu] = useState<Trouve | null>(null);
   const [pose, setPose] = useState<'' | 'selection' | 'espace' | 'mail'>('');
-  /* V3.123 — Le rapprochement intelligent, pour ses mandats (les biens des
-     veilles ont déjà été lus par la veille) : lancé de lui-même avec les
-     résultats, les avis déjà gardés sur les biens d'abord. */
+  /* V3.123 → V3.125 — La relecture de ses mandats (les biens des veilles ont
+     déjà été lus par la veille), pendant la recherche : les résultats
+     n'arrivent qu'une fois relus. */
   const [ia, setIa] = useState<AvisParBien>({});
-  const [iaEtat, setIaEtat] = useState<{ en: boolean; fait: number; erreur: string; info: string }>({ en: false, fait: 0, erreur: '', info: '' });
+  const [phase, setPhase] = useState<'tri' | 'relit' | 'fin'>('tri');
+  const [iaEtat, setIaEtat] = useState<{ fait: number; total: number; erreur: string; info: string; manquent: number; trouves: number; mandats: number }>({ fait: 0, total: 0, erreur: '', info: '', manquent: 0, trouves: 0, mandats: 0 });
+  const [voirNon, setVoirNon] = useState(false);
   const avisDe = (t: Trouve) => (t.vente ? ia[t.vente.id]?.[String(recherche.id)] || null : null);
 
   useEffect(() => {
@@ -145,7 +156,8 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   const aComparer = comptes ? (source === 'mandats' ? comptes.mandats : source === 'veilles' ? (nbVeilles || 0) : comptes.mandats + (nbVeilles || 0)) : null;
 
   async function lancer(src: SourceRappro = source) {
-    setErreur(''); setEtape('cherche'); setChoisis(new Set()); setFiltre('tout');
+    setErreur(''); setEtape('cherche'); setChoisis(new Set()); setFiltre('tout'); setPhase('tri'); setIa({}); setVoirNon(false);
+    setIaEtat({ fait: 0, total: 0, erreur: '', info: '', manquent: 0, trouves: 0, mandats: 0 });
     const debut = Date.now();
     try {
       const r = await rapprocher(recherche, client.id, src, periode);
@@ -153,12 +165,21 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
          laissait croire que rien n'avait été cherché. */
       const reste = 1400 - (Date.now() - debut);
       if (reste > 0) await new Promise(ok => setTimeout(ok, reste));
+      /* La relecture de ses mandats parmi les nouveaux résultats, 24 au plus. */
+      const neufs = r.trouves.filter(t => !nouveautes || !vusSet.has(t.cle));
+      const paires = neufs.filter(t => t.vente).slice(0, 24).map(t => ({ b: t.vente!.id, r: String(recherche.id) }));
+      setIaEtat(e => ({ ...e, total: paires.length, trouves: neufs.length, mandats: paires.length }));
+      setPhase('relit');
+      if (paires.length) {
+        const x = await analyserIA(paires, (avis, fait) => { setIa(avis); setIaEtat(e => ({ ...e, fait })); });
+        setIaEtat(e => ({ ...e, erreur: x.erreur, info: x.info, manquent: x.manquent }));
+      } else await new Promise(ok => setTimeout(ok, 500));
+      setPhase('fin');
+      await new Promise(ok => setTimeout(ok, 350));
       setRes(r);
-      const ventes = r.trouves.filter(t => t.vente).map(t => t.vente!);
-      setIa(avisDesBiens(ventes as unknown as ({ id: string } & Record<string, unknown>)[]));
-      /* Les « correspondent » sont cochés d'office : c'est eux qu'on garde le plus souvent. */
+      /* V3.125 : rien de coché d'office, sauf les mandats d'une alerte (« un acheteur arrive »). */
       const aCocher = new Set((depart?.cocher || []).map(id => `m-${id}`));
-      setChoisis(new Set(r.trouves.filter(t => (!nouveautes || !vusSet.has(t.cle)) && (t.corr.note >= SEUIL_CORRESPOND || aCocher.has(t.cle))).map(t => t.cle)));
+      setChoisis(new Set(r.trouves.filter(t => aCocher.has(t.cle)).map(t => t.cle)));
       setEtape('resultats');
       noterRapprochement(client.id, recherche.id, r.trouves.length, src, periode, r.trouves.map(t => t.cle));
     } catch (e) {
@@ -190,50 +211,38 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
   const nouveaux = useMemo(() => (res?.trouves || []).filter(t => !nouveautes || !vusSet.has(t.cle)), [res, nouveautes, vusSet]);
   const anciens = useMemo(() => (nouveautes ? (res?.trouves || []).filter(t => vusSet.has(t.cle)) : []), [res, nouveautes, vusSet]);
   const liste = useMemo(() => nouveaux.filter(t => filtre === 'tout' || t.source === filtre), [nouveaux, filtre]);
-  /* Avec les avis de l'IA : les « oui » en tête, les « non » à la fin, puis la note. */
-  const parAvis = (l: Trouve[]) => l.map((t, k) => ({ t, k })).sort((p, q) => rangIA(avisDe(p.t)) - rangIA(avisDe(q.t)) || p.k - q.k).map(p => p.t);
-  const bons = parAvis(liste.filter(t => t.corr.note >= SEUIL_CORRESPOND));
-  const partiels = parAvis(liste.filter(t => t.corr.note < SEUIL_CORRESPOND));
-  /* Les couples que l'IA relit : ses mandats parmi les résultats, 24 au plus. */
-  const paires = useMemo(() => nouveaux.filter(t => t.vente).slice(0, 24).map(t => ({ b: t.vente!.id, r: String(recherche.id) })), [nouveaux, recherche.id]);
-  async function lancerIA() {
-    if (!paires.length || iaEtat.en) return;
-    setIaEtat({ en: true, fait: 0, erreur: '', info: '' });
-    const r = await analyserIA(paires, ia, (avis, fait) => {
-      setIa(avis); setIaEtat(e => ({ ...e, fait }));
-      /* Un « non » de l'IA se décoche. */
-      setChoisis(c => { const n = new Set(c); for (const t of nouveaux) if (t.vente && avis[t.vente.id]?.[String(recherche.id)]?.v === 'non') n.delete(t.cle); return n; });
-    });
-    setIaEtat(e => ({ ...e, en: false, erreur: r.erreur, info: r.info }));
-  }
-  const lanceIA = useRef('');
-  useEffect(() => {
-    if (etape !== 'resultats' || !paires.length) return;
-    const cle = paires.map(p => p.b).join();
-    if (lanceIA.current === cle) return;
-    lanceIA.current = cle;
-    void lancerIA();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [etape, paires]);
+  /* V3.125 : ses mandats relus, rangés par avis (puis la note de potentiel) ;
+     ceux qui n'ont pas pu l'être vont avec « À voir ». Les veilles à part. */
+  const relus = liste.filter(t => t.source === 'mandat').map((t, k) => ({ t, k, a: avisDe(t) })).sort((p, q) => compareIA(p.a, q.a) || p.k - q.k);
+  const groupeDe = (a: AvisIA | null): AvisIA['v'] => (a ? a.v : 'a_voir');
+  const veillesL = liste.filter(t => t.source !== 'mandat');
+  const ouiPossibles = relus.filter(y => groupeDe(y.a) === 'oui').map(y => y.t.cle);
+  const tousOui = ouiPossibles.length > 0 && ouiPossibles.every(k => choisis.has(k));
   const nbM = nouveaux.filter(t => t.source === 'mandat').length;
   const nbV = nouveaux.filter(t => t.source === 'veille').length;
 
   const ligne = (t: Trouve, i: number) => {
     const on = choisis.has(t.cle);
     const e = ecart(t);
+    const av = avisDe(t);
     return (
       <div key={t.cle} className={`${s.ligne} ${on ? s.ligneOn : ''}`} style={{ animationDelay: `${Math.min(i, 8) * 0.05}s` }}>
         <button type="button" className={`${s.coche} ${on ? s.cocheOn : ''}`} aria-pressed={on} aria-label={on ? 'Retirer ce bien du choix' : 'Choisir ce bien'} onClick={() => basculer(t.cle)}>
           <Icone nom="coche" taille={14} epaisseur={3.2} />
         </button>
         <button type="button" className={s.ligneCorps} onClick={() => setApercu(t)}>
-          <Photo t={t} />
-          <Note n={t.corr.note} />
+          {/* V3.125 : la note juste sous la photo — de potentiel quand le bien a été relu, sinon de critères. */}
+          {av && typeof av.s === 'number'
+            ? <AvecScore s={av.s} v={av.v} forme="carre"><Photo t={t} /></AvecScore>
+            : <AvecScore s={t.corr.note} v={null} forme="carre" legende="critères"><Photo t={t} /></AvecScore>}
           <span className={s.ligneTx}>
             <b>{t.titre}</b>
             {t.lieu && <span>{t.lieu}</span>}
-            <span className={e.ok ? s.ecartOk : s.ecartKo}>{e.texte}</span>
-            {avisDe(t) && <AvisLigne avis={avisDe(t)!} />}
+            {av ? (
+              <>
+                <AvisDetail avis={av} sansMot />
+              </>
+            ) : <span className={e.ok ? s.ecartOk : s.ecartKo}>{e.texte}</span>}
           </span>
           <span className={s.ligneD}>
             <b>{EUR(t.prix) || 'Prix non indiqué'}</b>
@@ -323,19 +332,18 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
         )}
 
         {etape === 'cherche' && (
-          <div className={s.cherche} role="status">
-            <span className={s.sourire} aria-hidden="true">
-              <svg viewBox="0 0 120 120" width="120" height="120">
-                <circle cx="60" cy="60" r="52" fill="none" stroke="#f1e6c6" strokeWidth="6" />
-                <circle className={s.anneau} cx="60" cy="60" r="52" fill="none" stroke="#c9a84c" strokeWidth="6" strokeLinecap="round" strokeDasharray="90 237" />
-                <circle cx="60" cy="60" r="36" fill="#2e4166" />
-                <circle className={s.oeilG} cx="48" cy="54" r="4" fill="#e8c96a" />
-                <circle className={s.oeilD} cx="72" cy="54" r="4" fill="#e8c96a" />
-                <path d="M46 68 Q60 80 74 68" fill="none" stroke="#e8c96a" strokeWidth="4" strokeLinecap="round" />
-              </svg>
-            </span>
-            <b>{aComparer != null ? `Je compare ${aComparer} biens avec les critères de ${prenom}…` : `Je compare vos biens avec les critères de ${prenom}…`}</b>
-            <span className={s.points}><i /><i /><i /></span>
+          <div className={s.cherche}>
+            <Progression titre={`Rapprochement pour ${prenom}…`} etapes={[
+              { t: 'Le premier tri', etat: phase === 'tri' ? 'en' : 'fait',
+                d: phase === 'tri'
+                  ? (aComparer != null ? `Je compare ${aComparer} bien${aComparer > 1 ? 's' : ''} avec les critères de ${prenom}…` : `Je compare tes biens avec les critères de ${prenom}…`)
+                  : `${iaEtat.trouves} bien${iaEtat.trouves > 1 ? 's' : ''} à 50 % et plus, dont ${iaEtat.mandats} de tes biens en vente.` },
+              { t: 'La relecture de tes biens en vente', etat: phase === 'tri' ? 'attente' : phase === 'relit' && iaEtat.total ? 'en' : 'fait', fait: iaEtat.fait, total: iaEtat.total,
+                d: phase === 'tri' ? `Ses indispensables, son parcours, ses comptes rendus de visite, face à chaque fiche.`
+                  : !iaEtat.total ? 'Rien à relire : les annonces des veilles ont déjà été lues par la veille.'
+                    : phase === 'relit' ? `${Math.min(iaEtat.fait, iaEtat.total)} sur ${iaEtat.total} relu${iaEtat.total > 1 ? 's' : ''}…` : `${iaEtat.total} relu${iaEtat.total > 1 ? 's' : ''}.` },
+              { t: 'Le classement', etat: phase === 'fin' ? 'en' : 'attente', d: 'Oui, à voir, non : les meilleures chances d’abord.' },
+            ]} />
           </div>
         )}
 
@@ -346,15 +354,19 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                 <button type="button" className={filtre === 'tout' ? s.puceOn : s.puce} onClick={() => setFiltre('tout')}>Tous <b>{nouveaux.length}</b></button>
                 {source !== 'veilles' && <button type="button" className={filtre === 'mandat' ? s.puceOn : s.puce} onClick={() => setFiltre('mandat')}><Icone nom="etiquette" taille={13} epaisseur={2.2} />Mes mandats <b>{nbM}</b></button>}
                 {source !== 'mandats' && <button type="button" className={filtre === 'veille' ? s.puceOn : s.puce} onClick={() => setFiltre('veille')}><Icone nom="loupe" taille={13} epaisseur={2.2} />Veilles <b>{nbV}</b></button>}
-                <span className={s.filtresD}>La meilleure note d’abord</span>
+                {ouiPossibles.length > 0 && (
+                  <button type="button" className={s.cocherOui} onClick={() => setChoisis(c => { const n = new Set(c); for (const k of ouiPossibles) { if (tousOui) n.delete(k); else n.add(k); } return n; })}>
+                    <Icone nom="coche" taille={13} epaisseur={2.8} />{tousOui ? 'Décocher les oui' : `Cocher les oui (${ouiPossibles.length})`}
+                  </button>
+                )}
+                <span className={s.filtresD}>Rien n’est coché d’office</span>
               </div>
             )}
             <div className={s.liste}>
-              {paires.length > 0 && (
-                <CarteIA compact total={paires.length} avis={paires.map(p => ia[p.b]?.[p.r]).filter((y): y is NonNullable<typeof y> => !!y)}
-                  en={iaEtat.en} fait={iaEtat.fait} erreur={iaEtat.erreur} info={iaEtat.info} onLancer={() => { void lancerIA(); }}
-                  texteRepos={`L’IA relit chacun de tes mandats face à tout ce qu’on sait de ${prenom} : ses indispensables, son parcours, ses comptes rendus de visite.`} />
+              {iaEtat.manquent > 0 && (
+                <p className={s.alerte}><Icone nom="info" taille={15} epaisseur={2} /><span>{`${iaEtat.manquent} de tes biens n’${iaEtat.manquent > 1 ? 'ont' : 'a'} pas pu être relu${iaEtat.manquent > 1 ? 's' : ''}${iaEtat.erreur ? ` (${iaEtat.erreur})` : ''} : « Refaire » le relira.`}</span></p>
               )}
+              {iaEtat.info && <p className={s.alerte}><Icone nom="info" taille={15} epaisseur={2} /><span>{iaEtat.info}</span></p>}
               {nouveaux.length === 0 && anciens.length > 0 ? (
                 <div className={s.vide}>
                   <span className={s.videIc}><Icone nom="loupe" taille={26} epaisseur={2} /></span>
@@ -370,10 +382,30 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                 </div>
               ) : (
                 <>
-                  {bons.length > 0 && <span className={s.sur}>Correspondent · 70 % et plus</span>}
-                  {bons.map(ligne)}
-                  {partiels.length > 0 && <span className={s.sur} style={{ marginTop: bons.length ? 10 : 0 }}>En partie · 50 à 69 %</span>}
-                  {partiels.map((t, i) => ligne(t, bons.length + i))}
+                  {relus.length > 0 && <span className={s.sur}>{`Tes biens en vente · relus pour ${prenom}`}</span>}
+                  {(['oui', 'a_voir', 'non'] as const).map(v => {
+                    const l = relus.filter(y => groupeDe(y.a) === v);
+                    if (!l.length) return null;
+                    const replie = v === 'non' && !voirNon;
+                    const tete = (
+                      <>
+                        <IconeAvis v={v} t={22} />
+                        <b>{MOT_IA[v]}</b>
+                        <strong>{l.length}</strong>
+                        <span>{v === 'oui' ? `Ils peuvent plaire à ${prenom}.` : v === 'a_voir' ? 'Un point à vérifier avec lui.' : 'Le rapprochement les écarte.'}</span>
+                      </>
+                    );
+                    return (
+                      <div key={v} className={s.groupe}>
+                        {v === 'non'
+                          ? <button type="button" className={`${s.groupeT} ${s.groupeBtn}`} aria-expanded={!replie} onClick={() => setVoirNon(o => !o)}>{tete}<em>{replie ? 'Voir pourquoi' : 'Replier'}</em></button>
+                          : <div className={s.groupeT}>{tete}</div>}
+                        {!replie && l.map((y, i) => ligne(y.t, i))}
+                      </div>
+                    );
+                  })}
+                  {veillesL.length > 0 && <span className={s.sur} style={{ marginTop: relus.length ? 12 : 0 }}>{'Les annonces de tes veilles · la note de leurs critères'}</span>}
+                  {veillesL.map((t, i) => ligne(t, i))}
                 </>
               )}
               {anciens.length > 0 && (
@@ -447,6 +479,12 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                 <b>{EUR(apercu.prix) || 'Prix non indiqué'}</b>
                 <Source t={apercu} />
               </div>
+              {avisDe(apercu) && (
+                <div className={s.apercuAvis}>
+                  <span className={s.sur}>{`Ce qu’en dit le rapprochement${typeof avisDe(apercu)!.s === 'number' ? ` · ${avisDe(apercu)!.s} sur 100` : ''}`}</span>
+                  <AvisDetail avis={avisDe(apercu)!} />
+                </div>
+              )}
               <div className={s.faits}>
                 {apercu.surface ? <span>{`${apercu.surface} m²`}</span> : null}
                 {apercu.pieces ? <span>{`${apercu.pieces} pièce${apercu.pieces > 1 ? 's' : ''}`}</span> : null}
@@ -517,12 +555,12 @@ export function GuideRapprochement({ client, recherche, illu, dernier, onLancer 
         {illu}
         <div className={s.guideTx}>
           <h2>{`Quels biens de ta base pourraient plaire à ${prenom} ?`}</h2>
-          <p>{'On compare sa recherche avec '}<b>{'les biens que tu vends'}</b>{' et avec '}<b>{'les annonces que tes veilles ont trouvées pour tes autres clients'}</b>{'. C’est la même note que dans son espace : à 70 % et plus, ça correspond.'}</p>
+          <p>{'On compare sa recherche avec '}<b>{'les biens que tu vends'}</b>{' et avec '}<b>{'les annonces que tes veilles ont trouvées pour tes autres clients'}</b>{'. Puis le rapprochement relit en détail tes biens en vente face à tout son dossier : pour chacun, un avis, une note de potentiel sur 100, ses plus et ses moins.'}</p>
         </div>
       </div>
       <ol className={s.temps}>
         <li><i>1</i><span><b>{'Coche où chercher'}</b>{' : tes mandats, tes veilles, ou les deux'}</span></li>
-        <li><i>2</i><span><b>{'Lance le rapprochement'}</b>{' : il montre les biens à 50 % et plus'}</span></li>
+        <li><i>2</i><span><b>{'Lance le rapprochement'}</b>{' : il trie, puis relit tes biens en vente'}</span></li>
         <li><i>3</i><span><b>{'Coche ceux qui lui iraient'}</b>{' : dans sa sélection, ou par mail'}</span></li>
       </ol>
 
