@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { signalerEchec } from '@/lib/ecritures';
+import { adresseVente } from '@/lib/adresse-vente';
 
 /*
  * Le rappel de visite envoyé au client.
@@ -81,6 +82,42 @@ export async function envoyerMailVisites(o: { clientId: string; rechercheId: str
   }
 }
 
+/* V3.134 — le mail tel que le client le recevra (même construction que
+   l'envoi, côté serveur), sans rien envoyer : `apercu` dans /api/send-mail. */
+export async function apercuMailVisites(o: { clientId: string; rechercheId: string | null; visitesIds: string[]; objet: string; corps: string }): Promise<{ html: string; objet: string; a: string[] } | { erreur: string }> {
+  try {
+    const res = await fetch('/api/send-mail', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_ids: [o.clientId], recherche_id: o.rechercheId, mode: 'visites', visites_ids: o.visitesIds, objet: o.objet, corps: o.corps, apercu: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.apercu || typeof data.html !== 'string') return { erreur: data.error || (data.results || []).find((r: any) => !r.success)?.error || 'L’aperçu n’a pas pu être préparé.' };
+    return { html: data.html, objet: data.objet || o.objet, a: Array.isArray(data.destinataires) ? data.destinataires : [] };
+  } catch (e) {
+    return { erreur: (e as Error).message };
+  }
+}
+
+/* Le mail dans un cadre inerte (ni script ni lien qui s'ouvre), à sa
+   hauteur réelle : on le fait défiler avec la fenêtre. */
+function CadreMail({ html }: { html: string }) {
+  const [haut, setHaut] = useState(420);
+  /* Les liens retirés, et le cadre ne réagit pas au clic : « Revoir le bien »
+     ou « Je ne suis plus en recherche » ouvriraient son espace avec son lien
+     à lui, et le CRM noterait qu'il l'a ouvert. */
+  const inerte = useMemo(() => html.replace(/\shref="[^"]*"/g, ''), [html]);
+  return (
+    <iframe title="Le mail reçu par le client" srcDoc={inerte} sandbox="allow-same-origin"
+      onLoad={e => {
+        try {
+          const d = (e.currentTarget as HTMLIFrameElement).contentDocument;
+          if (d) setHaut(Math.max(320, d.documentElement.scrollHeight, d.body?.scrollHeight || 0));
+        } catch { /* sans accès, la hauteur par défaut */ }
+      }}
+      style={{ width: '100%', height: haut, border: `1px solid ${BORD}`, borderRadius: 14, background: '#F5F8FC', display: 'block', pointerEvents: 'none' }} />
+  );
+}
+
 export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: string; onFerme: () => void; onEnvoye: () => void }) {
   const [monte, setMonte] = useState(false);
   const [chargement, setChargement] = useState(true);
@@ -94,6 +131,9 @@ export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: 
   const [corps, setCorps] = useState('');
   const [retouche, setRetouche] = useState(false);
   const [envoi, setEnvoi] = useState(false);
+  /* V3.134 : « Le texte » (ce qu'on écrit) ou « Le mail du client » (ce qu'il reçoit). */
+  const [vue, setVue] = useState<'texte' | 'mail'>('texte');
+  const [apercu, setApercu] = useState<{ html: string; objet: string; a: string[] } | { erreur: string } | 'charge' | null>(null);
 
   useEffect(() => { setMonte(true); }, []);
   /* Comme la fenêtre « Nouveau rendez-vous » : ni un clic à côté ni Échap
@@ -107,7 +147,7 @@ export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: 
       if (!vivant) return;
       if (error || !v) { setErreur(error?.message || 'Visite introuvable.'); setChargement(false); return; }
       if (!v.date_visite) { setErreur('Cette visite n’a pas encore de date.'); setChargement(false); return; }
-      let q = supabase.from('visites').select('*, biens(id, titre, ville, quartier, adresse, adresse_probable, photos)')
+      let q = supabase.from('visites').select('*, biens(id, titre, ville, quartier, adresse, adresse_probable, photos, bien_vente_id)')
         .eq('date_visite', v.date_visite).eq('statut', 'a_venir');
       q = v.recherche_id ? q.eq('recherche_id', v.recherche_id) : q.eq('client_id', v.client_id);
       const [{ data: soeurs, error: e2 }, { data: c, error: e3 }] = await Promise.all([
@@ -117,9 +157,20 @@ export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: 
       if (e2 || e3 || !c) { setErreur((e2 || e3)?.message || 'Client introuvable.'); setChargement(false); return; }
       const liste = (soeurs && soeurs.length ? soeurs : [v]) as any[];
       liste.sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99')));
+      /* V3.134 : un bien de l'agence n'a que sa ville dans le dossier de
+         l'acheteur (« Clamart ») ; son adresse complète est sur le bien en
+         vente — c'est elle que le mail met sous le texte. */
+      const idsVente = [...new Set(liste.map(x => x.biens?.bien_vente_id).filter(Boolean))] as string[];
+      const ventes: Record<string, any> = {};
+      if (idsVente.length) {
+        const { data: vs, error: eV } = await supabase.from('biens_vente').select('id, adresse, code_postal, ville').in('id', idsVente);
+        if (!vivant) return;
+        if (eV) console.error('[rappel] adresse des biens', eV.message);
+        for (const b of vs || []) ventes[b.id] = b;
+      }
       const l: Ligne[] = liste.map(x => ({
         id: x.id, heure: x.heure ? String(x.heure).slice(0, 5) : null,
-        titre: x.biens?.titre || x.biens?.ville || 'Bien', lieu: lieuVisite(x.biens), photo: x.biens?.photos?.[0], rappel: x.rappel_envoye_le || null,
+        titre: x.biens?.titre || x.biens?.ville || 'Bien', lieu: adresseVente(ventes[x.biens?.bien_vente_id]) || lieuVisite(x.biens), photo: x.biens?.photos?.[0], rappel: x.rappel_envoye_le || null,
       }));
       setClient({ id: c.id, prenom: c.prenom || '', nom: c.nom || '', emails: (c.emails || []).filter((e: string) => e && e.includes('@')) });
       setRechercheId(v.recherche_id || null);
@@ -155,8 +206,20 @@ export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: 
     onEnvoye();
   }
 
+  /* Seule la dernière demande d'aperçu s'affiche (deux clics rapprochés). */
+  const derniereDemande = useRef(0);
+  async function voirMail() {
+    setVue('mail');
+    if (!client || !choisies.length) { setApercu({ erreur: 'Coche au moins une visite.' }); return; }
+    const n = ++derniereDemande.current;
+    setApercu('charge');
+    const r = await apercuMailVisites({ clientId: client.id, rechercheId, visitesIds: choisies.map(l => l.id), objet: objet.trim(), corps });
+    if (n === derniereDemande.current) setApercu(r);
+  }
+
   if (!monte) return null;
   const titreJour = date ? jourLong(depuisCle(date)) : '';
+  const onglet = (on: boolean): React.CSSProperties => ({ flex: 1, height: 36, borderRadius: 9, border: 'none', background: on ? 'white' : 'transparent', color: on ? NAVY : DOUX, fontSize: 13, fontWeight: on ? 800 : 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: on ? '0 1px 2px rgba(16,24,40,.08), 0 2px 8px -4px rgba(16,24,40,.18)' : 'none', transition: 'background-color .15s ease, color .15s ease' });
   const libelle: React.CSSProperties = { fontSize: 11, fontWeight: 800, color: PALE, textTransform: 'uppercase', letterSpacing: .8 };
   const champ: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: '#f8fafc', border: `1.5px solid ${BORD}`, borderRadius: 10, padding: '10px 12px', fontSize: 13.5, fontFamily: 'inherit', color: NAVY, outline: 'none' };
 
@@ -183,6 +246,30 @@ export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: 
             <div style={{ color: '#b42318', fontSize: 13.5 }}>{erreur}</div>
           ) : (
             <>
+              {/* V3.134 : deux vues, le texte qu'on écrit et le mail qu'il reçoit. */}
+              <div role="tablist" aria-label="Vue" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 12, background: '#eef1f6' }}>
+                <button type="button" role="tab" aria-selected={vue === 'texte'} onClick={() => setVue('texte')} style={onglet(vue === 'texte')}>Le texte</button>
+                <button type="button" role="tab" aria-selected={vue === 'mail'} onClick={voirMail} style={onglet(vue === 'mail')}>Le mail du client</button>
+              </div>
+              {vue === 'mail' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {apercu === 'charge' || apercu === null ? (
+                    <div style={{ color: PALE, fontSize: 13.5, padding: '20px 0' }}>Préparation de l’aperçu…</div>
+                  ) : 'erreur' in apercu ? (
+                    <div style={{ color: '#b42318', fontSize: 13.5 }}>{apercu.erreur}</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '10px 12px', borderRadius: 11, background: '#f8fafc', border: `1px solid ${BORD}`, fontSize: 13 }}>
+                        <span><span style={{ color: PALE, fontWeight: 700 }}>À :</span>{` ${apercu.a.join(', ') || '—'}`}</span>
+                        <span><span style={{ color: PALE, fontWeight: 700 }}>Objet :</span>{` ${apercu.objet}`}</span>
+                      </div>
+                      <CadreMail html={apercu.html} />
+                      <span style={{ fontSize: 12, color: PALE }}>Exactement ce que reçoit le client. Rien n’est parti : le mail part avec « Envoyer le rappel ».</span>
+                    </>
+                  )}
+                </div>
+              ) : (
+              <>
               {dejaEnvoye && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 11, background: '#ecfdf5', color: '#065f46', fontSize: 12.5, fontWeight: 700 }}>
                   <span aria-hidden="true">✓</span><span>{`${libelleRappel(dejaEnvoye)}. Tu peux le renvoyer.`}</span>
@@ -230,7 +317,10 @@ export function ModaleRappelVisite({ visiteId, onFerme, onEnvoye }: { visiteId: 
                 {retouche && propose && (
                   <button type="button" onClick={() => setRetouche(false)} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: '#8a6a1f', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Remettre le texte proposé</button>
                 )}
+                <button type="button" onClick={voirMail} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: NAVY, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>Voir le mail tel que le client le recevra</button>
               </div>
+              </>
+              )}
             </>
           )}
         </div>
