@@ -1498,6 +1498,38 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.126 — 8 octobre 2026 · Sans chiffre sur l'onglet, « Pas pour lui », les rapprochements datés côté acheteur
+
+Rien à passer dans Supabase.
+
+- **Plus de chiffre sur l'onglet Rapprochement**, ni sur la fiche d'un bien, ni sur celle d'un
+  acheteur (Alexandre : « rien affiché »). Le compte en chiffres, fait avant toute relecture,
+  contredisait le résultat du rapprochement.
+- **« Pas pour lui »**, sur chaque acheteur d'un rapprochement (onglet du bien) :
+  - il écarte cet acheteur des rapprochements de ce bien ;
+  - c'est une ligne `biens_vente_suivi` : type `note`, `donnees.pasPourLui`, avec `client_id`,
+    `recherche_id` et `qui`. `estPasPourLui` (outils.ts) la reconnaît ;
+  - l'historique du bien la montre ;
+  - le rapprochement ne le relit plus, et « Envoyer » depuis la liste ne le propose plus ;
+  - le rapprochement de sa fiche ne lui remonte plus ce bien, et le dit en une ligne ;
+  - dans l'onglet, il a l'étiquette « Pas pour lui », la case est grisée, et il y a un bloc
+    « Pas pour eux » ;
+  - « Le remettre » supprime la ligne.
+  - `RapprochementBien` reçoit tout le suivi (`suivi`, `onSuivi(ajout, retrait)`), plus
+    `seances`/`onSeance`.
+- **Les rapprochements faits, sur la fiche d'un acheteur, se déplient**
+  (`RapprochementsFaits`, fiche/Rapprochement.tsx) :
+  - `noterRapprochement` garde ce qui a été proposé dans `metadata.lignes` (`LigneRappro` : le
+    bien, sa note de critères et, pour un mandat relu, l'avis, la note de potentiel, la phrase,
+    les plus et les moins) ;
+  - le plus récent est déplié, rangé Oui, À voir, Non, puis les autres biens ;
+  - un mandat ouvre sa fiche, une annonce de veille s'ouvre sur son lien ;
+  - les lignes d'avant n'ont que leur nombre de biens.
+- **Le rapprochement de la fiche d'un acheteur, au téléphone** : les biens d'abord.
+  - Les trois choix tiennent sur une ligne de boutons courts (« Sélection · rien ne part »,
+    « Son espace · sans mail », « Par mail · tu le relis »).
+  - L'en-tête est resserré, et les filtres défilent sur une seule ligne.
+
 ### V3.125 — 8 octobre 2026 · Le rapprochement en un bouton, et des résultats qui se lisent
 
 Rien à passer dans Supabase : les rapprochements datés vont dans `biens_vente_suivi`, qui existe.
