@@ -1498,6 +1498,56 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.136 — 8 octobre 2026 · Contacts : un clic va sur le type, la liste par paquets
+
+Rien à passer dans Supabase pour ce qui suit (voir la dernière puce pour le compte rendu).
+
+- **Un clic sur une tuile va sur ce type seul** (Alexandre : « quand j'appuie sur 162 vendeurs, ça
+  ne se met pas sur vendeurs […] il faut que ça annule propriétaire et qu'on aille dans vendeur ») :
+  `choisirCat(k, ajouter)` dans `Clients.tsx`. Les tuiles se cumulaient depuis la V3.14 ; elles ne
+  se cumulent plus qu'avec **Ctrl + clic** (⌘ ou Maj aussi). La phrase du bandeau le dit, sur
+  ordinateur seulement (`phraseOrdi` dans `EnteteRubrique`, cachée sous 760 px).
+- **La pastille qui glisse (V3.132) ne savait se poser que sur une tuile** : avec deux tuiles
+  allumées, la seconde devenait transparente, son nom écrit en blanc sur la barre blanche — on ne
+  voyait plus que « 162 • ». Quand plusieurs sont allumées (`plusieurs`), la pastille s'efface et
+  chacune reprend son fond bleu (`.cheval .plusieurs .on`). `onChoisir(cle, ajouter)` reçoit
+  maintenant la touche tenue ; les autres rubriques l'ignorent.
+- **La liste par paquets de 60** (« ce n'est pas fluide ») : les contacts étaient bien lus une
+  seule fois, mais chaque clic redessinait toute la liste d'un coup (700 lignes pour Propriétaires,
+  1 100 pour Tous) avant d'allumer la tuile — 4,5 s au banc avec un processeur ralenti ×4, 0,45 s
+  après. `SuiteListe` ajoute le paquet suivant quand le bas approche (observé dans la zone qui
+  défile, `.content` d'AppLayout, avec un écran d'avance) et garde un bouton « Afficher la suite ».
+  Une autre tuile, recherche, filtre ou ordre repart des 60 premières (`cleListe`). Les
+  compteurs, « Tout cocher » et la recherche portent toujours sur la liste entière. Les chiffres
+  des tuiles sont comptés une fois par lecture (`comptes`, `useMemo`), plus à chaque survol.
+- **Compte rendu de visite refusé** (« Could not find the 'avis_client' column of 'visites' in the
+  schema cache ») : le compte rendu écrit toujours `visites.avis_client` (`AVIS_HERITE`), et la
+  base ne la voyait plus. SQL donné à Alexandre :
+  `alter table visites add column if not exists avis_client text; notify pgrst, 'reload schema';`
+
+### V3.134 — 8 octobre 2026 · Les visites : le récap de l'agenda, l'aperçu du mail, trois façons d'en planifier
+
+Rien à passer dans Supabase.
+
+- **Le détail d'une visite dans l'agenda** : le lieu est l'adresse complète du bien de l'agence
+  (`adresseVente`, `src/lib/adresse-vente.ts` — la copie du dossier n'a que la ville) ; la carte
+  du bien ouvre sa fiche (ou le dossier de l'acheteur) ; le nom ouvre la fiche acheteur (le bouton
+  « Le dossier » ne reste que quand le nom ne s'ouvre pas) ; « Pour la visite » reprend les
+  indications du bien (`visitePourCarte`, sortie de FicheBien dans
+  `components/biens/pour-visite.ts`).
+- **Le mail de rappel** : l'adresse complète sous chaque bien, la date toujours à côté de l'heure
+  (« Mardi 13 octobre · 18 h 30 », `quandMail`), et l'onglet « Le mail du client » dans la fenêtre
+  du rappel : `/api/send-mail` en `apercu` (mode `visites` seulement) rend le mail sans rien envoyer
+  ni noter ; il s'affiche dans un cadre inerte (liens retirés, pas de clic).
+- **Planifier une visite, trois chemins** : Agenda › Nouveau rendez-vous › Visite cherche un bien
+  par prix, adresse, propriétaire ou référence, dans son dossier ET les biens en vente de l'agence
+  (mandat, offre, compromis) — un bien de l'agence choisi entre dans son dossier à
+  l'enregistrement (`copieDe`, exportée de `biens/outils.ts`), plusieurs biens donnent « 2 visites ·
+  Nom » ; Fiche du bien › ⋯ › Planifier une visite : plus d'acheteurs proposés d'office ni de
+  dernier acheteur repris, et la date, l'heure et la durée de l'agenda (`ChoixQuand`, exporté de
+  PageAgenda) ; Fiche client : « Organiser une visite » en tête du menu ⋯ et dans l'onglet Visites
+  (`demanderVisitePour(rechercheId)`), la fiche se relit une fois la visite enregistrée.
+
 ### V3.135 — 8 octobre 2026 · Les cartes de la page Visites (maquette A), le nom et le bien cliquables
 
 Rien à passer dans Supabase.
