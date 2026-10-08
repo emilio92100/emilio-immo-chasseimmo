@@ -69,7 +69,7 @@ const messagesPre = (sig: string) => [
 ];
 /* Le message de départ : le bonjour, une ligne pour écrire (le curseur s'y
    pose au premier clic), la signature des Paramètres. */
-const accueil = (sig: string) => texteVersHtml(`Bonjour {{prénom}},\n\n\n\n${sig}`);
+const accueil = (sig: string, salut = 'Bonjour {{prénom}},') => texteVersHtml(`${salut}\n\n\n\n${sig}`);
 const LIGNE_A_ECRIRE = 2;
 
 /* ── Les destinataires : des pastilles, et une recherche dessous ── */
@@ -356,10 +356,17 @@ function Vignette({ k }: { k: StyleMail }) {
    destinataire (et la recherche affichée, pour le Suivi d'un acheteur). */
 export type ContactMail = Contact;
 type PourMail = { contact: Contact; rechercheId?: string | null };
+/* V3.131 (Alexandre, dans une demande Internet : « quand on clique sur
+   Écrire, un pop-up de nouveau mail qui reprend le mail ») : une adresse hors
+   du CRM, son prénom pour le bonjour, l'objet proposé. */
+export type AdresseMail = { email: string; prenom?: string; objet?: string };
 const destDe = (c: Contact): Dest[] => (mailsDe(c).length ? [{ cle: `c-${c.id}`, contact: c, email: mailsDe(c)[0] }] : []);
 
-function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNavigate, onFermer, onEnvoye, refSale }: {
+function Redaction({ pour = null, pourPlusieurs = null, adresse = null, objet0 = '', enFenetre = false, onNavigate, onFermer, onEnvoye, refSale }: {
   pour?: PourMail | null;
+  adresse?: AdresseMail | null;
+  /* L'objet proposé au départ (une demande Internet : « Votre demande… »). */
+  objet0?: string;
   /* V3.88 : les contacts cochés dans la liste, tous en destinataires. */
   pourPlusieurs?: Contact[] | null;
   enFenetre?: boolean;
@@ -369,8 +376,12 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
   refSale?: React.MutableRefObject<boolean>;
 }) {
   const [contacts, setContacts] = useState<Contact[] | null>(null);
-  const [dests, setDests] = useState<Dest[]>(() => (pour ? destDe(pour.contact) : pourPlusieurs ? pourPlusieurs.flatMap(destDe) : []));
-  const [objet, setObjet] = useState('');
+  const destsDepart = (): Dest[] => (pour ? destDe(pour.contact) : pourPlusieurs ? pourPlusieurs.flatMap(destDe) : adresse ? [{ cle: `a-${adresse.email}`, contact: null, email: adresse.email }] : []);
+  const [dests, setDests] = useState<Dest[]>(destsDepart);
+  const [objet, setObjet] = useState(objet0 || adresse?.objet || '');
+  /* Hors du CRM, {{prénom}} ne se remplace pas : le bonjour porte le prénom. */
+  const salut = adresse?.prenom ? `Bonjour ${adresse.prenom},` : undefined;
+  const acc = (sig: string) => accueil(sig, salut);
   const [style, setStyle] = useState<StyleMail>('simple');
   const [html, setHtml] = useState('');
   const [pieces, setPieces] = useState<Piece[]>([]);
@@ -398,7 +409,7 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
   /* Les contacts (tous, sauf les archivés), la signature et l'identité de l'agence. */
   useEffect(() => {
     let vivant = true;
-    remplir(accueil(signatureDe({})));
+    remplir(acc(signatureDe({})));
     /* Par pages de 1 000 (V3.43) : au-delà, les derniers contacts manquaient. */
     toutLire<Contact>((de, a) => supabase.from('clients').select('*').order('nom').order('id').range(de, a)).then(({ data, erreur: error }) => {
       if (!vivant) return;
@@ -410,7 +421,7 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
       const p = Object.fromEntries(data.map((r: { cle: string; valeur: string | null }) => [r.cle, r.valeur || '']));
       setParams(p);
       /* Le message encore vierge prend la bonne signature ; un texte déjà commencé n'est pas touché. */
-      if (refEd.current && refEd.current.innerHTML === accueil(signatureDe({}))) remplir(accueil(signatureDe(p)));
+      if (refEd.current && refEd.current.innerHTML === acc(signatureDe({}))) remplir(acc(signatureDe(p)));
     });
     identiteDuJour().then(x => { if (vivant) setIdentite(x); }).catch(() => { /* l'identité par défaut suffit pour le pied */ });
     return () => { vivant = false; };
@@ -424,7 +435,7 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
     setTimeout(() => {
       const ed = refEd.current;
       const ligne = ed?.children[LIGNE_A_ECRIRE];
-      if (!ed || !ligne || ed.innerHTML !== accueil(signature)) return;
+      if (!ed || !ligne || ed.innerHTML !== acc(signature)) return;
       const r = document.createRange();
       r.setStart(ligne, 0); r.collapse(true);
       const sel = window.getSelection();
@@ -434,7 +445,7 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
 
   function choisirMessage(i: number) {
     const m = messages[i];
-    const vierge = !refEd.current || htmlVide(html) || refEd.current.innerHTML === accueil(signature);
+    const vierge = !refEd.current || htmlVide(html) || refEd.current.innerHTML === acc(signature);
     if (!vierge && !confirm('Remplacer le message déjà écrit par ce message pré-rédigé ?')) return;
     remplir(texteVersHtml(m.corps));
     if (!objet.trim() && m.objet) setObjet(m.objet);
@@ -469,7 +480,7 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
   const poids = piecesOk.reduce((t, p) => t + p.taille, 0);
   const enCours = pieces.some(p => p.etat === 'envoi');
   const corps = nettoyerHtml(html);
-  const sale = !resultat && (!!objet.trim() || pieces.length > 0 || (!!html && !htmlVide(corps) && html !== accueil(signature) && html !== accueil(signatureDe({}))));
+  const sale = !resultat && ((!!objet.trim() && objet.trim() !== (objet0 || adresse?.objet || '').trim()) || pieces.length > 0 || (!!html && !htmlVide(corps) && html !== acc(signature) && html !== acc(signatureDe({}))));
   useEffect(() => { if (refSale) refSale.current = sale; }, [refSale, sale]);
   const nbPersonnes = dests.length;
   const libEnvoyer = nbPersonnes === 1
@@ -529,8 +540,8 @@ function Redaction({ pour = null, pourPlusieurs = null, enFenetre = false, onNav
   }
 
   function recommencer() {
-    setResultat(null); setDests(pour ? destDe(pour.contact) : []); setObjet(''); setPieces([]); setErreur(''); setStyle('simple'); place.current = false;
-    setTimeout(() => remplir(accueil(signature)), 0);
+    setResultat(null); setDests(destsDepart()); setObjet(objet0 || adresse?.objet || ''); setPieces([]); setErreur(''); setStyle('simple'); place.current = false;
+    setTimeout(() => remplir(acc(signature)), 0);
   }
 
   if (resultat) {
@@ -666,10 +677,13 @@ export default function PageMail({ onNavigate }: { onNavigate: (page: string, da
    V3.87 : sans contact, c'est « Envoyer un mail » du haut de l'écran
    (Alexandre : « que ça affiche un pop-up joli, qui reprend tout ce qu'il y
    a dans Nouveau mail, au lieu d'aller sur la page »). */
-export function FenetreMail({ contact = null, contacts = null, rechercheId = null, onFermer, onEnvoye }: {
+export function FenetreMail({ contact = null, contacts = null, adresse = null, objet = '', rechercheId = null, onFermer, onEnvoye }: {
   contact?: ContactMail | null;
   /* V3.88 : plusieurs contacts (la sélection de la liste). */
   contacts?: ContactMail[] | null;
+  /* V3.131 : une adresse hors du CRM (une demande Internet), et l'objet proposé. */
+  adresse?: AdresseMail | null;
+  objet?: string;
   rechercheId?: string | null; onFermer: () => void; onEnvoye?: () => void;
 }) {
   const sale = useRef(false);
@@ -678,7 +692,7 @@ export function FenetreMail({ contact = null, contacts = null, rechercheId = nul
     onFermer();
   };
   const nom = contact ? nomDe(contact) : '';
-  const titre = contact ? `Écrire à ${nom}` : contacts?.length ? `Envoyer un mail à ${contacts.length > 1 ? `${contacts.length} contacts` : nomDe(contacts[0])}` : 'Envoyer un mail';
+  const titre = contact ? `Écrire à ${nom}` : adresse ? `Écrire à ${adresse.prenom || adresse.email}` : contacts?.length ? `Envoyer un mail à ${contacts.length > 1 ? `${contacts.length} contacts` : nomDe(contacts[0])}` : 'Envoyer un mail';
   const fen = (
     <div className={s.voile}>
       <div className={`${s.fen} ${s.fenMail}`} role="dialog" aria-modal="true" aria-label={titre}>
@@ -686,12 +700,12 @@ export function FenetreMail({ contact = null, contacts = null, rechercheId = nul
           <span className={s.fenIc}><Ic n="mail" t={20} /></span>
           <div className={s.fenTx}>
             <h2>{titre}</h2>
-            <p>{contact ? 'Le mail part de arogelet@emilio-immo.com, à ton nom.' : contacts?.length ? 'Un mail par personne : chacun ne voit que son adresse. Il part de arogelet@emilio-immo.com, à ton nom.' : 'À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom.'}</p>
+            <p>{contact ? 'Le mail part de arogelet@emilio-immo.com, à ton nom.' : adresse ? `À ${adresse.email}. Le mail part de arogelet@emilio-immo.com, à ton nom.` : contacts?.length ? 'Un mail par personne : chacun ne voit que son adresse. Il part de arogelet@emilio-immo.com, à ton nom.' : 'À un contact du CRM ou à n’importe quelle adresse. Il part de arogelet@emilio-immo.com, à ton nom.'}</p>
           </div>
           <button type="button" className={s.fermer} aria-label="Fermer" onClick={fermer}><Croix /></button>
         </div>
         <div className={s.fenCorps}>
-          <Redaction pour={contact ? { contact, rechercheId } : null} pourPlusieurs={contacts} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
+          <Redaction pour={contact ? { contact, rechercheId } : null} pourPlusieurs={contacts} adresse={adresse} objet0={objet} enFenetre onFermer={fermer} onEnvoye={onEnvoye} refSale={sale} />
         </div>
       </div>
     </div>
