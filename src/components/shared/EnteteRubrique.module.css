@@ -285,5 +285,13 @@
   .cheval .on, .cheval .on:hover, .cheval .tete.on, .cheval .tete.on:hover, .cheval .arch.on, .cheval .arch.on:hover {
     background: transparent; border-color: transparent; box-shadow: none;
   }
+  /* V3.136 : plusieurs tuiles allumées (Ctrl + clic), pas de pastille —
+     chacune reprend son fond bleu, et son nom reste lisible. */
+  .cheval .plusieurs .on, .cheval .plusieurs .on:hover, .cheval .plusieurs .tete.on, .cheval .plusieurs .tete.on:hover,
+  .cheval .plusieurs .arch.on, .cheval .plusieurs .arch.on:hover {
+    background: var(--emilio-fond); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85);
+  }
 }
+/* V3.136 : « Ctrl + clic… » n'a pas de sens au doigt. */
+@media (max-width: 760px) { .phraseOrdi { display: none; } }
 @media (prefers-reduced-motion: reduce) { .glisseAnime { transition: none; } }
