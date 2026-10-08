@@ -1498,6 +1498,41 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.129 — 8 octobre 2026 · Demandes Internet en pastilles et en étapes, le rappel programmé, les demandes de visite
+
+Rien à passer dans Supabase.
+
+- **Demandes Internet, l'ordre** (Alexandre : « mon site en premier, ensuite portail, ensuite tout à
+  droite ») : Mon site · Portails · Tout ; dans le tiroir, « Toutes » et « Tous les portails »
+  passent à droite, après un trait. La page s'ouvre toujours sur « Tout », pour ne rien manquer.
+- **Les blocs deviennent des pastilles** (maquette A, « les blocs un peu gros, un peu moches ») : une
+  par formulaire ou portail, sur une ligne — icône, nom, nombre, un point rouge s'il y a du neuf
+  (`.pforms`, `.pform` : `.pastille` existait déjà pour les cartes). Au téléphone, des noms courts
+  (Acheteurs, Infos bien).
+- **Les statuts deviennent quatre étapes** (« je ne comprends pas trop… bien condensé, une
+  explication pour chaque statut ») : Nouvelles, En cours, À rappeler, Traitées, chacune avec son
+  nombre et sa phrase (`ETAPES`). Dessous, en petit, « Reçues » et la période, le nombre, puis
+  « Toutes » et « Archivées » en liens. Le gros bouton « N à traiter » est parti : l'étape Nouvelles
+  le dit, et un clic allume les nouvelles un instant.
+- **Le rappel programmé** (« il y a juste marqué enregistré en tout petit… votre relance est
+  planifiée, revenez ici, vous pouvez fermer la page ») : une date choisie, le bloc devient
+  « Rappel programmé · dimanche 11 octobre », dit qu'on peut fermer la fenêtre et ce qui se passera
+  ce jour-là, signale « Elle est passée en En cours » quand c'est le cas, et propose Changer la
+  date, Retirer le rappel, Fermer la fenêtre. Le jour venu : « À rappeler aujourd'hui » ; passé :
+  « Rappel en retard », en rouge, avec « Repousser ».
+- **Les demandes de visite, page Visites** (maquette 1, « j'aime pas la photo rectangulaire ») : le
+  client et depuis quand il attend, le bien en petite carte (photo carrée arrondie), ses
+  disponibilités en bulle (`DemandesVisite.module.css`).
+  - **« Planifier la visite » ouvre une fenêtre sur la page** (« sans ouvrir la fiche ») : date,
+    heure, contact, notes, ses disponibilités sous les yeux. La planification est sortie de la fiche
+    dans `src/lib/planifier-visite.ts` (`bienVisitable`, `poserVisites`) : la fiche et la page
+    Visites font exactement la même chose (bien encore en vente, relance « Veut visiter » soldée,
+    relances « Veut revoir » d'une 2e visite, ligne au Suivi). Une fois calée, la demande passe dans
+    « À venir », et une phrase verte le confirme.
+  - **« Voir sur sa fiche » descend jusqu'au bien** (« en se mettant directement sur le bien en
+    question ») : `OuvertureFiche.bienId` ; dans Présentés, la liste amène le bien à l'écran et
+    l'entoure en violet un instant (`OngletBiens`, `vise`, `.emi-vise`).
+
 ### V3.128 — 8 octobre 2026 · La barre à cheval du contact, « En cours » sur sa recherche, le rapprochement qui reprend, les quartiers
 
 Rien à passer dans Supabase.
