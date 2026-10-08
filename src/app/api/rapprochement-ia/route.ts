@@ -50,6 +50,31 @@ const ko = (erreur: string, status = 400) => NextResponse.json({ ok: false, erre
 
 type Avis = { v: 'oui' | 'a_voir' | 'non'; r: string; le: string; cle: string };
 
+/* La forme de la réponse, imposée à l'IA (V3.124). */
+const OUTIL = {
+  name: 'rendre_avis',
+  description: 'Rend un avis pour chaque couple bien × recherche à juger.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      avis: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            bien: { type: 'string', description: 'L’id exact du bien' },
+            recherche: { type: 'string', description: 'L’id exact de la recherche' },
+            verdict: { type: 'string', enum: ['oui', 'a_voir', 'non'] },
+            raison: { type: 'string', description: 'Une phrase de 140 caractères au plus, qui cite le fait précis' },
+          },
+          required: ['bien', 'recherche', 'verdict', 'raison'],
+        },
+      },
+    },
+    required: ['avis'],
+  },
+};
+
 const plein = (v: unknown) => v !== null && v !== undefined && v !== '' && v !== false && !(Array.isArray(v) && !v.length) && !(typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
 function garder(o: Record<string, unknown>, cles: string[]): Record<string, unknown> {
   const x: Record<string, unknown> = {};
@@ -181,7 +206,7 @@ Règles :
 
 Pour chaque couple, une phrase (140 caractères au plus), en français simple, qui cite le fait précis. Exemples : « Cherche un accès PMR : immeuble de 1932 au petit ascenseur. », « Lumineux et traversant, ce qu'il a aimé ; le budget passe. », « Exposition non renseignée : il a refusé deux biens trop sombres. »
 
-Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"bien":"…","recherche":"…","verdict":"oui|a_voir|non","raison":"…"}], un objet par couple, avec leurs id exacts.`;
+Réponds avec l'outil « rendre_avis » : un avis par couple, avec leurs id exacts.`;
       const bLus = [...new Set(aLire.map(c => c.b))], rLus = [...new Set(aLire.map(c => c.r))];
       const contenu = `LES BIENS :\n${bLus.map(b => JSON.stringify({ id: b, ...biens.get(b)!.x })).join('\n')}\n\nLES RECHERCHES :\n${rLus.map(r => JSON.stringify({ id: r, ...dossiers.get(r) })).join('\n')}\n\nLES COUPLES À JUGER :\n${aLire.map(c => JSON.stringify({ bien: c.b, recherche: c.r })).join('\n')}`;
 
@@ -190,7 +215,15 @@ Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"bien":"…","rec
         reponse = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: m, max_tokens: Math.min(4000, 300 + aLire.length * 150), system: consigne, messages: [{ role: 'user', content: contenu }] }),
+          /* V3.124 (« La réponse de l'IA est illisible ») : un tableau écrit à la
+             main se cassait sur un guillemet dans une phrase ou une réponse
+             coupée. L'outil impose la forme : l'API rend un objet, jamais
+             du texte à relire. */
+          body: JSON.stringify({
+            model: m, max_tokens: Math.min(6000, 800 + aLire.length * 220), system: consigne,
+            tools: [OUTIL], tool_choice: { type: 'tool', name: OUTIL.name },
+            messages: [{ role: 'user', content: contenu }],
+          }),
           signal: AbortSignal.timeout(50_000),
         });
         modele = m;
@@ -199,11 +232,20 @@ Réponds UNIQUEMENT par un tableau JSON, sans texte autour : [{"bien":"…","rec
         break;
       }
       if (!reponse || !reponse.ok) return ko(`L’IA n’a pas répondu (${reponse?.status || 'aucune réponse'})`, 502);
-      const data = await reponse.json() as { content?: { text?: string }[] };
-      const brut = (data.content || []).map(c => c.text || '').join('').trim();
-      const json = brut.slice(Math.max(0, brut.indexOf('[')), brut.lastIndexOf(']') + 1);
-      let lus: { bien?: unknown; recherche?: unknown; id?: unknown; verdict?: unknown; raison?: unknown }[] = [];
-      try { lus = JSON.parse(json); } catch { return ko('La réponse de l’IA est illisible : relance.', 502); }
+      const data = await reponse.json() as { stop_reason?: string; content?: { type?: string; text?: string; input?: { avis?: unknown } }[] };
+      type Lu = { bien?: unknown; recherche?: unknown; id?: unknown; verdict?: unknown; raison?: unknown };
+      let lus: Lu[] = [];
+      const outil = (data.content || []).find(c => c.type === 'tool_use');
+      if (outil && Array.isArray(outil.input?.avis)) lus = outil.input!.avis as Lu[];
+      else {
+        /* Sans l'outil (un modèle qui l'ignore) : le tableau dans le texte. */
+        const brut = (data.content || []).map(c => c.text || '').join('').trim();
+        const json = brut.slice(Math.max(0, brut.indexOf('[')), brut.lastIndexOf(']') + 1);
+        try { lus = JSON.parse(json); } catch {
+          console.error('[rapprochement-ia] réponse illisible', data.stop_reason, brut.slice(0, 600));
+          return ko(data.stop_reason === 'max_tokens' ? 'La réponse de l’IA a été coupée : relance, elle reprendra là où elle en est.' : 'La réponse de l’IA est illisible : relance.', 502);
+        }
+      }
       const le = new Date().toISOString();
       for (const x of Array.isArray(lus) ? lus : []) {
         const r = String(x.recherche ?? x.id ?? '');
