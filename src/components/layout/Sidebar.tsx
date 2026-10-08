@@ -210,8 +210,8 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
   };
 
   /* Les sous-menus. Contacts : trois types de contact, dans leur couleur ;
-     « Contacts » lui-même ouvre « Tous ». Biens : trois étapes ; « Biens »
-     ouvre les mandats en cours. Documents : deux endroits de la page, et le registre. */
+     « Contacts » lui-même ouvre « Tous ». Biens : estimations, mandats en
+     cours, ventes en cours ; « Biens » ouvre les mandats en cours. Documents : deux endroits de la page, et le registre. */
   type Sous = { cle: string; label: string; ic: string; c: string; fond: string; go: () => void; actif: boolean };
   const sousMenus: Record<string, Sous[]> = {
     clients: (['acheteur', 'vendeur', 'proprietaire'] as const).map(k => {
@@ -219,8 +219,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       return { cle: k, label: `Mes ${t.pluriel.toLowerCase()}`, ic: t.ic, c: t.c, fond: t.fond,
         go: () => allerVue('clients', k), actif: activePage === 'clients' && vues.clients === k };
     }),
-    biens: ([['mandat', 'Mes mandats en cours', 'panneau'], ['estimation', 'Mes estimations', 'euro'], ['a_suivre', 'Mes biens à suivre', 'oeil']] as const).map(([k, label, ic]) => {
-      const e = etapeDe(k);
+    /* V3.131 (Alexandre : « mes estimations au début, ensuite mes mandats en
+       cours, ensuite mes ventes en cours… sous offre et sous compromis ») :
+       « Mes biens à suivre » laisse sa place ; il reste dans « Autres étapes ». */
+    biens: ([['estimation', 'Mes estimations', 'euro', 'estimation'], ['mandat', 'Mes mandats en cours', 'panneau', 'mandat'], ['ventes', 'Mes ventes en cours', 'cle', 'compromis']] as const).map(([k, label, ic, couleur]) => {
+      const e = etapeDe(couleur);
       return { cle: k, label, ic, c: e.c, fond: `${e.c}17`,
         go: () => allerVue('biens', k), actif: activePage === 'biens' && vues.biens === k };
     }),
