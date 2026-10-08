@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { verifie } from '@/lib/ecritures';
 import { euros } from '@/lib/mandat';
@@ -121,10 +122,16 @@ export function TypesEnLigne({ client, sombre = false, onMaj }: {
         const r = e.currentTarget.getBoundingClientRect();
         setMenu(menu ? null : { x: Math.max(12, Math.min(r.left, window.innerWidth - 352)), y: r.bottom + 6 });
       }}>{types.length ? 'Changer' : 'Choisir le type'}</button>
-      {menu && (
+      {/* V3.134 : posé sur <body>. Ouvert depuis le menu de l'état (la
+          pastille de la fiche), il s'y affichait coupé, en bas à droite : ce
+          menu porte une animation, et un parent animé devient le repère des
+          éléments « position: fixed » — la liste se plaçait par rapport à lui,
+          rognée par son défilement. Sur <body>, elle passe par-dessus, là où
+          on a cliqué, d'où qu'on l'ouvre. */}
+      {menu && createPortal(
         <>
           <span className={c.voile} onClick={() => setMenu(null)} />
-          <span className={c.popTypes} style={{ left: menu.x, top: menu.y }} role="menu">
+          <span className={c.popTypes} style={{ left: menu.x, top: menu.y, maxHeight: `calc(100dvh - ${Math.round(menu.y)}px - 12px)`, overflowY: 'auto', overscrollBehavior: 'contain' }} role="menu">
             <span className={c.popT} style={{ display: 'block' }}>Ce contact est…</span>
             {TYPES_CONTACT.map(t => {
               const on = types.includes(t.k);
@@ -138,7 +145,8 @@ export function TypesEnLigne({ client, sombre = false, onMaj }: {
             })}
             {erreur && <span className={c.popErreur} style={{ display: 'block' }}>{erreur}</span>}
           </span>
-        </>
+        </>,
+        document.body,
       )}
     </span>
   );
