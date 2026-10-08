@@ -45,6 +45,7 @@ import { RapprochementBien, lireSeance, resumeSeance } from './RapprochementBien
 import { FenEnvoiLot } from './LotBiens';
 import { DossierBien, type DestPropose } from './DossierBien';
 import { PastilleProprio } from './PastilleProprio';
+import { visitePourCarte } from './pour-visite';
 import { OngletVisitesOffres } from './VisitesOffres';
 import { FenPointVendeur } from './PointVendeur';
 import FenDiffusion from './FenDiffusion';
@@ -57,7 +58,7 @@ import {
   dateAn, type AVenirBien, type DocOffre, type EvtBien, type InfosCompromis, type MaillonDoc, type NotaireCarte, type SurfacesBien, type VisiteCarte,
 } from './OngletsBien';
 import NoteRiche from '@/components/shared/NoteRiche';
-import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type LigneVisite, type PourVisite, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
+import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis, ParcoursEstimation, type Jalon, type ProchaineVisite, type Recent, type Repartition } from './VueBien';
 
 /* ═══ La fiche d'un bien ══════════════════════════════════════════════════
    Le bandeau (photo, prix, étape), puis sept onglets :
@@ -508,28 +509,8 @@ function CoteMandat({ bien, d, enRoute, onModifier, onDoc, onPreparer, onDejaSig
   );
 }
 
-/* Les indications de visite pour la carte « Pour la visite » (V3.31,
-   rangées par usage en V3.81 : l'occupation, les codes, la personne sur
-   place, le reste, puis le chemin et les consignes). */
-function visitePourCarte(d: Donnees): PourVisite {
-  const cles = [lib(d, 'cles'), d.cles === 'agence' && txt(d, 'trousseau') ? `trousseau ${txt(d, 'trousseau')}` : ''].filter(Boolean).join(', ');
-  const occ = typeof d.occupation === 'string' && d.occupation ? { v: d.occupation, l: lib(d, 'occupation') } : null;
-  const codes = [
-    { ic: 'clavier', l: 'Digicode', v: txt(d, 'digicode') },
-    { ic: 'interphone', l: 'Interphone', v: txt(d, 'interphone') },
-    { ic: 'porte', l: 'Porte', v: txt(d, 'porte') },
-    { ic: 'cave', l: 'Cave · box', v: txt(d, 'annexesNum') },
-  ].filter(x => x.v);
-  const nom = txt(d, 'contactNom'), tel = txt(d, 'contactTel');
-  const infos: LigneVisite[] = [
-    { ic: 'cle', l: 'Les clés', v: cles },
-    { ic: 'horloge', l: 'Heures de visite', v: txt(d, 'creneaux') },
-    { ic: 'immeuble', l: 'En bas', v: libs(d, 'accesBas').join(', ').toLowerCase().replace(/^./, x => x.toUpperCase()) },
-    { ic: 'ascenseur', l: 'En sortant de l’ascenseur', v: d.accesAscenseur === 'aucun' ? '' : lib(d, 'accesAscenseur') },
-  ].filter(x => x.v);
-  const encarts = [{ ic: 'carte', l: 'Le chemin', v: txt(d, 'itineraire') }, { ic: 'info', l: 'Consignes', v: txt(d, 'consignes') }].filter(x => x.v);
-  return { occupation: occ && occ.l ? occ : null, dispo: txt(d, 'disponible'), codes, contact: nom || tel ? { nom, tel } : null, infos, encarts };
-}
+/* Les indications de visite pour la carte « Pour la visite » : depuis la
+   V3.134 dans ./pour-visite, partagées avec l'agenda. */
 
 /* ── Le parcours de l'estimation (V3.31, maquette B) ──
    À la place de la carte « Le rendez-vous d'estimation » et du bloc
@@ -2395,7 +2376,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
             } catch (e2) { setMessage({ t: (e2 as Error).message, ok: false }); }
           }
         }} />}
-      {fen?.k === 'visite' && <FenVisite bien={bien} options={options} recherches={liste.recherches} pour={fen.pour} onFermer={() => setFen(null)} onFait={() => apres()} />}
+      {/* V3.134 : les recherches en attente aussi (un prospect, un acheteur en pause) — sinon « n'a pas de recherche active ». */}
+      {fen?.k === 'visite' && <FenVisite bien={bien} options={options} recherches={recherchesRappro(liste)} pour={fen.pour} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'deplacer' && <FenDeplacerVisite bien={bien} v={{ qui: fen.v.qui, ymd: fen.v.ymd, heure: fen.v.heure, crm: fen.v.crm, libre: fen.v.libre }} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'point' && <FenPointVendeur bien={bien} proprio={proprio} offres={offres} suivi={detail?.suivi || []} presentes={(detail?.copies || []).filter(c => c.envoye_le).length}
         visites={visites.map(v => ({ ymd: v.ymd, heure: v.heure, qui: v.qui, source: v.source, statut: v.statut, issue: v.issue, passee: passee(v),
