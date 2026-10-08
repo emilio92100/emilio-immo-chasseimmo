@@ -147,6 +147,16 @@ ${sig}`,
    acheteur coché reçoit les biens que le rapprochement ne dit pas « non » ;
    s'il ne dit que des « non », c'est Alexandre qui tranche : tout part. */
 const ADRESSE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/* V3.139 : un numéro, quelle que soit son écriture (« 06 62 86… »,
+   « +33 6 62… », « 0033 6… ») : ses chiffres, en commençant par le 0. */
+const chiffresTel = (t: string) => {
+  const d = t.replace(/\D/g, '');
+  if (d.startsWith('0033')) return '0' + d.slice(4);
+  if (/^\s*\+33/.test(t) || (d.startsWith('33') && d.length === 11)) return '0' + d.slice(2);
+  return d;
+};
+/* Une saisie faite seulement de chiffres (et d'espaces, points, tirets, « + ») : un téléphone. */
+const SAISIE_TEL = /^[\d\s.+()-]+$/;
 /* Quelqu'un qui reçoit le bien par simple mail : hors du CRM, ou un contact sans recherche ouverte. */
 type Libre = { email: string; prenom?: string; nom?: string; clientId?: string };
 
@@ -250,11 +260,18 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const trouves = useMemo(() => {
     const mots = plat(q.trim()).split(/\s+/).filter(Boolean);
     if (!mots.length) return null;
+    /* V3.139 : un numéro de téléphone (trois chiffres au moins). */
+    const tel = SAISIE_TEL.test(q.trim()) ? chiffresTel(q.trim()) : '';
+    if (tel && tel.length < 3) return null;
     const avec: { r: RechercheMini; c: ClientMini; n: number }[] = [];
     const sans: ClientMini[] = [];
     for (const c of Object.values(liste.clients)) {
-      const foin = plat(`${c.prenom || ''} ${c.nom || ''} ${(c.emails || []).join(' ')}`);
-      if (!mots.every(x => foin.includes(x))) continue;
+      if (tel) {
+        if (!(c.telephones || []).some(t => chiffresTel(String(t || '')).includes(tel))) continue;
+      } else {
+        const foin = plat(`${c.prenom || ''} ${c.nom || ''} ${(c.emails || []).join(' ')}`);
+        if (!mots.every(x => foin.includes(x))) continue;
+      }
       const rs = parClient.get(c.id) || [];
       if (rs.length) rs.forEach(r => avec.push({ r, c, n: rs.length }));
       else sans.push(c);
@@ -265,7 +282,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     /* Une adresse e-mail que le CRM ne connaît pas : quelqu'un hors du CRM. */
     const adresse = ADRESSE.test(q.trim()) ? q.trim().toLowerCase() : '';
     const connue = !!adresse && Object.values(liste.clients).some(c => (c.emails || []).some(e => String(e).trim().toLowerCase() === adresse));
-    return { avec: avec.slice(0, 6), deplus: Math.max(0, avec.length - 6), sans: sans.slice(0, 3), adresse: connue ? '' : adresse, arobase: q.includes('@') };
+    return { avec: avec.slice(0, 6), deplus: Math.max(0, avec.length - 6), sans: sans.slice(0, 3), adresse: connue ? '' : adresse, arobase: q.includes('@'), tel: !!tel };
   }, [q, liste.clients, parClient]);
 
   /* Rien de coché à l'ouverture (V3.121). */
@@ -547,11 +564,11 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                   <div className={l.choix}>
                     <label className={l.choixT} htmlFor="lot-client">
                       <b>{'À qui l’envoyer ?'}</b>
-                      <span>{'Un client du CRM, par son nom : l’envoi se note dans son Suivi. Ou l’adresse e-mail de quelqu’un hors du CRM : il reçoit un simple mail, avec la photo et le lien du bien.'}</span>
+                      <span>{'Un client du CRM, par son nom ou son téléphone : l’envoi se note dans son Suivi. Ou l’adresse e-mail de quelqu’un hors du CRM : il reçoit un simple mail, avec la photo et le lien du bien.'}</span>
                     </label>
                     <div className={l.cherche}>
                       <Ic n="loupe" t={16} />
-                      <input id="lot-client" className={l.chercheIn} value={q} placeholder="Un nom, ou une adresse e-mail" autoComplete="off" spellCheck={false} inputMode="email"
+                      <input id="lot-client" className={l.chercheIn} value={q} placeholder="Un nom, un téléphone ou une adresse e-mail" autoComplete="off" spellCheck={false} inputMode="email"
                         onChange={e => setQ(e.target.value)} onKeyDown={e => {
                           if (e.key === 'Escape' && q) { e.stopPropagation(); setQ(''); }
                           if (e.key === 'Enter' && trouves?.adresse && !trouves.avec.length && !trouves.sans.length) { e.preventDefault(); prendreLibre({ email: trouves.adresse }); }
@@ -576,7 +593,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                             </button>
                           );
                         })}
-                        {trouves.deplus > 0 && <span className={l.resPlus}>{`Et ${trouves.deplus} de plus : précise le nom.`}</span>}
+                        {trouves.deplus > 0 && <span className={l.resPlus}>{`Et ${trouves.deplus} de plus : précise ${trouves.tel ? 'le numéro' : 'le nom'}.`}</span>}
                         {trouves.sans.map(c => {
                           const adr = (c.emails || []).find(e => ADRESSE.test(String(e).trim())) || '';
                           const pris = !!adr && libres.some(x => x.email === adr.trim().toLowerCase());
@@ -602,7 +619,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                           </button>
                         )}
                         {!trouves.avec.length && !trouves.sans.length && !trouves.adresse && (
-                          <span className={l.resPlus}>{trouves.arobase ? 'Tape l’adresse e-mail en entier.' : 'Personne à ce nom. Pour quelqu’un hors du CRM, tape son adresse e-mail.'}</span>
+                          <span className={l.resPlus}>{trouves.arobase ? 'Tape l’adresse e-mail en entier.' : trouves.tel ? 'Personne avec ce numéro. Pour quelqu’un hors du CRM, tape son adresse e-mail.' : 'Personne à ce nom. Pour quelqu’un hors du CRM, tape son adresse e-mail.'}</span>
                         )}
                       </div>
                     )}
