@@ -40,7 +40,6 @@ import { euros } from '@/lib/mandat';
 import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
 import { visitePasseeParis } from '@/lib/visites';
 import { avantMandat, etapeDe, lirePhotos, titreBien, villeAffichee, type BienVente, type EtapeVente } from '@/lib/biens-vente';
-import { diffuseSur } from '@/lib/diffusion';
 import { signalerEchec } from '@/lib/ecritures';
 import { CaseLigne, type Avancement } from '@/components/shared/Selection';
 import AvatarContact from '@/components/contacts/AvatarContact';
@@ -180,7 +179,6 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     nom: nomBien(b), pourquoi: modeAcheteurs(b.etape) === 'pause' ? 'Vente en pause : l’envoi reprend avec elle.' : 'Il n’est plus en vente.',
   }));
   /* Ceux qui ne sont pas sur le site : par simple mail, ils partent sans lien. */
-  const horsSite = envoyables.filter(b => !diffuseSur(b, 'site'));
   /* Les clients choisis par leur nom (des recherches), le dernier en tête. */
   const [manuels, setManuels] = useState<string[]>([]);
   const [libres, setLibres] = useState<Libre[]>([]);
@@ -501,8 +499,10 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                 <textarea className={l.in} rows={11} value={mail?.corps || ''} disabled={!mail} placeholder={mail ? '' : 'Chargement du modèle…'} onChange={e => setMail(m => (m ? { ...m, corps: e.target.value } : m))} />
               </label>
               <p className={l.aide}><Ic n="info" t={14} /><span>{`{{prénom}} devient le prénom de chacun${libres.length ? ' (rien pour une adresse hors du CRM : « Bonjour, »)' : ''}. ${envoyables.length > 1 ? 'Les biens s’ajoutent' : 'Le bien s’ajoute'} sous le texte, avec ${envoyables.length > 1 ? 'leurs photos' : 'sa photo'} et un bouton vers ${envoyables.length > 1 ? 'leur fiche' : 'sa fiche'}.`}</span></p>
-              {libres.length > 0 && horsSite.length > 0 && (
-                <p className={l.aide}><Ic n="info" t={14} /><span>{`${horsSite.map(bienCourt).join(', ')} : pas sur ton site. Par simple mail, ${horsSite.length > 1 ? 'ils partent' : 'il part'} avec ${horsSite.length > 1 ? 'leur' : 'sa'} photo et ${horsSite.length > 1 ? 'leur' : 'sa'} description, sans lien.`}</span></p>
+              {/* V3.131 : hors du CRM, « Voir le bien » mène à la fiche publique du
+                  bien, sur le site ou pas : plus d'avertissement « sans lien ». */}
+              {libres.length > 0 && (
+                <p className={l.aide}><Ic n="info" t={14} /><span>{`Pour ${libres.length > 1 ? 'les adresses' : 'l’adresse'} hors du CRM : « Voir le bien » ouvre la fiche publique ${envoyables.length > 1 ? 'de chaque bien' : 'du bien'}, comme le « Partager » d’un acheteur.`}</span></p>
               )}
               <div className={l.dest}>
                 <b>{nbMails > 1 ? `${nbMails} destinataires` : '1 destinataire'}</b>

@@ -33,7 +33,7 @@ import b from './Biens.module.css';
    vit dans l'URL (?page=biens&bien=…) : un F5 ou le bouton Précédent y
    ramènent. */
 
-type Filtre = 'tout' | EtapeVente | 'archives' | 'diffusion';
+type Filtre = 'tout' | EtapeVente | 'archives' | 'diffusion' | 'ventes';
 const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
 /* V3.80 (Alexandre : « trop de sous-catégories, on ne comprend pas trop ;
    mandat en cours en premier, ensuite estimation, et c'est tout ; les restes,
@@ -41,9 +41,23 @@ const ORDRE: EtapeVente[] = ['mandat', 'offre', 'compromis', 'estimation', 'a_su
    étapes dans « Autres étapes ▾ », « Tous » et « Archivés » à droite.
    « Mandats en cours » compte aussi les biens sous offre et sous compromis :
    leur mandat court toujours. */
-const PRINCIPALES: EtapeVente[] = ['mandat', 'estimation'];
-const AUTRES: EtapeVente[] = ['offre', 'compromis', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
+/* V3.131 (Alexandre : « mettre juste mandat en cours et diffusion en cours
+   côte à côte, estimation… on le retrouve dans les autres étapes, en haut ») :
+   sur la ligne, « Mandats en cours » puis « Diffusion en cours » ; dans
+   « Autres étapes ▾ », les estimations d'abord, puis « Ventes en cours » (sous
+   offre et sous compromis, réunis : « dans mes ventes en cours, on retrouve
+   sous offre et sous compromis »), puis le reste. */
+const AUTRES: (EtapeVente | 'ventes')[] = ['estimation', 'ventes', 'a_suivre', 'suspendu', 'vendu', 'retire', 'annonce_type'];
 const dansEtape = (x: BienVente, f: EtapeVente) => (f === 'mandat' ? EN_COURS.includes(x.etape) : x.etape === f);
+/* « Ventes en cours » : une offre est là, ou le compromis est signé. */
+const enVente = (x: BienVente) => x.etape === 'offre' || x.etape === 'compromis';
+type SousVente = 'toutes' | 'offre' | 'compromis';
+const dansSousVente = (x: BienVente, k: SousVente) => k === 'toutes' || x.etape === k;
+const AIDE_VENTE: Record<SousVente, string> = {
+  toutes: 'Les biens sous offre et sous compromis : le mandat court toujours, la vente avance.',
+  offre: 'Une offre est arrivée : en attente, en négociation ou acceptée, avant le compromis.',
+  compromis: 'Le compromis est signé : on attend l’acte chez le notaire.',
+};
 /* V3.96 (Alexandre : « dans les onglets, diffusion en cours ») : tout ce qui
    est en ligne, quelle que soit l'étape. */
 const enLigne = (x: BienVente) => etatDiffusion(x).enLigne;
@@ -83,7 +97,31 @@ function ecrireBienUrl(id: string | null) {
 /* La catégorie d'une vue (« estimation »…) ; rien de reconnu : les mandats
    en cours (V3.80 : « quand on arrive, on arrive sur mandat en cours »). */
 const lireFiltre = (v: string | null): Filtre =>
-  v === 'tout' || v === 'archives' || v === 'diffusion' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'mandat';
+  /* V3.131 : « Sous offre » et « Sous compromis » vivent dans « Ventes en cours ». */
+  v === 'offre' || v === 'compromis' ? 'ventes'
+    : v === 'tout' || v === 'archives' || v === 'diffusion' || v === 'ventes' || ETAPES_VENTE.some(e => e.k === v) ? v as Filtre : 'mandat';
+const lireSousVente = (v: string | null): SousVente => (v === 'offre' || v === 'compromis' ? v : 'toutes');
+
+/* Les pastilles sous une catégorie (« Diffusion en cours », « Ventes en
+   cours ») : elles la rangent, chacune avec son nombre ; une phrase dit ce
+   que montre celle qui est choisie. */
+function Pastilles<K extends string>({ choix, v, onChange, label, aide }: {
+  choix: { k: K; l: string; n: number; c?: string }[]; v: K; onChange: (k: K) => void; label: string; aide?: { ic: string; t: string } | null;
+}) {
+  return (
+    <div className={b.sousDiff}>
+      <div className={b.sousDiffPills} role="group" aria-label={label}>
+        {choix.map(x => (
+          <button key={x.k} type="button" aria-pressed={v === x.k} onClick={() => onChange(x.k)}>
+            {x.c && <i className={b.sousDiffPoint} style={{ background: x.c }} />}
+            <span>{x.l}</span><b>{x.n}</b>
+          </button>
+        ))}
+      </div>
+      {aide && <span className={b.sousDiffAide}><Ic n={aide.ic} t={14} /><span>{aide.t}</span></span>}
+    </div>
+  );
+}
 
 /* « C'est vendu » : le bandeau qui le confirme, en haut de la liste (V3.47). */
 export function BandeauVendu({ titre, texte, onFiche, onVendus, onFermer }: { titre: string; texte: string; onFiche: () => void; onVendus: () => void; onFermer: () => void }) {
@@ -111,6 +149,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const [filtre, setFiltre] = useState<Filtre>(() => lireFiltre(vueDemandee('biens')));
   useEffect(() => { annoncerVue('biens', filtre); }, [filtre]);
   const [sousDiff, setSousDiff] = useState<SousDiff>('tous');
+  const [sousVente, setSousVente] = useState<SousVente>(() => lireSousVente(vueDemandee('biens')));
   const [cherche, setCherche] = useState('');
   /* V3.16 : affiner (type, surface, pièces, budget, DPE) et trier. */
   const [fins, setFins] = useState<Filtres>(FILTRES_VIDES);
@@ -135,6 +174,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       if (d?.page !== 'biens') return;
       setOuvert(null); ecrireBienUrl(null);
       setFiltre(lireFiltre(d.vue));
+      setSousVente(lireSousVente(d.vue));
     };
     window.addEventListener(EVT_DEMANDE_VUE, demande);
     return () => window.removeEventListener(EVT_DEMANDE_VUE, demande);
@@ -301,7 +341,10 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* Les filtres fins comptent comme la recherche : les nombres des
      catégories les suivent. */
   const cherches = filtrer(trouves, fins);
-  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || (filtre === 'diffusion' ? enLigne(x) && dansSousDiff(x, sousDiff) : dansEtape(x, filtre));
+  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives'
+    || (filtre === 'diffusion' ? enLigne(x) && dansSousDiff(x, sousDiff)
+      : filtre === 'ventes' ? enVente(x) && dansSousVente(x, sousVente)
+        : dansEtape(x, filtre));
   const parEtape = (p: BienVente, r: BienVente) => ORDRE.indexOf(p.etape) - ORDRE.indexOf(r.etape) || r.updated_at.localeCompare(p.updated_at);
   const visibles = trier(cherches.filter(dansCategorie), tri, parEtape);
   const avantFiltres = trouves.filter(dansCategorie).length;
@@ -440,17 +483,21 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
         recherche={biens.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Adresse, ville, propriétaire, n° de mandat…', label: 'Chercher un bien' } : undefined}
         bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setPour(null); setChoixDepart(true); } }}
         bouton2={installer ? undefined : { lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportIF(true) }}
-        label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)}
+        label="Filtrer par catégorie" actif={filtre} onChoisir={k => setFiltre(k as Filtre)} aCheval
         libMenu="Autres étapes"
         tuiles={biens.length === 0 ? [] : [
-          /* Les deux étapes du quotidien, puis les autres dans le menu (celles
-             qui ont des biens, ou celle qu'on regarde). */
-          ...PRINCIPALES.map(k => etapeDe(k))
-            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, e.k)).length : n(e.k), couleur: e.c })),
-          /* V3.96 : ce qui est en ligne, à côté des deux étapes du quotidien. */
+          /* V3.131 : les mandats en cours et ce qui est en ligne, côte à côte ;
+             les autres dans le menu (les estimations toujours, en tête ; les
+             autres quand elles ont des biens, ou quand on les regarde). */
+          { cle: 'mandat', lib: etapeDe('mandat').pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, 'mandat')).length : n('mandat'), couleur: etapeDe('mandat').c },
+          /* V3.96 : ce qui est en ligne. */
           { cle: 'diffusion', lib: 'Diffusion en cours', n: filtre === 'archives' ? actifs.filter(enLigne).length : cherches.filter(enLigne).length, couleur: '#0f7a4f' },
-          ...AUTRES.filter(k => (filtre === 'archives' ? actifs.some(x => x.etape === k) : n(k) > 0) || k === filtre).map(k => etapeDe(k))
-            .map(e => ({ cle: e.k, lib: e.pluriel, n: filtre === 'archives' ? actifs.filter(x => dansEtape(x, e.k)).length : n(e.k), couleur: e.c, menu: true })),
+          ...AUTRES.map(k => {
+            const base = filtre === 'archives' ? actifs : cherches;
+            const nb = k === 'ventes' ? base.filter(enVente).length : base.filter(x => dansEtape(x, k)).length;
+            const e = k === 'ventes' ? null : etapeDe(k);
+            return { cle: k, lib: e ? e.pluriel : 'Ventes en cours', n: nb, couleur: e ? e.c : etapeDe('compromis').c, menu: true };
+          }).filter(x => x.n > 0 || x.cle === filtre || x.cle === 'estimation'),
           { cle: 'tout', lib: 'Tous', n: filtre === 'archives' ? actifs.length : cherches.length, tete: true, fin: true, ic: <Ic n="maison" t={14} e={2.1} /> },
           /* « Archivés » toujours là, même vide : sa place ne bouge pas. */
           { cle: 'archives', lib: 'Archivés', n: archives.length, archive: true },
@@ -510,23 +557,27 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
       )}
       {liste && !installer && biens.length > 0 && filtre === 'diffusion' && (() => {
         const enL = cherches.filter(enLigne);
-        const choix: { k: SousDiff; l: string; n: number; c?: string }[] = [
-          { k: 'tous', l: 'Tous', n: enL.length },
-          { k: 'mandats', l: 'Mandats', n: enL.filter(x => dansSousDiff(x, 'mandats')).length, c: etapeDe('mandat').c },
-          { k: 'annonces', l: 'Annonces type', n: enL.filter(x => dansSousDiff(x, 'annonces')).length, c: etapeDe('annonce_type').c },
-        ];
         return (
-          <div className={b.sousDiff}>
-            <div className={b.sousDiffPills} role="group" aria-label="Classer les biens en ligne">
-              {choix.map(x => (
-                <button key={x.k} type="button" aria-pressed={sousDiff === x.k} onClick={() => setSousDiff(x.k)}>
-                  {x.c && <i className={b.sousDiffPoint} style={{ background: x.c }} />}
-                  <span>{x.l}</span><b>{x.n}</b>
-                </button>
-              ))}
-            </div>
-            {sousDiff !== 'annonces' && <span className={b.sousDiffAide}><Ic n="megaphone" t={14} /><span>{AIDE_DIFF[sousDiff]}</span></span>}
-          </div>
+          <Pastilles<SousDiff> label="Classer les biens en ligne" v={sousDiff} onChange={setSousDiff}
+            aide={sousDiff !== 'annonces' ? { ic: 'megaphone', t: AIDE_DIFF[sousDiff] } : null}
+            choix={[
+              { k: 'tous', l: 'Tous', n: enL.length },
+              { k: 'mandats', l: 'Mandats', n: enL.filter(x => dansSousDiff(x, 'mandats')).length, c: etapeDe('mandat').c },
+              { k: 'annonces', l: 'Annonces type', n: enL.filter(x => dansSousDiff(x, 'annonces')).length, c: etapeDe('annonce_type').c },
+            ]} />
+        );
+      })()}
+      {/* V3.131 : « Ventes en cours », rangées en sous offre et sous compromis. */}
+      {liste && !installer && biens.length > 0 && filtre === 'ventes' && (() => {
+        const v = cherches.filter(enVente);
+        return (
+          <Pastilles<SousVente> label="Classer les ventes en cours" v={sousVente} onChange={setSousVente}
+            aide={{ ic: 'cle', t: AIDE_VENTE[sousVente] }}
+            choix={[
+              { k: 'toutes', l: 'Toutes', n: v.length },
+              { k: 'offre', l: 'Sous offre', n: v.filter(x => x.etape === 'offre').length, c: etapeDe('offre').c },
+              { k: 'compromis', l: 'Sous compromis', n: v.filter(x => x.etape === 'compromis').length, c: etapeDe('compromis').c },
+            ]} />
         );
       })()}
       {liste && !installer && biens.length > 0 && (filtre === 'annonce_type' || (filtre === 'diffusion' && sousDiff === 'annonces')) && <ExpliAnnonceType />}

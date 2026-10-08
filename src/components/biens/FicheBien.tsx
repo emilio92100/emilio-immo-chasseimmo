@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
+import { lienBienPublic } from '@/lib/jeton';
 import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/actes';
 import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
@@ -1142,6 +1143,12 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   const [depotSigne, setDepotSigne] = useState<DocumentRow | null>(null);
   const [cr, setCr] = useState<VisiteU | null>(null);
   const [message, setMessage] = useState<{ t: string; ok: boolean } | null>(null);
+  /* V3.131 : la fiche publique du bien, un lien qui ne change jamais. */
+  async function copierLienPublic() {
+    const lien = lienBienPublic(bien.id);
+    try { await navigator.clipboard.writeText(lien); setMessage({ t: `Lien copié : ${lien}`, ok: true }); }
+    catch { setMessage({ t: `Copie impossible ici. Le lien : ${lien}`, ok: false }); }
+  }
   const [visite, setVisite] = useState(false);
   /* Onglet Documents (V3.32) : la liste de tous les documents préparés, repliée. */
   const [listeDocsOuverte, setListeDocsOuverte] = useState(false);
@@ -2090,6 +2097,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); garde('prix', () => setFen({ k: 'prix' }))(); }}><Ic n="etiquette" t={16} /><span><b>Changer le prix ou les honoraires</b><small>L’ancien reste dans l’historique</small></span></button>
               {/* V3.96 : aussi hors des étapes de vente, pour le diffuser quand même. */}
               {!bien.archive && <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); setFen({ k: 'diffusion' }); }}><Ic n="megaphone" t={16} /><span><b>Diffusion de l’annonce</b><small>{diff.concerne ? `${diff.lib} · ${diff.detail}` : 'Non diffusé à cette étape · le diffuser quand même'}</small></span></button>}
+              <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); void copierLienPublic(); }}><Ic n="copier" t={16} /><span><b>Copier le lien de la fiche</b><small>{avant ? 'La fiche publique, sans prix avant le mandat' : 'La fiche publique, à coller dans un message'}</small></span></button>
               <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); setFen({ k: 'note' }); }}><Ic n="bulle" t={16} /><span><b>Ajouter une note</b><small>Dans l’historique du bien</small></span></button>
               {pointVendeur && <button type="button" role="menuitem" className={b.menuItem} onClick={() => { setMenu(null); setFen({ k: 'point' }); }}><Ic n="megaphone" t={16} /><span><b>Point vendeur</b><small>{txt(d, 'dernierPointVendeur') ? `Le dernier : le ${dateLongue(txt(d, 'dernierPointVendeur'))}` : 'Visites, retours, offres : le texte prêt à envoyer'}</small></span></button>}
               <div className={b.menuSep} />
