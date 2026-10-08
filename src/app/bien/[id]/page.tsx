@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import PhotoCarousel from './PhotoCarousel';
 import AboutPliable from './AboutPliable';
+import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
 
 /*
  * La fiche publique d'un bien — /bien/<id>
@@ -15,6 +16,14 @@ import AboutPliable from './AboutPliable';
  * (mêmes cartes, mêmes rubriques, mêmes jetons de couleur), à une différence
  * près : pas de boutons d'avis. Celui qui reçoit le lien n'est pas le client,
  * il n'a rien à répondre — on lui donne les moyens d'appeler, c'est tout.
+ *
+ * V3.131 (Alexandre : « il appuie sur voir le bien, et ça arrive sur le lien
+ * public, comme si un acheteur faisait partager ») : un bien de l'agence
+ * (rubrique Biens, table biens_vente) a aussi la sienne, à son propre id —
+ * un lien par bien, qui ne change jamais. C'est elle que porte le bouton
+ * « Voir le bien » du mail envoyé à quelqu'un hors du CRM. Elle montre ce
+ * que montrerait la copie dans le dossier d'un acheteur (versBienAcheteur) :
+ * pas d'adresse exacte, pas de propriétaire, pas de prix avant le mandat.
  */
 
 export const dynamic = 'force-dynamic';
@@ -142,15 +151,25 @@ function Titre({ children }: { children: React.ReactNode }) {
 export default async function PageBien({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const { data: bien } = await supabase.from('biens').select('*').eq('id', id).maybeSingle();
-  if (!bien) notFound();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let { data: bien } = await supabase.from('biens').select('*').eq('id', id).maybeSingle() as { data: any };
+  /* V3.131 : pas une copie d'acheteur ? Peut-être un bien de l'agence. */
+  let venteDirecte: { etape?: string | null; archive?: boolean | null } | null = null;
+  if (!bien) {
+    const { data: v } = await supabase.from('biens_vente').select('*').eq('id', id).maybeSingle();
+    if (!v) notFound();
+    const vente = v as BienVente;
+    bien = { id: vente.id, ...versBienAcheteur(vente, { clientId: '', rechercheId: '', quand: '' }) };
+    venteDirecte = { etape: vente.etape, archive: vente.archive };
+  }
 
   /* Un bien encore « en sélection » (pas encore présenté) reste lisible : un
      lien peut déjà être parti (WhatsApp à plusieurs, lien copié) avant que le
      bien passe « présenté », ou il a pu revenir en sélection après l'envoi.
      Le cacher casserait des liens déjà donnés au client. */
   const [venteLue, reglagesLus] = await Promise.all([
-    bien.bien_vente_id
+    venteDirecte ? Promise.resolve({ data: venteDirecte, error: null })
+      : bien.bien_vente_id
       ? supabase.from('biens_vente').select('etape, archive').eq('id', bien.bien_vente_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     supabase.from('parametres').select('cle, valeur').in('cle', ['conseiller_telephone', 'conseiller_email']),
