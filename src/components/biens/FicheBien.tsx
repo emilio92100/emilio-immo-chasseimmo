@@ -2153,12 +2153,25 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
           {/* V3.54 : la carte « Le propriétaire » est partie (Alexandre : « ça ne
               sert à rien, on a déjà la partie en haut ») — la pastille du
               bandeau dit tout, sur tous les onglets. */}
+          {/* V3.133 (Alexandre : enlever « Visites et offres » des annonces
+              type) : ni visite ni offre sur une annonce type ; à la place, ce
+              qu'elle est, et si elle est en ligne. */}
+          {e === 'annonce_type' ? (
+            <div className={b.expliAnnonce}>
+              <span className={b.expliAnnonceIc}><Ic n="megaphone" t={16} /></span>
+              <span>
+                <b>{'Une annonce type'}</b>
+                {` : elle sert à faire venir des acheteurs, sans vrai bien à vendre derrière. Ni visite ni offre ici : un acheteur intéressé se suit sur sa propre fiche. ${diff.enLigne ? `En ligne ${diff.detail.replace(/^Sur /, 'sur ')}` : 'Pas encore en ligne : « Diffusion de l’annonce », dans le menu ⋯.'}`}
+              </span>
+            </div>
+          ) : (
           <Kpis n={avant || e !== 'vendu' ? 2 : 1}>
             {!avant && <CarteVisites nbVisites={nbVisites} nbAVenir={visitesAVenir.length} nbOffres={offresOuvertes.length} repartition={repartition} prochaine={prochaineVisite}
               onVoir={() => setOnglet('visites')} onVisite={ouvrirVisite} onOffre={ouvrirOffre} />}
             {(avant || e !== 'vendu') && <CartePourLaVisite {...visitePourCarte(d)} onModifier={() => onModifier('pratique')} />}
             {avant && <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />}
           </Kpis>
+          )}
           {offresOuvertes.map(o => (
             <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
           ))}
@@ -2167,7 +2180,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
               liste entière est dans l'onglet Acheteurs. */}
           {/* Les observations juste sous les cartes (V3.31), et non plus en bas de page. */}
           {blocNotes}
-          {avant ? <BlocDernierement items={recents} onTout={() => setOnglet('historique')} /> : (
+          {avant || e === 'annonce_type' ? <BlocDernierement items={recents} onTout={() => setOnglet('historique')} /> : (
             <div className={b.deuxEgal}>
               <div className={b.col}>
                 <BlocProchaines items={prochaines} onVoir={() => setOnglet('visites')} onAjouter={ouvrirVisite} onFiche={ouvrirClient} />
