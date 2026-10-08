@@ -1,3 +1,5 @@
+import { cache } from 'react';
+import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
@@ -148,20 +150,85 @@ function Titre({ children }: { children: React.ReactNode }) {
   );
 }
 
+type VenteDirecte = { etape?: string | null; archive?: boolean | null; donnees?: Record<string, unknown> | null };
+
+/* Le bien, lu une seule fois pour la page ET pour l'aperçu du lien (cache de
+   React : generateMetadata et la page partagent la même lecture). */
+const lireBien = cache(async (id: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: copie } = await supabase.from('biens').select('*').eq('id', id).maybeSingle() as { data: any };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (copie) return { bien: copie as any, venteDirecte: null as VenteDirecte | null };
+  /* V3.131 : pas une copie d'acheteur ? Peut-être un bien de l'agence. */
+  const { data: v } = await supabase.from('biens_vente').select('*').eq('id', id).maybeSingle();
+  if (!v) return null;
+  const vente = v as BienVente;
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    bien: { id: vente.id, ...versBienAcheteur(vente, { clientId: '', rechercheId: '', quand: '' }) } as any,
+    venteDirecte: { etape: vente.etape, archive: vente.archive, donnees: vente.donnees } as VenteDirecte | null,
+  };
+});
+
+/* V3.140 — l’aperçu du lien (Alexandre, 8 oct. 2026 : un lien envoyé par WhatsApp
+   montrait « Emilio Immobilier — Outil Chasseur », sans la photo du bien).
+   WhatsApp, Messenger, iMessage ou LinkedIn lisent ces balises pour dessiner
+   l'aperçu : la première photo, le titre, puis pièces, surface, ville et prix
+   (le prix seulement s'il est affiché sur la page : pas avant le mandat pour
+   un bien de l'agence). Next les met dans l'en-tête pour ces robots-là.
+   La photo passe par le redimensionnement de Supabase (1080 px de large,
+   moins de 250 Ko) : WhatsApp laisse de côté les images trop lourdes. */
+const apercuPhoto = (u: string) => u.includes('/storage/v1/object/public/')
+  ? `${u.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/')}?width=1080&quality=60`
+  : u;
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const lu = await lireBien(id).catch(() => null);
+  if (!lu) return {};
+  const b = lu.bien;
+  let vente: { etape?: string | null; archive?: boolean | null } | null = lu.venteDirecte;
+  if (!vente && b.bien_vente_id) {
+    const { data } = await supabase.from('biens_vente').select('etape, archive').eq('id', b.bien_vente_id).maybeSingle();
+    vente = data;
+  }
+  const etat = etatDeVente(vente);
+  /* « Paris 16e » plutôt que « Paris (75016) », comme sur le site. */
+  const arr = /^paris/i.test(b.ville || '') && /^75\d{3}$/.test(b.code_postal || '') ? parseInt(String(b.code_postal).slice(3), 10) : 0;
+  const ville = arr > 0 ? `Paris ${arr}${arr === 1 ? 'er' : 'e'}` : (b.ville || '');
+  const titre = String(b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` ${nb(b.surface)} m²` : ''}`).slice(0, 90);
+  const prix = b.prix_acquereur || b.prix_vendeur;
+  /* Ce que le titre dit déjà (« 3 pièces · 80 m² ») ne se répète pas dessous. */
+  const details = [
+    b.nb_pieces && !/pi[eè]ce/i.test(titre) ? `${b.nb_pieces} pièce${b.nb_pieces > 1 ? 's' : ''}` : '',
+    b.surface && !/m²/.test(titre) ? `${nb(b.surface)} m²` : '',
+    ville,
+    prix ? `${fmt(prix)} €` : '',
+  ].filter(Boolean).join(' · ');
+  const description = etat ? `${BANDEAU[etat].titre}. ${details}` : details || 'Un bien proposé par Emilio Immobilier.';
+  const photos: string[] = Array.isArray(b.photos) ? b.photos.filter(Boolean) : [];
+  const image = photos[0] ? apercuPhoto(photos[0]) : null;
+  return {
+    title: `${titre} — Emilio Immobilier`,
+    description,
+    openGraph: {
+      title: titre,
+      description,
+      siteName: 'Emilio Immobilier',
+      locale: 'fr_FR',
+      type: 'website',
+      ...(image ? { images: [{ url: image, alt: titre }] } : {}),
+    },
+    twitter: { card: image ? 'summary_large_image' : 'summary', title: titre, description, ...(image ? { images: [image] } : {}) },
+  };
+}
+
 export default async function PageBien({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let { data: bien } = await supabase.from('biens').select('*').eq('id', id).maybeSingle() as { data: any };
-  /* V3.131 : pas une copie d'acheteur ? Peut-être un bien de l'agence. */
-  let venteDirecte: { etape?: string | null; archive?: boolean | null; donnees?: Record<string, unknown> | null } | null = null;
-  if (!bien) {
-    const { data: v } = await supabase.from('biens_vente').select('*').eq('id', id).maybeSingle();
-    if (!v) notFound();
-    const vente = v as BienVente;
-    bien = { id: vente.id, ...versBienAcheteur(vente, { clientId: '', rechercheId: '', quand: '' }) };
-    venteDirecte = { etape: vente.etape, archive: vente.archive, donnees: vente.donnees };
-  }
+  const lu = await lireBien(id);
+  if (!lu) notFound();
+  const { bien, venteDirecte } = lu;
 
   /* Un bien encore « en sélection » (pas encore présenté) reste lisible : un
      lien peut déjà être parti (WhatsApp à plusieurs, lien copié) avant que le
