@@ -1647,6 +1647,8 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
 .geste:hover, .geste[aria-expanded='true'] { background: #f3f6fa; }
 .geste > svg { color: #64748b; }
 .gestePlus { padding: 0 17px 0 15px; }
+/* V3.139 : « Envoyer », l'icône dorée, comme « Nouveau contact ». */
+.gesteEnvoi > svg { color: #b08a2e; }
 .chevalCourt .statutDiff .diffLong { display: none; }
 .chevalCourt .statutDiff .diffCourt { display: inline; }
 .chevalSerre .gesteTx, .chevalSerre .statutEtape .etLong { display: none; }
@@ -1677,6 +1679,10 @@ nav.sousOnglets { background: transparent; border: none; padding: 0; border-radi
    que l'étape et la diffusion tiennent sur le même rang que les gestes. */
 @media (max-width: 480px) {
   .diffLogos, .gesteNote { display: none; }
+  /* V3.139 : avec « Envoyer », « Modifier » passe aussi dans « ⋯ »
+     (« Modifier la fiche ») : trois icônes ne tiennent plus sur le rang. */
+  .gesteModif { display: none; }
+  .gesteModif + .geste::before { display: none; }
   .statutEtape { padding: 0 9px; gap: 5px; }
   .statutDiff { margin-left: 9px; padding: 0 10px; gap: 5px; }
   .statutDiff::before { left: -9px; width: 9px; }
