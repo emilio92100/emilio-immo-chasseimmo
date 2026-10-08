@@ -1498,6 +1498,41 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.130 — 8 octobre 2026 · Changer un bien en annonce type, la fiche en direct en bleu et repliable, Diffusion en cours classée
+
+Rien à passer dans Supabase.
+
+- **Annonce type, après la création** (Alexandre : « ce n'est pas un mandat, juste une annonce type…
+  je ne sais pas où je change ») : elle ne se choisissait qu'à la création ou à l'import. Le menu de
+  l'étape (FicheBien) propose maintenant :
+  - en vente ou en pause : « C'est une annonce type… » → `FenAnnulerMandat` avec `vers0 =
+    'annonce_type'` (titre « En faire une annonce type ») : le mandat (n°, type, dates, scan) quitte
+    la fiche par `retirerMandatDuBien`, l'historique garde la ligne, le prix affiché est gardé
+    d'office, et la fenêtre dit si l'annonce reste en ligne (`etatDiffusion`). Un mandat signé dans
+    Documents, encore valable, renvoie vers Documents (« Marquer annulé ») ;
+  - à suivre ou estimation : « C'est une annonce type… » → `FenRaison` (raisons proposées, phrase
+    d'explication) ;
+  - retiré : « En faire une annonce type… » (un ancien mandat gardé en ligne) — par la même fenêtre
+    si un mandat était noté (le mandat fini n'oblige pas à passer par Documents), sinon `FenRaison` ;
+  - annonce type : « Changer le prix… » et « C'est un vrai mandat… » (`FenMandat` : la signature
+    est notée comme un premier mandat, le propriétaire est demandé s'il manque). Un mandat signé
+    dans Documents sur une annonce type la fait aussi passer « En vente » (`mandatSigneSurBien`).
+  - La carte d'une annonce type ne dit plus « Avis de valeur à envoyer » (`ligneEtatBrute`).
+- **« La fiche, en direct » dans l'éditeur** (« en noir… la mettre en bleu comme sur le CRM… soit la
+  cacher, soit la mettre sur le côté ») : le bleu du CRM (`--emilio-fond`, comme le haut de la
+  fiche) ; sur ordinateur, « Masquer » la replie en une languette bleue à droite, qui la rouvre
+  (`data-apercu='cache'`, `localStorage` `biens.apercu`). Au téléphone, rien ne change.
+- **« Diffusion en cours » classée** (« ajouter mandat en cours, annonce type… dès qu'il y a une
+  diffusion, ça se met là-dedans ? ») : oui, tout bien en ligne, quelle que soit l'étape. Des
+  pastilles Tous · Mandats · Annonces type, avec leurs nombres, rangent la liste (`SousDiff`), et
+  une phrase dit ce que chacune montre (`AIDE_DIFF`). Sous « Annonces type » (la pastille comme la
+  catégorie d'« Autres étapes »), un encadré dit ce qu'est une annonce type (`ExpliAnnonceType`).
+- **Envoyer un bien de l'agence à un acheteur** (« est-ce que ça récupère aussi les charges de
+  copro ? ») : la copie dans son dossier (`versBienAcheteur`) portait déjà les charges, la taxe
+  foncière et le DPE ; elle porte aussi le nombre de lots et ce que couvrent les charges
+  (`nb_lots`, `charges_comprises`), que son espace et la page `/bien/<id>` savaient montrer. Pour
+  les biens envoyés à partir de maintenant.
+
 ### V3.129 — 8 octobre 2026 · Demandes Internet en pastilles et en étapes, le rappel programmé, les demandes de visite
 
 Rien à passer dans Supabase.
