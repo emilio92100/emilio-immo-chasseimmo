@@ -459,7 +459,7 @@ function finSRU(jour: string): string | null {
 
 /* V3.102 — `retourVers` : ouverte depuis Relances, le bouton retour y ramène
    et le dit (« ← Relances »). */
-interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; retourVers?: 'relances'; }
+interface Props { client: Client; onBack: () => void; onNavigate: (page: string, data?: unknown) => void; retourVers?: 'relances' | 'agenda'; }
 
 function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: any; setBienForm: any; prixAcq: number; styles: any }) {
   const set = (key: string, value: any) => setBienForm((f: any) => ({ ...f, [key]: value }));
@@ -3656,8 +3656,8 @@ ${signatureMail()}`,
           disparaissaient dès le premier tour de molette »). */}
       <div className={`${styles.pageHeader} ${chevalCache ? styles.pageHeaderPlie : ''}`}>
         <div className={styles.fil} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className={styles.backBtn} onClick={onBack} aria-label={retourVers === 'relances' ? 'Retour aux relances' : 'Retour aux contacts'}>
-            <span className={styles.surBureau}>{retourVers === 'relances' ? '← Relances' : '← Contacts'}</span>
+          <button className={styles.backBtn} onClick={onBack} aria-label={retourVers === 'relances' ? 'Retour aux relances' : retourVers === 'agenda' ? 'Retour à l’agenda' : 'Retour aux contacts'}>
+            <span className={styles.surBureau}>{retourVers === 'relances' ? '← Relances' : retourVers === 'agenda' ? '← Agenda' : '← Contacts'}</span>
             <span className={styles.surMobile}><Icone nom="retour" taille={19} epaisseur={2.1} /></span>
           </button>
           <span className={`${styles.filSep} ${styles.filPlie}`} style={{ color: '#94a3b8' }}>/</span>
