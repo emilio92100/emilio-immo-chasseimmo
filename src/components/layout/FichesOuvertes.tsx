@@ -32,8 +32,9 @@ export type FicheOuverte = {
   statut?: string | null;
   photo?: string | null;
   /* V3.102 — Un contact ouvert depuis Relances : fermer sa fiche (×, « Tout
-     fermer », le bouton retour) ramène à Relances, pas à Contacts. */
-  depuis?: 'relances';
+     fermer », le bouton retour) ramène à Relances, pas à Contacts.
+     V3.138 — depuis l'agenda : à l'agenda, la visite rouverte. */
+  depuis?: 'relances' | 'agenda';
 };
 
 export const EVT_FICHE_OUVERTE = 'emilio:fiche-ouverte';
