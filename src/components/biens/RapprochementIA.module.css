@@ -1,41 +1,97 @@
-/* Le rapprochement intelligent (V3.122, partout depuis la V3.123) : voir RapprochementIA.tsx. */
+/* Le rapprochement, partout (V3.122 → V3.125) : voir RapprochementIA.tsx. */
 
-.carte { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 20px; border: 1.5px solid #d9d2f5; background: radial-gradient(120% 160% at 0% 0%, #f4f0ff 0%, #fbfaff 50%, #ffffff 100%); font-family: 'DM Sans', sans-serif; }
-.carte[data-en='oui'] { border-color: #b9aef0; }
-.compact { padding: 12px 14px; border-radius: 16px; gap: 12px; }
-.ic { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #34496e; color: #f2dfa6; box-shadow: 0 6px 14px -8px rgba(26, 35, 50, .6); }
-.compact .ic { width: 38px; height: 38px; border-radius: 12px; }
-.tourne { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(242, 223, 166, .3); border-top-color: #f2dfa6; animation: tourne .8s linear infinite; }
-@keyframes tourne { to { transform: rotate(360deg); } }
-.tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.tx > b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
-.compact .tx > b { font-size: 14px; }
-.tx > span { font-size: 13px; line-height: 1.5; color: #475569; }
-.compact .tx > span { font-size: 12.5px; }
-.erreur { color: #b91c1c !important; font-weight: 700; }
-.info { color: #a16207 !important; font-weight: 600; }
-.btn, .btnDoux { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 16px; border-radius: 12px; cursor: pointer; font: 700 13.5px 'DM Sans', sans-serif; white-space: nowrap; }
-.compact .btn, .compact .btnDoux { height: 38px; padding: 0 13px; font-size: 13px; }
-.btn { border: 1px solid #34496e; background: #34496e; color: #fff; }
-.btn:hover { background: #2e4166; }
-.btnDoux { border: 1px solid #d9d2f5; background: #fff; color: #34496e; }
-.btnDoux:hover { border-color: #b9aef0; background: #fbfaff; }
+/* ── L'avatar et sa note juste en dessous ── */
+.avs { display: inline-flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 64px; }
+.avsAv { position: relative; display: inline-flex; border-radius: 50%; padding: 2px; background: #fff; box-shadow: 0 0 0 2.5px #e2e8f0; }
+.avsAv > * { width: 50px !important; height: 50px !important; border-radius: 50%; }
+.avs[data-v='oui'] .avsAv { box-shadow: 0 0 0 2.5px #16a34a; }
+.avs[data-v='a_voir'] .avsAv { box-shadow: 0 0 0 2.5px #d97706; }
+.avs[data-v='non'] .avsAv { box-shadow: 0 0 0 2.5px #fca5a5; }
+.avs[data-forme='carre'] { width: auto; }
+.avs[data-forme='carre'] .avsAv { border-radius: 14px; padding: 0; }
+.avs[data-forme='carre'] .avsAv > * { width: auto !important; height: auto !important; border-radius: 12px; }
+.avsNote { position: relative; z-index: 1; margin-top: -10px; display: inline-flex; align-items: baseline; gap: 1px; height: 22px; padding: 0 8px; border-radius: 99px; border: 2px solid #fff; background: #94a3b8; color: #fff; box-sizing: border-box; line-height: 18px; box-shadow: 0 4px 10px -6px rgba(15, 23, 42, .6); }
+.avsNote b { font: 800 12.5px 'Plus Jakarta Sans', sans-serif; }
+.avsNote small { font: 700 9px 'Plus Jakarta Sans', sans-serif; opacity: .85; }
+.avs[data-v='oui'] .avsNote { background: #16a34a; }
+.avs[data-v='a_voir'] .avsNote { background: #d97706; }
+.avs[data-v='non'] .avsNote { background: #dc2626; }
+.avsLeg { margin-top: 2px; font: 800 8.5px 'Plus Jakarta Sans', sans-serif; letter-spacing: .5px; text-transform: uppercase; color: #94a3b8; white-space: nowrap; }
 
-.avis { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; font-weight: 500; line-height: 1.45; color: #334155; text-align: left; }
-.avis .mot { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 21px; padding: 0 8px; border-radius: 99px; font: 800 11px 'DM Sans', sans-serif; }
+/* L'icône d'un avis, dans le titre de son groupe. */
+.icAvis { display: inline-flex !important; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0; color: #fff !important; align-self: center; flex-basis: auto !important; }
+.icAvis[data-v='oui'] { background: #16a34a; }
+.icAvis[data-v='a_voir'] { background: #d97706; }
+.icAvis[data-v='non'] { background: #dc2626; }
+
+/* ── Ce que dit le rapprochement ── */
+.avis { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-family: 'DM Sans', sans-serif; text-align: left; }
+.l1 { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.mot { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 21px; padding: 0 8px; border-radius: 99px; font: 800 11px 'DM Sans', sans-serif; }
 .avis[data-v='oui'] .mot { background: #dcfce7; color: #166534; }
 .avis[data-v='a_voir'] .mot { background: #fef3c7; color: #92400e; }
 .avis[data-v='non'] .mot { background: #fee2e2; color: #991b1b; }
-.avis[data-v='non'] > span { color: #7f1d1d; }
-.avis .avant { font-style: normal; font-weight: 700; color: #1a2332; }
+.etin { flex-shrink: 0; display: inline-flex; margin-top: 2px; color: #7c6fd6; }
+.phrase { font-size: 13.5px; font-weight: 600; line-height: 1.45; color: #1e293b; }
+.avis[data-v='non'] .phrase { color: #7f1d1d; }
+.avant { font-style: normal; font-weight: 800; color: #1a2332; }
 
-@media (max-width: 760px) {
-  .carte { flex-wrap: wrap; padding: 14px; gap: 12px; }
-  .btn, .btnDoux { width: 100%; justify-content: center; height: 44px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .tourne { animation-duration: 2.4s; }
-}
+.pm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 14px; }
+.col { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 10px; border-radius: 11px; }
+.col[data-k='plus'] { background: #f0fdf4; }
+.col[data-k='moins'] { background: #fff7ed; }
+.colT { display: flex; align-items: center; gap: 5px; font: 800 10px 'Plus Jakarta Sans', sans-serif; font-style: normal; letter-spacing: .8px; text-transform: uppercase; margin-bottom: 1px; }
+.col[data-k='plus'] .colT { color: #15803d; }
+.col[data-k='moins'] .colT { color: #c2410c; }
+.pt { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+.pt svg { margin-top: 2px; }
+.col[data-k='plus'] .pt { color: #14532d; }
+.col[data-k='plus'] .pt svg { color: #16a34a; }
+.col[data-k='moins'] .pt { color: #7c2d12; }
+.col[data-k='moins'] .pt svg { color: #ea580c; }
+.rien { font-size: 12.5px; color: #94a3b8; font-style: italic; }
+
+.avisCompact { gap: 5px; }
+.avisCompact .phrase { font-size: 12.5px; }
+.puces { display: flex; flex-wrap: wrap; gap: 4px; }
+.pPlus, .pMoins { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 1px 8px 1px 6px; border-radius: 99px; font-size: 11.5px; font-weight: 700; line-height: 1.3; }
+.pPlus { background: #f0fdf4; color: #15803d; }
+.pMoins { background: #fff7ed; color: #c2410c; }
+
 /* La phrase passe toujours à la ligne, même dans une ligne qui coupe ses
    textes d'un « … » (le rapprochement de la fiche, au téléphone). */
 .avis, .avis span { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+
+/* ── Le rapprochement en cours ── */
+.prog { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: 18px; background: #fff; border: 1.5px solid #ecdcb0; font-family: 'DM Sans', sans-serif; animation: entre .3s ease both; }
+@keyframes entre { from { opacity: 0; transform: translateY(4px); } }
+.progT { display: flex; align-items: center; gap: 10px; }
+.progT b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.progIc { width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: #34496e; }
+.tourne { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(242, 223, 166, .3); border-top-color: #f2dfa6; animation: tourne .8s linear infinite; }
+.tournePetit { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(160, 124, 40, .25); border-top-color: #a07c28; animation: tourne .8s linear infinite; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.progL { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.progL li { display: flex; align-items: flex-start; gap: 10px; }
+.progPuce { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid #e2e8f0; background: #fff; color: #94a3b8; }
+.progPuce i { font: 800 11px 'Plus Jakarta Sans', sans-serif; font-style: normal; }
+.progL li[data-etat='fait'] .progPuce { border-color: #16a34a; background: #16a34a; color: #fff; }
+.progL li[data-etat='en'] .progPuce { border-color: #c9a84c; background: #fbf6e9; }
+.progTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.progTx b { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.progTx > span { font-size: 12.5px; line-height: 1.45; color: #64748b; }
+.progL li[data-etat='attente'] .progTx b { color: #94a3b8; }
+.barre { display: block; height: 6px; margin-top: 5px; border-radius: 99px; background: #f1e6c6; overflow: hidden; }
+.barre i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #c9a84c 0%, #e8c96a 50%, #c9a84c 100%); background-size: 200% 100%; transition: width .4s ease; animation: luit 1.4s linear infinite; }
+@keyframes luit { to { background-position: -200% 0; } }
+
+@media (max-width: 760px) {
+  .pm { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .phrase { font-size: 13px; }
+  .prog { padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tourne, .tournePetit { animation-duration: 2.4s; }
+  .barre i { animation: none; }
+  .prog { animation: none; }
+}

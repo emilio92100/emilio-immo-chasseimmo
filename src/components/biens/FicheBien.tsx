@@ -40,7 +40,7 @@ import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
 import { CarteAcheteurs, FenEnvoiAcheteurs, modeAcheteurs } from './AcheteursBien';
-import { RapprochementBien } from './RapprochementBien';
+import { RapprochementBien, estSeance, lireSeance, resumeSeance } from './RapprochementBien';
 import { FenEnvoiLot } from './LotBiens';
 import { DossierBien, type DestPropose } from './DossierBien';
 import { PastilleProprio } from './PastilleProprio';
@@ -988,6 +988,14 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       else if (d.avis === true) l.push({ cle: x.id, le: x.le, ic: 'envoyer', ton: 'ic_violet', titre: 'Avis de valeur envoyé', detail: x.commentaire || '', genre: 'etapes' });
       else if (d.cycleEstimation === true) l.push({ cle: x.id, le: x.le, ic: 'retour', ton: 'ic_gris', titre: 'Nouvelle estimation : la précédente est gardée ici', detail: x.commentaire || '', genre: 'etapes' });
       else if (d.pointVendeur === true) l.push({ cle: x.id, le: x.le, ic: 'megaphone', ton: 'ic_or', titre: 'Point vendeur envoyé', detail: x.commentaire || '', genre: 'etapes' });
+      else if (d.rapprochement === true) {
+        /* V3.125 : un rapprochement, gardé daté (onglet Rapprochement). */
+        const se = lireSeance(x);
+        const n = se?.total || 0;
+        l.push({ cle: x.id, le: x.le, ic: 'groupe', ton: 'ic_or', genre: 'acheteurs',
+          titre: se && se.lignes.length ? `Rapprochement : ${resumeSeance(se.lignes)}` : 'Rapprochement : personne ne passe le premier tri',
+          detail: `${n} ${n > 1 ? 'recherches ouvertes' : 'recherche ouverte'}${se?.lignes.length ? `, ${se.lignes.length} ${se.lignes.length > 1 ? 'relues' : 'relue'} en détail` : ''} · le détail est dans l’onglet Rapprochement` });
+      }
       else if (d.estimation === true) l.push({ cle: x.id, le: x.le, ic: 'etiquette', ton: 'ic_violet', titre: d.avant ? 'Estimation revue' : 'Estimation', detail: sans('Estimation :'), genre: 'etapes' });
       else l.push({ cle: x.id, le: x.le, ic: 'bulle', ton: 'ic_gris', titre: 'Note', detail: x.commentaire || '', genre: 'notes', suppr: x.id });
     } else if (x.type === 'offre') {
@@ -2205,6 +2213,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {onglet === 'acheteurs' && (
         <div className={b.col}>
           <RapprochementBien key={(detail?.copies || []).map(c => `${c.id}${c.etape || ''}`).join()} bien={bien} tri={tri} mode={mode} copies={detail?.copies || []}
+            seances={(detail?.suivi || []).filter(estSeance)}
+            onSeance={x => setDetail(d2 => (d2 ? { ...d2, suivi: [x, ...d2.suivi.filter(y => y.id !== x.id)] } : d2))}
             onFiche={ouvrirClient}
             onAgir={mode === 'vente' || mode === 'avant' ? l => garde('presenter', () => setFen({ k: 'acheteurs', liste: l }))() : undefined}
             onAutre={mode === 'vente' || mode === 'avant' ? garde('presenter', () => setEnvoiAutre(true)) : undefined} />

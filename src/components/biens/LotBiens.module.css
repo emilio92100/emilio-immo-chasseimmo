@@ -15,12 +15,8 @@
 
 .corps { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 20px 16px; }
 
-/* La ligne au-dessus de la liste : tout cocher, combien, « en partie ». */
+/* La ligne au-dessus de la liste : « Cocher les oui » (V3.125). */
 .barreHaut { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 0 12px; }
-.barreHautTx { font-size: 13.5px; color: #475569; }
-.barreHautTx b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
-.partiels { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: #64748b; cursor: pointer; }
-.partiels input { width: 15px; height: 15px; accent-color: #c9a84c; }
 
 .lignes { display: flex; flex-direction: column; gap: 4px; }
 .ligne {
@@ -155,8 +151,35 @@
 .nomLibre { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #1a2332; overflow-wrap: anywhere; }
 .libreSous { font-size: 12.5px; line-height: 1.45; color: #64748b; }
 
-/* V3.123 — Les avis du rapprochement intelligent, sous les pastilles. */
-.avisIA { display: flex; flex-direction: column; gap: 4px; }
+/* V3.125 — Le rapprochement : rangé par avis, la note de potentiel, les plus et les moins. */
+.ligneRappro { grid-template-columns: 22px 64px minmax(0, 1fr) auto; align-items: start; padding: 12px; }
+.ligneRappro > :first-child { margin-top: 14px; }
+.ligneRappro .combien { margin-top: 14px; }
+.ligneRappro .qui { gap: 7px; }
+.itemSeul { font-size: 12px; font-weight: 700; color: #64748b; }
+.pasRelu { font-size: 12.5px; color: #94a3b8; font-style: italic; }
+.items { display: flex; flex-direction: column; gap: 8px; }
+.item { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 12px; background: #f8fafc; border: 1px solid #eef1f6; }
+.item[data-part='non'] { opacity: .6; }
+.itemT { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; font-weight: 800; color: #1a2332; }
+.itemT i { font-style: normal; font-weight: 600; color: #94a3b8; }
+.score { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 6px; border-radius: 99px; font: 800 11.5px 'Plus Jakarta Sans', sans-serif; color: #fff; }
+.score[data-v='oui'] { background: #16a34a; }
+.score[data-v='a_voir'] { background: #d97706; }
+.score[data-v='non'] { background: #dc2626; }
+.alerte { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; font-size: 13px; line-height: 1.45; color: #92400e; }
+.alerte > span { flex: 1; min-width: 0; }
+.alerteBtn { flex-shrink: 0; height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid #fcd34d; background: #fff; color: #92400e; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; }
+.cocherOui { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #86efac; background: #f0fdf4; color: #166534; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.cocherOui:hover { background: #dcfce7; }
+.groupe { display: flex; flex-direction: column; gap: 4px; }
+.groupeT { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 4px 12px 0; }
+.groupeT > b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.groupeT > strong { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #64748b; }
+.groupeT > span { font-size: 12.5px; color: #64748b; }
+.groupeT > em { margin-left: auto; font-style: normal; font: 700 12.5px 'DM Sans', sans-serif; color: #34496e; }
+.groupeBtn { width: 100%; padding: 9px 12px; border: 1px dashed #fecaca; border-radius: 12px; background: #fffafa; cursor: pointer; text-align: left; font-family: inherit; align-items: center; }
+.groupeBtn:hover { background: #fef2f2; }
 .resSans .resFiche:disabled { opacity: .55; cursor: default; }
 
 /* V3.121 — Le rapprochement, lancé à la demande : l'invitation, puis le calcul. */
@@ -168,9 +191,6 @@
 .rapproTx b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
 .rapproTx small { font-size: 12.5px; line-height: 1.5; color: #64748b; }
 .rapproBtn { flex-shrink: 0; height: 42px; }
-.rappro[data-calcul='oui'] { justify-content: flex-start; min-height: 74px; }
-.rondeur { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; border: 3.5px solid #f1e6c6; border-top-color: #c9a84c; animation: tourne .8s linear infinite; }
-@keyframes tourne { to { transform: rotate(360deg); } }
 
 @media (max-width: 760px) {
   .rappro { flex-wrap: wrap; gap: 12px; padding: 14px; }
@@ -183,7 +203,9 @@
   .fen { width: 100%; max-height: calc(100dvh - 10px); border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
   .corps { padding: 12px 14px 14px; }
   .barreHaut { padding: 0 8px; }
-  .partiels { margin-left: 0; width: 100%; }
+  .ligne.ligneRappro { grid-template-columns: 22px 64px minmax(0, 1fr); gap: 9px; padding: 10px 8px; }
+  .ligneRappro .combien { margin-top: 0; }
+  .groupeT > span { flex-basis: 100%; }
   .ligne { grid-template-columns: 22px 36px minmax(0, 1fr); gap: 10px; padding: 9px 8px; }
   .combien { grid-column: 3; justify-self: start; font-size: 12px; color: #64748b; }
   .pied { padding: 11px 14px; }
@@ -195,5 +217,4 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .voile, .fen, .ligne, .rappro { animation: none; }
-  .rondeur { animation-duration: 2.4s; }
 }
