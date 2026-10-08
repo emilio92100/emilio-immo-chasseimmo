@@ -58,7 +58,8 @@ const ko = (erreur: string, status = 400) => NextResponse.json({ ok: false, erre
 /* `s` : la note de potentiel (0 à 100) ; `p`, `m` : les plus, les moins (V3.125). */
 type Avis = { v: 'oui' | 'a_voir' | 'non'; r: string; le: string; cle: string; s?: number; p?: string[]; m?: string[] };
 /* La version de ce qui est demandé : la changer fait relire les avis gardés. */
-const VERSION = 'v2';
+/* V3.128 : v3, la règle des quartiers — les avis déjà rendus sont relus une fois. */
+const VERSION = 'v3';
 
 /* La forme de la réponse, imposée à l'IA (V3.124 ; plus, moins, note : V3.125). */
 const OUTIL = {
@@ -215,6 +216,7 @@ Règles :
 - « oui » : rien ne s'y oppose, et de préférence le bien a ce qui lui a plu.
 - Budget : la même règle que la veille. Jusqu'à environ 7 % au-dessus de son budget, c'est négociable (900 000 € → jusqu'à 960 000 €) : ce n'est pas une raison de dire « non ». Au-delà de 10 %, « non » sauf s'il a dit être souple.
 - Une information absente de la fiche n'est jamais un « non » : c'est « a_voir », et tu dis quoi vérifier.
+- Quartiers : un secteur écrit « Quartier (Ville) » veut dire qu'il ne cherche que dans ces quartiers-là de la ville. Si le quartier du bien est renseigné et n'en fait pas partie, ce n'est jamais « oui » : « a_voir » au mieux, avec « Hors de ses quartiers » dans les moins. Un début de nom vaut le nom entier (« Silly » = « Silly-Gallieni »). Lis aussi ses notes : un secteur qu'elles précisent (« Boulogne-Nord », « près du parc ») compte comme un critère ; si tu ne peux pas savoir si le bien y est, c'est « a_voir », et tu le dis.
 - N'invente rien : ne t'appuie que sur ce qui est écrit.
 
 Pour chaque couple, Alexandre lit d'un coup d'œil :
