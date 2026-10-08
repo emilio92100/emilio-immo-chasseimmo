@@ -48,7 +48,7 @@ import { Avatar, Illu, modeAcheteurs, teinte } from './AcheteursBien';
 import { AvecScore, AvisDetail, IconeAvis, MOT_IA, Progression, analyserIA, compareIA, type AvisIA, type AvisParBien } from './RapprochementIA';
 import { RAISONS_ETAPE, avantRdv } from './FenetresBien';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, acheteurChoisi, acheteursTries, changerEtape, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
+  SEUIL_CORRESPOND, SEUIL_LISTE, acheteurChoisi, acheteursTries, changerEtape, rechercheOuverte, recherchesRappro, cloreRelancesEstimation, envoyerDansEspace, envoyerParMail, estimationMiseDeCote,
   instantPasse, mettreEnSelection, nomClient, solderDemandesDuBien, suiteEnvoi, type Acheteur, type ClientMini, type Copie, type ListeBiens, type RechercheMini,
 } from './outils';
 import l from './LotBiens.module.css';
@@ -199,7 +199,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     const m = new Map<string, Ligne>();
     for (const b of envoyables) {
       const copies = liste.copies.filter(c => c.bien_vente_id === b.id);
-      for (const a of acheteursTries(b, liste.recherches, liste.clients, copies).retenus) {
+      for (const a of acheteursTries(b, recherchesRappro(liste), liste.clients, copies).retenus) {
         if (a.corr.note < SEUIL_LISTE || manuels.includes(a.recherche.id)) continue;
         const x = m.get(a.recherche.id) || { cle: a.recherche.id, acheteur: a, items: [] };
         x.items.push({ bien: b, acheteur: a });
@@ -240,12 +240,12 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   /* Les clients qui ont une recherche ouverte, pour la recherche par nom. */
   const parClient = useMemo(() => {
     const m = new Map<string, RechercheMini[]>();
-    for (const r of liste.recherches) {
-      if (r.active === false) continue;
+    for (const r of recherchesRappro(liste)) {
+      if (!rechercheOuverte(r, liste.clients[r.client_id])) continue;
       m.set(r.client_id, [...(m.get(r.client_id) || []), r]);
     }
     return m;
-  }, [liste.recherches]);
+  }, [liste]);
   const nbRecherches = useMemo(() => [...parClient.values()].reduce((t, l) => t + l.length, 0), [parClient]);
   const trouves = useMemo(() => {
     const mots = plat(q.trim()).split(/\s+/).filter(Boolean);

@@ -70,6 +70,10 @@ const lever = (quoi: string, m: string): never => { throw new Error(tableAbsente
 export type ListeBiens = {
   biens: BienVente[]; suivi: SuiviVente[]; copies: Copie[]; visites: VisiteRow[];
   clients: Record<string, ClientMini>; recherches: RechercheMini[];
+  /* V3.125 : les recherches « en attente » des prospects et des acheteurs en
+     pause (leur veille ne tourne pas : `active` à false). Le rapprochement
+     les regarde ; la veille, les alertes et le point automatique, non. */
+  recherchesAttente?: RechercheMini[];
   /* Les mandats de vente de Documents, hors annulés (V3.42). */
   mandats?: MandatListe[];
 };
@@ -121,12 +125,13 @@ export async function chargerListe(): Promise<ListeBiens> {
   /* Par pages de 1 000 (V3.33) : Supabase plafonne chaque requête à 1 000
      lignes, quoi que dise .limit(). Au-delà, des acheteurs, des visites ou
      des lignes d'historique manquaient sans le moindre message. */
-  const [b, s, c, r, cl] = await Promise.all([
+  const [b, s, c, r, cl, ra] = await Promise.all([
     toutLire<BienVente>((de, a) => supabase.from('biens_vente').select('*').order('updated_at', { ascending: false }).order('id').range(de, a)),
     toutLire<SuiviVente>((de, a) => supabase.from('biens_vente_suivi').select('*').order('le', { ascending: false }).order('id').range(de, a)),
     toutLire<Copie>((de, a) => supabase.from('biens').select('id, bien_vente_id, client_id, recherche_id, etape, envoye_le, badge_retour, created_at, vu_le, retour_client, retour_le').not('bien_vente_id', 'is', null).order('id').range(de, a)),
     toutLire<RechercheMini>((de, a) => supabase.from('recherches').select('*').eq('active', true).order('id').range(de, a)),
     lireClientsListe(),
+    toutLire<RechercheMini>((de, a) => supabase.from('recherches').select('*').eq('active', false).order('id').range(de, a)),
   ]);
   if (b.erreur) lever('Les biens n’ont pas pu être lus', b.erreur);
   if (s.erreur) lever('Le suivi des biens n’a pas pu être lu', s.erreur);
@@ -143,10 +148,12 @@ export async function chargerListe(): Promise<ListeBiens> {
     if (v.error) lever('Les visites n’ont pas pu être lues', v.error.message);
     visites.push(...((v.data || []) as VisiteRow[]));
   }
+  const clients = Object.fromEntries(cl.data.map(x => [x.id, x]));
   return {
     biens: b.data, suivi: s.data, copies, visites,
     recherches: r.erreur ? [] : r.data,
-    clients: Object.fromEntries(cl.data.map(x => [x.id, x])),
+    recherchesAttente: ra.erreur ? [] : ra.data.filter(x => enAttente(clients[x.client_id])),
+    clients,
     mandats: await lireMandatsListe(),
   };
 }
@@ -488,6 +495,20 @@ export function manqueRecherche(r: RechercheMini): string[] {
   return m;
 }
 export const fiable = (x: Acheteur) => x.rang === 'ok';
+/* V3.125 — Alexandre : « j'ai l'impression qu'il va chercher juste ceux qui
+   sont en acheteur actif, et pas prospect ». La recherche d'un prospect naît
+   « en attente » (`active` à false : sa veille attend qu'il passe Actif), et
+   celle d'un acheteur en pause s'arrête avec lui. Le rapprochement, qui est
+   un geste d'Alexandre, les regarde quand même ; une recherche arrêtée d'un
+   acheteur actif (close, son bien trouvé) reste dehors. */
+export const STATUTS_ATTENTE = ['prospect', 'suspendu'];
+export const enAttente = (c: { statut?: unknown } | null | undefined) => !!c && STATUTS_ATTENTE.includes(String(c.statut || ''));
+export const rechercheOuverte = (r: RechercheMini, c: ClientMini | null | undefined) => r.active !== false || enAttente(c);
+/* Toutes les recherches que le rapprochement regarde. */
+export function recherchesRappro(l: Pick<ListeBiens, 'recherches' | 'recherchesAttente'>): RechercheMini[] {
+  const deja = new Set(l.recherches.map(r => r.id));
+  return [...l.recherches, ...(l.recherchesAttente || []).filter(r => !deja.has(r.id))];
+}
 /* Un acheteur à qui l'on peut proposer un bien (V3.112). */
 export const acheteurSuivi = (c: ClientMini | null | undefined): c is ClientMini =>
   !!c && acheteurEnCours(c) && !['bien_trouve', 'perdu'].includes(String(c.statut || ''));
@@ -504,8 +525,8 @@ export function acheteursTries(b: BienVente, recherches: RechercheMini[], client
   const retenus: Acheteur[] = [];
   const ecartes: Ecarte[] = [];
   for (const r of recherches) {
-    if (r.active === false) continue;
     const c = clients[r.client_id];
+    if (!rechercheOuverte(r, c)) continue;
     if (!acheteurSuivi(c)) continue;
     if (b.client_id && r.client_id === b.client_id) continue;
     if (!typeCompatible(b.donnees?.typeBien, r.type_bien)) continue;
@@ -580,8 +601,8 @@ export function triBien(b: BienVente, recherches: RechercheMini[], clients: Reco
   const t: TriBien = { total: 0, vide: !b.donnees?.typeBien && !b.prix, bons: [], partiels: [], incomplets: [], caches: [] };
   const bc = versCorrespondance(b);
   for (const r of recherches) {
-    if (r.active === false) continue;
     const c = clients[r.client_id];
+    if (!rechercheOuverte(r, c)) continue;
     if (!acheteurSuivi(c)) continue;
     if (b.client_id && r.client_id === b.client_id) continue;
     t.total++;

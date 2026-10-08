@@ -22,7 +22,7 @@ import {
 } from './FenetresBien';
 import type { ChoixGuide } from './FenetresBien';
 import {
-  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, fiable, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
+  SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, fiable, recherchesRappro, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
   MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
@@ -1181,10 +1181,12 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   }, [charger, onMaj, onRecharger]);
 
   /* V3.45 : ceux qui ratent nettement un critère essentiel sont écartés (outils.ts). */
-  const tries = useMemo(() => acheteursTries(bien, liste.recherches, liste.clients, detail?.copies || []), [bien, liste, detail]);
+  /* V3.125 : avec les recherches en attente des prospects et des acheteurs en pause. */
+  const rechRappro = useMemo(() => recherchesRappro(liste), [liste]);
+  const tries = useMemo(() => acheteursTries(bien, rechRappro, liste.clients, detail?.copies || []), [bien, rechRappro, liste, detail]);
   const acheteurs = tries.retenus;
   /* V3.112 : l'onglet « Rapprochement » — tout le tri de la base (outils.ts). */
-  const tri = useMemo(() => triBien(bien, liste.recherches, liste.clients, detail?.copies || []), [bien, liste, detail]);
+  const tri = useMemo(() => triBien(bien, rechRappro, liste.clients, detail?.copies || []), [bien, rechRappro, liste, detail]);
   /* « Un autre client… » : la fenêtre d'envoi avec la recherche par nom (LotBiens). */
   const [envoiAutre, setEnvoiAutre] = useState(false);
   const proprio = bien.client_id ? liste.clients[bien.client_id] || null : null;
