@@ -14,18 +14,54 @@ export type TypeContact = 'acheteur' | 'vendeur' | 'vendeur_signe' | 'proprietai
 
 export const TYPES_CONTACT: { k: TypeContact; lib: string; pluriel: string; ic: string; c: string; fond: string; aide: string }[] = [
   { k: 'acheteur', lib: 'Acheteur', pluriel: 'Acheteurs', ic: 'cible', c: '#0f7a4f', fond: '#ecfdf5', aide: 'Il cherche à acheter : sa recherche, son espace, la veille.' },
-  { k: 'vendeur', lib: 'Vendeur', pluriel: 'Vendeurs', ic: 'etiquette', c: '#a07c28', fond: '#fbf6e9', aide: 'Il vend un bien : estimation, mandat, dans la rubrique Biens.' },
+  { k: 'vendeur', lib: 'Vendeur', pluriel: 'Vendeurs', ic: 'etiquette', c: '#a07c28', fond: '#fbf6e9', aide: 'Son bien est en vente avec nous : mandat, sous offre ou sous compromis.' },
   /* V3.47 : sa vente est signée chez le notaire. Il quitte les vendeurs en
      cours, sans être archivé : un ancien client, une recommandation, un
      prochain projet. Proposé dans « La vente est signée ». */
   { k: 'vendeur_signe', lib: 'Vendeur signé', pluriel: 'Vendeurs signés', ic: 'check', c: '#15803d', fond: '#f0fdf4', aide: 'Sa vente est signée : un ancien client, pour une recommandation ou un prochain projet.' },
-  { k: 'proprietaire', lib: 'Propriétaire', pluriel: 'Propriétaires', ic: 'cle', c: '#b45309', fond: '#fff7ed', aide: 'Il possède un bien sans le vendre pour l’instant : un vendeur de demain.' },
+  { k: 'proprietaire', lib: 'Propriétaire', pluriel: 'Propriétaires', ic: 'cle', c: '#b45309', fond: '#fff7ed', aide: 'Il possède un bien qui n’est pas en vente : à suivre, en estimation, ou rien encore. Un vendeur de demain.' },
   { k: 'notaire', lib: 'Notaire', pluriel: 'Notaires', ic: 'balance', c: '#34496e', fond: '#eef2f8', aide: 'Son étude, son clerc : pour les compromis et les actes.' },
   { k: 'confrere', lib: 'Confrère ou agence', pluriel: 'Confrères', ic: 'agence', c: '#7c3aed', fond: '#f5f3ff', aide: 'Un agent, un mandataire, une agence : pour les biens partagés.' },
   { k: 'gardien', lib: 'Gardien', pluriel: 'Gardiens', ic: 'immeuble', c: '#0e7490', fond: '#ecfeff', aide: 'Le gardien d’un immeuble : ses horaires, les clés, les infos.' },
   { k: 'partenaire', lib: 'Partenaire', pluriel: 'Partenaires', ic: 'outil', c: '#475569', fond: '#f1f5f9', aide: 'Courtier, diagnostiqueur, artisan, syndic, avocat…' },
 ];
 export const typeDe = (k: string) => TYPES_CONTACT.find(t => t.k === k) || TYPES_CONTACT[0];
+
+/* ── V3.137 : « Vendeur » suit ses biens ──
+   Alexandre : « vendeur, ça veut dire ceux qui vendent ; une estimation qui
+   débouche sur une vente, sinon ça reste propriétaire ». Avant, tout contact
+   relié à un bien de la rubrique Biens devenait « Vendeur », même en
+   estimation : 162 vendeurs, la plupart sans mandat.
+     · un bien en mandat, sous offre ou sous compromis : Vendeur, à la place
+       de Propriétaire — les deux listes ne se recouvrent plus (un « Vendeur
+       signé » qui revend redevient Vendeur, comme avant) ;
+     · sinon, un bien à suivre, en estimation, en pause ou retiré :
+       Propriétaire (et plus Vendeur) ;
+     · son seul bien vient d'être vendu : rien ici — « La vente est signée »
+       décide (Vendeur signé) ;
+     · plus aucun bien : il quitte Vendeur ; un contact ne reste jamais sans
+       type (vide voudrait dire acheteur), alors Propriétaire.
+   Un archivé ne bouge pas. La base applique la même règle toute seule à
+   chaque changement d'un bien (outils/sql/vendeurs-en-vente.sql) : les deux
+   doivent rester identiques. Rend les nouveaux types, ou null si rien ne
+   change. */
+export const ETAPES_EN_VENTE = ['mandat', 'offre', 'compromis'];
+export function typesSelonBiens(types: TypeContact[], biens: { etape: string | null; archive?: boolean | null }[]): TypeContact[] | null {
+  const actifs = biens.filter(b => b.archive !== true);
+  const vend = actifs.some(b => ETAPES_EN_VENTE.includes(b.etape || ''));
+  const possede = actifs.some(b => !['vendu', 'annonce_type'].includes(b.etape || ''));
+  const vendu = actifs.some(b => b.etape === 'vendu');
+  let n: TypeContact[];
+  if (vend) n = [...types.filter(t => t !== 'vendeur_signe' && t !== 'proprietaire'), 'vendeur'];
+  else if (types.includes('vendeur')) {
+    if (!possede && vendu) return null;
+    n = types.filter(t => t !== 'vendeur');
+    if (possede || !n.length) n.push('proprietaire');
+  } else if (possede && !types.includes('proprietaire')) n = [...types, 'proprietaire'];
+  else return null;
+  const range = TYPES_CONTACT.map(t => t.k).filter(k => n.includes(k));
+  return range.join() === TYPES_CONTACT.map(t => t.k).filter(k => types.includes(k)).join() ? null : range;
+}
 /* L'erreur d'une base où le SQL des types n'est pas encore passé. */
 export const colonneContactAbsente = (m: string) => /(types|pro|archive).*(column|schema cache)|column .*(types|pro|archive)|could not find the '(types|pro|archive)'/i.test(m);
 
