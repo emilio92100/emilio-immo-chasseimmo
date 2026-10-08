@@ -310,13 +310,22 @@ export async function presenterDansEspace(ids: string[], clientId: string, reche
    « Dernier rapprochement le 29 septembre » sur la fiche. V3.112 : avec les
    biens montrés (`vus`, leurs clés), pour ne remontrer la fois suivante que
    les nouveautés (« Seulement les nouveautés »). */
-export async function noterRapprochement(clientId: string, rechercheId: string, n: number, source: SourceRappro, periode: PeriodeVeille, vus: string[] = []): Promise<void> {
+/* V3.126 — Ce que le rapprochement a proposé ce jour-là, gardé avec sa
+   ligne du Suivi (Alexandre : « je clique et je vois ce qui a été fait ») :
+   chaque bien, sa note de critères et, pour un mandat relu, l'avis du
+   rapprochement (verdict, note de potentiel, phrase, plus, moins). */
+export type LigneRappro = {
+  cle: string; src: 'mandat' | 'veille'; titre: string; lieu?: string; prix?: number | null; photo?: string | null;
+  bien?: string; url?: string | null; n: number;
+  v?: 'oui' | 'a_voir' | 'non'; s?: number; t?: string; p?: string[]; m?: string[];
+};
+export async function noterRapprochement(clientId: string, rechercheId: string, n: number, source: SourceRappro, periode: PeriodeVeille, vus: string[] = [], lignes: LigneRappro[] = []): Promise<void> {
   const ou = source === 'mandats' ? 'vos mandats' : source === 'veilles' ? 'les veilles' : 'vos mandats et les veilles';
   const p = source === 'mandats' ? '' : ` (${PERIODES.find(x => x.k === periode)?.l.toLowerCase() || ''})`;
   const { error } = await supabase.from('journal').insert({
     client_id: clientId, recherche_id: rechercheId, type: 'rapprochement',
     titre: `Rapprochement · ${n} bien${n > 1 ? 's' : ''} trouvé${n > 1 ? 's' : ''}`,
-    description: `Dans ${ou}${p}.`, metadata: { source, periode, n, vus },
+    description: `Dans ${ou}${p}.`, metadata: { source, periode, n, vus, ...(lignes.length ? { lignes } : {}) },
   });
   if (error) signalerEchec('Le rapprochement est fait, mais son historique', error.message);
 }
