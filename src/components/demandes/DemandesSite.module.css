@@ -759,3 +759,122 @@
   .choix, .rappelPuce { transition: none; }
   .confirme { animation: none; }
 }
+
+/* ═══ V3.129 — Les pastilles, les étapes, la période ═══════════════════════
+   Alexandre : « mon site en premier, ensuite portail, ensuite tout à droite…
+   les blocs sont un peu gros, un peu moches » (maquette A : des pastilles
+   sur une ligne) ; « nouvelles, en cours, traitées, je ne comprends pas
+   trop… bien condensé, une explication pour chaque statut ». */
+.tiroirProv { padding: 10px 12px 12px; }
+.tiroirTete { margin: 0 2px 8px; }
+.tiroirTete > span { font-size: 11px; }
+.tiroirTete > small { font-size: 11.5px; }
+.pforms { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pform {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 11px 0 6px; border-radius: 99px;
+  border: 1.5px solid #e3e8f0; background: white; color: #334155; font: 700 13.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap;
+  transition: border-color .22s ease, background-color .22s ease, color .22s ease, box-shadow .22s ease, transform .22s ease;
+  animation: monte .36s cubic-bezier(.2, .8, .2, 1) backwards;
+}
+.pform:hover:not(.pformOn) { border-color: color-mix(in srgb, var(--c) 45%, #e3e8f0); transform: translateY(-1px); }
+.pformOn { border-color: var(--c); background: color-mix(in srgb, var(--c) 9%, white); color: var(--c); box-shadow: 0 8px 18px -14px var(--c); }
+.pformIc {
+  width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--c) 13%, white); color: var(--c); font: 800 10.5px 'Plus Jakarta Sans', sans-serif; transition: background-color .22s ease, color .22s ease;
+}
+.pformOn .pformIc { background: var(--c); color: white; }
+.pformN {
+  min-width: 22px; height: 20px; padding: 0 6px; border-radius: 99px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  background: #f1f5f9; color: #475569; font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; transition: background-color .22s ease, color .22s ease;
+}
+.pformOn .pformN { background: var(--c); color: white; }
+.pformNeuf { position: absolute; top: 2px; right: 3px; width: 9px; height: 9px; border-radius: 50%; background: #dc2626; box-shadow: 0 0 0 2px white; }
+.pformSep { width: 1px; height: 26px; background: #e3e8f0; margin: 0 2px 0 auto; }
+.libCourt { display: none; }
+
+/* Les étapes : leur nombre et leur phrase, d'un coup d'œil. */
+.etapes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.etape {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 9px 12px 10px; border-radius: 14px; text-align: left; cursor: pointer;
+  border: 1.5px solid #e9edf3; background: white; color: #1a2332; font-family: inherit;
+  transition: border-color .22s ease, background-color .22s ease, box-shadow .22s ease, transform .22s ease;
+}
+.etape:hover:not(.etapeOn) { border-color: color-mix(in srgb, var(--c) 40%, #e9edf3); transform: translateY(-1px); }
+.etapeOn { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, white); box-shadow: 0 10px 22px -18px var(--c); }
+.etapeH { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.etapeH b { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 14px; font-weight: 800; }
+.etapeH b > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.etapeOn .etapeH b { color: var(--c); }
+.etapePt { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: 0 0 auto; opacity: .55; }
+.etapeN { font: 800 18px/1 'Plus Jakarta Sans', sans-serif; color: var(--c); font-variant-numeric: tabular-nums; }
+.etape small { font-size: 11.5px; line-height: 1.35; color: #64748b; }
+
+/* La période, en petit, avec son mot ; Toutes et Archivées à droite. */
+.periodeLigne { gap: 10px; margin-top: 10px; padding: 6px 8px 6px 12px; border-radius: 14px; background: transparent; border: 1px dashed #e3e8f0; }
+.recuesL { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #64748b; }
+.periodes { padding: 3px; border-radius: 10px; background: #f1f5fb; border: none; }
+.periode { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+.periodeOn, .periodeOn:hover { background: white; color: #22497c; box-shadow: 0 4px 10px -8px rgba(34, 73, 124, .8); }
+.recues { font-size: 12.5px; }
+.recues b { font-size: 14px; }
+.autresStatuts { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.lienStatut {
+  height: 28px; padding: 0 10px; border: none; border-radius: 8px; background: none; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif; color: #64748b;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: #cbd5e1; transition: background-color .2s, color .2s;
+}
+.lienStatut:hover { color: #22497c; text-decoration-color: currentColor; }
+.lienStatutOn { background: #22497c; color: white; text-decoration: none; }
+.lienStatutOn:hover { color: white; }
+
+@media (max-width: 760px) {
+  .pforms { gap: 6px; }
+  .pform { height: 38px; font-size: 13px; padding-right: 9px; gap: 6px; }
+  .pformSep { display: none; }
+  .libLong { display: none; }
+  .libCourt { display: inline; }
+  .etapes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .etape { padding: 8px 10px 9px; }
+  .etape small { font-size: 11px; }
+  .periodeLigne { padding: 8px; gap: 8px; }
+  .periodes { flex: 1 1 100%; }
+  .autresStatuts { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pform, .etape { animation: none; transition: none; }
+}
+
+/* Le rappel programmé (V3.129) : le bloc dit ce qui va se passer. Il
+   arrive en bulle quand on vient de choisir la date ; la cloche sonne. */
+.rappelFait {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 16px;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5); border: 1.5px solid #fdba74;
+}
+.rappelFait[data-etat='retard'] { background: linear-gradient(135deg, #fef2f2, #fee2e2); border-color: #fca5a5; }
+.rappelVient { animation: rappelBulle .5s cubic-bezier(.2, 1.3, .35, 1) both; }
+@keyframes rappelBulle { from { opacity: 0; transform: scale(.94) translateY(6px); } to { opacity: 1; transform: none; } }
+.rappelFaitIc {
+  width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  background: #c2410c; color: white; transform-origin: 50% 20%; animation: rappelCloche 3.2s ease-in-out infinite;
+}
+.rappelFait[data-etat='retard'] .rappelFaitIc { background: #dc2626; }
+@keyframes rappelCloche { 0%, 72%, 100% { transform: rotate(0); } 76% { transform: rotate(14deg); } 80% { transform: rotate(-12deg); } 84% { transform: rotate(8deg); } 88% { transform: rotate(0); } }
+.rappelFaitTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rappelFaitTx > b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #7c2d12; }
+.rappelFait[data-etat='retard'] .rappelFaitTx > b { color: #991b1b; }
+.rappelFaitTx > span:not([class]) { font-size: 13px; line-height: 1.5; color: #9a3412; }
+.rappelStatut { display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 12px; color: #9a3412; }
+.rappelStatut i { font-style: normal; padding: 1px 8px; border-radius: 99px; background: white; border: 1px solid #fdba74; font-weight: 800; }
+.rappelFaitBtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.rappelBtn {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid #fdba74; background: white;
+  color: #9a3412; font: 800 12.5px 'DM Sans', sans-serif; cursor: pointer; transition: background-color .2s, box-shadow .2s;
+}
+.rappelBtn:hover { background: #fffaf5; box-shadow: 0 6px 14px -10px rgba(194, 65, 12, .7); }
+.rappelBtnPlein { background: #c2410c; border-color: #c2410c; color: white; }
+.rappelBtnPlein:hover { background: #b33a0b; }
+@media (max-width: 760px) {
+  .rappelFaitBtns .rappelBtn { flex: 1 1 auto; justify-content: center; height: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rappelVient, .rappelFaitIc { animation: none; }
+}

@@ -195,18 +195,6 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     setSortie(false);
     setChoisie(id);
   };
-  /* « N à traiter » (V3.99b, Alexandre : « quand on clique, ça ne fait pas
-     un petit pop sur le message en question ») : une seule nouvelle, elle
-     s'ouvre ; plusieurs, la liste passe sur « Nouvelles » (sans recherche ni
-     formulaire choisi), on y descend, et elles s'allument un instant. */
-  const allerATraiter = (l: DemandeSite[]) => {
-    setCherche(''); setCat('toutes'); setFiltre('nouveau');
-    if (l.some(d => !dansPer(d))) setPer('tout');
-    if (l.length === 1) { ouvrir(l[0].id); return; }
-    panneau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setEclair(true);
-    window.setTimeout(() => setEclair(false), 1900);
-  };
   useEffect(() => {
     if (!choisie || question || creation) return;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') fermer(); };
@@ -272,18 +260,16 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
     ].filter(Boolean).join(' · ');
 
   const total = demandes.filter(d => dansProv(d) && dansPer(d) && !robot(d)).length;
-  /* « N à traiter » : les nouvelles de la provenance, toutes périodes (ce
-     que montre l'onglet « Nouvelles »). */
-  const nouvellesProv = demandes.filter(d => dansProv(d) && !d.archive && statutDe(d.statut).k === 'nouveau');
-  const aTraiter = nouvellesProv.length;
 
   /* ── Les compteurs des filtres ── */
   const nbFiltre = (k: Filtre) => (k === 'rappels' ? rappelsProv : dansLaProv).filter(d => dansFiltre(d, k) && dansCategorie(d, cat)).length;
   const nbRappelsDus = rappelsProv.filter(d => rappelDu(d.a_rappeler_le, new Date(maintenant))).length;
   const nbCat = (c: Categorie) => dansLaProv.filter(d => dansFiltre(d, f) && dansCategorie(d, c)).length;
-  const STATS_FILTRES: { k: Filtre; lib: string; c: string }[] = [
-    { k: 'nouveau', lib: 'Nouvelles', c: BLEU }, { k: 'en_cours', lib: 'En cours', c: '#b45309' }, { k: 'rappels', lib: 'À rappeler', c: '#c2410c' },
-    { k: 'traite', lib: 'Traitées', c: '#0f7a4f' }, { k: 'archives', lib: 'Archivées', c: '#64748b' }, { k: 'toutes', lib: 'Toutes', c: '#34496e' },
+  const ETAPES: { k: Filtre; lib: string; c: string; aide: string }[] = [
+    { k: 'nouveau', lib: 'Nouvelles', c: BLEU, aide: 'Pas encore prises en main : comptées en rouge dans le menu.' },
+    { k: 'en_cours', lib: 'En cours', c: '#b45309', aide: 'Vous vous en occupez : appelé, message laissé…' },
+    { k: 'rappels', lib: 'À rappeler', c: '#c2410c', aide: 'Avec une date de rappel, la plus proche d’abord.' },
+    { k: 'traite', lib: 'Traitées', c: '#0f7a4f', aide: 'C’est réglé : réponse donnée, contact créé, ou pas sérieux.' },
   ];
   const robots = visibles.filter(robot);
   const choisirProv = (k: Prov) => { setProv(k); setPortail('tous'); setCat('toutes'); };
@@ -399,15 +385,17 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
       onCreerContact={creerContact} onVoirFiche={voirFiche} onVoirBien={id => onNavigate('biens', { bien: id })} />
   ) : null;
 
-  /* Les tuiles du tiroir : les formulaires du site, ou les portails. */
+  /* Les pastilles du tiroir (V3.129, maquette A) : les formulaires du site,
+     ou les portails, puis « Toutes » / « Tous les portails » tout à droite. */
+  const COURT_CAT: Record<string, string> = { estimation: 'Estimations', mandat_recherche: 'Acheteurs', rappel_bien: 'Infos bien', contact: 'Messages' };
   const tuilesTiroir = prov === 'site'
-    ? [{ k: 'toutes', lib: 'Toutes', c: BLEU, ic: 'liste', court: '' }, ...CATEGORIES.map(c => ({ k: c.k as string, lib: c.pluriel, c: c.c, ic: c.ic, court: '' }))].map(t => {
+    ? [...CATEGORIES.map(c => ({ k: c.k as string, lib: c.pluriel, libCourt: COURT_CAT[c.k] || c.pluriel, c: c.c, ic: c.ic, court: '', tous: false })), { k: 'toutes', lib: 'Toutes', libCourt: 'Toutes', c: BLEU, ic: 'liste', court: '', tous: true }].map(t => {
       const l = dansLaProv.filter(d => !d.archive && (t.k === 'toutes' || cleCategorie(d) === t.k));
       const n = l.filter(d => statutDe(d.statut).k === 'nouveau').length;
       return { ...t, n: l.length, sous: n ? pluriel(n, 'nouvelle', 'nouvelles') : 'Rien de nouveau', vif: n > 0, on: cat === t.k, choisir: () => setCat(t.k as Categorie) };
     })
     : prov === 'portails'
-      ? [{ k: 'tous', lib: 'Tous les portails', c: BLEU, ic: 'liste', court: '' }, ...PORTAILS.map(x => ({ k: x.k as string, lib: x.lib, c: x.c, ic: '', court: x.court }))].map(t => {
+      ? [...PORTAILS.map(x => ({ k: x.k as string, lib: x.lib, libCourt: x.lib, c: x.c, ic: '', court: x.court, tous: false })), { k: 'tous', lib: 'Tous les portails', libCourt: 'Tous', c: BLEU, ic: 'liste', court: '', tous: true }].map(t => {
         const l = demandes.filter(d => !d.archive && provenanceDe(d).portail && (t.k === 'tous' || provenanceDe(d).k === t.k));
         const n = l.filter(d => statutDe(d.statut).k === 'nouveau').length;
         return { ...t, n: l.length, sous: l.length ? (n ? pluriel(n, 'nouvelle', 'nouvelles') : 'Rien de nouveau') : 'Avec la passerelle SeLoger', vif: n > 0, on: portail === t.k, choisir: () => setPortail(t.k as Portail) };
@@ -422,12 +410,14 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
         label="Les demandes" actif="" onChoisir={() => {}} tuiles={[]} />
 
       <section ref={panneau} className={s.panneau} aria-label="Les demandes">
-        <div className={s.provs} role="tablist" aria-label="Provenance" style={{ ['--i' as string]: String({ tout: 0, site: 1, portails: 2 }[prov]) } as CSSProperties}>
+        {/* V3.129 (Alexandre : « mon site en premier, ensuite portail, ensuite
+            tout à droite ») : Mon site · Portails · Tout. */}
+        <div className={s.provs} role="tablist" aria-label="Provenance" style={{ ['--i' as string]: String({ site: 0, portails: 1, tout: 2 }[prov]) } as CSSProperties}>
           <span className={s.curseur} aria-hidden="true" />
           {([
-            { k: 'tout', lib: 'Tout', sous: 'Site et portails', ic: 'boite', n: trouvees.filter(d => !d.archive).length },
             { k: 'site', lib: 'Mon site', sous: 'emilio-immo.com', ic: 'globe', n: trouvees.filter(d => !d.archive && provenanceDe(d).k === 'site').length },
             { k: 'portails', lib: 'Portails', sous: 'SeLoger, Logic-Immo, Belles Demeures', ic: 'immeuble', n: trouvees.filter(d => !d.archive && provenanceDe(d).portail).length },
+            { k: 'tout', lib: 'Tout', sous: 'Site et portails', ic: 'boite', n: trouvees.filter(d => !d.archive).length },
           ] as { k: Prov; lib: string; sous: string; ic: string; n: number }[]).map(x => (
             <button key={x.k} type="button" role="tab" aria-selected={prov === x.k} className={`${s.prov} ${prov === x.k ? s.provOn : ''}`} onClick={() => choisirProv(x.k)}>
               <span className={s.provIc}>{x.ic === 'boite' ? <PictoBoite taille={17} epaisseur={2} /> : <Ic n={x.ic} t={17} e={2} />}</span>
@@ -438,76 +428,85 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
         </div>
 
         <Depliant ouvert={prov !== 'tout'}>
-          <div className={s.tiroirProv} style={{ ['--fleche' as string]: prov === 'portails' ? '83.3%' : '50%' } as CSSProperties}>
+          <div className={s.tiroirProv} style={{ ['--fleche' as string]: prov === 'portails' ? '50%' : '16.7%' } as CSSProperties}>
             <div className={s.tiroirTete}>
               <span>{prov === 'portails' ? 'Portails · un par un' : 'Mon site · par formulaire'}</span>
               <small>{prov === 'portails' ? 'Logic-Immo arrive avec SeLoger' : 'emilio-immo.com'}</small>
             </div>
-            <div key={prov} className={s.tuilesProv}>
-              {tuilesTiroir.map((t, i) => (
-                <button key={t.k} type="button" aria-pressed={t.on} className={`${s.tuileProv} ${t.on ? s.tuileProvOn : ''}`}
-                  style={{ ...teinte({ c: t.c, fond: '#fff', trait: '#e1e8f2' }), animationDelay: `${i * 45}ms` }} onClick={t.choisir}>
-                  <span className={s.tuileIc}>{t.court ? t.court : <Ic n={t.ic} t={17} e={2.1} />}</span>
-                  <span className={s.tuileT}><b>{t.lib}</b><small className={t.vif ? s.tuileVif : undefined}>{t.sous}</small></span>
-                  <span className={s.tuileN}>{t.n}</span>
-                </button>
-              ))}
+            {/* Une pastille par formulaire (ou portail) : son icône, son nom, son
+                nombre ; un point rouge s'il y a du neuf. « Toutes » à droite. */}
+            <div key={prov} className={s.pforms}>
+              {tuilesTiroir.flatMap((t, i) => [
+                t.tous ? <span key="sep" className={s.pformSep} aria-hidden="true" /> : null,
+                <button key={t.k} type="button" aria-pressed={t.on} title={t.sous}
+                  className={`${s.pform} ${t.on ? s.pformOn : ''} ${t.tous ? s.pformTous : ''}`}
+                  style={{ ...teinte({ c: t.c, fond: '#fff', trait: '#e1e8f2' }), animationDelay: `${i * 40}ms` }} onClick={t.choisir}>
+                  <span className={s.pformIc}>{t.court ? t.court : <Ic n={t.ic} t={15} e={2.1} />}</span>
+                  <span className={s.pformL}><span className={s.libLong}>{t.lib}</span><span className={s.libCourt}>{t.libCourt}</span></span>
+                  <span className={s.pformN}>{t.n}</span>
+                  {t.vif && <span className={s.pformNeuf} />}
+                </button>,
+              ])}
             </div>
           </div>
         </Depliant>
 
-        {/* V3.99b (Alexandre : « je ne vois pas l'intérêt du truc en haut, il y a
-            déjà Tout, Mon site, Portails en bas ») : plus de bande au-dessus.
-            Sous la provenance, la période, ce qui est arrivé, et « à traiter ». */}
+        {/* V3.129 (Alexandre : « les nouvelles, en cours, appelées, traitées…
+            je ne comprends pas trop ; ce mois-ci, 3 mois, 12 mois, j'aime pas
+            comment il est placé ; bien condensé, une explication pour chaque
+            statut ») : quatre étapes, chacune avec son nombre et sa phrase ;
+            dessous, en petit, la période (« Reçues… »), puis Toutes et
+            Archivées. */}
+        {demandes.length > 0 && (
+          <div className={s.etapes} role="tablist" aria-label="Où en sont les demandes">
+            {ETAPES.map(x => (
+              <button key={x.k} type="button" role="tab" aria-selected={f === x.k} className={`${s.etape} ${f === x.k ? s.etapeOn : ''}`}
+                style={{ ['--c' as string]: x.c } as CSSProperties}
+                onClick={() => { setFiltre(x.k); if (x.k === 'nouveau') { setEclair(true); window.setTimeout(() => setEclair(false), 1900); } }}>
+                <span className={s.etapeH}>
+                  <b>{((x.k === 'nouveau' && nbFiltre('nouveau') > 0) || (x.k === 'rappels' && nbRappelsDus > 0)) ? <span className={s.pouls} /> : <span className={s.etapePt} />}<span>{x.lib}</span></b>
+                  <span className={s.etapeN}>{nbFiltre(x.k)}</span>
+                </span>
+                <small>{nb(x.aide)}</small>
+              </button>
+            ))}
+          </div>
+        )}
         {demandes.length > 0 && (
           <div className={s.periodeLigne}>
+            <span className={s.recuesL}><Ic n="calendrier" t={14} e={2} /><span>Reçues</span></span>
             <div className={s.periodes} role="group" aria-label="Période">
               {PERIODES.map(x => (
                 <button key={x.k} type="button" aria-pressed={per === x.k} className={`${s.periode} ${per === x.k ? s.periodeOn : ''}`} onClick={() => setPer(x.k)}><span className={s.perLong}>{x.lib}</span><span className={s.perCourt}>{x.court}</span></button>
               ))}
             </div>
-            <span className={s.recues}><b>{total}</b>{` demande${total > 1 ? 's' : ''} reçue${total > 1 ? 's' : ''} ${P.phrase}`}</span>
-            {aTraiter > 0 ? (
-              <button type="button" className={s.aTraiter} onClick={() => allerATraiter(nouvellesProv)} title={aTraiter === 1 ? 'Ouvrir la demande' : 'Voir les nouvelles demandes'}>
-                {`${aTraiter} à traiter`}<em><Ic n="fleche" t={14} e={2.4} /></em>
-              </button>
-            ) : <span className={s.toutTraite}><Ic n="check" t={14} e={2.6} />Tout est traité</span>}
+            <span className={s.recues}><b>{total}</b>{` demande${total > 1 ? 's' : ''} ${P.phrase}`}</span>
+            <span className={s.autresStatuts}>
+              <button type="button" aria-pressed={f === 'toutes'} className={`${s.lienStatut} ${f === 'toutes' ? s.lienStatutOn : ''}`} onClick={() => setFiltre('toutes')} title="Tous les statuts, archivées à part">{`Toutes (${nbFiltre('toutes')})`}</button>
+              <button type="button" aria-pressed={f === 'archives'} className={`${s.lienStatut} ${f === 'archives' ? s.lienStatutOn : ''}`} onClick={() => setFiltre('archives')} title="Rangées de côté : rien n’est effacé">{`Archivées (${nbFiltre('archives')})`}</button>
+            </span>
           </div>
         )}
-
-        {demandes.length > 0 && (
-          <div className={s.filtres}>
-            <div className={s.statutsBarre} role="tablist" aria-label="Statut">
-              {STATS_FILTRES.map(x => (
-                <button key={x.k} type="button" role="tab" aria-selected={f === x.k} className={`${s.statutTab} ${f === x.k ? s.statutTabOn : ''}`}
-                  style={{ ['--c' as string]: x.c } as CSSProperties} onClick={() => setFiltre(x.k)}>
-                  {((x.k === 'nouveau' && nbFiltre('nouveau') > 0) || (x.k === 'rappels' && nbRappelsDus > 0)) && <span className={s.pouls} />}
-                  <span>{x.lib}</span><i>{nbFiltre(x.k)}</i>
-                </button>
-              ))}
+        {demandes.length > 0 && prov !== 'site' && (cat !== 'toutes' || CATEGORIES.some(c => nbCat(c.k) > 0)) && (
+            <div className={s.cats} role="group" aria-label="Filtrer par sorte de demande">
+              <button type="button" aria-pressed={cat === 'toutes'} style={teinte(MARINE)}
+                className={`${s.cat} ${cat === 'toutes' ? s.catOn : ''}`} onClick={() => setCat('toutes')}>
+                <span>Toutes</span>
+                <span className={s.catN}>{nbCat('toutes')}</span>
+              </button>
+              {CATEGORIES.map(c => {
+                const n = nbCat(c.k);
+                if (!n && cat !== c.k) return null;
+                return (
+                  <button key={c.k} type="button" aria-pressed={cat === c.k} style={teinte(c)}
+                    className={`${s.cat} ${cat === c.k ? s.catOn : ''}`} onClick={() => setCat(cat === c.k ? 'toutes' : c.k)}>
+                    <span className={s.catIc}><Ic n={c.ic} t={14} e={2.1} /></span>
+                    <span>{c.pluriel}</span>
+                    <span className={s.catN}>{n}</span>
+                  </button>
+                );
+              })}
             </div>
-            {prov !== 'site' && (cat !== 'toutes' || CATEGORIES.some(c => nbCat(c.k) > 0)) && (
-              <div className={s.cats} role="group" aria-label="Filtrer par sorte de demande">
-                <button type="button" aria-pressed={cat === 'toutes'} style={teinte(MARINE)}
-                  className={`${s.cat} ${cat === 'toutes' ? s.catOn : ''}`} onClick={() => setCat('toutes')}>
-                  <span>Toutes</span>
-                  <span className={s.catN}>{nbCat('toutes')}</span>
-                </button>
-                {CATEGORIES.map(c => {
-                  const n = nbCat(c.k);
-                  if (!n && cat !== c.k) return null;
-                  return (
-                    <button key={c.k} type="button" aria-pressed={cat === c.k} style={teinte(c)}
-                      className={`${s.cat} ${cat === c.k ? s.catOn : ''}`} onClick={() => setCat(cat === c.k ? 'toutes' : c.k)}>
-                      <span className={s.catIc}><Ic n={c.ic} t={14} e={2.1} /></span>
-                      <span>{c.pluriel}</span>
-                      <span className={s.catN}>{n}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         )}
 
         {charge ? (
@@ -712,10 +711,25 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
   const [fait, setFait] = useState(0);
   const choisir = async (k: StatutDemande) => { if (await onStatut(d, k)) setFait(Date.now()); };
   /* Une date de rappel sur une nouvelle demande : elle passe « En cours ». */
+  /* V3.129 (Alexandre : « il y a juste marqué enregistré en tout petit…
+     il faut un meilleur accompagnement : votre relance est planifiée,
+     revenez ici dans deux jours, vous pouvez fermer la page ») : une date
+     choisie, le bloc devient « Rappel programmé » et dit la suite. */
+  const [rappelVient, setRappelVient] = useState(false);
+  const [passeEnCours, setPasseEnCours] = useState(false);
+  const [changeDate, setChangeDate] = useState(false);
   const rappeler = async (v: string) => {
+    const etaitNouvelle = st.k === 'nouveau';
     if (!(await onRappel(d, v))) return;
-    if (v && st.k === 'nouveau') await choisir('en_cours'); else setFait(Date.now());
+    setChangeDate(false);
+    if (!v) { setRappelVient(false); setPasseEnCours(false); setFait(Date.now()); return; }
+    if (etaitNouvelle) await onStatut(d, 'en_cours');
+    setPasseEnCours(etaitNouvelle);
+    setRappelVient(true);
   };
+  const dateRappel = d.a_rappeler_le ? d.a_rappeler_le.slice(0, 10) : '';
+  const jourRappel = dateRappel ? new Date(`${dateRappel}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  const etatRappel: '' | 'avenir' | 'jour' | 'retard' = !dateRappel ? '' : dateRappel > aujourdhui ? 'avenir' : dateRappel === aujourdhui ? 'jour' : 'retard';
 
   /* V3.127 — Alexandre : « que le pop-up soit plus clair, plus lisible…
      qu'est-ce que vous souhaitez faire de cette demande, avec les
@@ -842,11 +856,29 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
               );
             })}
           </div>
-          {/* À rappeler (V3.127 : « le mettre plus en avant ») : des dates toutes prêtes. */}
+          {/* À rappeler (V3.127 : « le mettre plus en avant ») : des dates toutes prêtes.
+              V3.129 : une date posée, le bloc devient « Rappel programmé ». */}
+          {etatRappel && !changeDate ? (
+            <div key={dateRappel} className={`${s.rappelFait} ${rappelVient ? s.rappelVient : ''}`} data-etat={etatRappel} role="status">
+              <span className={s.rappelFaitIc}><Ic n="alarme" t={20} e={2} /></span>
+              <div className={s.rappelFaitTx}>
+                <b>{etatRappel === 'avenir' ? `Rappel programmé · ${jourRappel}` : etatRappel === 'jour' ? 'À rappeler aujourd’hui' : `Rappel en retard · prévu le ${jourRappel}`}</b>
+                <span>{nb(etatRappel === 'avenir'
+                  ? 'Vous pouvez fermer cette fenêtre. Ce jour-là, la demande reviendra dans « À rappeler » et le menu vous le signalera.'
+                  : 'C’est le jour : appelez, puis choisissez « En cours » ou « Traitée » juste au-dessus. Ou repoussez la date.')}</span>
+                {passeEnCours && <span className={s.rappelStatut}>{'Elle est passée en '}<i>{'En cours'}</i></span>}
+                <span className={s.rappelFaitBtns}>
+                  <button type="button" className={s.rappelBtn} onClick={() => setChangeDate(true)}><Ic n="calendrier" t={14} e={2} /><span>{etatRappel === 'avenir' ? 'Changer la date' : 'Repousser'}</span></button>
+                  <button type="button" className={s.rappelBtn} onClick={() => { void rappeler(''); }}><Croix t={12} /><span>Retirer le rappel</span></button>
+                  {onFermer && etatRappel === 'avenir' && <button type="button" className={`${s.rappelBtn} ${s.rappelBtnPlein}`} onClick={onFermer}>Fermer la fenêtre</button>}
+                </span>
+              </div>
+            </div>
+          ) : (
           <div className={s.rappelBloc}>
             <span className={s.rappelIc}><Ic n="alarme" t={17} e={2} /></span>
             <div className={s.rappelTx}>
-              <b>{d.a_rappeler_le ? `À rappeler le ${texteDate(d.a_rappeler_le, false)}` : 'La rappeler plus tard ?'}</b>
+              <b>{changeDate ? 'Choisir une autre date' : d.a_rappeler_le ? `À rappeler le ${texteDate(d.a_rappeler_le, false)}` : 'La rappeler plus tard ?'}</b>
               <small>{nb(st.k === 'nouveau'
                 ? 'Elle passe « En cours » ; le jour venu, elle remonte dans « À rappeler ».'
                 : 'Le jour venu, elle remonte dans « À rappeler », signalée dans le menu.')}</small>
@@ -857,9 +889,12 @@ function Fiche({ d, maintenant, onFermer, onStatut, onRappel, onNote, onArchiver
                 return <button key={x.j} type="button" className={`${s.rappelPuce} ${d.a_rappeler_le?.slice(0, 10) === v ? s.rappelPuceOn : ''}`} onClick={() => { void rappeler(v); }}>{x.l}</button>;
               })}
               <ChoixDate compact valeur={d.a_rappeler_le || ''} min={aujourdhui} placeholder="Autre date" onChange={v => { if (v) void rappeler(v); }} />
-              {d.a_rappeler_le && <button type="button" className={s.lienAction} onClick={() => { void rappeler(''); }}>Retirer</button>}
+              {changeDate
+                ? <button type="button" className={s.lienAction} onClick={() => setChangeDate(false)}>Annuler</button>
+                : d.a_rappeler_le && <button type="button" className={s.lienAction} onClick={() => { void rappeler(''); }}>Retirer</button>}
             </div>
           </div>
+          )}
         </section>
 
         {(pr.rubriques.length > 0 || (cat.k === 'estimation' && pr.dvf)) && (
