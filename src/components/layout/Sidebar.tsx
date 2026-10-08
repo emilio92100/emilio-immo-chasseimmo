@@ -44,7 +44,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
 }) {
   /* Le petit menu du « + » de la barre du bas (téléphone). */
   const [plusOuvert, setPlusOuvert] = useState(false);
-  const [counts, setCounts] = useState({ relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0, site: 0 });
+  const [counts, setCounts] = useState({ relances: 0, visites: 0, demandes: 0, aSigner: 0, enVente: 0, site: 0, siteRappels: 0 });
   /* Les sous-menus (Documents en V3.18 ; Contacts et Biens en V3.24).
      Sur ordinateur, ouverts par défaut ; sur téléphone, tous pliés (le tiroir
      resterait trop long) : c'est la petite flèche qui les ouvre. Dans les
@@ -121,7 +121,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
        V3.73 : sans celles du tri d'après l'import (compterRelancesDues). */
     /* Le compte des clients actifs est parti (V3.20) : plus aucune pastille ne
        l'affichait depuis la V3.14, il coûtait une requête toutes les 20 s. */
-    const [rel, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }] = await Promise.all([
+    const [rel, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }, { count: siteRappels }] = await Promise.all([
       compterRelancesDues().catch(() => 0),
       supabase.from('visites').select('date_visite, heure').eq('statut', 'a_venir').gte('date_visite', today).limit(1000),
       /* Les clients qui ont demandé à visiter depuis leur espace, sans date
@@ -137,9 +137,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       /* Les demandes du site pas encore prises en main (V3.34). Sans la table
          (outils/sql/demandes-site.sql), pas de pastille. */
       supabase.from(TABLE_DEMANDES).select('*', { count: 'exact', head: true }).eq('statut', 'nouveau').eq('archive', false),
+      /* V3.127 : les demandes à rappeler aujourd'hui ou en retard, pas encore traitées. */
+      supabase.from(TABLE_DEMANDES).select('*', { count: 'exact', head: true }).neq('statut', 'traite').eq('archive', false).lte('a_rappeler_le', today),
     ]);
     const visAVenir = ((vis || []) as { date_visite: string | null; heure: string | null }[]).filter(v => !visitePasseeParis(v, mParis)).length;
-    setCounts({ relances: rel || 0, visites: visAVenir, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0, site: site || 0 });
+    setCounts({ relances: rel || 0, visites: visAVenir, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0, site: site || 0, siteRappels: siteRappels || 0 });
   }
 
   /* Une fiche client appartient à la rubrique Clients : la rubrique reste
@@ -166,8 +168,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
         /* Ce que les formulaires du site ont déposé (V3.34), et bientôt les
            portails (V3.93 : « Demandes Internet ») : une demande nouvelle
            attend une réponse, pastille rouge comme une relance. */
-        { id: 'demandes', label: 'Demandes Internet', picto: 'boite', badge: counts.site > 0
-          ? { count: counts.site, type: 'red', pulse: true, titre: `${counts.site} nouvelle${counts.site > 1 ? 's' : ''} demande${counts.site > 1 ? 's' : ''} sur Internet` } : null },
+        /* V3.127 : aussi les demandes à rappeler aujourd'hui (ou en retard) —
+           en rouge s'il y a du nouveau, en doré s'il n'y a que des rappels. */
+        { id: 'demandes', label: 'Demandes Internet', picto: 'boite', badge: counts.site + counts.siteRappels > 0
+          ? { count: counts.site + counts.siteRappels, type: counts.site > 0 ? 'red' : 'gold', pulse: true,
+            titre: [counts.site ? `${counts.site} nouvelle${counts.site > 1 ? 's' : ''} demande${counts.site > 1 ? 's' : ''} sur Internet` : '', counts.siteRappels ? `${counts.siteRappels} à rappeler aujourd’hui` : ''].filter(Boolean).join(' · ') } : null },
         { id: 'agenda', label: 'Agenda', picto: 'calendrier', badge: null },
         /* Une demande de visite à caler passe avant tout : pastille rouge,
            comme une relance. Sinon, le nombre de visites à venir, en bleu. */
