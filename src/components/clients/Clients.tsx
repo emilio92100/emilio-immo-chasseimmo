@@ -257,6 +257,22 @@ const TRIS: { cle: TriCle; nom: string; court: string; note: string; sensDefaut:
   { cle: 'situation', nom: 'Propriétaires d’abord', court: 'Propriétaires', note: 'revente possible, puis propriétaires', sensDefaut: 'desc' },
 ];
 
+/* V3.137 (Alexandre : « pour vendeur, ce serait bien de classer ») : l'ordre
+   de la liste des autres types (vendeurs, propriétaires, notaires…), retenu
+   dans le navigateur. Par défaut, le dernier échange, comme avant. */
+type TriListeCle = 'echange' | 'nom' | 'ajout' | 'etape';
+type TriListe = { cle: TriListeCle; sens: 'asc' | 'desc' };
+const TRIS_LISTE: { cle: TriListeCle; nom: string; court: string; note: string; sensDefaut: 'asc' | 'desc' }[] = [
+  { cle: 'echange', nom: 'Dernier échange', court: 'Dernier échange', note: 'le plus récent en haut', sensDefaut: 'desc' },
+  { cle: 'nom', nom: 'Nom', court: 'Nom', note: 'de A à Z', sensDefaut: 'asc' },
+  { cle: 'ajout', nom: 'Date d’ajout', court: 'Ajout', note: 'le dernier arrivé en haut', sensDefaut: 'desc' },
+  { cle: 'etape', nom: 'Étape de son bien', court: 'Étape du bien', note: 'le plus avancé en haut', sensDefaut: 'desc' },
+];
+/* Le bien le plus avancé d'un contact : sous compromis d'abord, puis sous
+   offre, en vente, estimation, à suivre, en pause, retiré, vendu ; sans bien,
+   à la fin. */
+const RANG_ETAPE: Record<string, number> = { compromis: 8, offre: 7, mandat: 6, estimation: 5, a_suivre: 4, suspendu: 3, retire: 2, vendu: 1 };
+
 /* ── La situation du client aujourd'hui ──
    Un acheteur propriétaire est un mandat vendeur en puissance : c'est lui
    qu'on veut repérer d'un coup d'œil, et pouvoir faire remonter. */
@@ -521,6 +537,22 @@ export default function Clients({ onNavigate, fenetre }: {
       if (v) setTri(JSON.parse(v) as Tri);
     } catch { /* navigateur sans stockage : on garde le réglage par défaut */ }
   }, []);
+  /* V3.137 : l'ordre de la liste des autres types, et son menu. */
+  const [triL, setTriL] = useState<TriListe>({ cle: 'echange', sens: 'desc' });
+  const [menuTriL, setMenuTriL] = useState(false);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('emilio.tri.contacts');
+      const t = v ? JSON.parse(v) as TriListe : null;
+      if (t && TRIS_LISTE.some(x => x.cle === t.cle) && (t.sens === 'asc' || t.sens === 'desc')) setTriL(t);
+    } catch { /* navigateur sans stockage : on garde le réglage par défaut */ }
+  }, []);
+  function classerListe(cle: TriListeCle, sensDefaut: 'asc' | 'desc') {
+    const suivant: TriListe = triL.cle === cle ? { cle, sens: triL.sens === 'asc' ? 'desc' : 'asc' } : { cle, sens: sensDefaut };
+    setTriL(suivant);
+    setMenuTriL(false);
+    try { localStorage.setItem('emilio.tri.contacts', JSON.stringify(suivant)); } catch { /* sans stockage, tant pis */ }
+  }
   function classer(cle: TriCle, sensDefaut: 'asc' | 'desc' = 'desc') {
     /* Reprendre le critère déjà actif inverse le sens — c'est ce qu'on attend
        d'un en-tête de tableau. */
@@ -886,8 +918,31 @@ export default function Clients({ onNavigate, fenetre }: {
   const archives = clients.filter(c => estArchive(c));
   const typesArch = TYPES_CONTACT.map(t => ({ k: t.k, lib: t.pluriel, n: archives.filter(c => typesDe(c).includes(t.k)).length })).filter(t => t.n > 0);
   const typeArchVu = typeArch !== 'tous' && typesArch.some(t => t.k === typeArch) ? typeArch : 'tous';
+  /* V3.137 : le rang du bien le plus avancé de chaque contact (« Étape de
+     son bien »), sans les biens archivés. */
+  const rangBien = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const b of biensV) if (b.client_id && !b.archive) m.set(b.client_id, Math.max(m.get(b.client_id) ?? 0, RANG_ETAPE[b.etape] ?? 0));
+    return m;
+  }, [biensV]);
+  const parNom = (a: Client, b: Client) => `${a.nom || ''} ${a.prenom || ''}`.trim().localeCompare(`${b.nom || ''} ${b.prenom || ''}`.trim(), 'fr', { sensitivity: 'base' });
+  const recent = (a: Client, b: Client) => String(derniere(b) || '').localeCompare(String(derniere(a) || ''));
+  const ordreListe = (a: Client, b: Client): number => {
+    const s = triL.sens === 'asc' ? 1 : -1;
+    switch (triL.cle) {
+      case 'nom': return s * parNom(a, b);
+      case 'ajout': return s * String((a as { created_at?: string }).created_at || '').localeCompare(String((b as { created_at?: string }).created_at || ''));
+      /* À étape égale, le plus récent échange d'abord ; sans bien, toujours à la fin. */
+      case 'etape': {
+        const ra = rangBien.get(a.id) ?? -1, rb = rangBien.get(b.id) ?? -1;
+        if (ra < 0 || rb < 0) return ra === rb ? recent(a, b) : ra < 0 ? 1 : -1;
+        return ra !== rb ? s * (ra - rb) : recent(a, b);
+      }
+      default: return -s * recent(a, b);
+    }
+  };
   const autres = (importes ? clients.filter(c => importes.includes(c.id)) : avecAcheteurs ? [] : cats.includes('archives') ? archives.filter(c => typeArchVu === 'tous' || typesDe(c).includes(typeArchVu)) : visibles.filter(dansCats)).filter(trouve)
-    .sort((a, b) => String(derniere(b) || '').localeCompare(String(derniere(a) || '')));
+    .sort(ordreListe);
   const seul = cats.length === 1 ? cats[0] : null;
   const biensDe = (id: string) => biensV.filter(b => b.client_id === id);
 
@@ -1115,7 +1170,7 @@ export default function Clients({ onNavigate, fenetre }: {
 
   /* V3.136 — la liste par paquets (voir `SuiteListe`). La clé dit de quelle
      liste il s'agit : en changer repart des 60 premières. */
-  const cleListe = [importes ? 'importes' : cats.join('+'), filtre, filtreSit, search, JSON.stringify(fa), tri.cle, tri.sens, typeArchVu].join('|');
+  const cleListe = [importes ? 'importes' : cats.join('+'), filtre, filtreSit, search, JSON.stringify(fa), tri.cle, tri.sens, triL.cle, triL.sens, typeArchVu].join('|');
   const nMontres = montres.cle === cleListe ? montres.n : PAQUET;
   const voirSuite = () => setMontres({ cle: cleListe, n: nMontres + PAQUET });
 
@@ -1982,7 +2037,38 @@ export default function Clients({ onNavigate, fenetre }: {
                 </div>
               )}
               <EnteteContacts tout={{ n: autres.filter(c => choisis.has(c.id)).length, total: autres.length,
-                onTout: () => setChoisis(l => new Set([...l, ...autres.map(c => c.id)])), onRien: () => setChoisis(l => { const n = new Set(l); autres.forEach(c => n.delete(c.id)); return n; }) }} />
+                onTout: () => setChoisis(l => new Set([...l, ...autres.map(c => c.id)])), onRien: () => setChoisis(l => { const n = new Set(l); autres.forEach(c => n.delete(c.id)); return n; }) }}
+                classer={(
+                  /* V3.137 : « Classer », comme le tableau des acheteurs ; le
+                     bouton dit l'ordre en cours. */
+                  <span style={{ position: 'relative', display: 'inline-flex', marginLeft: 8 }}>
+                    {menuTriL && <span onClick={() => setMenuTriL(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
+                    <button type="button" className={`${styles.triBtn} ${styles.triBtnActif}`} onClick={() => setMenuTriL(v => !v)} title="Choisir l'ordre de la liste" aria-expanded={menuTriL}>
+                      <Ico t={11} c="#ffffff"
+                        d={triL.sens === 'asc'
+                          ? <><path d="M7 20V4" /><path d="M4 8l3-4 3 4" /><path d="M14 7h6" /><path d="M14 12h5" /><path d="M14 17h3" /></>
+                          : <><path d="M7 4v16" /><path d="M4 16l3 4 3-4" /><path d="M14 7h3" /><path d="M14 12h5" /><path d="M14 17h6" /></>} />
+                      {TRIS_LISTE.find(t => t.cle === triL.cle)?.court || 'Classer'}
+                    </button>
+                    {menuTriL && (
+                      <span className={styles.triMenu}>
+                        {TRIS_LISTE.map(t => {
+                          const actif = triL.cle === t.cle;
+                          return (
+                            <button key={t.cle} type="button" className={styles.triItem} onClick={() => classerListe(t.cle, t.sensDefaut)}
+                              style={actif ? { background: '#fdfaf1' } : undefined}>
+                              <span style={{ width: 12, flexShrink: 0, color: '#c9a84c', fontSize: 12 }}>{actif ? '✓' : ''}</span>
+                              <span style={{ flexGrow: 1, minWidth: 0 }}>
+                                <b>{t.nom}</b>
+                                <small>{actif && triL.sens !== t.sensDefaut ? 'ordre inversé' : t.note}</small>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </span>
+                    )}
+                  </span>
+                )} />
               {autres.slice(0, nMontres).map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
                 selection={{ on: choisis.has(c.id), mode: modeChoix, onBasculer: () => basculerChoix(c.id) }} />)}
               {autres.length > nMontres && <SuiteListe reste={autres.length - nMontres} onSuite={voirSuite} />}
