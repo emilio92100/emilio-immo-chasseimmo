@@ -1498,6 +1498,22 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.132 — 8 octobre 2026 · La barre à cheval partout, sa pastille qui glisse, le menu du bien raccourci
+
+Rien à passer dans Supabase.
+
+- **La barre à cheval sur Relances, Contacts et Visites** (« pour relance, je veux aussi la même
+  présentation en haut… contact aussi… visite aussi ») : `aCheval` sur leur `EnteteRubrique`.
+- **La pastille qui glisse** (« quand on va sur diffusion en cours, ça ne fait pas un slide joli…
+  c'est brut ») : dans la barre à cheval, la pastille bleue passe d'une tuile à l'autre (même
+  courbe que les onglets de la fiche d'un bien), se recale quand une tuile change de largeur
+  (`ResizeObserver`), et se pose sans glisser au premier affichage. La tuile choisie devient
+  transparente, son texte passe au blanc en douceur.
+- **Le menu de la fiche d'un bien** (« faut pas l'allonger aussi long… mettre un système de scroll
+  dedans ») : le menu ⋯ comme celui de l'étape s'arrêtent bien avant le bas de l'écran
+  (`max-height`) et défilent à l'intérieur ; une ombre en bas dit qu'il y a une suite et s'efface
+  arrivé au bout. Les lignes sont un peu plus serrées.
+
 ### V3.131 — 8 octobre 2026 · Une fiche publique pour chaque bien, « Écrire » depuis une demande, les onglets de Biens
 
 Rien à passer dans Supabase.
