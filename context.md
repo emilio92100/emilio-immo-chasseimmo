@@ -1498,6 +1498,38 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.131 — 8 octobre 2026 · Une fiche publique pour chaque bien, « Écrire » depuis une demande, les onglets de Biens
+
+Rien à passer dans Supabase.
+
+- **Chaque bien de la rubrique Biens a sa fiche publique** (Alexandre : « il appuie sur voir le
+  bien, et ça arrive sur le lien public, comme si un acheteur faisait partager ») : `/bien/<id>`
+  lit d'abord la copie d'un acheteur (`biens`), sinon le bien de l'agence (`biens_vente`), mis en
+  forme par `versBienAcheteur` — ni adresse exacte, ni propriétaire, pas de prix avant le mandat
+  (« Prix à venir »). Vendu, retiré, en pause : le bandeau « plus disponible ». Un lien par bien,
+  qui ne change jamais, à toutes les étapes.
+  - Le mail « simple » envoyé hors du CRM (`/api/biens-vente`, `presenter`) : « Voir le bien »
+    mène toujours à cette fiche (avant : à la page du site, et seulement si le bien y était).
+  - La fiche du bien, menu ⋯ : « Copier le lien de la fiche ».
+- **« Écrire », dans une demande Internet** (« un pop-up de nouveau mail qui reprend le mail…
+  joindre un fichier ou pas ») : la fenêtre « Nouveau mail » du CRM (`FenetreMail`, nouveaux
+  `adresse` et `objet`), l'adresse, « Bonjour <prénom>, » et l'objet de la demande déjà mis. Sa
+  fiche existe et porte cette adresse : le mail part à elle, et se range dans son Suivi. Une
+  nouvelle demande à qui l'on écrit passe « En cours ». Avant : un lien `mailto:`.
+- **Les onglets de Biens** (« mandat en cours et diffusion en cours côte à côte, estimation dans
+  les autres étapes, en haut… que ça chevauche un peu la partie bleue ») : sur la ligne,
+  « Mandats en cours » et « Diffusion en cours » ; « Autres étapes ▾ » commence par
+  « Estimations » (toujours là), puis « Ventes en cours ». Sur ordinateur, les tuiles sont une
+  barre blanche à cheval sur le bas du bandeau, comme les onglets de la fiche d'un bien
+  (`EnteteRubrique`, `aCheval` ; les lueurs passent dans `.lueurs`). Au téléphone, rien ne change.
+- **« Ventes en cours »** (« mes ventes en cours… on y retrouve sous offre et sous compromis ») :
+  une catégorie (`ventes`) qui réunit les biens sous offre et sous compromis, avec les pastilles
+  Toutes · Sous offre · Sous compromis et une phrase pour chacune (`Pastilles`, `AIDE_VENTE`) ;
+  « Sous offre » et « Sous compromis » ne sont plus seuls dans le menu (une ancienne vue `offre`
+  ou `compromis` ouvre « Ventes en cours » sur la bonne pastille).
+- **Le menu de gauche, Biens** : Mes estimations, Mes mandats en cours, Mes ventes en cours.
+  « Mes biens à suivre » reste dans « Autres étapes ».
+
 ### V3.130 — 8 octobre 2026 · Changer un bien en annonce type, la fiche en direct en bleu et repliable, Diffusion en cours classée
 
 Rien à passer dans Supabase.
