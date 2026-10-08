@@ -42,10 +42,15 @@ export type Tuile = {
   menu?: boolean;
 };
 
+/* V3.136 : Ctrl + clic (⌘ sur Mac, ou Maj) ajoute une tuile à celles déjà
+   allumées, là où les tuiles se cumulent (Contacts). Un clic simple va sur
+   la tuile seule. */
+const ajoute = (e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => e.ctrlKey || e.metaKey || e.shiftKey;
+
 /* ── « Autres types ▾ » : les tuiles `menu`, dans une liste qui s'ouvre.
    Posée sur la page (portail, position fixe) : la rangée défile au doigt sur
    téléphone et couperait une liste ouverte à l'intérieur. ── */
-function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif: string | string[]; onChoisir: (cle: string) => void; lib: string }) {
+function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif: string | string[]; onChoisir: (cle: string, ajouter?: boolean) => void; lib: string }) {
   const [ouvert, setOuvert] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const bouton = useRef<HTMLButtonElement | null>(null);
@@ -104,7 +109,7 @@ function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif:
             const on = estOn(t.cle);
             return (
               <button key={t.cle} type="button" role="menuitemcheckbox" aria-checked={on} className={`${styles.menuL} ${on ? styles.menuOn : ''}`}
-                onClick={() => { onChoisir(t.cle); setOuvert(false); }}>
+                onClick={e => { onChoisir(t.cle, ajoute(e)); setOuvert(false); }}>
                 <span className={styles.menuPoint} style={{ background: t.couleur || '#cbd5e1' }} />
                 <span className={styles.menuLib}>{t.lib}</span>
                 <span className={styles.menuN}>{t.n}</span>
@@ -122,11 +127,14 @@ function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif:
 }
 
 export default function EnteteRubrique({
-  titre, icone, phrase, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true, aCheval = false,
+  titre, icone, phrase, phraseOrdi = false, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true, aCheval = false,
 }: {
   titre: string;
   icone: ReactNode;
   phrase?: string;
+  /* V3.136 : une phrase qui ne vaut que sur ordinateur (« Ctrl + clic… »),
+     cachée au téléphone. */
+  phraseOrdi?: boolean;
   recherche?: { valeur: string; onChange: (v: string) => void; placeholder: string; label: string };
   bouton?: { lib: string; onClick: () => void };
   /* Un second bouton, plus discret, avant le premier (V3.61 : « Importer
@@ -135,7 +143,8 @@ export default function EnteteRubrique({
   tuiles: Tuile[];
   /* Une tuile allumée, ou plusieurs quand elles se cumulent (Contacts). */
   actif: string | string[];
-  onChoisir: (cle: string) => void;
+  /* `ajouter` : Ctrl, ⌘ ou Maj tenu pendant le clic (V3.136). */
+  onChoisir: (cle: string, ajouter?: boolean) => void;
   label: string;
   /* Le nom du bouton qui ouvre les tuiles `menu` (V3.80 : « Autres étapes »
      dans Biens). */
@@ -173,18 +182,27 @@ export default function EnteteRubrique({
   const [glisse, setGlisse] = useState<{ x: number; y: number; l: number; h: number } | null>(null);
   const [anime, setAnime] = useState(false);
   const cleTuiles = tuiles.map(t => `${t.cle}:${t.n}`).join('|');
+  /* V3.136 (Alexandre, sur Contacts : « la partie bleue ne se met pas sur
+     vendeur ») : la pastille ne sait se poser que sur une tuile. Quand
+     plusieurs sont allumées (Ctrl + clic), elle s'efface et chacune reprend
+     son propre fond bleu — avant, la seconde restait blanche, son nom écrit
+     en blanc : on ne voyait plus que « 162 • ». */
+  const plusieurs = Array.isArray(actif) && tuiles.filter(t => actif.includes(t.cle)).length > 1;
   useLayoutEffect(() => {
     const r = rangee.current;
-    if (!aCheval || !r) return;
+    if (!aCheval || !r || plusieurs) return;
+    /* La position ne change que si elle a bougé : un `setGlisse` à
+       l'identique redessinait l'en-tête pour rien à chaque mesure. */
     const caler = () => {
       const on = r.querySelector<HTMLElement>('button[aria-pressed="true"]');
-      setGlisse(on ? { x: on.offsetLeft, y: on.offsetTop, l: on.offsetWidth, h: on.offsetHeight } : null);
+      const g = on ? { x: on.offsetLeft, y: on.offsetTop, l: on.offsetWidth, h: on.offsetHeight } : null;
+      setGlisse(v => (v && g && v.x === g.x && v.y === g.y && v.l === g.l && v.h === g.h ? v : g));
     };
     caler();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(caler) : null;
     if (ro) { ro.observe(r); r.querySelectorAll('button').forEach(b => ro.observe(b)); }
     return () => ro?.disconnect();
-  }, [aCheval, cleActive, cleTuiles]);
+  }, [aCheval, cleActive, cleTuiles, plusieurs]);
   useEffect(() => {
     if (!glisse || anime) return;
     const id = requestAnimationFrame(() => setAnime(true));
@@ -198,7 +216,7 @@ export default function EnteteRubrique({
           <span className={styles.icone} aria-hidden="true">{icone}</span>
           <div className={styles.titreTextes}>
             <h1 className={styles.titre}>{titre}</h1>
-            {phrase && <p className={styles.phrase}>{phrase}</p>}
+            {phrase && <p className={`${styles.phrase} ${phraseOrdi ? styles.phraseOrdi : ''}`}>{phrase}</p>}
           </div>
         </div>
         {(recherche || bouton || bouton2) && (
@@ -227,8 +245,8 @@ export default function EnteteRubrique({
         )}
       </div>
 
-      {tuiles.length > 0 && <div ref={rangee} className={styles.rangee} role="group" aria-label={label}>
-        {aCheval && glisse && (
+      {tuiles.length > 0 && <div ref={rangee} className={`${styles.rangee} ${plusieurs ? styles.plusieurs : ''}`} role="group" aria-label={label}>
+        {aCheval && glisse && !plusieurs && (
           <span className={`${styles.glisse} ${anime ? styles.glisseAnime : ''}`} aria-hidden="true"
             style={{ transform: `translate(${glisse.x}px, ${glisse.y}px)`, width: glisse.l, height: glisse.h }} />
         )}
@@ -247,7 +265,7 @@ export default function EnteteRubrique({
           return (
             /* Une tuile qui apparaît (la liste vient d'être lue) arrive en
                douceur, à la suite des autres (V3.25). */
-            <button key={t.cle} type="button" aria-pressed={on} onClick={() => onChoisir(t.cle)}
+            <button key={t.cle} type="button" aria-pressed={on} onClick={e => onChoisir(t.cle, ajoute(e))}
               style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
               className={`${styles.tuile} ligne-entre ${on ? styles.on : ''} ${vide ? styles.vide : ''} ${alerte ? styles.alerte : ''} ${t.tete ? styles.tete : ''} ${t.fin ? styles.fin : ''} ${t.archive ? styles.arch : ''}`}>
               {t.tete && t.ic && <span className={styles.teteIc} aria-hidden="true">{t.ic}</span>}
