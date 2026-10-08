@@ -4,6 +4,8 @@ import styles from '@/components/fiche/FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
 import ArretPicker from '@/components/shared/ArretPicker';
 import type { Arret } from '@/lib/arrets';
+import type { Parcours } from '@/lib/parcours';
+import { EtapeParcours } from './Parcours';
 
 /* ═══ Les critères de recherche, une bonne fois ═══════════════════════════
    Ce formulaire vivait dans la fiche client. La création d'un client en
@@ -178,6 +180,10 @@ export type CritForm = {
   etage_min: string; etage_max: string; dpe_max: string; annee_min: string;
   etat_souhaite: string; exposition_souhaitee: string; surface_sejour_min: string;
   urgence: string; financement: string; apport: string;
+  /* V3.122 : son parcours (src/lib/parcours.ts). Hors de `colonnesCriteres` :
+     il s'écrit à part (`recherches.parcours`), pour qu'une colonne pas encore
+     créée n'empêche jamais d'enregistrer les critères. */
+  parcours?: Parcours;
 };
 
 export const CRIT_VIDE: CritForm = {
@@ -189,7 +195,7 @@ export const CRIT_VIDE: CritForm = {
   ascenseur: false, gardien: false, interphone: false, digicode: false,
   rdc_exclu: false, dernier_etage: false, etage_min: '', etage_max: '', dpe_max: '',
   annee_min: '', etat_souhaite: '', exposition_souhaitee: '', surface_sejour_min: '',
-  urgence: '', financement: '', apport: '',
+  urgence: '', financement: '', apport: '', parcours: {},
 };
 
 /* Les colonnes de `recherches` que portent les critères, tirées du
@@ -232,7 +238,11 @@ export function colonnesCriteres(cr: CritForm) {
 export type EtapeCrit = { id: string; ico: string; titre: string; note?: string; sous: string; contenu: React.ReactNode };
 export type SetCrit = (maj: (f: CritForm) => CritForm) => void;
 
-/* Les neuf catégories : affichées à la suite (mode « tout ») ou une par une. */
+/* L'ordre des étapes, pour en ouvrir une précise (« Modifier ma note » →
+   « Contexte du projet », le bloc « Son parcours » → son étape). */
+export const ORDRE_ETAPES_CRIT = ['bien', 'surfaces', 'etage', 'equipements', 'energie', 'lieu', 'transports', 'budget', 'parcours', 'contexte'];
+
+/* Les dix catégories : affichées à la suite (mode « tout ») ou une par une. */
 export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
         const niv = (k: string): Niveau => (crit.exigences?.[k] as Niveau) || '';
         const setNiv = (k: string, n: Niveau) => setCrit(f => {
@@ -242,7 +252,7 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
           if (k in f) maj[k] = !!n;
           return { ...f, ...maj } as typeof f;
         });
-        /* Les neuf catégories : affichées à la suite (mode « tout ») ou une par une (mode « étapes »). */
+        /* Les dix catégories : affichées à la suite (mode « tout ») ou une par une (mode « étapes »). */
         const etapesCrit: { id: string; ico: string; titre: string; note?: string; sous: string; contenu: React.ReactNode }[] = [
           {
             id: 'bien', ico: '🏠', titre: 'LE BIEN', note: 'plusieurs choix possibles',
@@ -427,6 +437,13 @@ export function etapesCriteres(crit: CritForm, setCrit: SetCrit): EtapeCrit[] {
                 <ChoixIco table={FINANCEMENTS} valeur={crit.financement} onChange={v => setCrit(f => ({ ...f, financement: v }))} couleur="#0f766e" />
               </div>
             </>),
+          },
+          {
+            /* V3.122 : vers la fin, après le budget (Alexandre : « on parle des
+               visites qu'il a faites… plutôt après »). */
+            id: 'parcours', ico: '🧭', titre: 'SON PARCOURS', note: 'visible de toi seul',
+            sous: 'Ce qu\'il a déjà visité, et ce qui n\'allait pas',
+            contenu: (<EtapeParcours valeur={crit.parcours} onChange={x => setCrit(f => ({ ...f, parcours: x }))} />),
           },
           {
             id: 'contexte', ico: '🗒️', titre: 'CONTEXTE DU PROJET', note: undefined,
