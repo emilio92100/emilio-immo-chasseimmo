@@ -818,6 +818,9 @@ input.pcNote { flex: 1 1 200px; min-width: 0; width: auto; }
 .ventile svg { flex-shrink: 0; margin-top: 1px; }
 .ventileManque { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 .ventileNet { display: block; margin-top: 4px; font-size: 12.5px; font-weight: 600; color: #15803d; opacity: .85; }
+/* V3.130 : « En faire une annonce type », dans la couleur de l'étape. */
+.ventileAnnonce { background: #fdf4ff; border-color: #f5d0fe; color: #86198f; }
+.ventileAnnonce .ventileNet { color: #a21caf; }
 /* Un compteur tient sur une ligne : le libellé à gauche, – n + à droite. */
 .chCpt { flex-direction: row !important; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px !important; padding: 6px 8px 6px 12px; border-radius: 14px; background: #fbfcfe; border: 1px solid #eef1f6; }
 .chCpt > .cpt { border: none; background: transparent; padding: 0; }
@@ -1771,7 +1774,26 @@ nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
 @media (prefers-reduced-motion: reduce) { .vgPicto, .sommChev, .sommJauge i { transition: none; } .sommPanneau { animation: none; } }
 
 /* À droite : « La fiche, en direct », puis ce que l'annonce doit dire. */
-.direct { background: #1f2d45; color: white; border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.direct { background: var(--emilio-fond); color: white; border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 14px 34px rgba(46,65,102,.22); }
+/* V3.130 : le bleu du CRM (comme le haut de la fiche), et « Masquer ». */
+.directTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
+.directMasquer {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 9px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.1); color: rgba(255,255,255,.88); font: 700 12px 'DM Sans', sans-serif;
+  transition: background-color .15s, border-color .15s;
+}
+.directMasquer:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.34); color: white; }
+@media (max-width: 1100px) { .directMasquer { display: none; } }
+@media (min-width: 1101px) {
+  .edCorps.edA1[data-vue][data-apercu='cache'] { grid-template-columns: 272px minmax(0, 1fr) 58px; }
+  .edA1[data-apercu='cache'] > .edApercu { display: none; }
+}
+/* La languette qui la rouvre, sur le côté droit. */
+.edRail[class] { background: transparent; border-left: none; padding-top: 20px; }
+.edRail button { background: var(--emilio-fond); border: none; color: white; padding: 14px 8px; border-radius: 14px; box-shadow: 0 10px 24px -12px rgba(46,65,102,.7); animation: railEntre .3s cubic-bezier(.2, .8, .2, 1) both; }
+.edRail button:hover { color: #f2dfa6; box-shadow: 0 12px 26px -12px rgba(46,65,102,.9); }
+@keyframes railEntre { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .edRail button { animation: none; } }
 .directT { font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #c9a84c; }
 .directNom b { display: block; font: 800 16px 'Plus Jakarta Sans', sans-serif; color: white; line-height: 1.3; }
 .directNom span { display: block; margin-top: 2px; font-size: 12.5px; color: rgba(255,255,255,.66); }
@@ -1807,3 +1829,36 @@ nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
   .vgnLarge { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .vg { min-height: 90px; padding: 10px 4px 8px; border-radius: 16px; }
 }
+
+/* ══ V3.130 — « Diffusion en cours » : Tous · Mandats · Annonces type ══════
+   Alexandre : « ajouter mandat en cours, annonce type, pour classer ». Les
+   biens en ligne, quelle que soit l'étape ; les pastilles les rangent. */
+.sousDiff { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 0 0 12px; }
+.sousDiffPills { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: #eef2f7; border: 1px solid #e3e8f0; }
+.sousDiffPills button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 10px; border: none;
+  background: transparent; color: #475569; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap;
+  transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.sousDiffPills button:hover { color: #1a2332; }
+.sousDiffPills button b { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: white; color: #64748b; font: 800 11.5px 'DM Sans', sans-serif; display: inline-flex; align-items: center; justify-content: center; transition: background-color .2s, color .2s; }
+.sousDiffPills button[aria-pressed='true'] { background: white; color: #1a2332; box-shadow: 0 6px 14px -8px rgba(26, 35, 50, .45); }
+.sousDiffPills button[aria-pressed='true'] b { background: var(--emilio-fond); color: #e7cf8a; }
+.sousDiffPoint { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sousDiffAide { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #64748b; }
+.sousDiffAide svg { color: #0f7a4f; }
+@media (max-width: 640px) {
+  .sousDiffPills { display: flex; width: 100%; }
+  .sousDiffPills button { flex: 1 1 auto; padding: 0 8px; gap: 6px; font-size: 12.5px; }
+  .sousDiffAide { font-size: 12px; }
+}
+/* « Annonces type », ce que c'est : sous la catégorie et sous la pastille. */
+.expliAnnonce {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border-radius: 14px;
+  background: #fdf4ff; border: 1px solid #f5d0fe; color: #701a75; font-size: 13.5px; line-height: 1.5; animation: expliEntre .3s ease both;
+}
+.expliAnnonce b { color: #86198f; }
+.expliAnnonceIc { flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: white; color: #c026d3; border: 1px solid #f5d0fe; }
+@keyframes expliEntre { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .expliAnnonce { animation: none; } }
+@media (max-width: 640px) { .expliAnnonce { font-size: 13px; padding: 10px 12px; } }

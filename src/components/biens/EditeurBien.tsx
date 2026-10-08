@@ -243,7 +243,7 @@ function BlocEtape({ e, i, n, d, maj, bienId, manques = 0, anime = false, sens =
    le mandat signé, ce que l'annonce doit encore dire, chaque manque avec
    un lien vers sa partie. Avant (V3.108 aussi), la carte « dans la liste »
    était là : Alexandre n'en voulait plus. */
-function Apercu({ bien, d, ids, nbPhotos, onAller }: { bien: BienVente; d: Donnees; ids: string[]; nbPhotos: number; onAller: (id: string) => void }) {
+function Apercu({ bien, d, ids, nbPhotos, onAller, onMasquer }: { bien: BienVente; d: Donnees; ids: string[]; nbPhotos: number; onAller: (id: string) => void; onMasquer?: () => void }) {
   const a = argentBien(d);
   const surf = num(d, 'carrez') || num(d, 'surface');
   const pieces = lirePieces(d.detailPieces);
@@ -278,7 +278,14 @@ function Apercu({ bien, d, ids, nbPhotos, onAller }: { bien: BienVente; d: Donne
   return (
     <div className={b.apercu}>
       <section className={b.direct} aria-label="La fiche, en direct">
-        <span className={b.directT}>La fiche, en direct</span>
+        <div className={b.directTete}>
+          <span className={b.directT}>La fiche, en direct</span>
+          {onMasquer && (
+            <button type="button" className={b.directMasquer} onClick={onMasquer} title="Masquer la fiche en direct : les questions prennent la place">
+              <Ic n="oeilBarre" t={14} /><span>Masquer</span>
+            </button>
+          )}
+        </div>
         <div className={b.directNom}>
           <b>{d.typeBien ? titreBien(d) : 'Nouveau bien'}</b>
           {lieu && <span>{lieu}</span>}
@@ -408,6 +415,17 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
   const choisirMode = (x: 'etapes' | 'tout') => {
     setMode(x);
     try { localStorage.setItem('biens.mode', x); } catch { /* sans mémoire, tant pis */ }
+  };
+  /* V3.130 (Alexandre : « soit cacher la fiche en direct, soit la mettre sur
+     le côté ») : sur ordinateur, « Masquer » la replie en une languette à
+     droite, qui la rouvre. Le choix est gardé d'un bien à l'autre. Au
+     téléphone, rien ne change : elle reste sous l'onglet « Aperçu ». */
+  const [apercuCache, setApercuCache] = useState(() => {
+    try { return localStorage.getItem('biens.apercu') === 'cache'; } catch { return false; }
+  });
+  const montrerApercu = (oui: boolean) => {
+    setApercuCache(!oui);
+    try { localStorage.setItem('biens.apercu', oui ? 'vu' : 'cache'); } catch { /* sans mémoire, tant pis */ }
   };
   const [enreg, setEnreg] = useState<Enreg>('ok');
   const formRef = useRef<HTMLDivElement>(null);
@@ -673,7 +691,7 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
         <button type="button" aria-pressed={vue === 'apercu'} onClick={() => setVue('apercu')}><Ic n="oeil" t={15} />Aperçu</button>
       </div>
 
-      <div className={`${s.edCorps} ${b.edCorps} ${b.edA1}`} data-vue={vue}>
+      <div className={`${s.edCorps} ${b.edCorps} ${b.edA1}`} data-vue={vue} data-apercu={apercuCache ? 'cache' : undefined}>
         <aside className={b.somm} aria-label="Le sommaire">
           <Sommaire etapes={ETAPES} cur={cur} etats={etats} pct={pct} sous={sous} onAller={aller} />
         </aside>
@@ -693,8 +711,15 @@ export default function EditeurBien({ bien, etapeDepart: depart, nouveau = false
           </div>
         </div>
         <div className={`${s.edApercu} ${b.edApercu}`}>
-          <Apercu bien={row} d={dd} ids={ETAPES.map(e => e.id)} nbPhotos={nbPhotos} onAller={allerA} />
+          <Apercu bien={row} d={dd} ids={ETAPES.map(e => e.id)} nbPhotos={nbPhotos} onAller={allerA} onMasquer={() => montrerApercu(false)} />
         </div>
+        {apercuCache && (
+          <div className={`${s.edRail} ${b.edRail}`}>
+            <button type="button" onClick={() => montrerApercu(true)} title="Afficher la fiche en direct">
+              <Ic n="oeil" t={16} /><span>La fiche, en direct</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className={s.edPied}>

@@ -83,7 +83,7 @@ type Onglet = 'apercu' | 'photos' | 'bien' | 'visites' | 'acheteurs' | 'document
 type Fen =
   | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente } | { k: 'tombe' } | { k: 'revente' } | { k: 'vendu'; correction?: boolean } | { k: 'prix' } | { k: 'visite'; pour?: ChoixA } | { k: 'note' }
   | { k: 'deplacer'; v: VisiteU } | { k: 'point' }
-  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat' }
+  | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat'; vers?: EtapeVente }
   | { k: 'diffusion'; premiere?: boolean };
 
 /* ── Les mots des listes de choix, lus dans le formulaire ── */
@@ -1421,6 +1421,26 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
   /* V3.42 : un mandat noté par erreur (un test, le mauvais bien), ou le bien
      passé « En vente » avant la signature : il revient en arrière, sans
      passer par Supabase. */
+  /* V3.130 (Alexandre : « ce n'est pas un mandat, c'est juste une annonce
+     type… je ne sais pas où je change ») : l'annonce type ne se choisissait
+     qu'à la création. Un bien en vente y passe ici — le mandat quitte la
+     fiche, l'annonce reste diffusée (FenAnnulerMandat, `vers`). */
+  if (e === 'mandat' || e === 'suspendu') {
+    suite.push({ t: 'C’est une annonce type…', s: 'Pas un vrai mandat : juste une annonce à diffuser', c: etapeDe('annonce_type').c, go: () => setFen({ k: 'annulerMandat', vers: 'annonce_type' }) });
+  }
+  if (e === 'a_suivre' || e === 'estimation') {
+    suite.push({ t: 'C’est une annonce type…', s: 'Pas un vrai bien à vendre : juste une annonce à diffuser', c: etapeDe('annonce_type').c, go: raison('annonce_type', 'En faire une annonce type', 'Le bien passe « Annonce type »') });
+  }
+  /* Un ancien mandat qu'on garde en ligne comme annonce type : le mandat
+     fini quitte la fiche (il reste dans l'historique et dans Documents). */
+  if (e === 'retire' && !bien.archive) {
+    suite.push({ t: 'En faire une annonce type…', s: 'Pour la garder en ligne, sans mandat', c: etapeDe('annonce_type').c,
+      go: txt(d, 'mandatDate') ? () => setFen({ k: 'annulerMandat', vers: 'annonce_type' }) : raison('annonce_type', 'En faire une annonce type', 'Le bien passe « Annonce type »') });
+  }
+  if (e === 'annonce_type') {
+    suite.push({ t: 'Changer le prix…', s: 'Garde l’historique', c: '#8b5cf6', go: () => setFen({ k: 'prix' }) });
+    suite.push({ t: 'C’est un vrai mandat…', s: 'Le mandat est signé : le bien passe « En vente »', c: etapeDe('mandat').c, go: () => setFen({ k: 'mandat' }) });
+  }
   if (e === 'mandat' || e === 'suspendu') {
     suite.push(txt(d, 'mandatDate')
       ? { t: 'Annuler ce mandat…', s: 'Noté par erreur : il quitte la fiche', c: '#dc2626', go: () => setFen({ k: 'annulerMandat' }), danger: true }
@@ -2364,8 +2384,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, onMaj, onSupp
       {fen?.k === 'note' && <FenNote bien={bien} onFermer={() => setFen(null)} onFait={() => apres()} />}
       {fen?.k === 'raison' && <FenRaison bien={bien} etape={fen.etape} titre={fen.titre} sur={fen.sur} prevues={prevues} offres={offres} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'annulerMandat' && (
-        <FenAnnulerMandat bien={bien} depuis={etapeAvantMandat(detail?.suivi || [])} enRoute={!!mandatEnRoute}
-          signeDoc={mandatSigne ? { id: mandatSigne.id, numero: mandatSigne.numero || null } : null}
+        <FenAnnulerMandat bien={bien} depuis={etapeAvantMandat(detail?.suivi || [])} vers0={fen.vers} enRoute={!!mandatEnRoute}
+          signeDoc={mandatSigne && !(fen.vers === 'annonce_type' && bien.etape === 'retire') ? { id: mandatSigne.id, numero: mandatSigne.numero || null } : null}
           onFermer={() => setFen(null)} onFait={r => apres(r)} onDocuments={id => { setFen(null); ouvrirDoc(id); }} />
       )}
       {envoiAutre && (

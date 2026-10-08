@@ -47,6 +47,28 @@ const dansEtape = (x: BienVente, f: EtapeVente) => (f === 'mandat' ? EN_COURS.in
 /* V3.96 (Alexandre : « dans les onglets, diffusion en cours ») : tout ce qui
    est en ligne, quelle que soit l'étape. */
 const enLigne = (x: BienVente) => etatDiffusion(x).enLigne;
+/* V3.130 (Alexandre : « ajouter mandat en cours, annonce type, pour
+   classer ») : dans « Diffusion en cours », les vrais biens en vente d'un
+   côté, les annonces type de l'autre. */
+type SousDiff = 'tous' | 'mandats' | 'annonces';
+const dansSousDiff = (x: BienVente, k: SousDiff) => k === 'tous' || (k === 'annonces') === (x.etape === 'annonce_type');
+const AIDE_DIFF: Record<Exclude<SousDiff, 'annonces'>, string> = {
+  tous: 'Tout ce qui est en ligne, quelle que soit l’étape.',
+  mandats: 'Les vrais biens à vendre, en ligne : en vente, sous offre, sous compromis, ou diffusés à une autre étape.',
+};
+/* « Annonces type », ce que c'est (Alexandre : « une petite précision de à
+   quoi correspond ce filtre »), sous la catégorie et sous la pastille. */
+function ExpliAnnonceType() {
+  return (
+    <div className={b.expliAnnonce}>
+      <span className={b.expliAnnonceIc}><Ic n="megaphone" t={16} /></span>
+      <span>
+        <b>{'Les annonces type'}</b>
+        {' : des annonces pour faire venir des acheteurs, sans vrai bien à vendre derrière. Un bien proche de celui qu’on ne peut pas diffuser, ou un ancien mandat gardé en ligne. Ni visite ni offre dessus : un acheteur intéressé se suit sur sa propre fiche.'}
+      </span>
+    </div>
+  );
+}
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const lireBienUrl = () => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('bien'));
@@ -88,6 +110,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
      estimations »…), ou celle qu'on avait en quittant la liste (V3.24). */
   const [filtre, setFiltre] = useState<Filtre>(() => lireFiltre(vueDemandee('biens')));
   useEffect(() => { annoncerVue('biens', filtre); }, [filtre]);
+  const [sousDiff, setSousDiff] = useState<SousDiff>('tous');
   const [cherche, setCherche] = useState('');
   /* V3.16 : affiner (type, surface, pièces, budget, DPE) et trier. */
   const [fins, setFins] = useState<Filtres>(FILTRES_VIDES);
@@ -278,7 +301,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   /* Les filtres fins comptent comme la recherche : les nombres des
      catégories les suivent. */
   const cherches = filtrer(trouves, fins);
-  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || (filtre === 'diffusion' ? enLigne(x) : dansEtape(x, filtre));
+  const dansCategorie = (x: BienVente) => filtre === 'tout' || filtre === 'archives' || (filtre === 'diffusion' ? enLigne(x) && dansSousDiff(x, sousDiff) : dansEtape(x, filtre));
   const parEtape = (p: BienVente, r: BienVente) => ORDRE.indexOf(p.etape) - ORDRE.indexOf(r.etape) || r.updated_at.localeCompare(p.updated_at);
   const visibles = trier(cherches.filter(dansCategorie), tri, parEtape);
   const avantFiltres = trouves.filter(dansCategorie).length;
@@ -485,6 +508,28 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           <button type="button" className={b.lien} onClick={() => setFiltre('tout')}>Voir dans « Tous »</button>
         </div>
       )}
+      {liste && !installer && biens.length > 0 && filtre === 'diffusion' && (() => {
+        const enL = cherches.filter(enLigne);
+        const choix: { k: SousDiff; l: string; n: number; c?: string }[] = [
+          { k: 'tous', l: 'Tous', n: enL.length },
+          { k: 'mandats', l: 'Mandats', n: enL.filter(x => dansSousDiff(x, 'mandats')).length, c: etapeDe('mandat').c },
+          { k: 'annonces', l: 'Annonces type', n: enL.filter(x => dansSousDiff(x, 'annonces')).length, c: etapeDe('annonce_type').c },
+        ];
+        return (
+          <div className={b.sousDiff}>
+            <div className={b.sousDiffPills} role="group" aria-label="Classer les biens en ligne">
+              {choix.map(x => (
+                <button key={x.k} type="button" aria-pressed={sousDiff === x.k} onClick={() => setSousDiff(x.k)}>
+                  {x.c && <i className={b.sousDiffPoint} style={{ background: x.c }} />}
+                  <span>{x.l}</span><b>{x.n}</b>
+                </button>
+              ))}
+            </div>
+            {sousDiff !== 'annonces' && <span className={b.sousDiffAide}><Ic n="megaphone" t={14} /><span>{AIDE_DIFF[sousDiff]}</span></span>}
+          </div>
+        );
+      })()}
+      {liste && !installer && biens.length > 0 && (filtre === 'annonce_type' || (filtre === 'diffusion' && sousDiff === 'annonces')) && <ExpliAnnonceType />}
       {liste && !installer && biens.length > 0 && (
         <FiltresBiens biens={(filtre === 'archives' ? archives : actifs).filter(dansCategorie)} f={fins} onF={setFins} tri={tri} onTri={setTri} n={visibles.length} total={avantFiltres}
           vue={vue} onVue={choisirVue} />
