@@ -921,6 +921,8 @@ function ligneEtatBrute(b: BienVente, suivi: SuiviVente[], mandat: EtatMandatDoc
     return { t: typeof d.delai === 'string' && delai[d.delai] ? `Projet : ${delai[d.delai]}` : 'Projet de vente à suivre', ton: 'neutre' };
   }
   if (b.etape === 'retire') return { t: `Retiré de la vente${ed.raison ? ` · ${ed.raison}` : ''}`, ton: 'neutre', ic: 'archive' };
+  /* V3.130 : une annonce type tombait dans l'estimation (« Avis de valeur à envoyer »). */
+  if (b.etape === 'annonce_type') return { t: 'Une annonce, pour faire venir des acheteurs', ton: 'neutre', ic: 'megaphone' };
   if (b.etape === 'suspendu') return { t: [ed.raison || 'Vente en pause', ed.reprise ? `reprise le ${dateCourte(ed.reprise)}` : ''].filter(Boolean).join(' · '), ton: 'neutre', ic: 'pause' };
   if (b.etape === 'compromis') {
     const pret = ed.pretLimite ? `fin du délai de prêt le ${dateCourte(ed.pretLimite)}` : '';
@@ -1216,6 +1218,8 @@ export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheI
   const photos = lirePhotos(d.photos).map(p => p.url);
   const energie = { gaz: 'Gaz', electrique: 'Électricité', pac: 'Pompe à chaleur', fioul: 'Fioul', bois: 'Bois', urbain: 'Réseau urbain' } as Record<string, string>;
   const chargesAn = nb(d, 'chargesAn');
+  const COMPRIS: Record<string, string> = { chauffage: 'chauffage', eauChaude: 'eau chaude', eauFroide: 'eau froide', gardien: 'gardien', ascenseur: 'ascenseur' };
+  const compris = liste(d, 'chargesInclus').map(v => COMPRIS[v]).filter(Boolean);
   return {
     client_id: o.clientId, recherche_id: o.rechercheId, bien_vente_id: b.id,
     etape: 'presente', envoye_le: o.quand, canal_envoi: 'lien', badge_retour: 'propose',
@@ -1237,6 +1241,11 @@ export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheI
     description: txt(d, 'annonceTexte') || brouillonAnnonce(d),
     ...prixCopie(d, b.etape),
     charges_trimestrielles: chargesAn ? Math.round(chargesAn / 4) : null, taxe_fonciere: nb(d, 'taxeFonciere'),
+    /* V3.130 (Alexandre : « est-ce que ça récupère aussi les charges de
+       copro ? ») : les lots et ce que couvrent les charges suivent aussi ;
+       son espace et la page /bien/<id> savaient déjà les montrer. */
+    nb_lots: d.copro === 'oui' ? nb(d, 'lots') : null,
+    ...(chargesAn && compris.length ? { charges_comprises: compris.join(', ') } : {}),
     photos, source_portail: 'Emilio Immobilier', agence_nom: 'Emilio Immobilier', agence_tel: null,
   };
 }

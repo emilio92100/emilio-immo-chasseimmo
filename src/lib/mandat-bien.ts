@@ -89,7 +89,8 @@ export async function mandatSigneSurBien(sb: SupabaseClient, doc: DocMandat, jou
   const numero = (doc.numero || txt(dm, 'numero')).trim();
   const fin = finDuMandat(dm, jour);
   const prix = num(dm, 'prix');
-  const passe = ['a_suivre', 'estimation', 'retire'].includes(b.etape) || (b.etape === 'mandat' && !txt(bd, 'mandatDate'));
+  /* V3.130 : une annonce type dont le mandat est signé passe « En vente ». */
+  const passe = ['a_suivre', 'estimation', 'retire', 'annonce_type'].includes(b.etape) || (b.etape === 'mandat' && !txt(bd, 'mandatDate'));
   /* Déjà noté (un second passage) : rien à refaire. */
   if (!passe && txt(bd, 'mandatDate') === jour && txt(bd, 'mandatNumero') === numero) return null;
   const avantVente = b.etape === 'a_suivre' || b.etape === 'estimation' || (b.etape === 'retire' && !b.en_vente_le);
