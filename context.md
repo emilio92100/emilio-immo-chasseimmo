@@ -1498,6 +1498,36 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.123 — 8 octobre 2026 · Le rapprochement intelligent, partout
+
+Rien à passer dans Supabase : le SQL de la V3.122 suffit.
+
+Alexandre : « que le rapprochement soit visible partout, même quand on sélectionne un bien et la
+fonction Envoyer… que cette fonctionnalité soit fonctionnelle partout ».
+
+- La route `/api/rapprochement-ia` juge des **couples bien × recherche** : `{ paires: [{ bien_id,
+  recherche_id }] }`, 12 par appel. L'ancienne forme, `{ bien_id, recherche_ids }`, est encore lue.
+  - Un appel porte les fiches des biens, les dossiers des recherches et la liste des couples à
+    juger.
+  - Elle rend `avis[bien][recherche]`. Chaque bien garde les siens dans `rapprochement_ia`.
+- `src/components/biens/RapprochementIA.tsx`, les morceaux communs :
+  - `analyserIA` : les paquets, et une mémoire de session pour qu'un écran qui se remonte retrouve
+    ses avis ;
+  - `avisDuBien`, `avisDesBiens` ;
+  - `CarteIA` : la carte, avec son état et ses comptes ;
+  - `AvisLigne` : le mot, puis la phrase, uniquement des `<span>`, pour aller aussi dans un bouton ;
+  - `rangIA` : pour trier.
+- Les trois endroits :
+  - **L'onglet Rapprochement d'un bien** : comme en V3.122, l'analyse se lance d'un bouton ; il se
+    sert maintenant des morceaux communs.
+  - **« Envoyer » depuis la liste des biens** : « Lancer le rapprochement » lance aussi l'analyse,
+    d'elle-même. Elle relit au plus 48 couples, les meilleures notes d'abord. Chaque acheteur
+    porte l'avis bien par bien, avec le nom du bien quand il y en a plusieurs ; un « oui » le
+    remonte, un « non » partout le descend.
+  - **Le rapprochement de la fiche d'un acheteur** : l'analyse se lance d'elle-même avec les
+    résultats, sur ses mandats (24 au plus) ; les biens des veilles ont déjà été lus par la veille.
+    Les « oui » passent en tête et un « non » se décoche.
+
 ### V3.122 — 8 octobre 2026 · « Son parcours », et le rapprochement intelligent
 
 **SQL à passer** : `outils/sql/parcours-rapprochement-ia.sql`. Il ajoute deux colonnes jsonb,
