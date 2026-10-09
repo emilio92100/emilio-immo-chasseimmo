@@ -1499,6 +1499,48 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.154 — 10 octobre 2026 · Le bon de visite : sans documents remis, plusieurs biens, depuis la visite, signé sur place sans code
+
+Alexandre : « le but, c'est juste avoir un bon de visite, sans indiquer les documents remis » ;
+« plusieurs biens… il n'y a pas de bouton ajouter un bien » ; « un bouton Bon de visite depuis la
+visite, qui reprend l'acquéreur et le bien » ; « sur place, pas besoin de code reçu par e-mail :
+chacun a son encadré et signe au stylet » ; puis « garder toujours le mot Bon de visite, et entre
+parenthèses à finir, à signer, ou signé, en vert » et « dans l'historique, voir quels biens ont été
+visités, et cliquer directement sur le bien ».
+
+- **Plus de documents remis** (`src/lib/actes/bon-visite.ts`) : l'étape et la clause disparaissent ;
+  l'étape 3 s'appelle « Engagements ». (L'état des risques reste dû dès la première visite,
+  art. L125-5 du Code de l'environnement : le bon n'en parle simplement plus.)
+- **Plusieurs biens** : le premier dans les champs habituels, jusqu'à 5 autres dans
+  `donnees.autresBiens` (nouveau type de champ `groupes`, « Ajouter un bien » à l'étape 2) ;
+  `biensDuBon(d)` les rend tous ; textes au pluriel, une ligne par bien dans le PDF. Chaque bien
+  garde d'où il vient : `bienId` (sa copie chez l'acheteur), `bienVenteId` (le bien de l'agence),
+  `visiteId` (la visite). La fiche d'un bien retrouve aussi les bons où il n'est pas le premier
+  (`.contains('donnees', { autresBiens: [{ bienVenteId }] })`, src/components/biens/outils.ts —
+  jamais essayé contre la vraie base ; en échec, ces bons-là seuls manquent).
+- **« Bon de visite » sur chaque visite** (page Visites, onglet Visites du contact, fiche du bien ;
+  `src/components/documents/BonDeVisite.tsx`) : un bon porte déjà la visite → il s'ouvre (l'éditeur
+  pour un brouillon, sa fiche dans Documents sinon) ; l'acheteur a d'autres visites ce jour-là →
+  « Julie a aussi 2 autres visites ce jour-là », cochées d'avance ; sinon le brouillon est créé et
+  s'ouvre, prérempli : l'acheteur, son conjoint quand sa fiche est un couple (`clients.couple`,
+  `conjointDe`), chaque bien (prix de l'annonce), la date et l'heure.
+- **Son état sur le bouton** (`useEtatsBons`, `LibelleBon`) : « Bon de visite », « Bon de visite
+  (à finir) » en gris (brouillon), « (à signer) » en bleu (prêt ou envoyé), « (signé) » en vert.
+  Les bons sont lus une fois à l'ouverture de l'écran ; deux bons sur une visite : le plus avancé.
+- **Ses biens dans l'historique** : la ligne « ✍️ Bon de visite signé sur place / en ligne »
+  (`classer`, src/lib/signature-documents.ts) porte `metadata.biens` = `[{ id, lib }]` ; FriseSuivi
+  en fait une étiquette par bien : retrouvé dans le dossier (par `bienId`, `bienVenteId`, sinon par
+  l'adresse — un bien tapé à la main), il s'ouvre d'un clic ; sinon l'adresse seule, sans clic.
+  Les bons signés avant la V3.154 n'ont pas d'étiquettes.
+- **Sur place, sans code — le bon de visite seul** (`src/lib/signature-sans-code.ts`) : à l'étape
+  « La signature », trois choix (à la main, en ligne, sur place). « Sur place » : chaque visiteur a
+  son cadre et signe au stylet sur l'écran d'Alexandre, sans code. Le serveur ne l'accepte que si
+  tout est vrai : bon de visite, réponses « Sur place », signature lancée sur place, signataire
+  attendu sur place, et badge du CRM valide (revérifié dans `/api/documents/signature`). Tout le
+  reste (mandats, avenants, offre, délégation, et toute signature en ligne) garde son code.
+  L'e-mail des visiteurs n'est plus exigé dans ce cas. Le certificat dit : « Signé sur place, en
+  présence de l'Agence, sur l'appareil de l'Agence, sans code à usage unique… ».
+
 ### V3.153 — 9 octobre 2026 · Le mandat : la ville de naissance et l'adresse, accompagnées
 
 Alexandre : « une cliente a un peu galéré pour la ville de naissance… qu'il y ait une présélection
