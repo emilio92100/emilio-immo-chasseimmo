@@ -23,6 +23,7 @@ import { annulerVisiteLibre, majSuivi, personneVide } from '@/components/biens/o
 import { LibelleBon, useBonDeVisite, useEtatsBons, type DepartBon, type EtatBon } from '@/components/documents/BonDeVisite';
 import { personneDe } from '@/components/contacts/AvatarContact';
 import OrganiserVisite from './OrganiserVisite';
+import { lirePlace, retenirPlace, useHauteur } from '@/lib/place-fiche';
 
 /* ═══ Les visites hors CRM (V3.146) ═══════════════════════════════════════
    Alexandre : « j'ai planifié une visite depuis un bien, avec quelqu'un hors
@@ -62,6 +63,9 @@ const LIB_FILTRE: Record<string, string> = { a_venir: 'À venir', a_faire: 'Comp
 /* La rubrique où la page s'ouvre (V3.146) : À venir, sinon Compte rendu à
    faire, sinon Effectuées, sinon Toutes. V3.151 (Alexandre : « il faut que
    ça arrive sur Demandes quand il y en a une ») : les demandes d'abord. */
+type Filtre = 'tout' | 'demandes' | 'a_faire' | 'a_venir' | 'effectuees' | 'annulees';
+const FILTRES: Filtre[] = ['tout', 'demandes', 'a_faire', 'a_venir', 'effectuees', 'annulees'];
+const CLE_PLACE = 'page:visites';
 function rubriqueDArrivee(liste: any[], nbDemandes = 0): 'demandes' | 'a_venir' | 'a_faire' | 'effectuees' | 'tout' {
   if (nbDemandes > 0) return 'demandes';
   const m = maintenantParis(new Date());
@@ -496,7 +500,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   const [crVisite, setCrVisite] = useState<any>(null);
   /* Retrouver une visite : par le bien ou par le client, et par où elle en est. */
   const [cherche, setCherche] = useState('');
-  const [filtre, setFiltre] = useState<'tout' | 'demandes' | 'a_faire' | 'a_venir' | 'effectuees' | 'annulees'>('tout');
+  /* V3.157 : revenu d'un bon de visite (le retour de Documents) — la place laissée. */
+  const [place] = useState(() => lirePlace(CLE_PLACE));
+  const [pret, setPret] = useState(false);
+  useHauteur(CLE_PLACE, place, pret, !!place?.retour);
+  const [filtre, setFiltre] = useState<Filtre>('tout');
   /* Le rappel au client : la fenêtre s'ouvre sur une visite et retrouve
      toutes celles du même jour pour ce client. */
   const [rappelDe, setRappelDe] = useState<string | null>(null);
@@ -508,7 +516,14 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   const bravoMinuteur = useRef<number | null>(null);
   /* V3.154 : « Bon de visite » sur chaque carte : le bon existant s'ouvre,
      sinon il se prépare (les autres visites du jour : on demande). */
-  const bon = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id }) });
+  /* V3.157 — Alexandre : « quand je fais retour, que ça me remette là où
+     j'étais, comme si je n'avais rien fait ». Le bon s'ouvre dans Documents
+     avec un retour vers Visites ; la page note sa rubrique et sa recherche
+     en partant (sa hauteur aussi, useHauteur), et les reprend au retour. */
+  const bon = useBonDeVisite({ onOuvrir: id => {
+    retenirPlace(CLE_PLACE, { filtre, cherche });
+    onNavigate('documents', { ouvrir: id, retour: { page: 'visites', lib: 'Visites', place: CLE_PLACE } });
+  } });
   /* Et où en est le bon de chaque visite : « Bon de visite (à signer) »… */
   const etatBon = useEtatsBons();
   const direBravo = (texte: string) => {
@@ -529,6 +544,14 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
         if (id) window.sessionStorage.removeItem('emi-cr');
       } catch { /* sans effet */ }
       if (id) { setFiltre('a_faire'); openCR(id, liste); return; }
+      if (place?.retour) {
+        retenirPlace(CLE_PLACE, { retour: false });
+        const f = String(place.filtre || '');
+        setFiltre(FILTRES.includes(f as Filtre) ? f as Filtre : rubriqueDArrivee(liste, nbDemandes));
+        if (typeof place.cherche === 'string') setCherche(place.cherche);
+        setPret(true);
+        return;
+      }
       setFiltre(rubriqueDArrivee(liste, nbDemandes));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
