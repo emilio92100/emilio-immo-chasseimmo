@@ -33,8 +33,9 @@ const COOKIE = COOKIE_BADGE;
 /* /api/point-auto/envoi : l'envoi quotidien du point automatique, appelé par
    Vercel qui n'a pas le cookie. Sa serrure à lui, c'est CRON_SECRET. */
 /* /api/ringover/contact : Ringover demande qui est le numéro d'un appel
-   (V3.141). Sa serrure : la signature de Ringover (lib/ringover-serveur.ts). */
-const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier', '/api/flux-site', '/api/flux-site/sitemap', '/api/diffusion/portails', '/api/seloger/contacts', '/api/ringover/contact'];
+   (V3.141) ; /api/ringover/recherche : il cherche un contact du CRM (V3.143).
+   Leur serrure : la signature de Ringover (lib/ringover-serveur.ts). */
+const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier', '/api/flux-site', '/api/flux-site/sitemap', '/api/diffusion/portails', '/api/seloger/contacts', '/api/ringover/contact', '/api/ringover/recherche'];
 const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/'];
 
 /* Le sous-domaine de l'espace acheteur. Tout le monde vit sur le même projet
