@@ -21,6 +21,7 @@ import {
 import { colonnesListe, identiteDuJour, mandatDepuis, preparerDepuis } from '@/components/documents/outils';
 import { retirerMandatDuBien, type RetraitMandat } from '@/lib/mandat-bien';
 import { cleAdresse } from '@/lib/carte';
+import { REMISE_SUIVIE, attendreRemises, remisesDe, suivreRemises } from '@/lib/remise-client';
 
 /* ═══ Biens en vente : les lectures et les écritures ══════════════════════
    Tout ce qui touche à la base pour la rubrique, au même endroit. Chaque
@@ -1012,9 +1013,13 @@ export async function suiteEnvoi(clientId: string, rechercheId: string, nbBiens:
      ligne par bien dans son Suivi, la relance et la notification.
    ⚠️ Si saveEnvoiBien change ce qui suit un envoi, le changer ici aussi.
    Lève une erreur lisible si le mail ne part pas : rien n'est marqué
-   présenté (les biens restent dans sa sélection). */
-export async function envoyerParMail(l: { bien: BienVente; acheteur: Acheteur }[], mail: { objet: string; corps: string }): Promise<number> {
-  if (!l.length) return 0;
+   présenté (les biens restent dans sa sélection).
+   V3.151 : « ne part pas » comprend « refusé par sa messagerie » (adresse
+   inconnue…) : on attend sa réponse (jusqu'à 20 s) avant de marquer
+   présenté. Sans réponse d'ici là, le bien est présenté et la vérification
+   continue en bas de l'écran (`enAttente`). */
+export async function envoyerParMail(l: { bien: BienVente; acheteur: Acheteur }[], mail: { objet: string; corps: string }): Promise<{ n: number; enAttente: boolean }> {
+  if (!l.length) return { n: 0, enAttente: false };
   const a = l[0].acheteur;
   const ids: string[] = [];
   for (const x of l) {
@@ -1024,15 +1029,27 @@ export async function envoyerParMail(l: { bien: BienVente; acheteur: Acheteur }[
     ids.push(id);
   }
   const res = await fetch('/api/send-mail', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...REMISE_SUIVIE },
     body: JSON.stringify({ client_ids: [a.client.id], recherche_id: a.recherche.id, objet: mail.objet, corps: mail.corps, biens_ids: ids, mode: 'biens' }),
   });
   const data = await res.json().catch(() => ({}));
+  const restent = ids.length > 1 ? 'les biens restent' : 'le bien reste';
   if (!res.ok || !data.success) {
     const detail = data.error || (data.results || []).find((r: { success: boolean; error?: string }) => !r.success)?.error || `erreur ${res.status}`;
-    throw new Error(`le mail n’est pas parti (${detail}) ; ${ids.length > 1 ? 'les biens restent' : 'le bien reste'} dans sa sélection`);
+    throw new Error(`le mail n’est pas parti (${detail}) ; ${restent} dans sa sélection`);
   }
   if (data.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', data.avertissements.join(' ; '));
+  /* V3.151 : arrivé, ou refusé par sa messagerie ? */
+  const remises = remisesDe(data);
+  const etats = remises.length ? await attendreRemises(remises, 20_000) : new Map();
+  const refuses = remises.filter(r => etats.get(r.id)?.etat === 'refuse');
+  const attente = remises.filter(r => (etats.get(r.id)?.etat || 'attente') === 'attente');
+  if (attente.length) suivreRemises(attente, true);
+  if (remises.length && refuses.length === remises.length) {
+    throw new Error(`mail non distribué, ${refuses.map(r => `${etats.get(r.id)?.raison || 'refusé'} (${r.email})`).join(', ')} ; ${restent} dans sa sélection`);
+  }
+  /* Une de ses adresses l'a reçu, pas l'autre : la carte rouge le dit. */
+  if (refuses.length) suivreRemises(refuses);
   const quand = new Date().toISOString();
   for (let i = 0; i < l.length; i++) {
     const { bien: b, acheteur: x } = l[i];
@@ -1047,7 +1064,7 @@ export async function envoyerParMail(l: { bien: BienVente; acheteur: Acheteur }[
     if (eJ) signalerEchec('Le mail est parti, mais l’historique du client', eJ.message);
   }
   await suiteEnvoi(a.client.id, a.recherche.id, l.length);
-  return l.length;
+  return { n: l.length, enAttente: attente.length > 0 };
 }
 
 /* Le mettre dans leur sélection (V3.29) : le bien entre dans leur dossier, à
