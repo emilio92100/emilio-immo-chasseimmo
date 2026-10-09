@@ -1499,6 +1499,14 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.158 — 10 octobre 2026 · « Son dossier » devient « Ses biens »
+
+Alexandre : « dans son dossier, ça veut dire quoi ? ». Dans « Ajouter un bien » d'un bon de visite
+(ChoixBienCrm.tsx), le deuxième chemin s'appelle « Depuis ses biens (Sélection et Présentés) » : les
+biens de la fiche de l'acheteur (table `biens`, toutes ses recherches, ceux des autres agences
+compris ; pas les annonces de la veille qui n'y sont pas encore). L'étiquette de la carte dit « Ses
+biens » (ChampsActe.tsx).
+
 ### V3.157 — 10 octobre 2026 · Le bon de visite : retour là d'où l'on vient, supprimer depuis le document, ajouter un bien du CRM
 
 Alexandre : « quand je clique Bon de visite depuis Visites, à venir, et que je fais retour, ça me
