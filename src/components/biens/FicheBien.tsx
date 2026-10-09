@@ -40,7 +40,7 @@ import { lirePro, lireStructure } from '@/lib/contacts';
 import { issueAppel } from '@/components/fiche/FriseSuivi';
 import { lireOngletBien, oublierOngletBien } from '@/lib/intentions';
 import { retenirPlace, useHauteur, usePlace } from '@/lib/place-fiche';
-import { CarteAcheteurs, FenEnvoiAcheteurs, modeAcheteurs } from './AcheteursBien';
+import { CarteAcheteurs, FenEnvoiAcheteurs, modeAcheteurs, teinte } from './AcheteursBien';
 import { RapprochementBien, lireSeance, resumeSeance } from './RapprochementBien';
 import { FenEnvoiLot } from './LotBiens';
 import { DossierBien, type DestPropose } from './DossierBien';
@@ -887,9 +887,22 @@ const PUCE_OFFRE: Record<string, EvtBien['puce']> = {
 const PUCE_CR: EvtBien['puce'] = { l: 'Compte rendu à faire', c: '#c2410c', fond: '#fff7ed', bord: '#fed7aa' };
 const puceIssue = (i: Issue | null): EvtBien['puce'] => (i ? { l: ISSUES[i].crm, c: ISSUES[i].couleur, fond: ISSUES[i].fond, bord: ISSUES[i].trait } : undefined);
 
+/* V3.150 — comment le bien est parti chez l'acheteur (la colonne
+   `canal_envoi` de sa copie). Envoyé par mail, il est aussi dans son espace
+   (la copie passe « Présenté ») ; « lien » : seulement dans l'espace. */
+const CANAL_ENVOI: Record<string, string> = { mail: 'Envoyé par mail', whatsapp: 'Envoyé par WhatsApp' };
+
 export function evenements(bien: BienVente, det: DetailBien, clients: Record<string, ClientMini>): Evt[] {
   const l: Evt[] = [];
   const maj = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  /* V3.150 (Alexandre : « le petit icône avec l'avatar, qu'on puisse cliquer
+     sur l'acheteur en question ») : la personne de la ligne, son avatar, et
+     un clic ouvre sa fiche. */
+  const chezLui = (id: string | null | undefined): Evt['chez'] => {
+    if (!id || !clients[id]) return undefined;
+    const t = teinte(id);
+    return { id, l: nomClient(clients[id]), c: clients[id], t: { bg: t.f, fg: t.t } };
+  };
   l.push({ cle: 'creation', le: bien.created_at, ic: 'plus', ton: 'ic_gris', titre: `Bien créé${bien.reference ? ` · ${bien.reference}` : ''}`, genre: 'etapes', discret: true });
   for (const x of det.suivi) {
     const d = (x.donnees || {}) as Record<string, unknown>;
@@ -998,7 +1011,7 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       /* V3.121 : le bien présenté par simple mail (hors du CRM, ou un contact sans recherche). */
       if (d.presentation === true) {
         l.push({ cle: x.id, le: x.le, ic: 'mail', ton: 'ic_or', genre: 'acheteurs', titre: `Présenté par mail à ${x.qui || 'un contact'}`,
-          detail: d.lien === true ? 'Avec le lien de sa page sur le site' : 'Avec sa photo et sa description', puce: { l: 'Mail simple', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' } });
+          detail: d.lien === true ? 'Avec le lien de sa page sur le site' : 'Avec sa photo et sa description', puce: { l: 'Mail simple', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' }, chez: chezLui(x.client_id) });
         continue;
       }
       if (d.demande === true) {
@@ -1020,14 +1033,16 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
   }
   for (const c of det.copies) {
     const nom = nomClient(clients[c.client_id]);
+    const canal = CANAL_ENVOI[String(c.canal_envoi || '')];
     if (c.envoye_le || c.created_at) {
-      l.push({ cle: 'p-' + c.id, le: c.envoye_le || c.created_at, ic: 'envoyer', ton: 'ic_or', genre: 'acheteurs',
+      l.push({ cle: 'p-' + c.id, le: c.envoye_le || c.created_at, ic: c.envoye_le && canal ? 'mail' : 'envoyer', ton: 'ic_or', genre: 'acheteurs',
         titre: c.envoye_le ? `Présenté à ${nom}` : `Mis dans la sélection de ${nom}`,
-        detail: c.envoye_le ? 'Dans son espace, avec la note de correspondance' : 'Rien ne lui est encore envoyé',
-        puce: c.vu_le ? { l: 'Fiche ouverte', c: '#0f766e', fond: '#f0fdfa', bord: '#99f6e4' } : undefined });
+        /* V3.150 : « Dans son espace » pour un bien parti par mail, c'était faux. */
+        detail: c.envoye_le ? (canal ? `${canal} · le bien est aussi dans son espace` : 'Dans son espace, avec la note de correspondance') : 'Rien ne lui est encore envoyé',
+        puce: c.vu_le ? { l: 'Fiche ouverte', c: '#0f766e', fond: '#f0fdfa', bord: '#99f6e4' } : undefined, chez: chezLui(c.client_id) });
     }
     if (c.vu_le) l.push({ cle: 'o-' + c.id, le: c.vu_le, ic: 'oeil', ton: 'ic_gris', titre: `${nom} a ouvert la fiche`, genre: 'acheteurs', discret: true });
-    if (c.retour_le && c.retour_client) l.push({ cle: 'r-' + c.id, le: c.retour_le, ic: 'bulle', ton: 'ic_bleu', titre: `${nom} a répondu`, detail: c.retour_client, genre: 'acheteurs' });
+    if (c.retour_le && c.retour_client) l.push({ cle: 'r-' + c.id, le: c.retour_le, ic: 'bulle', ton: 'ic_bleu', titre: `${nom} a répondu`, detail: c.retour_client, genre: 'acheteurs', chez: chezLui(c.client_id) });
   }
   for (const v of det.visites) {
     const nom = nomClient(clients[v.client_id]);
@@ -1037,7 +1052,7 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
     l.push({ cle: 'vis-' + v.id, le, ic: 'cle', ton: 'ic_bleu', genre: 'visites',
       titre: v.statut === 'annulee' ? `Visite annulée · ${nom}` : passe ? `Visite · ${nom}` : `Visite prévue · ${nom}`,
       detail: v.statut === 'effectuee' ? String(v.commentaire || '') : '', discret: v.statut === 'annulee',
-      puce: v.statut === 'annulee' ? undefined : iss ? puceIssue(iss) : passe ? PUCE_CR : undefined });
+      puce: v.statut === 'annulee' ? undefined : iss ? puceIssue(iss) : passe ? PUCE_CR : undefined, chez: v.statut === 'annulee' ? undefined : chezLui(v.client_id) });
   }
   for (const x of det.docs) {
     const m = modele(x.modele);
@@ -1066,7 +1081,7 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       cle: 'j-' + j.id, le: j.created_at, ic: IC_J[j.type] || 'bulle', ton: 'ic_bleu', genre: 'contacts', titre,
       detail: [generique ? '' : tj, j.description || ''].filter(Boolean).join(' — '),
       puce: issue && issue.k !== 'recu' ? { l: issue.lib, c: issue.c, fond: issue.bg, bord: issue.bord } : undefined,
-      chez: j.client_id ? { id: j.client_id, l: proprio ? `Dans le Suivi de ${nom} · propriétaire` : `Dans le Suivi de ${nom} · acheteur${j.bien_id && copieDe.get(j.bien_id)?.etape === 'selection' ? ', bien en sélection' : ''}` } : undefined,
+      chez: j.client_id ? { ...chezLui(j.client_id), id: j.client_id, l: proprio ? `Dans le Suivi de ${nom} · propriétaire` : `Dans le Suivi de ${nom} · acheteur${j.bien_id && copieDe.get(j.bien_id)?.etape === 'selection' ? ', bien en sélection' : ''}` } : undefined,
     });
   }
   /* Une visite prévue et pas encore passée est dans « À venir », pas dans l'histoire. */
