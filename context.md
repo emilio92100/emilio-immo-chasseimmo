@@ -1499,6 +1499,38 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.148 — 9 octobre 2026 · « Envoyer ce bien » : chacun sur sa ligne, le vrai mail avant l'envoi, la confirmation
+
+Alexandre : « quand je sélectionne quelqu'un, je ne peux pas le désélectionner » ; « que ça
+rajoute une ligne, qu'on puisse en ajouter, avec une croix » ; « un aperçu de ce qui va être
+vraiment envoyé au client, qu'on puisse modifier » ; « un spinner avec une belle animation, puis
+fiche envoyée à… avec les noms ».
+
+- **La cause** : un client choisi par son nom était cherché dans `liste.recherches`, alors que la
+  recherche par nom propose aussi les recherches en attente (prospects, en pause :
+  `recherchesRappro`). Un prospect choisi n'apparaissait nulle part et restait « Ajouté », grisé,
+  dans les résultats. `choisisMain` lit maintenant `recherchesRappro(liste)`.
+- **Les destinataires** (FenEnvoiLot, LotBiens.tsx) : sous la recherche, une ligne par personne —
+  choisie par son nom, par simple mail, ou cochée dans le rapprochement — avec ce qu'elle recevra
+  et une croix (`retirer`, la ligne glisse dehors). Un nom déjà pris se retire aussi d'un clic dans
+  les résultats (« ✓ Ajouté », « × Retirer » au survol).
+- **« Envoyer par mail »** (au lieu de « Par mail… ») ouvre le mail tel que le client le recevra :
+  le serveur le construit comme à l'envoi, sans rien envoyer — `/api/send-mail` accepte `apercu`
+  en mode `biens` avec `ventes_ids` (la copie du dossier si elle existe, sinon celle que
+  `versBienAcheteur` écrira), et `/api/biens-vente` « presenter » accepte `apercu` pour une adresse
+  hors du CRM. Sur grand écran, le texte à gauche et l'aperçu à droite, qui suit la frappe ; sur
+  téléphone, deux onglets. Plusieurs destinataires : une pastille par personne pour voir le sien.
+- **L'envoi** : l'avion dans son anneau, chaque nom avec son état ; puis la coche qui se dessine,
+  « Fiche envoyée à » et les noms (« Bien envoyé dans l'espace de », « Bien mis en sélection
+  pour »), ce qui n'est pas parti en rouge avec sa raison, et « Envoyer à quelqu'un d'autre ».
+
+### V3.147 — 9 octobre 2026 · Organiser une visite : plusieurs biens d'un coup
+
+Alexandre : « pourquoi on ne peut pas sélectionner plusieurs biens ? Si le rappel de la visite est
+fait, tous les biens sélectionnés sont affichés ». OrganiserVisite prend plusieurs biens (de
+l'agence et du dossier de l'acheteur) ; chacun a sa visite à lui, à l'heure qui suit la
+précédente (la durée), modifiable (« Le programme »). Le rappel les rassemble déjà par jour.
+
 ### V3.146 — 9 octobre 2026 · Visites : les visites hors CRM partout, « Organiser une visite », la visite avant le mandat
 
 Alexandre : « j'ai planifié une visite depuis un bien, hors CRM : elle est dans l'agenda, mais
