@@ -10,6 +10,7 @@ import { ecritServeur } from '@/lib/ecritures';
 import { colonneSuspensionAbsente } from '@/lib/suspension';
 import { retracteEnLigne, pourEspaceAcheteur } from '@/lib/documents-espace';
 import { logoMail } from '@/lib/mail-charte';
+import { prixDuBien } from '@/lib/honoraires-bien';   // V3.145 : le prix de l'annonce, partout
 
 /**
  * Tout ce que l'espace acheteur écrit passe par ici.
@@ -179,7 +180,7 @@ async function prevenirVisite(
     : 'Pas de mandat signé.';
   const titre = bien.titre || 'un bien';
   const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
-  const prix = bien.prix_acquereur || bien.prix_vendeur;
+  const prix = prixDuBien(bien).demande;
   const photo = Array.isArray(bien.photos) ? bien.photos.filter(Boolean)[0] : null;
   const html = `<div style="font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#46566B">
   <div style="background:#22497D;padding:18px 22px 16px;border-radius:14px 14px 0 0;border-bottom:3px solid #E68B23">
@@ -238,7 +239,7 @@ async function prevenirApresVisite(
   const lien = `${crm}/?page=fiche&client=${encodeURIComponent(clientId)}`;
   const titre = bien.titre || 'un bien';
   const lieu = [bien.quartier, bien.ville].filter(Boolean).join(', ');
-  const prixBien = bien.prix_acquereur || bien.prix_vendeur;
+  const prixBien = prixDuBien(bien).demande;
   const photo = Array.isArray(bien.photos) ? bien.photos.filter(Boolean)[0] : null;
   const euros = (n: number) => `${Number(n).toLocaleString('fr-FR')} €`;
   const quand = dateVisite ? new Date(`${String(dateVisite).slice(0, 10)}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
@@ -1230,7 +1231,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
         /* Le domaine d'Emilio, pas celui de Vercel : ce lien part chez un
            proche du client, il doit avoir l'air de ce qu'il est. */
         const lien = lienBienPublic(bien.id as string);
-        const prix = bien.prix_acquereur || bien.prix_vendeur;
+        const prix = prixDuBien(bien).demande;
         const carac = [bien.surface ? bien.surface + ' m²' : null,
           bien.nb_pieces ? bien.nb_pieces + ' pièce' + (bien.nb_pieces > 1 ? 's' : '') : null,
           bien.nb_chambres ? bien.nb_chambres + ' chambre' + (bien.nb_chambres > 1 ? 's' : '') : null,
