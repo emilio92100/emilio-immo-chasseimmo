@@ -233,5 +233,5 @@
 /* V3.152 — Le téléphone bord à bord : le bandeau et chaque séance vont d'un
    bord à l'autre (ni arrondi ni cadre sur les côtés). */
 @media (max-width: 760px) {
-  .hero, .seance { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.163 : arrondis de nouveau (la fiche garde 10 px de chaque côté). */
 }

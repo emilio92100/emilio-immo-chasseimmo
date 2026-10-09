@@ -1909,11 +1909,14 @@ nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
    sépare) ; le retour, la pastille du propriétaire et les gestes gardent
    14 px de marge. Les tuiles et les boutons gardent leurs arrondis. */
 @media (max-width: 760px) {
-  .fiche { padding: 12px 0 32px; }
-  .ficheBarre { padding: 0 14px; }
-  .chevalHaut { margin-left: 14px; margin-right: 14px; }
-  .hero { border-radius: 0; padding-left: 14px; padding-right: 14px; }
-  .bloc, .obsPart, .messageFiche, .bref, .docsVente, .versSurfaces { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.163 — Alexandre : « sur la fiche d'un bien, mettre aussi les
+     arrondis, au plus large » : la fiche garde 10 px de chaque côté, le
+     bandeau bleu et les blocs (et ceux de chaque onglet) reprennent leurs
+     coins arrondis. */
+  .fiche { padding: 12px 10px 32px; }
+  .ficheBarre { padding: 0 4px; }
+  .chevalHaut { margin-left: 4px; margin-right: 4px; }
+  .hero { border-radius: 20px; padding-left: 14px; padding-right: 14px; }
   .bloc, .bref { padding: 14px; }
   .docsVente, .versSurfaces { padding-left: 14px; padding-right: 14px; }
   .obsPart { padding: 14px; }

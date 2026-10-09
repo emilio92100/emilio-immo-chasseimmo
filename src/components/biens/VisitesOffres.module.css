@@ -128,8 +128,8 @@
    à l'autre (ni arrondi ni cadre sur les côtés) ; les titres posés sur le
    fond gardent 14 px de marge. */
 @media (max-width: 760px) {
-  .tete, .etape, .encart, .rubrique[data-ouvert='non'] { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.163 : arrondies de nouveau (la fiche garde 10 px de chaque côté). */
   .tete, .etape, .encart, .rubrique[data-ouvert='non'] { padding-left: 14px; padding-right: 14px; }
-  .blocT, .rubrique, .histoT, .sousBloc h4, .vide { padding-left: 14px; padding-right: 14px; }
+  .blocT, .rubrique, .histoT, .sousBloc h4, .vide { padding-left: 4px; padding-right: 4px; }
   .histoT .rubrique { padding-left: 0; padding-right: 0; }
 }

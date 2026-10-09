@@ -311,5 +311,5 @@
 
 /* V3.152 — Le téléphone bord à bord : le dossier va d'un bord à l'autre. */
 @media (max-width: 760px) {
-  .dossier { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.163 : arrondi de nouveau (la fiche garde 10 px de chaque côté). */
 }
