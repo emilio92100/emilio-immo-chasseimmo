@@ -2,7 +2,7 @@
 import { lireMontant } from '@/lib/montant';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { enLettres } from '@/lib/mandat';
-import { PERSONNE_VIDE, type Champ, type Donnees, type Personne } from '@/lib/actes';
+import { PERSONNE_VIDE, type Champ, type ChampSimple, type Donnees, type Personne } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
 import s from './Documents.module.css';
 
@@ -190,6 +190,12 @@ function CartePersonne({ id, nom, p, complet, off, peutRetirer, onChange, onReti
   id: string; nom: string; p: Personne; complet: boolean; off: boolean; peutRetirer: boolean;
   onChange: (k: keyof Personne, v: string) => void; onRetirer: () => void;
 }) {
+  /* V3.154 : une naissance déjà connue (le conjoint d'une fiche « couple »,
+     repris sur un bon de visite) s'imprime : elle doit donc se voir et se
+     corriger, même là où on ne la demande pas. Facultative alors. Lu à
+     l'ouverture de la carte : les cases ne disparaissent pas en les vidant. */
+  const [naissanceVue] = useState(() => !!(p.naissanceDate || p.naissanceLieu));
+  const naissance = complet || naissanceVue || !!(p.naissanceDate || p.naissanceLieu);
   const champ = (k: keyof Personne, lib: string, o: { type?: string; large?: boolean; ph?: string; requis?: boolean; mode?: 'email' | 'tel' } = {}) => (
     <div className={`${s.ch} ${o.large ? s.large : ''}`}>
       <label className={s.chLib} htmlFor={`${id}-${k}`}>{lib}</label>
@@ -218,8 +224,8 @@ function CartePersonne({ id, nom, p, complet, off, peutRetirer, onChange, onReti
         {champ('prenom', 'Prénom', { requis: true })}
         {champ('nom', 'Nom', { requis: true })}
         {complet && champ('nomNaissance', 'Nom de naissance', { ph: 'Si différent' })}
-        {complet && champ('naissanceDate', 'Date de naissance', { type: 'date', requis: true })}
-        {complet && champ('naissanceLieu', 'Lieu de naissance', { ph: 'Ex : Lyon (69)', requis: true })}
+        {naissance && champ('naissanceDate', 'Date de naissance', { type: 'date', requis: complet })}
+        {naissance && champ('naissanceLieu', 'Lieu de naissance', { ph: 'Ex : Lyon (69)', requis: complet })}
         {champ('adresse', 'Adresse', { large: true, ph: 'Numéro, rue, code postal, ville', requis: complet })}
         {champ('email', 'E-mail', { type: 'email', mode: 'email' })}
         {champ('telephone', 'Téléphone', { type: 'tel', mode: 'tel' })}
@@ -290,10 +296,77 @@ function ChampLignes({ c, d, v, onChange, off }: { c: Extract<Champ, { t: 'ligne
   );
 }
 
+/* ── La saisie d'une question simple (V3.154) ──
+   Partagée par les questions d'une étape et celles d'une carte « groupes ». */
+function SaisieSimple({ c, id, v, manque, off, onChange }: {
+  c: ChampSimple; id: string; v: unknown; manque: boolean; off: boolean; onChange: (x: unknown) => void;
+}) {
+  if (c.t === 'zone') return <ZoneTexte id={id} v={typeof v === 'string' ? v : ''} manque={manque} off={off} exemple={c.exemple} onChange={onChange} />;
+  if (c.t === 'nombre' || c.t === 'euros') return <ChampNombre id={id} euros={c.t === 'euros'} unite={c.unite} v={v} off={off} manque={manque} onChange={onChange} />;
+  return (
+    <input id={id} className={`${s.input} ${manque ? s.inputManque : ''}`} disabled={off} autoComplete="off"
+      type={c.t === 'date' ? 'date' : c.t === 'heure' ? 'time' : 'text'}
+      value={typeof v === 'string' ? v : ''} placeholder={c.exemple ? `Ex : ${c.exemple}` : undefined}
+      onChange={e => onChange(e.target.value)} />
+  );
+}
+
+/* ── Des cartes qui se répètent (V3.154 : les autres biens d'un bon de visite) ──
+   Comme les personnes : une carte par réponse, son nom (« Bien 2 · 4 rue
+   des Lilas »), « Retirer », puis ses questions simples. Une carte toute
+   neuve reçoit `nouveau` (la date du premier bien). */
+const lireGroupe = (x: unknown): Record<string, unknown> => (x && typeof x === 'object' && !Array.isArray(x) ? x as Record<string, unknown> : {});
+const groupesDe = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(lireGroupe) : []);
+
+function ChampGroupes({ c, d, v, onChange, off }: {
+  c: Extract<Champ, { t: 'groupes' }>; d: Donnees; v: unknown; onChange: (x: Record<string, unknown>[]) => void; off: boolean;
+}) {
+  const cartes = groupesDe(v).slice(0, c.max);
+  const maj = (i: number, k: string, x: unknown) => onChange(cartes.map((g, j) => (j === i ? { ...g, [k]: x } : g)));
+  const vues = c.champs.filter(q => !q.si || q.si(d));
+  /* La première réponse écrite suit le nom de la carte (son adresse). */
+  const premiere = vues.find(q => q.t === 'texte');
+  return (
+    <div className={s.lignesT} style={{ gap: 10 }}>
+      {cartes.map((g, i) => {
+        const resume = premiere && typeof g[premiere.cle] === 'string' ? (g[premiere.cle] as string).trim() : '';
+        return (
+          <div key={i} className={s.perso}>
+            <div className={s.persoT}>
+              <span className={s.ligneIc}><Ic n={c.ic || 'lots'} t={15} /></span>
+              <b>{[c.nomCarte ? c.nomCarte(d, i) : `${c.un} ${i + 1}`, resume].filter(Boolean).join(' · ')}</b>
+              {!off && <button type="button" className={s.retirer} onClick={() => onChange(cartes.filter((_, j) => j !== i))}><Croix t={13} />Retirer</button>}
+            </div>
+            <div className={s.persoCorps}>
+              {vues.map(q => {
+                const id = `${c.cle}-${i}-${q.cle}`;
+                return (
+                  <div key={q.cle} className={`${s.ch} ${q.large || q.t === 'zone' ? s.large : ''}`}>
+                    <label className={s.chLib} htmlFor={id}>{q.lib}</label>
+                    <SaisieSimple c={q} id={id} v={g[q.cle]} manque={!!q.requis && estVide(g[q.cle])} off={off} onChange={x => maj(i, q.cle, x)} />
+                    {q.aide && <div className={s.chAide}>{q.aide}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {/* Figé, sans carte : on le dit, plutôt qu'un bloc vide. */}
+      {off && !cartes.length && <div className={s.chAide}>{`Aucun autre ${c.un.toLowerCase()}.`}</div>}
+      {!off && cartes.length < c.max && (
+        <button type="button" className={s.ajouter} onClick={() => onChange([...cartes, { ...(c.nouveau ? c.nouveau(d) : {}) }])}>
+          <Ic n="plus" t={15} e={2.4} />{c.ajouter ? c.ajouter(d) : `Ajouter un ${c.un.toLowerCase()}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* Le dessin d'une question qui n'en a pas (V3.18, éditeur des documents). */
 const IC_TYPE: Record<string, string> = {
   texte: 'plume', zone: 'doc', date: 'calendrier', heure: 'horloge', nombre: 'regle', euros: 'euro',
-  choix: 'info', cases: 'check', personnes: 'personne', lignes: 'lots',
+  choix: 'info', cases: 'check', personnes: 'personne', lignes: 'lots', groupes: 'lots',
 };
 
 /* ── Un champ, avec son libellé et son aide ──
@@ -319,7 +392,9 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c
   const v = d[c.cle];
   const id = `ch-${c.cle}`;
   const manque = !!c.requis && estVide(v);
-  const large = c.large || c.t === 'personnes' || c.t === 'lignes' || c.t === 'cases' || c.t === 'zone'
+  /* Des cartes (personnes, groupes) : sur toute la largeur, sans cadre autour. */
+  const cartes = c.t === 'personnes' || c.t === 'groupes';
+  const large = c.large || cartes || c.t === 'lignes' || c.t === 'cases' || c.t === 'zone'
     || (c.t === 'choix' && (c.tuiles || c.options.length > 3 || c.options.some(o => o.l.length > 24)));
   const ic = c.ic || (bloc ? IC_TYPE[c.t] : '');
   const libelle = (
@@ -331,17 +406,10 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c
   const saisie = c.t === 'texte' || c.t === 'zone' || c.t === 'date' || c.t === 'heure' || c.t === 'nombre' || c.t === 'euros';
 
   let controle: React.ReactNode = null;
-  if (c.t === 'texte' || c.t === 'date' || c.t === 'heure') {
-    controle = (
-      <input id={id} className={`${s.input} ${manque ? s.inputManque : ''}`} disabled={off} autoComplete="off"
-        type={c.t === 'date' ? 'date' : c.t === 'heure' ? 'time' : 'text'}
-        value={typeof v === 'string' ? v : ''} placeholder={c.exemple ? `Ex : ${c.exemple}` : undefined}
-        onChange={e => maj(c.cle, e.target.value)} />
-    );
-  } else if (c.t === 'zone') {
-    controle = <ZoneTexte id={id} v={typeof v === 'string' ? v : ''} manque={manque} off={off} exemple={c.exemple} onChange={x => maj(c.cle, x)} />;
-  } else if (c.t === 'nombre' || c.t === 'euros') {
-    controle = <ChampNombre id={id} euros={c.t === 'euros'} unite={c.unite} v={v} off={off} manque={manque} onChange={n => maj(c.cle, n)} />;
+  if (c.t === 'texte' || c.t === 'date' || c.t === 'heure' || c.t === 'zone' || c.t === 'nombre' || c.t === 'euros') {
+    controle = <SaisieSimple c={c} id={id} v={v} manque={manque} off={off} onChange={x => maj(c.cle, x)} />;
+  } else if (c.t === 'groupes') {
+    controle = <ChampGroupes c={c} d={d} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'choix') {
     controle = <ChampChoix c={c} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'cases') {
@@ -352,9 +420,9 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c
     controle = <ChampLignes c={c} d={d} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   }
 
-  const carte = c.t === 'choix' || c.t === 'cases' || (bloc && c.t !== 'personnes');
+  const carte = c.t === 'choix' || c.t === 'cases' || (bloc && !cartes);
   return (
-    <div className={`${s.ch} ${large ? s.large : ''} ${carte ? s.chQ : ''} ${bloc && c.t === 'personnes' ? s.chPers : ''}`} data-cle={c.cle}>
+    <div className={`${s.ch} ${large ? s.large : ''} ${carte ? s.chQ : ''} ${bloc && cartes ? s.chPers : ''}`} data-cle={c.cle}>
       {sansLib ? null : saisie ? <label className={s.chLib} htmlFor={id}>{libelle}</label> : <div className={s.chLib}>{libelle}</div>}
       {controle}
       {c.aide && <div className={s.chAide}>{c.aide}</div>}
@@ -376,6 +444,13 @@ export function manquesEtape(champs: Champ[], d: Donnees): number {
       for (let i = 0; i < nb; i++) {
         const p = l[i] || PERSONNE_VIDE;
         if (!p.nom.trim() || !p.prenom.trim() || (complet && (!p.naissanceDate || !p.naissanceLieu.trim() || !p.adresse.trim()))) n++;
+      }
+      continue;
+    }
+    /* Une carte d'un groupe : chacune de ses questions obligatoires vides. */
+    if (c.t === 'groupes') {
+      for (const g of groupesDe(d[c.cle]).slice(0, c.max)) {
+        for (const q of c.champs) if (q.requis && (!q.si || q.si(d)) && estVide(g[q.cle])) n++;
       }
       continue;
     }

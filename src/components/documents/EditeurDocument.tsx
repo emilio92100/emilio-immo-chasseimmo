@@ -2,7 +2,7 @@
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
-import { STATUTS, modele, pdfDocument, electronique, modeSignature, type Champ, type Donnees, type Etape, type Repere } from '@/lib/actes';
+import { STATUTS, modele, pdfDocument, electronique, modeSignature, surPlaceSansCode, versEtape, type Champ, type Donnees, type Etape, type Repere } from '@/lib/actes';
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import FenetreConfirmer from './FenetreConfirmer';
 import { ChampActe, manquesEtape } from './ChampsActe';
@@ -107,7 +107,7 @@ function BlocEtape({ e, i, n, d, maj, off, reperes, anime = false }: {
           <div className={s.grille}>
             {g.champs.map(c => (
               <Fragment key={c.cle}>
-                <ChampActe c={c} d={d} maj={maj} off={off} bloc sansLib={c.t === 'personnes' && !!g.titre && g.titre.lib === c.lib} />
+                <ChampActe c={c} d={d} maj={maj} off={off} bloc sansLib={(c.t === 'personnes' || c.t === 'groupes') && !!g.titre && g.titre.lib === c.lib} />
                 {c.cle === e.reperesApres && <Reperes l={reperes} />}
               </Fragment>
             ))}
@@ -324,7 +324,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const etapes = useMemo(() => (!m ? [] : !reg ? m.etapes
     : m.etapes.map(e => ({ ...e, champs: e.champs.map(c => (c.cle === 'numero' ? champNumeroRegistre(reg) : c)) }))), [m, reg]);
   const dm = useMemo<Donnees>(() => (reg ? { ...d, numero: String(reg.ligne ?? reg.prochain) } : d), [reg, d]);
-  const vers = etapes[etape]?.vers || '';
+  const vers = versEtape(etapes[etape], dm);
   useEffect(() => {
     const zone = apercuRef.current;
     if (!zone || Date.now() < calme.current) return;
@@ -824,7 +824,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
                     ? (reg.ligne ? `Registre des mandats : il garde son n° ${reg.ligne}.` : `Registre des mandats : le numéro est pris maintenant, avant toute signature (ce sera le ${reg.prochain}), et imprimé sur le mandat.`)
                     : `Numéro du registre : ${String(d.numero || '')}. Il sera vérifié : un numéro ne sert qu’une fois.`}</span></li>}
                   <li><span className={`${s.k} ${s.kOr}`}><Ic n="plume" t={12} /></span><span>{m.courrier ? m.signataires + '.' : `À signer : ${m.signataires.charAt(0).toLowerCase()}${m.signataires.slice(1)}.`}</span></li>
-                  {!m.courrier && <li><span className={`${s.k} ${s.kOr}`}><Ic n={modeSignature(d) === 'en_ligne' ? 'mail' : modeSignature(d) === 'sur_place' ? 'tablette' : 'doc'} t={12} /></span><span>{modeSignature(d) === 'en_ligne' ? 'Signature en ligne : chacun avec son lien et un code reçu par e-mail.' : modeSignature(d) === 'sur_place' ? 'Signature sur place, sur ton écran : chacun à son tour, avec un code reçu sur son e-mail.' : 'Signature à la main : le PDF s’ouvre, prêt à imprimer.'}</span></li>}
+                  {!m.courrier && <li><span className={`${s.k} ${s.kOr}`}><Ic n={modeSignature(d) === 'en_ligne' ? 'mail' : modeSignature(d) === 'sur_place' ? 'tablette' : 'doc'} t={12} /></span><span>{modeSignature(d) === 'en_ligne' ? 'Signature en ligne : chacun avec son lien et un code reçu par e-mail.' : modeSignature(d) === 'sur_place' ? (surPlaceSansCode(m.id, d) ? 'Signature sur place, sur ton écran : chacun signe dans son cadre, au stylet, sans code.' : 'Signature sur place, sur ton écran : chacun à son tour, avec un code reçu sur son e-mail.') : 'Signature à la main : le PDF s’ouvre, prêt à imprimer.'}</span></li>}
                 </ul>
               )}
               {!manques.length && alertes.length > 0 && (

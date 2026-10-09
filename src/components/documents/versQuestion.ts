@@ -1,4 +1,4 @@
-import type { Champ, Donnees, Etape } from '@/lib/actes';
+import { versEtape, type Champ, type ChampSimple, type Donnees, type Etape } from '@/lib/actes';
 
 /* ═══ De l'aperçu à la question ═══════════════════════════════════════════
    Un clic sur un passage de l'aperçu ramène à la question qui l'a écrit
@@ -59,11 +59,9 @@ function morceaux(x: string): string[] {
 type Valeur = { x: string; n?: true; sous?: { i: number; k: string } };
 const CLES_PERSONNE = ['adresse', 'email', 'telephone', 'naissanceLieu', 'nomNaissance'] as const;
 
-/* Ce qu'une question a déjà répondu, en textes à chercher. */
-function valeurs(c: Champ, d: Donnees): Valeur[] {
-  if (c.t === 'titre' || c.t === 'guide') return [];
-  const v = d[c.cle];
-  switch (c.t) {
+/* La réponse d'une question simple, en textes à chercher. */
+function simples(t: ChampSimple['t'], v: unknown): Valeur[] {
+  switch (t) {
     case 'texte':
     case 'zone':
       return typeof v === 'string' ? morceaux(v).map(x => ({ x })) : [];
@@ -72,6 +70,36 @@ function valeurs(c: Champ, d: Donnees): Valeur[] {
     case 'nombre':
     case 'euros':
       return nombres(v).map(x => ({ x, n: true as const }));
+    default:
+      return [];
+  }
+}
+
+/* Ce qu'une question a déjà répondu, en textes à chercher. */
+function valeurs(c: Champ, d: Donnees): Valeur[] {
+  if (c.t === 'titre' || c.t === 'guide') return [];
+  const v = d[c.cle];
+  switch (c.t) {
+    case 'texte':
+    case 'zone':
+    case 'date':
+    case 'nombre':
+    case 'euros':
+      return simples(c.t, v);
+    /* V3.154 : une carte d'un groupe (un autre bien) : chacune de ses
+       réponses, avec la carte et la question. */
+    case 'groupes': {
+      if (!Array.isArray(v)) return [];
+      const out: Valeur[] = [];
+      v.forEach((g, i) => {
+        const o = (g && typeof g === 'object' ? g : {}) as Record<string, unknown>;
+        for (const q of c.champs) {
+          if (q.si && !q.si(d)) continue;
+          for (const x of simples(q.t, o[q.cle])) out.push({ ...x, sous: { i, k: q.cle } });
+        }
+      });
+      return out;
+    }
     case 'personnes': {
       if (!Array.isArray(v)) return [];
       const out: Valeur[] = [];
@@ -165,7 +193,7 @@ function parRubrique(etapes: Etape[], d: Donnees, titre: string): Cible | null {
     const c = etapes[i].champs.find(x => vue(x, d) && 'lib' in x && normaliser(x.lib) === t);
     if (c) return { etape: i, cle: c.cle };
   }
-  const i = etapes.findIndex(e => e.vers && normaliser(e.vers) === t);
+  const i = etapes.findIndex(e => versEtape(e, d) && normaliser(versEtape(e, d)) === t);
   return i >= 0 ? { etape: i, cle: null } : null;
 }
 
@@ -184,7 +212,7 @@ export function chercherQuestion(etapes: Etape[], d: Donnees, passage: string, r
   let haut = 0;
   for (let i = 0; i < etapes.length; i++) {
     const e = etapes[i];
-    const bonus = rubrique && e.vers && normaliser(e.vers) === rubrique ? 3 : 0;
+    const bonus = rubrique && versEtape(e, d) && normaliser(versEtape(e, d)) === rubrique ? 3 : 0;
     for (const c of e.champs) {
       if (!vue(c, d)) continue;
       for (const v of valeurs(c, d)) {

@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { modeSignature, modele, type CaseSignature } from '@/lib/actes';
+import { modeSignature, modele, surPlaceSansCode, type CaseSignature } from '@/lib/actes';
 import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { dateCourte, dateLongue, heureParis } from '@/lib/mandat';
 import { finValiditeOffre } from '@/lib/actes/offre-achat';
@@ -77,6 +77,9 @@ export function FenetreLancer({ doc, onFermer, onLance, onPerime }: {
 }) {
   const m = modele(doc.modele);
   const mode = modeSignature(doc.donnees);
+  /* V3.154 : le bon de visite sur place se signe sans code ; l'adresse ne
+     sert qu'à recevoir son exemplaire, et peut rester vide. */
+  const sansCode = surPlaceSansCode(doc.modele, doc.donnees);
   const cases: CaseSignature[] = m?.cases ? m.cases(doc.donnees, doc.identite || IDENTITE_DEFAUT).filter(c => !c.agence) : [];
   const [mails, setMails] = useState<Record<string, string>>(() => Object.fromEntries(cases.map(c => [c.cle, c.personne?.email || ''])));
   /* V3.55 : une adresse corrigée pendant une signature arrêtée depuis
@@ -126,7 +129,11 @@ export function FenetreLancer({ doc, onFermer, onLance, onPerime }: {
 
   async function lancer() {
     const manque: Record<string, string> = {};
-    cases.forEach(c => { if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((mails[c.cle] || '').trim())) manque[c.cle] = 'Une adresse e-mail valide'; });
+    cases.forEach(c => {
+      const v = (mails[c.cle] || '').trim();
+      if (sansCode && !v) return;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) manque[c.cle] = sansCode ? 'Une adresse e-mail valide, ou rien' : 'Une adresse e-mail valide';
+    });
     if (Object.keys(manque).length) { setChamps(manque); return; }
     setTravail(true); setErreur('');
     try {
@@ -153,7 +160,9 @@ export function FenetreLancer({ doc, onFermer, onLance, onPerime }: {
             <h3>{mode === 'en_ligne' ? 'Envoyer les liens de signature' : 'Signer sur place'}</h3>
             <p>{mode === 'en_ligne'
               ? 'Chacun reçoit son lien personnel à son adresse e-mail, et signe avec un code qu’il y reçoit. Vérifie les adresses : c’est elles qui les identifient.'
-              : 'Chacun signera à son tour sur cet écran, avec un code reçu sur sa propre adresse e-mail. Vérifie les adresses : il pourra encore corriger la sienne au moment de signer.'}</p>
+              : sansCode
+                ? 'Chacun signera à son tour sur cet écran, dans son cadre, au stylet : pas de code. L’adresse e-mail sert seulement à lui envoyer son exemplaire signé ; sans adresse, tu le gardes dans le CRM.'
+                : 'Chacun signera à son tour sur cet écran, avec un code reçu sur sa propre adresse e-mail. Vérifie les adresses : il pourra encore corriger la sienne au moment de signer.'}</p>
           </div>
           <button type="button" className={s.panFermer} aria-label="Fermer" onClick={onFermer} disabled={travail}><Croix /></button>
         </div>
@@ -162,7 +171,7 @@ export function FenetreLancer({ doc, onFermer, onLance, onPerime }: {
             <div key={c.cle} className={s.champLigne}>
               <label htmlFor={`sg-${c.cle}`}>{`${c.qui} · ${c.nom}`}</label>
               <input id={`sg-${c.cle}`} type="email" inputMode="email" autoComplete="off" className={`${s.input} ${champs[c.cle] ? s.inputManque : ''}`}
-                value={mails[c.cle] || ''} placeholder="adresse@exemple.fr"
+                value={mails[c.cle] || ''} placeholder={sansCode ? 'Facultative : adresse@exemple.fr' : 'adresse@exemple.fr'}
                 onChange={e => { const v = e.target.value; setMails(x => ({ ...x, [c.cle]: v })); setChamps(x => ({ ...x, [c.cle]: '' })); touche.current[c.cle] = true; setRepris(x => ({ ...x, [c.cle]: false })); }} />
               {champs[c.cle] && <i className={s.chAide} style={{ color: '#b45309' }}>{champs[c.cle]}</i>}
               {!champs[c.cle] && repris[c.cle] && <i className={s.chAide}>{`Reprise de ta correction lors du dernier envoi${c.personne?.email ? ` (le document dit ${c.personne.email})` : ''}.`}</i>}
@@ -173,7 +182,9 @@ export function FenetreLancer({ doc, onFermer, onLance, onPerime }: {
             {mode === 'en_ligne' && <li><span className={`${s.k} ${s.kOr}`}><Ic n="horloge" t={12} /></span><span>{finOffre && offreAvant15
               ? `Les liens valent jusqu’au ${dateLongue(finOffre)} à ${heureParis(finOffre)}, la fin de validité de l’offre : après, elle ne peut plus être signée. Un rappel part à 2 jours si l’offre vaut encore ; tu es prévenu si quelqu’un n’a pas signé à temps.`
               : 'Les liens valent 15 jours. Un rappel part à 2 jours, puis un dernier à 7 jours ; tu es prévenu si quelqu’un n’a pas signé à temps.'}</span></li>}
-            <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{'Signé par tous, le document est scellé avec son certificat, envoyé à chacun, et rangé ici tout seul.'}</span></li>
+            <li><span className={`${s.k} ${s.kVert}`}><Ic n="check" t={12} e={3} /></span><span>{sansCode
+              ? 'Signé par tous, le document est scellé avec son certificat, envoyé à ceux qui ont une adresse, et rangé ici.'
+              : 'Signé par tous, le document est scellé avec son certificat, envoyé à chacun, et rangé ici tout seul.'}</span></li>
           </ul>
           {erreur && <div className={s.erreur}>{erreur}</div>}
         </div>
@@ -196,6 +207,8 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
   onSurPlace: (o?: { finaliser?: boolean }) => void;
 }) {
   const mode = modeSignature(doc.donnees);
+  /* V3.154 : le bon de visite sur place, sans code. */
+  const sansCode = surPlaceSansCode(doc.modele, doc.donnees);
   const [sigs, setSigs] = useState<SignataireRow[] | null>(null);
   /* L'heure de l'ouverture du panneau : un lien expiré se voit à la relecture. */
   const [maintenant] = useState(() => Date.now());
@@ -295,7 +308,9 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
               <Ic n={mode === 'en_ligne' ? 'mail' : 'tablette'} t={18} />
               <span>{mode === 'en_ligne'
                 ? <><b>Signature en ligne</b>{' · chacun reçoit son lien par e-mail et signe avec un code.'}</>
-                : <><b>Signature sur place</b>{' · sur cet écran, chacun à son tour, avec un code reçu sur son e-mail.'}</>}</span>
+                : sansCode
+                  ? <><b>Signature sur place</b>{' · sur cet écran, chacun signe dans son cadre, au stylet, sans code.'}</>
+                  : <><b>Signature sur place</b>{' · sur cet écran, chacun à son tour, avec un code reçu sur son e-mail.'}</>}</span>
             </div>
             <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => setLancer(true)}>
               <Ic n={mode === 'en_ligne' ? 'mail' : 'tablette'} t={16} /><span>{mode === 'en_ligne' ? 'Envoyer les liens de signature' : 'Signer sur place'}</span>
@@ -334,13 +349,13 @@ export function BlocSignature({ doc, onMaj, onSurPlace }: {
                   <span className={`${s.sigPt} ${x.statut === 'signe' ? s.kVert : expire ? s.kRouge : s.kOr}`}><Ic n={x.statut === 'signe' ? 'check' : x.statut === 'attendu' ? 'tablette' : 'horloge'} t={13} e={x.statut === 'signe' ? 3 : 2} /></span>
                   <span className={s.sigTx}>
                     <b>{nomSignataire(x)}</b>
-                    <i>{`${x.role} · ${x.personne.email}`}</i>
+                    <i>{`${x.role} · ${x.personne.email || 'pas d’e-mail'}`}</i>
                     <i style={{ color: x.statut === 'signe' ? '#15803d' : expire ? '#b91c1c' : undefined }}>{etat}</i>
                     {doc.statut === 'pret' && x.statut !== 'signe' && (
                       <span className={s.sigActions}>
                         {x.statut === 'invite' && <button type="button" className={s.btnLien} disabled={!!travail} onClick={() => action(x.id, { action: 'renvoyer', sig: x.id }, `Lien renvoyé à ${x.personne.email}.`)}>{travail === x.id ? 'Envoi…' : 'Renvoyer le lien'}</button>}
-                        {x.statut === 'attendu' && <button type="button" className={s.btnLien} disabled={!!travail} onClick={() => action(x.id, { action: 'renvoyer', sig: x.id }, `${nomSignataire(x)} signera avec son lien : il vient de partir à ${x.personne.email}.`)}>{travail === x.id ? 'Envoi…' : 'Il signera plus tard, par lien'}</button>}
-                        <button type="button" className={s.btnLien} disabled={!!travail} onClick={() => setCorrige(corrige?.id === x.id ? null : { id: x.id, email: x.personne.email })}>Corriger l’e-mail</button>
+                        {x.statut === 'attendu' && !!x.personne.email && <button type="button" className={s.btnLien} disabled={!!travail} onClick={() => action(x.id, { action: 'renvoyer', sig: x.id }, `${nomSignataire(x)} signera avec son lien : il vient de partir à ${x.personne.email}.`)}>{travail === x.id ? 'Envoi…' : 'Il signera plus tard, par lien'}</button>}
+                        <button type="button" className={s.btnLien} disabled={!!travail} onClick={() => setCorrige(corrige?.id === x.id ? null : { id: x.id, email: x.personne.email })}>{x.personne.email ? 'Corriger l’e-mail' : 'Lui envoyer un lien'}</button>
                       </span>
                     )}
                     {corrige?.id === x.id && (

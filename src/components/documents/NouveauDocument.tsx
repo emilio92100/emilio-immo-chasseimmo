@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
-import { MODELES, modele, type Contexte } from '@/lib/actes';
+import { MODELES, modele, type Contexte, type Donnees } from '@/lib/actes';
 import { depuisConfrere, type ContactConfrere } from '@/lib/actes/delegation';
 import { ligneContact, lirePro, typesDe } from '@/lib/contacts';
 import { Croix, Ic } from './ApercuActe';
@@ -217,11 +217,16 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
       }
       const identite = await identiteDuJour();
       let visite: Contexte['visite'] = null;
+      let liens: Donnees = {};
       if (bien && m.id === 'bon_visite') {
-        const { data, error } = await supabase.from('visites').select('date_visite, heure')
+        const { data, error } = await supabase.from('visites').select('id, date_visite, heure')
           .eq('bien_id', bien.id).neq('statut', 'annulee').order('date_visite', { ascending: false }).limit(1);
         if (error) throw new Error('La visite n’a pas pu être lue : ' + error.message);
         visite = data?.[0] || null;
+        /* V3.154 : le bon garde d'où il vient (la visite, le bien, celui de
+           l'agence s'il en est un) : « Bon de visite » sur la visite le
+           rouvre au lieu d'en refaire un, la fiche du bien le montre. */
+        liens = { bienId: bien.id, ...(bien.bien_vente_id ? { bienVenteId: bien.bien_vente_id } : {}), ...(data?.[0]?.id ? { visiteId: String(data[0].id) } : {}) };
       }
       /* V3.145 : une offre d'achat reprend ses honoraires du bien, plafonnés
          par son mandat de recherche : on relit celui de la recherche du bien. */
@@ -235,7 +240,7 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
       const avecMandat = lien === 'mandat' && !!mandat;
       let donnees = avecMandat
         ? await preparerDepuis(m, mandat!, identite)
-        : m.defaut({ identite, client, bien, visite, recherche: rech });
+        : { ...m.defaut({ identite, client, bien, visite, recherche: rech }), ...liens };
       if (pourDeleguer && confrere) donnees = { ...donnees, ...depuisConfrere(confrere) };
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),

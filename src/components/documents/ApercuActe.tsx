@@ -93,7 +93,7 @@ function Blocs({ partie, base }: { partie: Partie; base: number }) {
                       <span>{c.qui}</span>
                       <b><T x={c.nom} /></b>
                       {c.lignes.map((l, q) => <i key={q}><T x={l} /></i>)}
-                      <div className={s.zone}>{b.electronique ? (c.agence ? 'Signé à l’envoi, avec l’heure' : 'Signature électronique : code reçu par e-mail, trait tracé à l’écran') : 'Date et signature'}</div>
+                      <div className={s.zone}>{b.electronique ? (c.agence ? 'Signé à l’envoi, avec l’heure' : b.sansCode ? 'Signé sur place, dans ce cadre, au stylet, sans code' : 'Signature électronique : code reçu par e-mail, trait tracé à l’écran') : 'Date et signature'}</div>
                     </div>
                   ))}
                 </div>

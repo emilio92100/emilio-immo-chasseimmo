@@ -150,6 +150,8 @@ const ERREURS_SIGNATURE: Record<string, string> = {
   envoye: 'Chacun a déjà reçu le document signé par tous : la signature ne peut plus être arrêtée. Clique sur « Tout le monde a signé : finaliser » pour le ranger.',
   /* V3.56 : le lancement a échoué, et le document n'a pas pu être libéré. */
   reserve: 'Rien n’est parti, mais le document est resté marqué « en signature ». Clique sur « Arrêter la signature » pour le libérer, puis relance-la.',
+  /* V3.154 : sur place sans code, le tracé est la seule marque. */
+  griffe: 'La signature n’a pas pu être lue : signez à nouveau dans le cadre.',
 };
 export class ErreurSignature extends Error {
   code: string; plus: Record<string, unknown>;

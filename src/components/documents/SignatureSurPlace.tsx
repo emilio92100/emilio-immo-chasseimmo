@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { modele, demandeExpresse } from '@/lib/actes';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { modele, demandeExpresse, surPlaceSansCode } from '@/lib/actes';
 import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { heureParis, masquerEmail } from '@/lib/mandat';
 import { TexteMandat, PadSignature, CSS_MANDAT, RappelSignataire } from '@/components/espace/SignatureMandat';
@@ -17,10 +17,19 @@ import { appelSignature, lireSignataires, nomSignataire, type DocumentRow, type 
    rythmé pour qu'on ait le temps de la lire (une quinzaine de secondes en
    tout). Puis « Signature finalisée ».
 
+   V3.154 — le bon de visite, sans code. Alexandre : « sur place, pas besoin
+   de code reçu par e-mail : chacun a son cadre et signe avec le stylet que
+   je lui donne ». Chaque visiteur, à son tour, a un seul écran (« cadre ») :
+   son nom, l'essentiel du bon, la case « J'ai lu… » et un grand cadre où il
+   signe au stylet ; « Valider ma signature », puis le suivant. Pas d'adresse
+   e-mail à donner : ceux qui en ont une reçoivent leur exemplaire, Alexandre
+   garde l'original dans le CRM. Le serveur ne l'accepte que pour un bon de
+   visite « Sur place », depuis le CRM (src/lib/signature-sans-code.ts).
+
    Le texte est dans des chaînes (AGENTS.md §2.1). Les styles sont ceux de la
    page de signature en ligne, rangés sous .sp pour ne rien changer au CRM. */
 
-type Ecran = 'accueil' | 'resume' | 'lecture' | 'email' | 'signer' | 'merci' | 'finalisation' | 'fini';
+type Ecran = 'accueil' | 'resume' | 'lecture' | 'email' | 'signer' | 'cadre' | 'merci' | 'finalisation' | 'fini';
 type Etape = { cle: 'verifier' | 'assembler' | 'sceller' | 'envoyer' | 'classer'; t: string; en: string };
 const ETAPES: Etape[] = [
   { cle: 'verifier', t: 'Vérification des signatures et des codes', en: 'Chaque signature est rapprochée de son code à usage unique…' },
@@ -29,6 +38,15 @@ const ETAPES: Etape[] = [
   { cle: 'envoyer', t: 'Envoi des exemplaires par e-mail', en: 'Chaque signataire reçoit le sien, avec le certificat…' },
   { cle: 'classer', t: 'Classement dans le dossier', en: 'Le document signé rejoint le dossier du client…' },
 ];
+/* Les mêmes étapes, sans code (V3.154) : aucune ne parle de code. */
+const ETAPES_SANS_CODE: Etape[] = [
+  { cle: 'verifier', t: 'Vérification des signatures', en: 'Chaque cadre signé est rapproché de sa case cochée…' },
+  { cle: 'assembler', t: 'Assemblage du document signé', en: 'Les signatures tracées prennent place dans leurs cadres…' },
+  { cle: 'sceller', t: 'Scellement et certificat de signature', en: 'Calcul de l’empreinte, rédaction du certificat…' },
+  { cle: 'envoyer', t: 'Envoi des exemplaires par e-mail', en: 'Ceux qui ont donné leur e-mail reçoivent le leur, avec le certificat…' },
+  { cle: 'classer', t: 'Classement dans le dossier', en: 'Le document signé rejoint le dossier du client…' },
+];
+const emailOk = (e: string | undefined) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((e || '').trim());
 const PAS_MIN = 3200;
 const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -40,6 +58,9 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
 }) {
   const m = modele(doc.modele)!;
   const d = doc.donnees;
+  /* V3.154 : le bon de visite sur place, sans code. */
+  const sansCode = surPlaceSansCode(doc.modele, d);
+  const etapes = sansCode ? ETAPES_SANS_CODE : ETAPES;
   const identite = doc.identite || IDENTITE_DEFAUT;
   const parties = useMemo(() => m.rediger(d, identite), [m, d, identite]);
   const resume = useMemo(() => m.resume(d), [m, d]);
@@ -61,6 +82,8 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
   const [erreur, setErreur] = useState('');
   const [avancement, setAvancement] = useState<{ fait: number; details: string[]; erreur: string }>({ fait: 0, details: [], erreur: '' });
   const [fin, setFin] = useState<{ espace: boolean; a: string[] } | null>(null);
+  /* V3.154 : le tracé du cadre (PNG), prêt à valider ; null tant qu'il est trop court. */
+  const [trace, setTrace] = useState<string | null>(null);
   const haut = useRef<HTMLDivElement>(null);
   const lance = useRef(false);
 
@@ -92,8 +115,8 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
   const prenom = s ? (s.personne.prenom || nomSignataire(s)) : '';
 
   function commencer(x: SignataireRow) {
-    setCourant(x.id); setEmail(x.personne.email); setEmailMasque(''); setCodeDe(''); setCode(''); setLu(false); setExpres(false); setErreur('');
-    setEcran('resume');
+    setCourant(x.id); setEmail(x.personne.email); setEmailMasque(''); setCodeDe(''); setCode(''); setLu(false); setExpres(false); setErreur(''); setTrace(null);
+    setEcran(sansCode ? 'cadre' : 'resume');
   }
   async function demanderCode() {
     if (!s) return;
@@ -109,9 +132,10 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
     if (!s) return;
     setEnvoi(true); setErreur('');
     try {
+      /* V3.154 : sans code, rien à envoyer d'autre que le tracé et la case. */
       const [r] = await Promise.all([
-        appelSignature<{ signeLe: string; restants: { id: string; nom: string; mode: string }[] }>({ action: 'signer', id: doc.id, sig: s.id, code, griffe, accepte: true, demande: expres }),
-        pause(1400),
+        appelSignature<{ signeLe: string; restants: { id: string; nom: string; mode: string }[] }>({ action: 'signer', id: doc.id, sig: s.id, ...(sansCode ? {} : { code }), griffe, accepte: true, demande: expres }),
+        pause(sansCode ? 900 : 1400),
       ]);
       setSigs(l => (l || []).map(x => (x.id === s.id ? { ...x, statut: 'signe', signe_le: r.signeLe } : x)));
       setPad(false); setEnvoi(false);
@@ -138,16 +162,24 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
     const details: string[] = avancement.details.slice(0, depuis);
     setAvancement({ fait: depuis, details: [...details], erreur: '' });
     let espace = false, a: string[] = [];
-    for (let i = depuis; i < ETAPES.length; i++) {
-      const e = ETAPES[i];
+    for (let i = depuis; i < etapes.length; i++) {
+      const e = etapes[i];
       const debut = Date.now();
       try {
         const r = await appelSignature<Record<string, unknown>>({ action: 'finaliser', id: doc.id, etape: e.cle });
         const n = Number(r.n || 0), pages = Number(r.pages || 0), emp = String(r.empreinte || '');
-        const detail = e.cle === 'verifier' ? (r.deja ? 'Déjà vérifié' : `${n} signature${n > 1 ? 's' : ''}, chacune avec son code à usage unique`)
+        const sc = Number(r.sansCode || 0);
+        const sans = Array.isArray(r.sans) ? (r.sans as string[]) : [];
+        const detail = e.cle === 'verifier' ? (r.deja ? 'Déjà vérifié'
+            : !sc ? `${n} signature${n > 1 ? 's' : ''}, chacune avec son code à usage unique`
+            : sc === n ? `${n} signature${n > 1 ? 's' : ''}, faite${n > 1 ? 's' : ''} sur place, sur cet écran`
+            : `${n} signatures : ${sc} sur place, ${n - sc} avec un code`)
           : e.cle === 'assembler' ? (r.deja ? 'Déjà assemblé' : `${pages} pages, avec les signatures tracées`)
           : e.cle === 'sceller' ? (emp ? `Empreinte SHA-256 · ${emp.slice(0, 10)}…${emp.slice(-6)}` : 'Scellé')
-          : e.cle === 'envoyer' ? (Array.isArray(r.a) && r.a.length ? `À ${(r.a as string[]).map(masquerEmail).join(', ')}` : 'Exemplaires envoyés')
+          : e.cle === 'envoyer' ? [
+            Array.isArray(r.a) && r.a.length ? `À ${(r.a as string[]).map(masquerEmail).join(', ')}` : sans.length ? '' : 'Exemplaires envoyés',
+            sans.length ? `${sans.join(', ')} : pas d’e-mail, l’exemplaire reste dans le CRM` : '',
+          ].filter(Boolean).join(' · ')
           : r.recherche ? 'Rangé dans Documents ; sa recherche est à jour' : 'Rangé dans Documents';
         if (e.cle === 'classer') espace = !!r.espace;
         if (e.cle === 'envoyer' && Array.isArray(r.a)) a = r.a as string[];
@@ -168,8 +200,8 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
   }, [ecran, sigs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function quitter() {
-    if (ecran === 'finalisation' && avancement.fait < ETAPES.length && !avancement.erreur) return;
-    const enCours = ecran === 'email' || ecran === 'signer';
+    if (ecran === 'finalisation' && avancement.fait < etapes.length && !avancement.erreur) return;
+    const enCours = ecran === 'email' || ecran === 'signer' || ecran === 'cadre';
     if (enCours && !confirm('Quitter l’écran de signature ?\n\nLes signatures déjà faites sont gardées ; tu pourras reprendre depuis la fiche du document.')) return;
     onFermer(ecran === 'fini' ? { statut: 'signe' } : undefined);
   }
@@ -209,7 +241,9 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
             <p>{m.entete(d)}</p>
           </div>
         </div>
-        <p className="mdt-p">{'Chacun signe à son tour sur cet écran : il relit l’essentiel, reçoit un code sur sa propre adresse e-mail, coche la case, puis signe au doigt.'}</p>
+        <p className="mdt-p">{sansCode
+          ? 'Chacun signe à son tour sur cet écran : il relit l’essentiel, coche la case, puis signe dans son cadre, au stylet ou au doigt. Pas de code à recevoir.'
+          : 'Chacun signe à son tour sur cet écran : il relit l’essentiel, reçoit un code sur sa propre adresse e-mail, coche la case, puis signe au doigt.'}</p>
         <div className="sp-qui">
           {sigs.map(x => (
             <div key={x.id} className="sp-sig" data-etat={x.statut}>
@@ -251,11 +285,54 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
 
   if (vue === 'lecture' && s) return page(
     <div className="mdt-corps">
-      <p className="mdt-p petit">{'C’est exactement ce texte que vous signez. Vous en recevrez un exemplaire signé par e-mail.'}</p>
+      <p className="mdt-p petit">{sansCode && !emailOk(s.personne.email)
+        ? 'C’est exactement ce texte que vous signez. Alexandre en garde l’exemplaire signé.'
+        : 'C’est exactement ce texte que vous signez. Vous en recevrez un exemplaire signé par e-mail.'}</p>
       <TexteMandat parties={parties} identite={identite} cadres={{ etats, moi: s.cle }} bandeau={`${m.titre} · en attente de votre signature`} />
-      <button type="button" className="btn or mdt-plein" onClick={() => setEcran('resume')}>J’ai lu, je reviens</button>
+      <button type="button" className="btn or mdt-plein" onClick={() => setEcran(sansCode ? 'cadre' : 'resume')}>J’ai lu, je reviens</button>
     </div>, true,
   );
+
+  /* ── Sans code (V3.154) : son nom, l'essentiel, la case, son cadre ── */
+  if (vue === 'cadre' && s) {
+    const expresse = demandeExpresse(m, d, s.cle);
+    const pret = lu && (!expresse || expres) && !!trace;
+    const tous = sigs.filter(x => x.cle !== 'agence');
+    const rang = tous.findIndex(x => x.id === s.id) + 1;
+    return page(
+      <div className="mdt-corps">
+        <div className="mdt-invite"><span className="de">{tous.length > 1 ? `${s.role} · ${rang} sur ${tous.length}` : s.role}</span><span className="att">{`À vous, ${prenom}`}</span></div>
+        <h3 className="sp-nom">{nomSignataire(s)}</h3>
+        <div className="mdt-lignes sp-court">
+          {resume.map(r => (
+            <div key={r.titre} className="mdt-ligne"><div className="t">{r.titre}</div><div className="v">{r.valeur}</div>{r.detail && r.detail !== '—' && <div className="d">{r.detail}</div>}</div>
+          ))}
+        </div>
+        {s.cle !== 'agence' && <RappelSignataire r={rappel} />}
+        <button type="button" className="mdt-relire" onClick={() => setEcran('lecture')}>{`Lire le ${m.titre.toLowerCase()} en entier`}</button>
+        <button type="button" className="mdt-coche" data-on={lu ? '1' : undefined} disabled={envoi} onClick={() => setLu(x => !x)}>
+          <span className="bx">{lu && <Ic n="check" t={14} e={3} />}</span>
+          <span>{accepterDe(s.cle)}</span>
+        </button>
+        {expresse && (
+          <button type="button" className="mdt-coche" data-on={expres ? '1' : undefined} disabled={envoi} onClick={() => setExpres(x => !x)}>
+            <span className="bx">{expres && <Ic n="check" t={14} e={3} />}</span>
+            <span>{expresse}</span>
+          </button>
+        )}
+        <CadreStylet key={s.id} nom={nomSignataire(s)} bloque={envoi} onTrace={setTrace} />
+        {erreur && <div className="mdt-erreur">{erreur}</div>}
+        <button type="button" className="btn or mdt-plein" disabled={!pret || envoi} onClick={() => { if (trace) void signer(trace); }}>
+          <Ic n="plume" t={16} /><span>{envoi ? 'Enregistrement…' : 'Valider ma signature'}</span>
+        </button>
+        {!pret && !envoi && <p className="mdt-p petit sp-aide">{!lu ? 'Cochez la case, puis signez dans le cadre.' : !trace ? 'Signez dans le cadre, au stylet ou au doigt.' : 'Cochez aussi la seconde case.'}</p>}
+        <div className="sp-liens">
+          <button type="button" className="mdt-relire" disabled={envoi} onClick={() => setEcran('accueil')}>Ce n’est pas moi</button>
+          {emailOk(s.personne.email) && <button type="button" className="mdt-relire" disabled={envoi} onClick={() => { void plusTard(s); }}>{`${prenom} signera plus tard, avec son lien`}</button>}
+        </div>
+      </div>,
+    );
+  }
 
   /* ── Son adresse, son code ── */
   if (vue === 'email' && s) return page(
@@ -321,7 +398,7 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
           ? `Votre signature est enregistrée. Passez maintenant l’écran à ${nomSignataire(suivant)}.`
           : `Votre signature est enregistrée. On attend encore la signature en ligne de ${enLigne.map(nomSignataire).join(' et ')}.`}</p>
         {suivant && <button type="button" className="btn or mdt-plein" onClick={() => commencer(suivant)}>{`C’est ${suivant.personne.prenom || nomSignataire(suivant)}`}</button>}
-        {suivant && <button type="button" className="mdt-relire" disabled={envoi} onClick={() => { void plusTard(suivant); }}>{`${suivant.personne.prenom || nomSignataire(suivant)} signera plus tard, avec son lien`}</button>}
+        {suivant && emailOk(suivant.personne.email) && <button type="button" className="mdt-relire" disabled={envoi} onClick={() => { void plusTard(suivant); }}>{`${suivant.personne.prenom || nomSignataire(suivant)} signera plus tard, avec son lien`}</button>}
         {!suivant && <button type="button" className="btn fant mdt-plein" onClick={() => onFermer()}>Revenir au CRM</button>}
         {erreur && <div className="mdt-erreur">{erreur}</div>}
       </div>,
@@ -330,7 +407,7 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
 
   /* ── La finalisation, sous ses yeux ── */
   if (vue === 'finalisation') {
-    const pc = Math.round((avancement.fait / ETAPES.length) * 100);
+    const pc = Math.round((avancement.fait / etapes.length) * 100);
     return page(
       <div className="mdt-corps">
         <div className="sp-titre">
@@ -342,7 +419,7 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
         </div>
         <div className="sp-barre" aria-label={`${pc} %`}><i style={{ width: `${Math.max(4, pc)}%` }} /></div>
         <ol className="sp-etapes">
-          {ETAPES.map((e, i) => {
+          {etapes.map((e, i) => {
             const etat = i < avancement.fait ? 'fait' : i === avancement.fait ? (avancement.erreur ? 'erreur' : 'encours') : 'attente';
             return (
               <li key={e.cle} data-etat={etat}>
@@ -371,15 +448,125 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
       <div className="mdt-ok"><Ic n="check" t={34} e={3} /></div>
       <div className="mdt-sur-c">Signé par tous · scellé</div>
       <h3>Signature finalisée</h3>
-      <p className="mdt-p">{'Tout le monde a signé. Chacun reçoit son exemplaire par e-mail, avec son certificat de signature.'}</p>
+      <p className="mdt-p">{!sansCode
+        ? 'Tout le monde a signé. Chacun reçoit son exemplaire par e-mail, avec son certificat de signature.'
+        : fin?.a.length
+          ? `Tout le monde a signé. L’exemplaire signé, avec son certificat, part par e-mail à ${fin.a.map(masquerEmail).join(' et ')}. L’original est rangé dans le dossier.`
+          : 'Tout le monde a signé. L’original signé, avec son certificat, est rangé dans le dossier.'}</p>
       {fin?.espace && <p className="mdt-p">{'Vous retrouverez aussi votre exemplaire dans votre espace Emilio, avec vos autres documents.'}</p>}
       <div className="mdt-confiance">
-        <span><Ic n="cadenas" t={15} /><span>Un code par signataire</span></span>
+        {sansCode
+          ? <span><Ic n="tablette" t={15} /><span>Signé sur place, chacun dans son cadre</span></span>
+          : <span><Ic n="cadenas" t={15} /><span>Un code par signataire</span></span>}
         <span><Ic n="bouclier" t={15} /><span>Document scellé et horodaté</span></span>
-        <span><Ic n="mail" t={15} /><span>Un exemplaire à chacun</span></span>
+        {sansCode
+          ? <span><Ic n="doc" t={15} /><span>L’original gardé dans le dossier</span></span>
+          : <span><Ic n="mail" t={15} /><span>Un exemplaire à chacun</span></span>}
       </div>
       <button type="button" className="btn or mdt-plein" onClick={() => onFermer({ statut: 'signe' })}>Terminer</button>
     </div>,
+  );
+}
+
+/* ── Le cadre de signature, dans la page (V3.154) ──
+   Sur place sans code : le visiteur signe directement dans son cadre, au
+   stylet ou au doigt, sans fenêtre par-dessus. Le tracé est rendu (un PNG
+   recadré, comme PadSignature) chaque fois qu'il lève le stylet, s'il est
+   assez long ; « Effacer » repart d'un cadre blanc. Seule une largeur qui
+   change (la tablette qui pivote) efface le cadre : le dessin ne se
+   déformerait pas, il serait perdu. La hauteur est fixe (pas de vh), pour
+   que la barre d'adresse qui bouge en faisant défiler n'efface rien.
+   Au niveau du module (AGENTS.md §2.4) ; `key` : un cadre neuf par
+   signataire. */
+function CadreStylet({ nom, bloque, onTrace }: { nom: string; bloque: boolean; onTrace: (png: string | null) => void }) {
+  const toile = useRef<HTMLCanvasElement>(null);
+  const dernier = useRef<{ x: number; y: number } | null>(null);
+  const boite = useRef({ x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+  const longueur = useRef(0);
+  const largeur = useRef(0);
+  const rendre = useRef(onTrace);
+  const [vide, setVide] = useState(true);
+  useEffect(() => { rendre.current = onTrace; }, [onTrace]);
+
+  /* La toile à la taille du cadre, vide (sans toucher à l'état React). */
+  const dimensionner = useCallback(() => {
+    const c = toile.current; if (!c) return;
+    const r = c.getBoundingClientRect(), dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr));
+    largeur.current = r.width;
+    const x = c.getContext('2d'); if (!x) return;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#13243D'; x.fillStyle = '#13243D'; x.lineWidth = 2.6;
+    boite.current = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    longueur.current = 0; dernier.current = null;
+  }, []);
+  const effacer = useCallback(() => { dimensionner(); setVide(true); rendre.current(null); }, [dimensionner]);
+  useEffect(() => {
+    const c = toile.current; if (!c) return;
+    dimensionner();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { if (Math.abs(c.getBoundingClientRect().width - largeur.current) > 1) effacer(); });
+    ro.observe(c);
+    return () => ro.disconnect();
+  }, [dimensionner, effacer]);
+
+  const etendre = (p: { x: number; y: number }) => {
+    const b = boite.current;
+    b.x0 = Math.min(b.x0, p.x); b.y0 = Math.min(b.y0, p.y); b.x1 = Math.max(b.x1, p.x); b.y1 = Math.max(b.y1, p.y);
+  };
+  const poser = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (bloque) return;
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* sans effet */ }
+    const r = e.currentTarget.getBoundingClientRect();
+    const p = { x: e.clientX - r.left, y: e.clientY - r.top }, x = e.currentTarget.getContext('2d');
+    if (x) { x.beginPath(); x.arc(p.x, p.y, 1.3, 0, Math.PI * 2); x.fill(); }
+    dernier.current = p; etendre(p); setVide(false);
+  };
+  const tracer = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const a = dernier.current, x = e.currentTarget.getContext('2d');
+    if (!a || !x || bloque) return;
+    e.preventDefault();
+    /* Tous les points vus depuis le dernier dessin : un trait rapide reste une courbe. */
+    const evs = typeof e.nativeEvent.getCoalescedEvents === 'function' ? e.nativeEvent.getCoalescedEvents() : [];
+    const r = e.currentTarget.getBoundingClientRect();
+    const pts = (evs.length ? evs : [e.nativeEvent]).map(v => ({ x: v.clientX - r.left, y: v.clientY - r.top }));
+    let prec = a;
+    x.beginPath(); x.moveTo(prec.x, prec.y);
+    for (const p of pts) { x.lineTo(p.x, p.y); longueur.current += Math.hypot(p.x - prec.x, p.y - prec.y); etendre(p); prec = p; }
+    x.stroke();
+    dernier.current = prec;
+  };
+  /* Le stylet se lève : le tracé du moment, recadré, s'il est assez long. */
+  const lever = () => {
+    if (!dernier.current) return;
+    dernier.current = null;
+    const c = toile.current; if (!c) return;
+    if (longueur.current <= 80) { rendre.current(null); return; }
+    const r = c.getBoundingClientRect(), dpr = c.width / (r.width || 1), b = boite.current, m = 8;
+    const x0 = Math.max(0, (b.x0 - m) * dpr), y0 = Math.max(0, (b.y0 - m) * dpr);
+    const x1 = Math.min(c.width, (b.x1 + m) * dpr), y1 = Math.min(c.height, (b.y1 + m) * dpr);
+    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0), k = Math.min(1, 900 / w);
+    const o = document.createElement('canvas');
+    o.width = Math.max(1, Math.round(w * k)); o.height = Math.max(1, Math.round(h * k));
+    o.getContext('2d')?.drawImage(c, x0, y0, w, h, 0, 0, o.width, o.height);
+    rendre.current(o.toDataURL('image/png'));
+  };
+
+  return (
+    <div className="sp-cadre">
+      <div className="sp-cadre-t">
+        <span>Votre signature</span>
+        <button type="button" disabled={bloque || vide} onClick={effacer}>Effacer</button>
+      </div>
+      <div className="mdt-pad-zone">
+        <canvas ref={toile} aria-label={`Cadre de signature de ${nom}`} onPointerDown={poser} onPointerMove={tracer} onPointerUp={lever} onPointerCancel={lever} />
+        <span className="ligne" />
+        <span className="x">×</span>
+        {vide && <span className="aide">Signez ici</span>}
+        <span className="nom">{nom}</span>
+      </div>
+    </div>
   );
 }
 
@@ -447,4 +634,17 @@ const CSS_SP = `
 .sp-etapes li[data-etat="erreur"] .tx i{color:var(--brique)}
 .sp .mdt-pad-in{max-width:880px}
 .sp .mdt-pad-zone{height:clamp(240px, 46vh, 440px)}
+.sp .sp-nom{margin-top:0; text-align:center}
+.sp .sp-court .mdt-ligne{padding:10px 14px}
+.sp .sp-court .mdt-ligne .v{font-size:14.5px}
+.sp .sp-cadre{display:flex; flex-direction:column; gap:8px; margin-top:4px}
+.sp .sp-cadre-t{display:flex; align-items:center; justify-content:space-between}
+.sp .sp-cadre-t span{font-size:11px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--plume)}
+.sp .sp-cadre-t button{font-size:13px; font-weight:700; color:var(--or-fonce); padding:4px 2px}
+.sp .sp-cadre-t button:disabled{color:var(--plume-clair)}
+.sp .sp-cadre .mdt-pad-zone{height:230px; border-width:2px; border-color:var(--or-trait); background:#fff}
+@media(min-width:640px){ .sp .sp-cadre .mdt-pad-zone{height:300px} .sp .sp-court{grid-template-columns:repeat(auto-fit, minmax(170px, 1fr))} }
+.sp .sp-aide{text-align:center; margin-top:-4px}
+.sp .sp-liens{display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; margin-top:2px}
+.sp .sp-liens .mdt-relire{margin-top:0}
 `;
