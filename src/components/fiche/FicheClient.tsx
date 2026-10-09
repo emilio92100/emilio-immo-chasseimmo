@@ -5256,6 +5256,7 @@ ${signatureMail()}`,
               onAjouter={() => nouvelleAction()}
               onAppel={() => nouvelleAction('appel')}
               onReporter={reporterDepuisSuivi}
+              onBien={b => (b.bien_vente_id ? onNavigate('biens', { bien: b.bien_vente_id }) : openFicheBien(b.id))}
             />
           </div>
         )}
