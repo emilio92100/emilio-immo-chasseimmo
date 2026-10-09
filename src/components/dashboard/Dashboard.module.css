@@ -252,3 +252,28 @@
   .listDetail { font-size: 12.5px; }
   .badge { font-size: 11.5px; padding: 3px 9px; }
 }
+
+/* ═══ V3.152 — Le téléphone bord à bord ════════════════════════════════════
+   Alexandre : « sur le mobile tout est bridé, condensé ». L'accueil prend
+   toute la largeur : le bandeau bleu et les cartes vont d'un bord à
+   l'autre (ni arrondi ni cadre sur les côtés, le gris de la page les
+   sépare). Les quatre chiffres forment un seul tableau blanc, deux par
+   ligne, séparés d'un filet. */
+@media (max-width: 760px) {
+  .welcomeBanner { margin: 12px 0 0; padding: 20px 14px 18px; border-radius: 0; }
+
+  .statsGrid {
+    gap: 1px; padding: 0; margin-top: 12px;
+    background: #e3e8f0; border-top: 1px solid #e3e8f0; border-bottom: 1px solid #e3e8f0;
+  }
+  .statCard { border: none; border-radius: 0; box-shadow: none; padding: 14px; }
+
+  .mainRow { padding: 12px 0 20px; }
+  .card, .mandatAlert { border-radius: 0; border-left: none; border-right: none; }
+  .cardHeader { padding: 14px; }
+  .listRow { padding: 13px 14px; }
+  .groupeLabel { padding: 8px 14px 5px; }
+  .txList { padding: 12px 14px; }
+  .actList { padding: 10px 14px; }
+  .mandatAlert { padding: 13px 14px; }
+}

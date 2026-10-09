@@ -241,7 +241,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
           <button className={styles.mailBtn} onClick={demanderNouveauRdv}>📅 <span className={styles.motLong}>Nouveau RDV</span><span className={styles.motCourt}>RDV</span></button>
           <button className={styles.mailBtn} onClick={() => { demanderNouveauBien(); onNavigate('biens'); }}>🏡 <span className={styles.motLong}>Nouveau bien</span><span className={styles.motCourt}>Bien</span></button>
           {/* Comme celui de la barre du haut : il ouvre directement le formulaire. */}
-          <button className={styles.nouveauBtn} onClick={() => { demanderNouveauClient(); onNavigate('clients'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: 'var(--emilio)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ <span className={styles.motLong}>Nouveau contact</span><span className={styles.motCourt}>Contact</span></button>
+          <button className={styles.nouveauBtn} onClick={demanderNouveauClient} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#c9a84c', color: 'var(--emilio)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>+ <span className={styles.motLong}>Nouveau contact</span><span className={styles.motCourt}>Contact</span></button>
         </div>
       </div>
 
