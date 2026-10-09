@@ -191,3 +191,15 @@ textarea.input { resize: vertical; min-height: 70px; line-height: 1.5; }
   .fenetreIn { width: 100%; border-radius: 20px 20px 0 0; max-height: 92dvh; }
 }
 @media (prefers-reduced-motion: reduce) { .jalon { animation: none; } .carte, .puce, .btn { transition: none; } }
+
+/* V3.152 — Le téléphone bord à bord : la page n'a plus de marge sur les côtés
+   (dès 760 px, comme l'en-tête de la rubrique) ; le démarrage, l'état du
+   registre et le « rien ici » vont d'un bord à l'autre, la frise des mandats
+   et le tri gardent 14 px de marge. */
+@media (max-width: 760px) {
+  .page { padding: 14px 0 28px; gap: 14px; }
+  .depart, .etat, .vide { border-radius: 0; border-left: none; border-right: none; }
+  .departHaut, .departForm { padding-left: 14px; padding-right: 14px; }
+  .etat { padding-left: 14px; padding-right: 14px; }
+  .frise, .triBar { padding-left: 14px; padding-right: 14px; }
+}

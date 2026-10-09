@@ -959,3 +959,21 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
 .confConseil > span { min-width: 0; }
 .btnRouge { background: #dc2626; border-color: #dc2626; color: white; font-weight: 800; }
 .btnRouge:hover { background: #b91c1c; }
+
+/* ══ V3.152 — Le téléphone bord à bord ══════════════════════════════════════
+   La page (Documents juridiques, Biens) n'a plus de marge sur les côtés :
+   les blocs blancs vont d'un bord à l'autre, sans arrondi ni cadre sur les
+   côtés (le gris de la page les sépare) ; les titres et les modèles posés
+   sur le fond gardent 14 px de marge. */
+@media (max-width: 760px) {
+  .page { padding: 14px 0 28px; }
+  .page > .erreur, .page .liste, .vuesBloc { border-radius: 0; border-left: none; border-right: none; }
+  .page > .erreur { padding: 12px 14px; }
+  .page > .bloc, .page > .blocT, .grT { padding-left: 14px; padding-right: 14px; }
+  /* Le titre garde sa ligne ; la précision passe dessous s'il le faut. */
+  .blocT { flex-wrap: wrap; row-gap: 2px; }
+  .blocT h2 { flex-shrink: 0; }
+  /* « Ses documents », « Ses biens » (BlocRepliable), sur une fiche bord à bord. */
+  .rpBloc { border-radius: 0; border-left: none; border-right: none; }
+  .rpTete { padding-left: 14px; padding-right: 14px; }
+}

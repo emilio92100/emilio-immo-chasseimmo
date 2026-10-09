@@ -63,7 +63,7 @@ export default function FilEtapes({ children, actif }: { children: React.ReactNo
   return (
     <div className={b.fil}>
       {bords.g && <button type="button" className={`${b.filFleche} ${b.filG}`} aria-label="Étapes précédentes" onClick={() => pousser(-1)}><Ic n="gauche" t={16} e={2.4} /></button>}
-      <nav ref={ref} className={`${s.edPas} ${b.edPas}`} aria-label="Étapes" data-pastille={pos ? 'oui' : undefined}>
+      <nav ref={ref} className={`${s.edPas} ${b.edPas}`} aria-label="Étapes" data-pastille={pos ? 'oui' : undefined} data-defile="">
         {pos && <span className={`${b.filPastille} ${anime ? b.filPastilleAnime : ''}`} aria-hidden="true" style={{ width: pos.w, height: pos.h, transform: `translate(${pos.x}px, ${pos.y}px)` }} />}
         {children}
       </nav>
