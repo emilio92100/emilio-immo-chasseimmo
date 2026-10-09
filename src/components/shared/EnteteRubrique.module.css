@@ -304,6 +304,9 @@
    sinon il s'effacerait avec elle. */
 @media (max-width: 760px) {
   .bloc { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.160 — Contacts (Alexandre : « remets légèrement en arrondi, mais que
+     ça prenne toute la place de l'écran ») : la carte arrondie, à 10 px des bords. */
+  .bloc.arrondi { margin-left: 10px; margin-right: 10px; border-radius: 18px; border: 1px solid #e3e8f0; }
   .haut:has(+ .rangee) { border-bottom: 1px solid #eef1f6; }
   .rangee { border-top: none; }
   .on::before { top: 0; }

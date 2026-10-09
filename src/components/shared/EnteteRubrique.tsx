@@ -127,10 +127,13 @@ function MenuAutres({ tuiles, actif, onChoisir, lib }: { tuiles: Tuile[]; actif:
 }
 
 export default function EnteteRubrique({
-  titre, icone, phrase, phraseOrdi = false, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true, aCheval = false,
+  titre, icone, phrase, phraseOrdi = false, recherche, bouton, bouton2, tuiles, actif, onChoisir, label, libMenu = 'Autres types', defiler = true, aCheval = false, arrondi = false,
 }: {
   titre: string;
   icone: ReactNode;
+  /* V3.160 : au téléphone, le bloc garde ses coins arrondis, à 10 px des
+     bords, au lieu d'aller d'un bord à l'autre (Contacts). */
+  arrondi?: boolean;
   phrase?: string;
   /* V3.136 : une phrase qui ne vaut que sur ordinateur (« Ctrl + clic… »),
      cachée au téléphone. */
@@ -213,7 +216,7 @@ export default function EnteteRubrique({
     return () => cancelAnimationFrame(id);
   }, [glisse, anime]);
   return (
-    <section className={`${styles.bloc} ${aCheval && tuiles.length > 0 ? styles.cheval : ''}`}>
+    <section className={`${styles.bloc} ${aCheval && tuiles.length > 0 ? styles.cheval : ''} ${arrondi ? styles.arrondi : ''}`}>
       {aCheval && tuiles.length > 0 && <span className={styles.lueurs} aria-hidden="true" />}
       <div className={styles.haut}>
         <div className={styles.titreZone}>
