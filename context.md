@@ -1499,6 +1499,58 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.152 — 9 octobre 2026 · Le mouvement « depuis le bouton » ; le téléphone bord à bord ; l'espace qui s'équilibre ; l'espace réservé aux clients actifs
+
+Alexandre a choisi, sur une maquette de quatre styles, le **C · Depuis le bouton** : « la fenêtre
+sort du bouton et y retourne quand on fait croix… que ça soit bien fondu, pas brutal », partout,
+téléphone compris. Puis : « sur le mobile tout est bridé… il y a du blanc à droite et à gauche,
+sur l'ensemble de toutes les pages » ; « les onglets sont coupés : un peu de transparence sur
+chaque bord » ; sur l'espace client, sur ordinateur, « un nouveau bien… beaucoup d'espaces blancs,
+votre conseiller est trop en bas à droite » ; « un prospect qui reçoit un bien, il ne doit pas
+avoir l'espace : juste le mail, avec un suivi ».
+
+- **Le mouvement** (`src/lib/mouvement.ts`, monté par `Mouvement` dans AppLayout ; AGENTS.md §2.8) :
+  toute fenêtre plein écran et tout petit menu qui apparaît après un appui sort du bouton touché
+  (`scale` .12 → 1, 430 ms) et y rentre à la fermeture (×, clic à côté, Échap, validation), voile en
+  fondu. Global : un MutationObserver reconnaît les fenêtres à leur arrivée ; `removeChild` et
+  `remove` sont enveloppés pour retarder le retrait le temps de la sortie (inerte, les clics
+  passent). `data-emi-anim="non"` exclut un élément (pile SuiviRemises, la carte) ;
+  `prefers-reduced-motion` coupe tout. Les sorties maison (OrganiserVisite, FenetreAction, la
+  fenêtre de l'agenda, les demandes du site) se ferment tout de suite quand `mouvementActif()`.
+- **Les onglets** : `<Cascade cle={…}>` (src/components/shared/Cascade.tsx) — l'ancien contenu
+  s'efface en 130 ms, le nouveau tombe en cascade ; fiche contact, fiche bien, Documents, Visites,
+  Relances, Paramètres, listes Contacts et Biens. La pastille des onglets glisse
+  (OngletsGlissants). Les changements de page : fondu de 8 px en 260 ms.
+- **« Nouveau contact »** s'ouvre au-dessus de la page en cours, d'où qu'on soit
+  (`NouveauContactPartout`, Clients.tsx) : plus de saut vers Contacts. Créé, il ouvre sa fiche
+  (retour vers la page d'où l'on venait) ; fermé sans enregistrer, rien ne bouge.
+- **Le téléphone bord à bord** (≤ 760 px, toutes les pages du CRM) : plus de marge sur les côtés,
+  cartes et bandeaux d'un bord à l'autre (ni arrondi ni cadre sur les côtés), texte posé sur le fond
+  à 14 px ; bandeau bleu de la fiche contact bord à bord, « À savoir » sans retrait. Les rangées qui
+  défilent de côté portent `data-defile` ; `Defilement.tsx` (AppLayout) tient `data-defile-g` /
+  `data-defile-d` à jour et `crm-mobile.css` fond le bord où il reste à voir (≤ 900 px).
+  L'ordinateur ne change pas.
+- **L'accueil de l'espace sur ordinateur** (EspaceClient, ≥ 1024 px) : trois pistes égales ; les
+  biens sur deux, la carte et le rappel de recherche à droite ; le marché, le conseiller,
+  l'engagement et « Ce lien est le vôtre » se placent là où ils laissent le moins de vide
+  (`useRepartition`, toutes les répartitions essayées) ; ils apparaissent en fondu une fois placés.
+  Un seul nouveau bien : une grande carte (photo à gauche). Les cases du haut prennent toute la
+  largeur. Le téléphone ne change pas.
+- **Envoyer un bien : l'espace pour les clients actifs seulement** (`recoitSonEspace`,
+  src/lib/bien-suivi.ts : `actif`, et l'ancien `offre_ecrite`). Tous les autres — prospect, en
+  pause, perdu, bien trouvé, contact sans recherche, adresse hors CRM — reçoivent un simple mail
+  (route biens-vente « presenter ») avec « Voir le bien », sans un mot de l'espace ; rien n'entre
+  dans leur dossier, la trace reste dans l'historique du bien et dans leur Suivi. FenEnvoiLot dit
+  pour chacun « Son espace » ou « Simple mail · page du bien », l'aperçu montre le bon mail.
+- **Le lien suivi** : /bien/<id>?d=<code>, un code par mail rangé dans
+  `biens_vente_suivi.donnees.codes`. La page le signale une fois affichée (`VueSuivie` →
+  `POST /bien/<id>/vue`, public par le préfixe /bien/) puis le retire de l'adresse : une ouverture
+  par jour, `donnees.vues`, « 👀 A ouvert la fiche du bien » dans le Suivi du contact (type
+  `statut_change`, `metadata.vue_bien`) et « Fiche ouverte » dans l'historique du bien.
+  « Mail ouvert » : prévu (FriseSuivi, `metadata.mailjet_id`) mais éteint tant que le pixel
+  d'ouverture de Mailjet reste coupé (§8, délivrabilité) — `SUIVI_OUVERTURE` dans la route.
+  Rien à passer dans Supabase.
+
 ### V3.151 — 9 octobre 2026 · Le mail est-il arrivé ? « \n » et signature en double ; Demandes d'abord
 
 Alexandre : « chaque mail que j'envoie, un spinner qui permet de voir si ça a bien été envoyé, et

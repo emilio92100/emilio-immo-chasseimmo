@@ -132,6 +132,17 @@ tombe à côté, et le clic est perdu une fois sur deux. C'est arrivé à la fl�
 qui plie les sous-menus (V3.25). Centrer par `top: 0; bottom: 0; margin: auto 0`
 (avec une hauteur fixe), ou par flex.
 
+### 2.8 Les fenêtres s'animent toutes seules (V3.152)
+
+`src/lib/mouvement.ts` (monté par AppLayout) reconnaît toute fenêtre plein
+écran et tout petit menu qui apparaît après un appui : il les fait sortir du
+bouton touché et y rentrer, **et retarde leur retrait** le temps de la sortie.
+Une nouvelle fenêtre n'a donc **rien à animer elle-même** : la fermer, c'est
+la démonter tout de suite. Une sortie maison (classe `sortie` + `setTimeout`)
+jouerait deux fois — si elle doit rester, la sauter quand `mouvementActif()`
+est vrai (voir OrganiserVisite). Ce qui ne doit ni bouger ni attendre porte
+`data-emi-anim="non"`. Un contenu d'onglet qui change : `<Cascade cle={…}>`.
+
 ---
 
 ## 3. Deux règles de données qui ne se voient pas
