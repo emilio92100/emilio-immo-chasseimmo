@@ -730,7 +730,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       {/* Le titre et ses chiffres dans un seul bloc : les chiffres sont les
           filtres. La ligne grise « 0 à venir · 0 effectuée » a disparu, elle
           disait en petit ce que les tuiles disent en grand. */}
-      <EnteteRubrique titre="Visites" icone={PictoVisites}
+      <EnteteRubrique titre="Visites" icone={PictoVisites} arrondi
         phrase={visites.length === 0 && demandes.length === 0 ? (loading ? undefined : 'Aucune visite pour l’instant') : phraseProchaine}
         recherche={visites.length > 0 || demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un bien ou un client…', label: 'Chercher une visite' } : undefined}
         /* V3.146 (Alexandre) : « Organiser une visite », le joli bouton doré

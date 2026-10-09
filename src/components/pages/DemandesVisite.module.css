@@ -91,6 +91,7 @@
 
 /* V3.152 — Le téléphone bord à bord (voir CartesVisites.module.css). */
 @media (max-width: 760px) {
-  .carte, .bravo { border-radius: 0; border-left: none; border-right: none; }
-  .carte { padding: 12px 14px; }
+  /* V3.161 : arrondies, à 10 px des bords (comme CartesVisites). */
+  .carte, .bravo { border-radius: 16px; margin-left: 10px; margin-right: 10px; }
+  .carte { padding: 12px; }
 }

@@ -769,16 +769,18 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
              plus de marge sur les côtés, chaque carte va d'un bord à l'autre,
              sans arrondi ni cadre sur les côtés ; les titres gardent 14 px. */
           .rl-page{padding:12px 0 96px !important}
-          .rl-ligne, .rl-al, .rl-periode, .rl-vide, .rl-tri{border-radius:0 !important;border-left:none !important;border-right:none !important}
-          .rl-ligne{padding:11px 14px !important}
-          .rl-al{padding:14px}
-          .rl-periode{padding:10px 14px}
-          .rl-tri{padding:12px 14px 14px !important}
-          .rl-vide{padding-left:14px !important;padding-right:14px !important}
+          /* V3.161 — les coins arrondis reviennent, à 10 px des bords
+             (« au maximum en largeur, mais montrer les arrondis »). */
+          .rl-ligne, .rl-al, .rl-periode, .rl-vide, .rl-tri{border-radius:16px !important;margin-left:10px !important;margin-right:10px !important}
+          .rl-ligne{padding:11px 12px !important}
+          .rl-al{padding:14px 12px}
+          .rl-periode{padding:10px 12px}
+          .rl-tri{padding:12px 12px 14px !important}
+          .rl-vide{padding-left:12px !important;padding-right:12px !important}
           .rl-gt, .rl-al-t{padding:0 14px}
           .rl-al-plus{margin-left:14px}
           /* Dans le bloc du tri, les cartes restent des cartes. */
-          .rl-tri .rl-ligne{border-radius:16px !important;border:1px solid #e6ebf2 !important;padding:11px 12px !important}
+          .rl-tri .rl-ligne{border-radius:16px !important;border:1px solid #e6ebf2 !important;padding:11px 12px !important;margin-left:0 !important;margin-right:0 !important}
         }
       `}</style>
 
@@ -787,7 +789,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
           Biens — le titre, la recherche, et les échéances en tuiles qui
           filtrent ; « À faire » (en retard et aujourd'hui, V3.85) au bout. */}
       {!seulTri && (
-        <EnteteRubrique titre="Relances" icone={<Ic n="cloche" t={22} ep={1.9} />}
+        <EnteteRubrique titre="Relances" icone={<Ic n="cloche" t={22} ep={1.9} />} arrondi
           phrase={loading ? 'Les clients à recontacter, du plus pressé au moins pressé.' : retard.length ? `${retard.length > 1 ? `${retard.length} relances en retard` : 'Une relance en retard'} : à rattraper en premier.` : duJour.length ? `${duJour.length > 1 ? `${duJour.length} relances` : 'Une relance'} pour aujourd’hui, rien en retard.` : 'Rien en retard, rien pour aujourd’hui.'}
           recherche={{ valeur: q, onChange: setQ, placeholder: 'Nom, téléphone, note…', label: 'Chercher une relance' }}
           bouton2={tri.length > 0 ? { lib: `Tri à faire · ${triDus.length ? `${triDus.length} à appeler` : 'rien aujourd’hui'}`, court: 'Tri', ic: <Ic n="drapeau" t={15} ep={2.1} />, onClick: () => blocTri.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } : undefined}

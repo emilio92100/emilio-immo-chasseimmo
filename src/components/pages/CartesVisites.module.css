@@ -145,7 +145,9 @@ a.btn { text-decoration: none; }
    ni cadre sur les côtés ; les titres des groupes gardent 14 px. */
 @media (max-width: 760px) {
   .titreGroupe { padding: 0 14px; }
-  .carte { border-radius: 0; border-left: none; border-right: none; padding: 12px 14px; }
-  /* Une visite annulée : posée en ligne (PageVisites.tsx), d'où `!important`. */
-  .annulee { border-radius: 0 !important; border-left: none !important; border-right: none !important; }
+  /* V3.161 : arrondies, à 10 px des bords (« les coins arrondis, mais au
+     maximum en largeur »). */
+  .carte { border-radius: 16px; margin-left: 10px; margin-right: 10px; padding: 12px; }
+  /* Une visite annulée (posée en ligne, PageVisites.tsx) : la même marge. */
+  .annulee { margin-left: 10px; margin-right: 10px; }
 }
