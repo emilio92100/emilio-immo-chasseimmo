@@ -40,7 +40,7 @@ import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
 import { ajouterMois, jourParis, joursRestants } from '@/lib/mandat';
 import { retracteEnLigne } from '@/lib/documents-espace';
-import { CLES_MAIL, signatureDe, personnaliser, conseillerDe } from '@/lib/mail-variables';
+import { CLES_MAIL, signatureDe, personnaliser, conseillerDe, dejaSigne, texteModele } from '@/lib/mail-variables';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -2981,11 +2981,13 @@ ${signatureMail()}`,
        variables sont remplacées tout de suite, pour qu'Alexandre relise le
        mail tel qu'il partira. */
     const rg = reglagesMail.current;
-    const modele = (rg.template_email_corps || '').trim();
+    /* V3.151 : ses « \n » écrits en toutes lettres redeviennent des retours à
+       la ligne (texteModele), et une signature déjà là n'est pas doublée. */
+    const modele = texteModele(rg.template_email_corps || '').trim();
     const pourLui = (t: string) => personnaliser(t, client, conseillerDe(rg));
     /* Le modèle sans signature la reçoit, comme les autres mails. */
     const sig = signatureMail();
-    const avecSignature = (t: string) => (t.includes(sig) ? t : `${t.trimEnd()}\n\n${sig}`);
+    const avecSignature = (t: string) => (dejaSigne(t, sig, conseillerDe(rg)) ? t : `${t.trimEnd()}\n\n${sig}`);
     setEnvoiForm({
       destinataires: emails.join(', '),
       objet: (rg.template_email_objet || '').trim() ? pourLui(rg.template_email_objet) : `Sélection de biens — Vos recherches immobilières`,
