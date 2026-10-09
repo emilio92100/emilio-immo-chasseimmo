@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { modele, pdfDocument, type Donnees } from '@/lib/actes';
+import { noteOffre } from '@/lib/actes/offre-achat';
 import { lireIdentiteAgence } from '@/lib/agence';
 import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
@@ -22,6 +23,8 @@ import { enveloppeMail } from '@/lib/mail-charte';
  *   POST { action: 'lien', chemin, nom? }                      →  { ok, url }   (5 minutes)
  *   POST { action: 'retirer', id }                             →  { ok, n }     (tous ses fichiers)
  *   POST { action: 'projet', id, destinataires, sujet, message }
+ *                                                →  { ok, envoyes, avertissements, envoi, row }
+ *   POST { action: 'offre', id, destinataires, sujet, message }   (V3.145)
  *                                                →  { ok, envoyes, avertissements, envoi, row }
  *
  * Tout vit sous documents/<id du document>/ : la route refuse le reste.
@@ -57,8 +60,13 @@ const colonneEnvoisAbsente = (m: string) => /envois/i.test(m) && /schema cache|d
 
 type DocProjet = {
   id: string; modele: string; statut: string; titre: string | null; donnees: Donnees | null;
-  client_id: string | null; recherche_id: string | null; envois?: unknown;
+  client_id: string | null; recherche_id: string | null; envois?: unknown; signe_chemin?: string | null;
 };
+/* « Offre d’achat · M. Martin » → « Offre-d-achat-M-Martin-signe.pdf » : le
+   même nom que nomFichier(doc, '-signe') côté écran (documents/outils.ts). */
+const nomSigne = (titre: string, ext: string) => `${(titre || 'Document').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[’']/g, '-').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'Document'}-signe.${ext}`;
+const TYPE_EXT: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic' };
 type DestProjet = { email: string; nom: string; prenom: string; famille: string };
 
 export async function POST(req: NextRequest) {
@@ -227,6 +235,88 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ ok: true, envoyes: adresses, avertissements, envoi, row });
+    }
+
+    /* ── L'offre d'achat signée, à l'agence du vendeur (V3.145) ──
+       Le fichier signé tel qu'il est rangé (scellé avec son certificat, ou le
+       scan d'une offre signée à la main), en pièce jointe, à qui Alexandre
+       tape. Rien d'autre ne part : ses honoraires ne sont pas dans l'offre.
+       Noté dans le document (`envois`, avec `offre: true`), dans le Suivi du
+       client, et dans celui du confrère s'il est dans le CRM. */
+    if (action === 'offre') {
+      const id = String(body.id || '');
+      if (!UUID.test(id)) return ko('Document inconnu');
+      const sujet = String(body.sujet || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      const message = String(body.message || '').replace(/\r\n?/g, '\n').trim().slice(0, 20_000);
+      if (!sujet) return ko('L’objet du mail est vide');
+      if (!message) return ko('Le message est vide');
+      const adresses = [...new Set((Array.isArray(body.destinataires) ? body.destinataires : []).slice(0, 10)
+        .map((x: unknown) => String(x || '').trim().toLowerCase()).filter((x: string) => MAIL.test(x)))] as string[];
+      if (!adresses.length) return ko('Aucune adresse e-mail valable');
+
+      const { data: lu, error: eDoc } = await sb.from('documents').select('*').eq('id', id).maybeSingle();
+      if (eDoc) return ko(eDoc.message, 500);
+      if (!lu) return ko('Document introuvable', 404);
+      const doc = lu as DocProjet;
+      if (doc.modele !== 'offre_achat') return ko('Seule une offre d’achat s’envoie ainsi.');
+      if (doc.statut !== 'signe') return ko('L’offre n’est pas encore signée par tout le monde : elle part une fois signée.', 409);
+      if (!doc.signe_chemin) return ko('L’exemplaire signé n’est pas encore déposé : dépose-le d’abord (scan ou photo), puis envoie.', 409);
+      const { data: f, error: eF } = await sb.storage.from(BUCKET).download(doc.signe_chemin);
+      if (eF || !f) return ko(`L’exemplaire signé n’a pas pu être lu : ${eF?.message || 'introuvable'}`, 500);
+      const octets = new Uint8Array(await f.arrayBuffer());
+      const ext = (doc.signe_chemin.split('.').pop() || 'pdf').toLowerCase();
+      const fichier = nomSigne(doc.titre || 'Offre d’achat', ext === 'jpeg' ? 'jpg' : ext);
+      const pj: PieceJointe[] = [{ nom: fichier, type: TYPE_EXT[ext] || 'application/octet-stream', base64: Buffer.from(octets).toString('base64') }];
+
+      const paras = message.split(/\n{2,}/).map(t => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`).join('');
+      const html = enveloppeMail({ corps: paras });
+      const envoyes: string[] = [];
+      const echecs: string[] = [];
+      for (const a of adresses) {
+        const err = await envoyerMail({ a, sujet, texte: message, html, pj });
+        if (err) echecs.push(`${a} (${err})`); else envoyes.push(a);
+      }
+      if (!envoyes.length) return ko(`Le mail n’est pas parti : ${echecs.join(' · ')}`, 502);
+
+      const avertissements: string[] = echecs.map(e => `Pas parti à ${e}`);
+      const le = new Date().toISOString();
+      const envoi = { le, a: envoyes.map(x => ({ email: x, nom: '' })), sujet, message: message.slice(0, 5000), fichier, offre: true, ...(echecs.length ? { echecs } : {}) };
+      const avant = Array.isArray(doc.envois) ? doc.envois : [];
+      let row: unknown = null;
+      const maj = await sb.from('documents').update({ envois: [...avant, envoi].slice(-ENVOIS_MAX) }).eq('id', id).select('*').maybeSingle();
+      if (maj.error) {
+        console.error('[documents] envois', maj.error.message);
+        avertissements.push(colonneEnvoisAbsente(maj.error.message)
+          ? 'Il n’est pas encore noté dans la fiche du document : lance d’abord le fichier outils/sql/documents-envois.sql dans Supabase › SQL Editor.'
+          : `La fiche du document : ${maj.error.message}`);
+      } else row = maj.data;
+
+      const d: Donnees = doc.donnees || {};
+      const lieu = [d.adresse, d.ville].filter(x => typeof x === 'string' && x).join(', ');
+      const detail = `À : ${envoyes.join(', ')}\nObjet : ${sujet}\n\n${message}\n\nPièce jointe : ${fichier}`;
+      if (doc.client_id) {
+        /* Pour lui seul (le client ne lit pas le Suivi) : son total et ses honoraires. */
+        const note = noteOffre(d);
+        await ecritServeur('Le Suivi du client', sb.from('journal').insert({
+          client_id: doc.client_id, recherche_id: doc.recherche_id, type: 'mail_envoye',
+          titre: `📤 Offre d’achat envoyée${lieu ? ` — ${lieu}` : ''}`, description: `${note ? `💶 ${note}\n\n` : ''}${detail}`,
+          metadata: { document_id: id, offre: true },
+        }), avertissements);
+      }
+      /* Le confrère (ou le vendeur), s'il est dans le CRM. */
+      const trouves = await sb.from('clients').select('id, emails').overlaps('emails', envoyes);
+      if (trouves.error) console.error('[documents] contacts', trouves.error.message);
+      const vus = new Set<string>();
+      for (const c of (trouves.data || []) as { id: string; emails: string[] | null }[]) {
+        if (c.id === doc.client_id || vus.has(c.id)) continue;
+        vus.add(c.id);
+        await ecritServeur('Le Suivi du contact', sb.from('journal').insert({
+          client_id: c.id, recherche_id: null, type: 'mail_envoye',
+          titre: `📤 Offre d’achat transmise${lieu ? ` — ${lieu}` : ''}`, description: detail,
+          metadata: { document_id: id, offre: true },
+        }), avertissements);
+      }
+      return NextResponse.json({ ok: true, envoyes, avertissements, envoi, row });
     }
 
     return ko('Action inconnue');
