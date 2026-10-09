@@ -37,10 +37,11 @@ import { createPortal } from 'react-dom';
 import { Ic } from '@/components/documents/ApercuActe';
 import { supabase } from '@/lib/supabase';
 import { euros } from '@/lib/mandat';
-import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
+import { CLES_MAIL, conseillerDe, dejaSigne, signatureDe, texteModele } from '@/lib/mail-variables';
 import { visitePasseeParis } from '@/lib/visites';
 import { avantMandat, etapeDe, lirePhotos, titreBien, villeAffichee, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import { signalerEchec } from '@/lib/ecritures';
+import { REMISE_SUIVIE, attendreRemises, remisesDe, suivreRemises } from '@/lib/remise-client';
 import { CaseLigne } from '@/components/shared/Selection';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { Illu, modeAcheteurs, teinte } from './AcheteursBien';
@@ -106,9 +107,11 @@ const pct = (n: number) => (n >= 0 ? `${n} %` : '');
    variables ({{prénom}}…) restent : /api/send-mail les remplace pour chacun. */
 function mailParDefaut(p: Record<string, string>): { objet: string; corps: string } {
   const sig = signatureDe(p);
-  const modele = (p.template_email_corps || '').trim();
-  const objet = (p.template_email_objet || '').trim() || 'Sélection de biens — Vos recherches immobilières';
-  if (modele) return { objet, corps: modele.includes(sig) ? modele : `${modele.trimEnd()}\n\n${sig}` };
+  /* V3.151 : ses « \n » écrits en toutes lettres redeviennent des retours à
+     la ligne, et la signature n'est pas ajoutée une seconde fois. */
+  const modele = texteModele(p.template_email_corps || '').trim();
+  const objet = texteModele(p.template_email_objet || '').trim() || 'Sélection de biens — Vos recherches immobilières';
+  if (modele) return { objet, corps: dejaSigne(modele, sig, conseillerDe(p)) ? modele : `${modele.trimEnd()}\n\n${sig}` };
   return {
     objet,
     corps: `Bonjour {{prénom}},
@@ -194,7 +197,7 @@ ${signatureDe(p)}`,
 type Dest = { cle: string; genre: 'crm'; ligne: Ligne; source: 'manuel' | 'rappro' } | { cle: string; genre: 'libre'; libre: Libre };
 type Apercu = { html: string; objet: string; a: string[] };
 type EtatEnvoi = 'attente' | 'en' | 'ok' | 'ko';
-type Envoi = { quoi: Quoi; gens: { cle: string; nom: string; crm: boolean; etat: EtatEnvoi; erreur?: string }[]; fini: boolean; biens: number };
+type Envoi = { quoi: Quoi; gens: { cle: string; nom: string; crm: boolean; etat: EtatEnvoi; erreur?: string; attente?: boolean }[]; fini: boolean; biens: number };
 const nomLibre = (x: Libre) => [x.prenom, x.nom].filter(Boolean).join(' ') || x.email;
 const nomDest = (d: Dest) => (d.genre === 'libre' ? nomLibre(d.libre) : nomClient(d.ligne.acheteur.client));
 /* Assez longtemps à l'écran pour que l'animation se voie, même quand tout part en un éclair. */
@@ -485,8 +488,8 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
       ],
     };
     setEnvoi(e);
-    const maj = (cle: string, etat: EtatEnvoi, erreur?: string) => {
-      e = { ...e, gens: e.gens.map(g => (g.cle === cle ? { ...g, etat, erreur } : g)) };
+    const maj = (cle: string, etat: EtatEnvoi, erreur?: string, attente?: boolean) => {
+      e = { ...e, gens: e.gens.map(g => (g.cle === cle ? { ...g, etat, erreur, attente } : g)) };
       setEnvoi(e);
     };
     let biensPartis = 0;
@@ -513,7 +516,11 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
           if (n) await suiteEnvoi(x.acheteur.client.id, x.acheteur.recherche.id, n);
           biensPartis += n;
         } else {
-          biensPartis += await envoyerParMail(items, mail || { objet: '', corps: '' });
+          /* V3.151 : envoyé, puis arrivé dans sa boîte (ou refusé : une erreur). */
+          const r = await envoyerParMail(items, mail || { objet: '', corps: '' });
+          biensPartis += r.n;
+          maj(x.cle, 'ok', undefined, r.enAttente);
+          continue;
         }
         maj(x.cle, 'ok');
       } catch (err) {
@@ -526,14 +533,26 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
       for (const x of dehors) maj(`@${x.email}`, 'en');
       try {
         const res = await fetch('/api/biens-vente', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...REMISE_SUIVIE },
           body: JSON.stringify({ action: 'presenter', ids: envoyables.map(b => b.id), destinataires: dehors, objet: mail?.objet || '', corps: mail?.corps || '' }),
         });
         const r = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; envoyes?: string[]; avertissements?: string[] };
         if (!res.ok || !r.ok) throw new Error(r.erreur || `erreur ${res.status}`);
         const partis = new Set(r.envoyes || []);
-        for (const x of dehors) maj(`@${x.email}`, partis.has(x.email) ? 'ok' : 'ko', partis.has(x.email) ? undefined : 'le mail n’est pas parti');
+        for (const x of dehors) if (!partis.has(x.email)) maj(`@${x.email}`, 'ko', 'le mail n’est pas parti');
         if (r.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', r.avertissements.join(' ; '));
+        /* V3.151 : arrivé dans sa boîte, ou refusé par sa messagerie ? */
+        const remises = remisesDe(r);
+        const etats = remises.length ? await attendreRemises(remises, 20_000) : new Map();
+        const attente = remises.filter(m => (etats.get(m.id)?.etat || 'attente') === 'attente');
+        if (attente.length) suivreRemises(attente, true);
+        for (const x of dehors) {
+          if (!partis.has(x.email)) continue;
+          const siennes = remises.filter(m => m.email === x.email);
+          const refus = siennes.find(m => etats.get(m.id)?.etat === 'refuse');
+          if (refus) maj(`@${x.email}`, 'ko', `mail non distribué, ${etats.get(refus.id)?.raison || 'refusé'}`);
+          else maj(`@${x.email}`, 'ok', undefined, siennes.some(m => attente.includes(m)));
+        }
       } catch (err) {
         for (const x of dehors) maj(`@${x.email}`, 'ko', (err as Error).message);
       }
@@ -702,7 +721,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
           ) : reussi ? <Bravo /> : <span className={l.rateRond}><Ic n="croix" t={30} e={2.6} /></span>}
         </div>
         <h3 className={l.envoiT}>{e.fini ? titreFin : titreEn}</h3>
-        {!e.fini && <p className={l.envoiSous}>{`${Math.min(faits + 1, e.gens.length)} sur ${e.gens.length}`}</p>}
+        {!e.fini && <p className={l.envoiSous}>{`${Math.min(faits + 1, e.gens.length)} sur ${e.gens.length}${e.quoi === 'mail' ? ' · chaque mail est vérifié jusqu’à sa boîte de réception' : ''}`}</p>}
         {montres.length > 0 && (
           <ul className={l.gens}>
             {montres.map((g, i) => (
@@ -716,8 +735,12 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
         {e.fini && reussi && (
           <p className={l.envoiSous}>
             {e.quoi === 'selection' ? 'Rien n’est parti : ils ne le voient pas encore.'
-              : e.quoi === 'espace' || ok.some(g => g.crm) ? 'Une relance « sans réponse » est posée pour chacun, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.'
-                : 'Noté dans l’historique du bien.'}
+              : [
+                e.quoi === 'mail' ? (ok.some(g => g.attente)
+                  ? `Parti. ${ok.filter(g => g.attente).map(g => g.nom).join(', ')} : sa messagerie n’a pas encore répondu, un refus s’afficherait en bas de l’écran.`
+                  : (ok.length > 1 ? 'Bien arrivé dans la boîte mail de chacun.' : 'Bien arrivé dans sa boîte mail.')) : '',
+                e.quoi === 'espace' || ok.some(g => g.crm) ? 'Une relance « sans réponse » est posée pour chacun, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.' : 'Noté dans l’historique du bien.',
+              ].filter(Boolean).join(' ')}
           </p>
         )}
         {e.fini && ko.length > 0 && (
