@@ -1499,6 +1499,23 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.155 — 10 octobre 2026 · L'accueil arrondi au téléphone ; la carte : les annonces type, et le prix toujours visible
+
+- **L'accueil au téléphone** (Alexandre : « la date, Bonjour, et la vue d'ensemble, un peu plus
+  en arrondi, moins carré : ça fait trop bloc ; juste sur cette page-là ») : le bandeau bleu
+  redevient une carte arrondie à 10 px des bords, et les quatre chiffres quatre tuiles arrondies
+  (Dashboard.module.css, bloc V3.152). Les cartes du dessous restent bord à bord.
+- **Carte : « Annonces type » a sa pastille** (« je ne vois pas Annonces type, ils sont dans À
+  suivre ») : l'étape `annonce_type` (V3.79) n'avait pas de catégorie dans `CATS_BIENS`, et toute
+  étape sans catégorie tombait dans « À suivre ». Nouvelle catégorie `b:annonce_type`, dans la couleur de l'étape (#c026d3),
+  icône mégaphone, allumée d'office (les filtres retenus dans le navigateur la reçoivent aussi).
+- **Carte : les fiches du bas, au téléphone** (« le prix est caché et le nom prend trop de place :
+  l'appartement, ses pièces et sa surface, l'adresse en bas, et le prix à droite, toujours ») :
+  un bien à prix a son prix dans sa propre colonne, jamais rogné ; le nom est raccourci en
+  « Appartement 2 p. · 36,8 m² » (`nomCourt`) et, s'il ne tient toujours pas, il passe sur deux
+  lignes en ne se coupant qu'entre ses morceaux ; l'adresse dessous, les boutons à droite. Toutes
+  les catégories de biens ; les contacts ne changent pas.
+
 ### V3.154 — 10 octobre 2026 · Le bon de visite : sans documents remis, plusieurs biens, depuis la visite, signé sur place sans code
 
 Alexandre : « le but, c'est juste avoir un bon de visite, sans indiquer les documents remis » ;
