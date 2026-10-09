@@ -128,3 +128,14 @@
 @media (prefers-reduced-motion: reduce) {
   .carte { animation: none; }
 }
+
+/* V3.146 : une visite hors CRM (notée sur la fiche d'un bien de l'agence) —
+   sa petite étiquette à côté du nom, et son numéro qu'on touche pour
+   l'appeler. */
+.hors {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 99px; white-space: nowrap;
+  font-size: 11px; font-weight: 800; letter-spacing: .2px; color: #6d28d9; background: #f5f3ff; border: 1px solid #ddd6fe;
+}
+.lienTel { text-decoration: none; color: #34496e; }
+.lienTel:hover { color: var(--emilio); text-decoration: underline; text-underline-offset: 3px; }
+a.btn { text-decoration: none; }
