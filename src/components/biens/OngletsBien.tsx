@@ -5,6 +5,7 @@ import { ISSUES, type Issue } from '@/lib/visites';
 import { ETATS_PIECE, LONGUEUR_ANNONCE, echangesDe, etapeDe, m2, montantActuel, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type Reponse, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import Depliant from '@/components/shared/Depliant';
+import AvatarContact, { type Personne, type Teinte } from '@/components/contacts/AvatarContact';
 import { BoutonPli, PastillePli } from '@/components/shared/Pli';
 import { paragraphes } from '@/lib/annonce-texte';
 import FenAnnonce from './FenAnnonce';
@@ -1204,8 +1205,10 @@ export type EvtBien = {
   cle: string; le: string; ic: string; ton: string; titre: string; detail?: string; genre: GenreEvt; suppr?: string;
   /* Une ligne discrète (ce que le CRM note tout seul) plutôt qu'une carte. */
   discret?: boolean; puce?: { l: string; c: string; fond: string; bord: string };
-  /* Une ligne venue du Suivi d'un contact : de qui, et un clic ouvre sa fiche. */
-  chez?: { id: string; l: string };
+  /* Une ligne venue du Suivi d'un contact : de qui, et un clic ouvre sa fiche.
+     V3.150 : avec `c` et `t`, son avatar (l'acheteur à qui le bien est
+     présenté, le visiteur, celui qui a répondu). */
+  chez?: { id: string; l: string; c?: Personne; t?: Teinte };
 };
 export type AVenirBien = { cle: string; titre: string; detail?: string; quand: string; genre: 'visites' | 'offres' };
 const GENRES: { k: GenreEvt | 'tout'; l: string; c?: string; fond?: string }[] = [
@@ -1350,13 +1353,17 @@ export function HistoriqueBien({ evts, aVenir, parcours, chiffres, erreur, onNot
                       {suppr}
                     </div>
                     {e.detail && <p className={`${f.texte} ${e.genre === 'notes' ? f.citation : ''}`}>{e.detail}</p>}
-                    {e.chez && (
-                      <div className={f.etiquettes}>
-                        {onFiche
-                          ? <button type="button" className={o.chez} onClick={() => onFiche(e.chez!.id)} title="Ouvrir sa fiche"><Ic n="personne" t={12} />{e.chez.l}</button>
-                          : <span className={f.etAutre}><Ic n="personne" t={12} />{e.chez.l}</span>}
-                      </div>
-                    )}
+                    {e.chez && (() => {
+                      const q = e.chez;
+                      const av = q.c && q.t ? <AvatarContact c={q.c} teinte={q.t} className={o.chezAv} libre /> : <Ic n="personne" t={12} />;
+                      return (
+                        <div className={f.etiquettes}>
+                          {onFiche
+                            ? <button type="button" className={o.chez} data-av={q.c ? 'oui' : undefined} onClick={() => onFiche(q.id)} title="Ouvrir sa fiche">{av}<span>{q.l}</span>{q.c && <span className={o.chezVoir}>{'Sa fiche'}<Ic n="droite" t={11} e={2.4} /></span>}</button>
+                            : <span className={f.etAutre}>{av}{q.l}</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </li>
               </Fragment>);
