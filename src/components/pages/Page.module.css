@@ -154,3 +154,23 @@
   .param2 { grid-template-columns: 1fr !important; }
   .paramGrid { grid-template-columns: 1fr; }
 }
+
+/* ═══ V3.152 — Le téléphone bord à bord ════════════════════════════════════
+   Alexandre : « sur le mobile tout est bridé, condensé ; il faut que ça soit
+   élargi sur tout le mobile ». La page n'a plus de marge sur les côtés : les
+   cartes vont d'un bord à l'autre, sans arrondi ni cadre sur les côtés (le
+   gris de la page les sépare) ; les titres et le texte posés sur le fond
+   gardent 14 px. Mon activité : les chiffres forment un seul tableau, deux
+   par ligne, séparés d'un filet. */
+@media (max-width: 760px) {
+  .page { padding: 12px 0 24px; }
+  .header, .page > p { padding-left: 14px; padding-right: 14px; }
+  .empty, .card, .paramCard, .visiteCard { border-radius: 0; border-left: none; border-right: none; }
+  .carteForm { padding: 16px 14px !important; border-radius: 0; }
+  .paramNav { margin: 0; padding: 2px 14px 4px; }
+
+  .statsGrid {
+    gap: 1px; background: #e3e8f0; border-top: 1px solid #e3e8f0; border-bottom: 1px solid #e3e8f0;
+  }
+  .statCard { border: none; border-radius: 0; padding: 16px 14px; }
+}

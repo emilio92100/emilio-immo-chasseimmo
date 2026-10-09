@@ -238,3 +238,11 @@
 @media (max-width: 760px) {
   .carteFen { padding: 2px 0 0; }
 }
+
+/* V3.152 — Le téléphone bord à bord : la page n'a plus de marge sur les côtés ;
+   la carte du mail va d'un bord à l'autre, sans arrondi ni cadre sur les
+   côtés. La fenêtre « Écrire » d'une fiche (`.carteFen`) n'a pas de cadre. */
+@media (max-width: 760px) {
+  .page { padding: 14px 0 28px; }
+  .carte { border-radius: 0; border-left: none; border-right: none; }
+}

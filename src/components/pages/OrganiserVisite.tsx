@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { mouvementActif } from '@/lib/mouvement';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { avantMandat, etapeDe, type BienVente } from '@/lib/biens-vente';
@@ -164,9 +165,13 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
   const [sortie, setSortie] = useState(false);
   const corps = useRef<HTMLDivElement | null>(null);
 
-  /* Fermer en douceur : la fenêtre redescend, puis disparaît. */
+  /* Fermer en douceur : la fenêtre redescend, puis disparaît.
+     V3.152 : quand le mouvement global tourne, elle se ferme tout de suite
+     et c'est lui qui la fait rentrer dans le bouton « Organiser une visite »
+     (src/lib/mouvement.ts) ; la descente d'ici ne reste que de secours. */
   const fermer = () => {
     if (envoi || sortie) return;
+    if (mouvementActif()) { onFermer(); return; }
     setSortie(true);
     window.setTimeout(onFermer, 190);
   };

@@ -88,3 +88,9 @@
 @media (prefers-reduced-motion: reduce) {
   .carte, .fenetre, .voile, .bravo, .attenteVieille i { animation: none; }
 }
+
+/* V3.152 — Le téléphone bord à bord (voir CartesVisites.module.css). */
+@media (max-width: 760px) {
+  .carte, .bravo { border-radius: 0; border-left: none; border-right: none; }
+  .carte { padding: 12px 14px; }
+}

@@ -9,6 +9,7 @@ import { chargerAlertesRappro, mandatVu, plusTardAcheteur, type AlerteRappro } f
 import ChoixDate from '@/components/shared/ChoixDate';
 import FenetreAction from '@/components/contacts/FenetreAction';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
+import Cascade from '@/components/shared/Cascade';
 import { signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
 
 /*
@@ -764,6 +765,20 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
           .rl-note > .rl-txt{white-space:normal !important;display:-webkit-box !important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
           .rl-ligne{align-items:flex-start !important}
           .rl-actions > button{height:34px !important;font-size:12.5px !important;border-radius:11px !important}
+          /* V3.152 — bord à bord (Alexandre : « sur le mobile tout est bridé ») :
+             plus de marge sur les côtés, chaque carte va d'un bord à l'autre,
+             sans arrondi ni cadre sur les côtés ; les titres gardent 14 px. */
+          .rl-page{padding:12px 0 96px !important}
+          .rl-ligne, .rl-al, .rl-periode, .rl-vide, .rl-tri{border-radius:0 !important;border-left:none !important;border-right:none !important}
+          .rl-ligne{padding:11px 14px !important}
+          .rl-al{padding:14px}
+          .rl-periode{padding:10px 14px}
+          .rl-tri{padding:12px 14px 14px !important}
+          .rl-vide{padding-left:14px !important;padding-right:14px !important}
+          .rl-gt, .rl-al-t{padding:0 14px}
+          .rl-al-plus{margin-left:14px}
+          /* Dans le bloc du tri, les cartes restent des cartes. */
+          .rl-tri .rl-ligne{border-radius:16px !important;border:1px solid #e6ebf2 !important;padding:11px 12px !important}
         }
       `}</style>
 
@@ -789,7 +804,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
 
       {!seulTri && alertes.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }} aria-label="Rapprochements">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="rl-al-t" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase', color: '#a07c28' }}>Rapprochements</span>
             <span style={{ padding: '2px 9px', borderRadius: 99, background: OR, color: '#1a2332', fontFamily: JAK, fontSize: 12, fontWeight: 800 }}>{alertes.length > 1 ? `${alertes.length} nouveaux` : '1 nouveau'}</span>
           </div>
@@ -827,7 +842,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
             );
           })}
           {alertes.length > 3 && (
-            <button type="button" className="rl-appui" onClick={() => setToutesAlertes(x => !x)}
+            <button type="button" className="rl-appui rl-al-plus" onClick={() => setToutesAlertes(x => !x)}
               style={{ alignSelf: 'flex-start', height: 34, padding: '0 14px', borderRadius: 11, border: '1px solid #ecdcb0', background: '#fffcf4', color: OR_FONCE, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               {toutesAlertes ? 'N’en montrer que trois' : `Voir les ${alertes.length - 3} autres`}
             </button>
@@ -871,20 +886,21 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       {seulTri ? null : loading ? (
         <div style={{ padding: '40px 0', textAlign: 'center', color: PALE, fontSize: 13.5 }}>Chargement…</div>
       ) : courantes.length === 0 ? (
-        <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
+        <div className="rl-entre rl-vide" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
           <span style={{ width: 62, height: 62, borderRadius: 20, background: '#dcfce8', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="coche" t={30} ep={2.4} /></span>
           <b style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800 }}>Tout est à jour</b>
           <span style={{ fontSize: 13.5, color: DOUX, lineHeight: 1.55, maxWidth: 440 }}>{tri.length ? 'Aucune relance en attente, en dehors du tri juste en dessous.' : 'Aucune relance en attente. Une relance se programme toute seule quand un bien part chez un client, et se clôture dès qu’il répond.'}</span>
         </div>
       ) : visibles.length === 0 ? (
-        <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 24px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, textAlign: 'center' }}>
+        <div className="rl-entre rl-vide" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 24px', borderRadius: 20, background: 'white', border: `1px solid ${BORD}`, textAlign: 'center' }}>
           <span style={{ width: 50, height: 50, borderRadius: 16, background: '#fbf4e1', color: OR_FONCE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="soleil" t={24} ep={1.9} /></span>
           <b style={{ fontFamily: JAK, fontSize: 16, fontWeight: 800 }}>{qR ? `Aucune relance ne correspond à « ${q.trim()} »` : periode ? 'Aucune relance sur cette période' : filtre === 'retard' ? 'Rien en retard' : filtre === 'aujourdhui' ? 'Rien pour aujourd’hui' : filtre === 'afaire' ? 'Rien en retard, rien pour aujourd’hui' : filtre === 'semaine' ? 'Rien cette semaine' : 'Rien ici'}</b>
           {!qR && !periode && filtre === 'afaire' && (semaine.length > 0 || plusLoin > 0) && <span style={{ fontSize: 13.5, color: DOUX }}>{semaine.length ? `${semaine.length > 1 ? `${semaine.length} relances sont prévues` : '1 relance est prévue'} d’ici le ${dateCourte(dansSept)} : la tuile « Cette semaine » les montre.` : `${plusLoin > 1 ? `${plusLoin} relances sont prévues plus loin` : '1 relance est prévue plus loin'} : la tuile « Plus loin » les montre.`}</span>}
           {(periode || filtre !== 'afaire') && <button type="button" className="rl-appui" onClick={() => { setFiltre('afaire'); setPeriode(null); }} style={{ marginTop: 4, height: 36, padding: '0 14px', borderRadius: 11, border: `1px solid ${BORD}`, background: 'white', color: NAVY, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Revenir aux relances à faire</button>}
         </div>
       ) : (
-        <div className="rl-groupes" key={`${filtre}:${periode?.k || ''}`}>
+        /* V3.152 : une autre tuile, et les relances changent en cascade. */
+        <Cascade cle={`${filtre}:${periode?.k || ''}`} arrivee className="rl-groupes">
           {visibles.map(g => (
             /* Le dernier qui part emmène son groupe (« En retard »…), en douceur. */
             <div key={g.id} className="rl-pli rl-pli-g" data-partante={g.liste.every(r => partantes[r.id]) ? '' : undefined}><div className="rl-pli-in">
@@ -899,7 +915,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
             </section>
             </div></div>
           ))}
-        </div>
+        </Cascade>
       )}
 
       {/* V3.73 — Le tri d'après l'import : à part, sous les relances. */}
@@ -933,7 +949,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       {seulTri && (loading ? (
         <div style={{ padding: '40px 0', textAlign: 'center', color: PALE, fontSize: 13.5 }}>Chargement…</div>
       ) : tri.length === 0 ? (
-        <div className="rl-entre" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
+        <div className="rl-entre rl-vide" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '44px 24px', borderRadius: 22, background: 'linear-gradient(180deg, #f0fdf6 0%, #ffffff 100%)', border: '1px solid #cdeedd', textAlign: 'center' }}>
           <span style={{ width: 62, height: 62, borderRadius: 20, background: '#dcfce8', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ic n="coche" t={30} ep={2.4} /></span>
           <b style={{ fontFamily: JAK, fontSize: 19, fontWeight: 800 }}>Tri terminé</b>
           <span style={{ fontSize: 13.5, color: DOUX, lineHeight: 1.55, maxWidth: 460 }}>Tout le monde a eu son dernier appel : ceux qui restent sont dans tes contacts, les autres dans « Archivés ». Cet onglet disparaît dès que tu en choisis un autre.</span>

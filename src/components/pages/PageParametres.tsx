@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import styles from './Page.module.css';
+import Cascade from '@/components/shared/Cascade';
 import ParamPointAuto from './ParamPointAuto';
 import ParamAlertes from './ParamAlertes';
 import ParamAgence from './ParamAgence';
@@ -81,17 +82,17 @@ export default function PageParametres() {
 
       <div className={styles.paramGrille} style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 20 }}>
         {/* NAV SECTIONS */}
-        <div className={styles.paramNav} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className={styles.paramNav} style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-defile="">
           {sections.map(s => (
-            <button key={s.id} onClick={() => setActiveSection(s.id)}
+            <button key={s.id} onClick={() => setActiveSection(s.id)} aria-pressed={activeSection === s.id}
               style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 10, border: 'none', background: activeSection === s.id ? 'var(--emilio)' : 'white', color: activeSection === s.id ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 2 }}>
               {s.icon} {s.label.split(' ').slice(1).join(' ')}
             </button>
           ))}
         </div>
 
-        {/* CONTENT */}
-        <div>
+        {/* CONTENT — V3.152 : une autre rubrique arrive en cascade. */}
+        <Cascade cle={activeSection}>
           {/* AGENCE — l'identité que les documents impriment */}
           {activeSection === 'agence' && <ParamAgence />}
 
@@ -186,7 +187,7 @@ export default function PageParametres() {
               </div>
             </div>
           )}
-        </div>
+        </Cascade>
       </div>
     </div>
   );

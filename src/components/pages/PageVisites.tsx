@@ -13,6 +13,7 @@ import { chargerDemandesVisite, type DemandeVisite } from '@/lib/demandes-visite
 import { demanderOuvertureFiche, signalerMaj } from '@/lib/intentions';
 import styles from './Page.module.css';
 import EnteteRubrique, { PictoVisites } from '@/components/shared/EnteteRubrique';
+import Cascade from '@/components/shared/Cascade';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { ISSUES, issueDe, maintenantParis, visitePasseeParis, type Issue } from '@/lib/visites';
 import { annulerVisites } from '@/lib/annuler-visites';
@@ -699,7 +700,9 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
           <div className={styles.emptySub}>{'« Organiser une visite », en haut, ou depuis l’agenda, la fiche d’un client ou d’un bien.'}</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        /* V3.152 (Alexandre : « quand j'appuie sur Effectuées, ça arrive
+           brutalement ») : une autre tuile, et la liste change en cascade. */
+        <Cascade cle={filtre} arrivee style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
           {bravo && <div className={dv.bravo} role="status"><Picto n="cal" t={16} /><span>{bravo}</span></div>}
 
@@ -720,11 +723,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
               en tête : c'est ce qui attend une action. */}
           {demandesTrouvees.length > 0 && montrer('demandes') && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className={cv.titreGroupe} style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
                 {`Demandes de visite — ${demandesTrouvees.length}`}
               </div>
-              <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.45 }}>
+              <div className={cv.titreGroupe} style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.45 }}>
                 {'Demandées par le client depuis son espace. Dès qu’une visite est calée sur le bien, la demande passe dans « À venir ».'}
               </div>
               {/* V3.129 (Alexandre, maquette 1) : le client, puis le bien en petite
@@ -767,7 +770,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
             { id: 'effectuees' as const, groupe: 'effectuee' as Groupe, liste: effectuees, titre: 'Effectuées', c: '#0f9f6e', point: '#10b981' },
           ]).filter(g => g.liste.length > 0 && montrer(g.id)).map(g => (
             <div key={g.id}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: g.c, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className={cv.titreGroupe} style={{ fontSize: 11, fontWeight: 800, color: g.c, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.point, display: 'inline-block' }}></span>
                 {`${g.titre} — ${g.liste.length}`}
               </div>
@@ -788,7 +791,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
           {/* ANNULÉES — gardées pour mémoire, sans action */}
           {annulees.length > 0 && montrer('annulees') && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className={cv.titreGroupe} style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#cbd5e1', display: 'inline-block' }}></span>
                 {`Annulées — ${annulees.length}`}
               </div>
@@ -796,7 +799,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                 {annulees.map(v => {
                   const date = v.date_visite ? formatDate(v.date_visite) : null;
                   return (
-                    <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fafbfd', borderRadius: 14, border: '1px solid #e3e8f0', padding: '10px 14px', opacity: .8 }}>
+                    <div key={v.id} className={cv.annulee} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fafbfd', borderRadius: 14, border: '1px solid #e3e8f0', padding: '10px 14px', opacity: .8 }}>
                       {date && <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', minWidth: 70 }}>{`${date.day} ${date.mon} ${date.year}`}</span>}
                       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                         <b style={{ fontSize: 13.5, color: '#64748b', textDecoration: 'line-through' }}>{`${v.clients?.prenom || ''} ${v.clients?.nom || ''}`.trim() || '—'}</b>
@@ -808,7 +811,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
               </div>
             </div>
           )}
-        </div>
+        </Cascade>
       )}
 
       {rappelDe && (

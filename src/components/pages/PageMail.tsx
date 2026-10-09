@@ -232,7 +232,7 @@ function Editeur({ refEd, onChange, messages, onMessage, onFocus }: {
 
   return (
     <div className={s.editeur}>
-      <div className={s.outils} role="toolbar" aria-label="Mise en forme">
+      <div className={s.outils} role="toolbar" aria-label="Mise en forme" data-defile="fondu">
         <Outil lib="Gras (Ctrl + B)" on={etats.b} onClick={() => faire('bold')}><b>B</b></Outil>
         <Outil lib="Italique (Ctrl + I)" on={etats.i} onClick={() => faire('italic')}><i className={s.lettreI}>I</i></Outil>
         <Outil lib="Souligné (Ctrl + U)" on={etats.u} onClick={() => faire('underline')}><u>U</u></Outil>

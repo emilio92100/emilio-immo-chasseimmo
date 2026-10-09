@@ -139,3 +139,13 @@
 .lienTel { text-decoration: none; color: #34496e; }
 .lienTel:hover { color: var(--emilio); text-decoration: underline; text-underline-offset: 3px; }
 a.btn { text-decoration: none; }
+
+/* V3.152 — Le téléphone bord à bord : la page n'a plus de marge sur les
+   côtés (Page.module.css). Chaque carte va d'un bord à l'autre, sans arrondi
+   ni cadre sur les côtés ; les titres des groupes gardent 14 px. */
+@media (max-width: 760px) {
+  .titreGroupe { padding: 0 14px; }
+  .carte { border-radius: 0; border-left: none; border-right: none; padding: 12px 14px; }
+  /* Une visite annulée : posée en ligne (PageVisites.tsx), d'où `!important`. */
+  .annulee { border-radius: 0 !important; border-left: none !important; border-right: none !important; }
+}

@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import AvatarContact, { type Personne } from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
+import { mouvementActif } from '@/lib/mouvement';
 import { ModaleRappelVisite, libelleRappel, envoyerMailVisites } from '@/components/shared/RappelVisite';
 import { toutLire } from '@/lib/registre';
 import { libelleVisites } from '@/lib/visites';
@@ -2578,9 +2579,12 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
      fenêtre bouge un peu et le pied de page le rappelle. */
   const [retenue, setRetenue] = useState(0);
   const feuille = useRef<HTMLElement>(null);
-  /* ✕ et Annuler : la fenêtre s'efface en douceur avant de disparaître. */
+  /* ✕ et Annuler : la fenêtre s'efface en douceur avant de disparaître.
+     V3.152 : quand le mouvement global tourne, elle se ferme tout de suite
+     et rentre dans le bouton qui l'a ouverte (src/lib/mouvement.ts) ;
+     l'effacement d'ici ne reste que de secours. */
   const [sortie, setSortie] = useState(false);
-  const fermer = () => { if (sortie) return; setSortie(true); setTimeout(onFerme, 230); };
+  const fermer = () => { if (sortie) return; if (mouvementActif()) { onFerme(); return; } setSortie(true); setTimeout(onFerme, 230); };
   useEffect(() => {
     if (!retenue) return;
     /* Relancer la secousse à chaque clic, sans redessiner le formulaire. */
