@@ -169,8 +169,12 @@
   .carteForm { padding: 16px 14px !important; border-radius: 0; }
   .paramNav { margin: 0; padding: 2px 14px 4px; }
 
-  .statsGrid {
-    gap: 1px; background: #e3e8f0; border-top: 1px solid #e3e8f0; border-bottom: 1px solid #e3e8f0;
+  /* V3.160 — Alexandre : « dans Mon activité, remets un peu en arrondi,
+     comme le dashboard : ça fait trop carré ». Six tuiles arrondies, deux
+     par ligne, à 10 px des bords (Dashboard.module.css, V3.155). */
+  .statsGrid { gap: 10px; padding: 0 10px; background: none; border: none; }
+  .statCard {
+    border: 1px solid #e6ebf2; border-radius: 18px; padding: 14px;
+    box-shadow: 0 8px 20px -16px rgba(15, 23, 42, .45);
   }
-  .statCard { border: none; border-radius: 0; padding: 16px 14px; }
 }
