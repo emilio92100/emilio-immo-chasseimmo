@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import PhotoCarousel from './PhotoCarousel';
 import AboutPliable from './AboutPliable';
+import VueSuivie from './VueSuivie';
 import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
 import { prixDuBien } from '@/lib/honoraires-bien';
 
@@ -319,6 +320,8 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
 
   return (
     <div style={{ minHeight: '100vh', background: FOND, color: ENCRE, fontFamily: "system-ui, sans-serif" }}>
+      {/* V3.152 : un bien de l'agence ouvert depuis un simple mail (?d=<code>) le dit à Alexandre. */}
+      {venteDirecte && <VueSuivie id={id} />}
       <style>{`
         html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important}
         .fb-grille{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:9px}
