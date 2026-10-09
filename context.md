@@ -1499,6 +1499,35 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.162 — 10 octobre 2026 · Au téléphone : le menu en couleurs, Demandes Internet arrondi
+
+- **Le menu de gauche** (Alexandre : « Dashboard, Contacts, Biens, Demandes Internet, Agenda… tout
+  est gris : un peu plus de couleurs ») : chaque rubrique a sa couleur (`COULEUR_RUBRIQUE`,
+  Sidebar.tsx) — son pictogramme sur une pastille de cette teinte, comme les sous-menus — et son
+  nom en bleu nuit. Téléphone seulement (Sidebar.module.css, bloc ≤ 900 px) ; la rubrique ouverte
+  garde sa pastille bleu Emilio.
+- **Demandes Internet** : l'en-tête et le panneau des demandes arrondis, à 10 px des bords
+  (`arrondi`, DemandesSite.module.css).
+
+### V3.161 — 10 octobre 2026 · Au téléphone : Biens, Visites, Relances et le bas de l'accueil arrondis ; le bilan de Biens en clair
+
+Alexandre : « refais pareil pour Biens, Visites et Relances : les coins arrondis, mais toujours au
+maximum en largeur » ; « dans l'accueil, Relances, Visites à venir et Activité récente sont en
+carré : un peu en arrondi aussi » ; et « 10 exclusivités · 80 000 € d'honoraires TTC sous
+compromis : ça veut dire quoi ? ».
+
+- **À 10 px des bords, arrondis (téléphone)** : l'en-tête de Biens, Visites et Relances
+  (`arrondi`, EnteteRubrique) ; les cartes des biens (`.selBien`) et les bandeaux de Biens
+  (Biens.module.css) ; les cartes des visites et des demandes (CartesVisites, DemandesVisite) ; les
+  relances, les alertes, les périodes et le bloc du tri (PageRelances.tsx, styles en ligne) ; les
+  cartes du bas de l'accueil (Dashboard.module.css). La fiche d'un bien et celle d'un contact
+  restent bord à bord.
+- **Le bilan de Biens** (sous le titre) : « 10 mandats exclusifs en cours · 80 000 € TTC
+  d'honoraires à toucher à l'acte (biens sous compromis) ». Le premier chiffre compte les mandats
+  exclusifs des biens en vente, sous offre ou sous compromis ; le second additionne les honoraires
+  TTC des biens sous compromis (ceux notés au compromis, sinon ceux du mandat) — il n'apparaît que
+  s'il y a des biens sous compromis. Ce n'est pas un prix de vente.
+
 ### V3.160 — 10 octobre 2026 · Au téléphone : Mon activité et Contacts, de nouveau arrondis
 
 Alexandre : « sur téléphone, Mon activité fait trop carré : remets un peu en arrondi, comme le
@@ -1585,7 +1614,7 @@ contact ; à suivre, estimation, mandat en cours, annonce type pour un bien ».
 - **L'accueil au téléphone** (Alexandre : « la date, Bonjour, et la vue d'ensemble, un peu plus
   en arrondi, moins carré : ça fait trop bloc ; juste sur cette page-là ») : le bandeau bleu
   redevient une carte arrondie à 10 px des bords, et les quatre chiffres quatre tuiles arrondies
-  (Dashboard.module.css, bloc V3.152). Les cartes du dessous restent bord à bord.
+  (Dashboard.module.css, bloc V3.152). Les cartes du dessous restent bord à bord (arrondies à leur tour en V3.161).
 - **Carte : « Annonces type » a sa pastille** (« je ne vois pas Annonces type, ils sont dans À
   suivre ») : l'étape `annonce_type` (V3.79) n'avait pas de catégorie dans `CATS_BIENS`, et toute
   étape sans catégorie tombait dans « À suivre ». Nouvelle catégorie `b:annonce_type`, dans la couleur de l'étape (#c026d3),
