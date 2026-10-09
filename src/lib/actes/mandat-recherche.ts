@@ -368,7 +368,7 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     'Dans tous les autres cas (bien vendu par son propriétaire, agence qui ne partage pas ses honoraires, bien trouvé hors des annonces…) : les honoraires ci-dessus sont à la charge du MANDANT, en plus du prix.',
   ] });
   hono.push(P('L’Agence indique au MANDANT par écrit, avant toute offre d’achat, dans lequel de ces deux cas se trouve le bien, notamment dans son espace personnel.', true));
-  hono.push(P('Les prix des biens présentés dans l’espace personnel du MANDANT sont ceux de leurs annonces. Lorsque des honoraires sont dus au titre du présent mandat, l’espace l’indique sur le bien concerné, avec leur montant.'));
+  hono.push(P('Dans l’espace personnel du MANDANT, le prix affiché pour chaque bien est celui de son annonce. Si des honoraires de l’Agence s’y ajoutent (second cas ci-dessus), l’espace le précise sur le bien concerné, avec leur montant.'));
   hono.push(P('L’acquisition s’entend aussi de celle réalisée par le MANDANT avec d’autres personnes, ou par une société qu’il constitue ou contrôle pour cet achat.'));
   hono.push(P('Aucune somme n’est due, ni ne peut être versée à l’Agence, avant la signature de l’acte authentique (l’article 6 de la loi du 2 janvier 1970 interdit tout versement avant que l’opération soit effectivement conclue) ; les honoraires sont alors réglés par l’intermédiaire du notaire.'));
   hono.push(P('En cas d’exercice d’un droit de préemption, le MANDANT, qui n’acquiert pas, ne doit aucun honoraire ; lorsque leur montant et leur charge figurent dans l’avant-contrat et la déclaration d’intention d’aliéner, ils sont dus par le titulaire du droit de préemption, substitué à l’acquéreur.'));
