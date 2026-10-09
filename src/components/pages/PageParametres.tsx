@@ -5,7 +5,7 @@ import styles from './Page.module.css';
 import ParamPointAuto from './ParamPointAuto';
 import ParamAlertes from './ParamAlertes';
 import ParamAgence from './ParamAgence';
-import { signatureDe, VARIABLES_MAIL } from '@/lib/mail-variables';
+import { signatureDe, texteModele, VARIABLES_MAIL } from '@/lib/mail-variables';
 
 const CODE: React.CSSProperties = { background: '#f8fafc', padding: '1px 6px', borderRadius: 4 };
 
@@ -28,6 +28,9 @@ export default function PageParametres() {
     supabase.from('parametres').select('cle, valeur').then(({ data }) => {
       const p: Record<string, string> = {};
       (data || []).forEach((r: any) => { p[r.cle] = r.valeur || ''; });
+      /* V3.151 : un modèle aux « \n » écrits en toutes lettres s'affiche avec
+         ses vrais retours à la ligne ; l'enregistrer le corrige en base. */
+      for (const k of ['template_email_corps', 'template_email_objet', 'signature_email']) if (p[k]) p[k] = texteModele(p[k]);
       setParams(p);
     });
   }, []);
