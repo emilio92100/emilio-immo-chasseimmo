@@ -12,6 +12,8 @@ import NouveauDocument from './NouveauDocument';
 import { BlocSignature } from './SignatureEnLigne';
 import SignatureSurPlace from './SignatureSurPlace';
 import { CarteHistorique, FenetreProjet, evenementsDocument } from './EnvoiProjet';
+import { FenetreOffre } from './EnvoiOffre';
+import { noteOffre } from '@/lib/actes/offre-achat';
 import { Pastille } from './DocumentsDuClient';
 import { RAISONS_FIN, noterAnnulation, quandRegistre, registreAbsent, type RaisonFin } from '@/lib/registre';
 import { retracteEnLigne } from '@/lib/documents-espace';
@@ -238,6 +240,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
   const [surPlace, setSurPlace] = useState<{ finaliser?: boolean } | null>(null);
   /* « Envoyer le projet » (V3.40) : la fenêtre, puis ce qu'elle a fait. */
   const [projet, setProjet] = useState(false);
+  /* V3.145 : l'offre d'achat signée, à l'agence du vendeur. */
+  const [offre, setOffre] = useState(false);
   const [fait, setFait] = useState<{ t: string; ok: boolean } | null>(null);
   /* « Marquer annulé » un mandat signé : la raison d'abord (V3.50). */
   const [finMandat, setFinMandat] = useState(false);
@@ -260,7 +264,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     && (c.donnees as Record<string, unknown>).sourceId === d.id && (c.donnees as Record<string, unknown>).echeance === le) : undefined);
 
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace && !projet && !finMandat) onFermer(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !signe && !surPlace && !projet && !offre && !finMandat) onFermer(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
   }, [onFermer, signe, surPlace, projet, finMandat]);
@@ -417,6 +421,8 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
           {fait && <div className={fait.ok ? s.note : s.erreur}>{fait.t}</div>}
           {/* V3.56 : le client y a renoncé lui-même, en ligne. */}
           {retracteLe && <div className={s.note}>{`↩️ Rétracté : le client a renoncé à ce mandat en ligne, depuis son espace, le ${quandRegistre(retracteLe)} (délai de rétractation).`}</div>}
+          {/* V3.145 : une offre d'achat — son total et tes honoraires, pour toi seul. */}
+          {d?.modele === 'offre_achat' && noteOffre(d.donnees || {}) && <div className={s.note}>{`💶 ${noteOffre(d.donnees || {})}`}</div>}
 
           {/* ── Ce qu'on peut en faire ── */}
           {d && (
@@ -449,6 +455,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
               {d.statut === 'signe' && (d.signe_chemin
                 ? <button type="button" className={`${s.btn} ${s.btnOr}`} disabled={!!travail} onClick={() => ouvrirFichier(d.signe_chemin, d.signature ? nomFichier(d, '-signe') : undefined)}><Ic n="doc" t={16} /><span>{courrier ? 'La preuve d’envoi' : d.signature ? 'L’exemplaire signé et scellé' : 'L’exemplaire signé'}</span>{d.signature && <small>avec son certificat</small>}</button>
                 : <button type="button" className={`${s.btn} ${courrier ? '' : s.btnOr}`} onClick={() => setSigne(true)}><Ic n="doc" t={16} /><span>{courrier ? 'Déposer la preuve d’envoi' : 'Déposer l’exemplaire signé'}</span><small>pas encore déposé{courrier ? 'e' : ''}</small></button>)}
+              {d.statut === 'signe' && d.modele === 'offre_achat' && d.signe_chemin && (
+                <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => { setFait(null); setOffre(true); }}>
+                  <Ic n="envoyer" t={16} /><span>{'Envoyer l’offre à l’agence'}</span><small>la seule offre signée, sans tes honoraires</small>
+                </button>
+              )}
               {d.statut === 'signe' && d.modele === 'mandat_vente' && (
                 <button type="button" className={s.btn} onClick={() => onDeriver('d-' + d.id, 'avenant_vente')}>
                   <Ic n="plume" t={16} /><span>Préparer un avenant</span><small>prix, honoraires, durée</small>
@@ -632,6 +643,7 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
       {finMandat && d && <FenetreFinMandat vide={!!(m?.surRecherche && m.numero && d.recherche_id)} onFermer={() => setFinMandat(false)}
         onChoix={r => { setFinMandat(false); void changer({ statut: 'annule', annule_le: new Date().toISOString() }, null, { raison: r }); }} />}
       {projet && d && <FenetreProjet doc={d} onFermer={() => setProjet(false)} onEnvoye={r => { setProjet(false); setFait({ t: r.message, ok: r.ok }); if (r.row) onMaj(r.row); }} />}
+      {offre && d && <FenetreOffre doc={d} onFermer={() => setOffre(false)} onEnvoye={r => { setOffre(false); setFait({ t: r.message, ok: r.ok }); if (r.row) onMaj(r.row); }} />}
       {surPlace && d && <SignatureSurPlace doc={d} finaliser={!!surPlace.finaliser} onFermer={() => { setSurPlace(null); void recharger(); }} />}
     </>
   );
