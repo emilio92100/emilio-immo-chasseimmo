@@ -425,8 +425,22 @@
   color: color-mix(in srgb, var(--c) 82%, black); background: color-mix(in srgb, var(--c) 11%, white);
   padding: 3px 8px; border-radius: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* V3.155 — Un bien à prix : le prix a sa colonne à droite, jamais rogné ;
+   le nom (type, pièces, surface) passe sur deux lignes plutôt que d'être
+   coupé ; l'adresse dessous. */
+.carteTelPrix .telL1 { grid-column: 2; display: block; padding-right: 0; }
+.carteTelPrix .telL1 b {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  white-space: normal; overflow: hidden; line-height: 1.25; font-size: 13.5px;
+}
+.telPrix {
+  grid-column: 3; grid-row: 1; justify-self: end; align-self: center; white-space: nowrap;
+  font: 800 13px 'Plus Jakarta Sans', sans-serif; letter-spacing: -.1px;
+  color: color-mix(in srgb, var(--c) 78%, black); background: color-mix(in srgb, var(--c) 11%, white);
+  padding: 4px 8px; border-radius: 8px;
+}
 .telAdr { grid-column: 2; grid-row: 2; min-width: 0; font-size: 12.5px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.telAct { grid-column: 3; grid-row: 2; flex: 0 0 auto; display: flex; gap: 6px; }
+.telAct { grid-column: 3; grid-row: 2; flex: 0 0 auto; display: flex; gap: 6px; justify-self: end; }
 .telAct a, .telAct button {
   width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
   border: 1.5px solid #e3e8f0; background: white; color: var(--emilio); text-decoration: none; cursor: pointer; padding: 0;

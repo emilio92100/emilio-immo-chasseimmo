@@ -84,6 +84,10 @@ const CATS_BIENS: Cat[] = [
   { k: 'b:mandat', lib: 'Mandats en cours', c: etapeDe('mandat').c, ic: 'panneau', etapes: ['mandat'] },
   { k: 'b:offre', lib: 'Sous offre ou compromis', c: etapeDe('offre').c, ic: 'accord', etapes: ['offre', 'compromis'] },
   { k: 'b:suspendu', lib: 'En pause', c: etapeDe('suspendu').c, ic: 'pause', etapes: ['suspendu'] },
+  /* V3.155 — Alexandre : « je ne vois pas Annonces type, ils sont dans À
+     suivre ». L'étape existait depuis la V3.79, pas sa pastille : toute
+     étape sans pastille tombait dans « À suivre ». */
+  { k: 'b:annonce_type', lib: 'Annonces type', c: etapeDe('annonce_type').c, ic: 'megaphone', etapes: ['annonce_type'] },
   { k: 'b:vendu', lib: 'Vendus', c: etapeDe('vendu').c, ic: 'cle', etapes: ['vendu'], eteint: true },
   { k: 'b:retire', lib: 'Retirés', c: etapeDe('retire').c, ic: 'croix', etapes: ['retire'], eteint: true },
 ];
@@ -102,6 +106,11 @@ const EUR = (n?: number | null) => (n ? `${Math.round(n).toLocaleString('fr-FR')
 const normer = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const CLE_RETOUR = 'carte.retour';
 const rue = (a: string) => a.replace(/,?\s*\d{5}\b.*$/, '').trim() || a;
+/* V3.155 — Le nom d'un bien dans les fiches du bas, au téléphone :
+   « Appartement 2 p. · 36,8 m² » tient sur une ligne à côté du prix. Si
+   un nom ne tient toujours pas, il ne se coupe qu'entre ses morceaux
+   (jamais « 36,8 » d'un côté et « m² » de l'autre). */
+const nomCourt = (t: string) => t.replace(/\b(\d+) pièces?\b/, '$1 p.').split(' · ').map(x => x.replace(/ /g, '\u00a0')).join(' · ');
 /* Où tombe le repère choisi : un peu plus bas que le milieu sur ordinateur
    (sa carte de visite s'ouvre au-dessus), un peu plus haut sur téléphone
    (les fiches du bas le cacheraient). */
@@ -1029,8 +1038,15 @@ export default function PageCarte({ onNavigate, onMenu }: {
                     la fiche au-delà de l'écran, la photo et le bouton coupés.
                     Le nom et son étiquette en haut, la rue et les boutons en
                     dessous ; la fiche ne dépasse plus jamais l'écran. */}
-                {liste.slice(0, 60).map(p => (
-                  <div key={p.id} data-id={p.id} className={`${s.carteTel} ${sel === p.id ? s.carteTelSel : ''}`}
+                {liste.slice(0, 60).map(p => {
+                  /* V3.155 — Alexandre : « le prix est caché et le nom prend
+                     trop de place : l'appartement, ses pièces et sa surface,
+                     l'adresse en bas, et le prix à droite, toujours ». Un bien
+                     à prix : le prix a sa colonne, jamais rogné ; le nom passe
+                     sur deux lignes plutôt que d'être coupé. */
+                  const prix = p.genre === 'bien' && p.prix ? EUR(p.prix) : '';
+                  return (
+                  <div key={p.id} data-id={p.id} className={`${s.carteTel} ${prix ? s.carteTelPrix : ''} ${sel === p.id ? s.carteTelSel : ''}`}
                     style={{ '--c': p.couleur } as React.CSSProperties}
                     onClick={() => { if (sel !== p.id) choisir(p.id, { voler: true }); }}>
                     {p.genre === 'bien'
@@ -1038,10 +1054,17 @@ export default function PageCarte({ onNavigate, onMenu }: {
                       : p.perso
                         ? <span className={`${s.telVign} ${s.telVignCle}`}><Ic n="cle" t={16} e={2.1} /></span>
                         : <AvatarContact c={(p.client || {}) as never} teinte={p.teinte || { bg: p.fond, fg: p.couleur }} taille={40} />}
-                    <span className={s.telL1}>
-                      <b>{p.titre}</b>
-                      {(p.genre === 'bien' && p.prix ? EUR(p.prix) : p.etiquette) && <i>{p.genre === 'bien' && p.prix ? EUR(p.prix) : p.etiquette}</i>}
-                    </span>
+                    {prix ? (
+                      <>
+                        <span className={s.telL1}><b>{nomCourt(p.titre)}</b></span>
+                        <span className={s.telPrix}>{prix}</span>
+                      </>
+                    ) : (
+                      <span className={s.telL1}>
+                        <b>{p.genre === 'bien' ? nomCourt(p.titre) : p.titre}</b>
+                        {p.etiquette && <i>{p.etiquette}</i>}
+                      </span>
+                    )}
                     <span className={s.telAdr}>{rue(p.adresse)}</span>
                     <span className={s.telAct}>
                       {p.tel
@@ -1051,7 +1074,8 @@ export default function PageCarte({ onNavigate, onMenu }: {
                         onClick={e => { e.stopPropagation(); ouvrirFiche(p); }}><Ic n="droite" t={17} e={2.3} /></button>
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className={s.videTel}>{charge ? 'Chargement…' : q
