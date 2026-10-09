@@ -569,7 +569,9 @@
 @media (max-width: 760px) {
   .page { padding: 12px 0 24px; }
   .entete { padding: 0 14px; }
-  .ligne { border-radius: 0; border-left: none; border-right: none; padding: 12px 14px 11px; }
+  /* V3.160 : légèrement arrondies, à 10 px des bords (« que ça prenne quand
+     même toute la place de l'écran »). */
+  .ligne { border-radius: 16px; margin: 0 10px; padding: 12px 12px 11px; }
   .empty { padding: 44px 14px; }
   .page > .errorBox { border-radius: 0; border-left: none; border-right: none; padding: 10px 14px; }
 }

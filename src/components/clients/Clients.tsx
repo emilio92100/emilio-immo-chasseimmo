@@ -1788,7 +1788,7 @@ export default function Clients({ onNavigate, fenetre }: {
       {/* L'EN-TÊTE — le titre et les statuts dans un seul bloc. La ligne grise
           « 8 clients · 5 actifs · 2 prospects » a disparu : les mêmes chiffres
           sont dans les tuiles, en grand, et cliquer dessus filtre la liste. */}
-      <EnteteRubrique titre="Mes contacts" icone={PictoClients}
+      <EnteteRubrique titre="Mes contacts" icone={PictoClients} arrondi
         recherche={{ valeur: search, onChange: setSearch, placeholder: 'Nom, e-mail, agence, secteur, référence…', label: 'Chercher un contact' }}
         bouton={{ lib: 'Nouveau contact', onClick: openModal }}
         bouton2={{ lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportOuvert(true) }}
