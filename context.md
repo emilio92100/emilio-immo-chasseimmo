@@ -1499,6 +1499,37 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.146 — 9 octobre 2026 · Visites : les visites hors CRM partout, « Organiser une visite », la visite avant le mandat
+
+Alexandre : « j'ai planifié une visite depuis un bien, hors CRM : elle est dans l'agenda, mais
+nulle part dans Visites » ; « l'affichage est différent quand je clique » ; « un joli bouton dans
+la partie bleue, organiser une visite » ; « en estimation ou à suivre, laisser le choix ».
+
+- **La cause** : une visite avec quelqu'un hors du fichier vit dans le suivi du bien
+  (`biens_vente_suivi`, type `visite`, `donnees.tel`, `donnees.rdv_id`), pas dans `visites`. La
+  page Visites ne lisait que `visites`. Elle lit maintenant les deux (`lireVisitesLibres`,
+  `versVisiteLibre`, PageVisites) : la même carte, une étiquette « Hors CRM », « Appeler » à la
+  place du mail de rappel, « Voir le bien » s'il n'a pas de fiche. Leur id porte `s-` ; compte
+  rendu (`majSuivi`) et annulation (`annulerVisiteLibre`) sont ceux de la fiche du bien. Le compteur
+  du menu les compte aussi.
+- **L'agenda** : une visite hors CRM (rendez-vous `type: 'visite'` avec `details.bien_vente_id`)
+  prend la carte du bien (photo, « Voir la fiche du bien »), « Pour la visite » (codes, occupation),
+  « Visiteur · hors CRM », et passe « Compte rendu à faire » d'après sa ligne de suivi
+  (`libresParRdv`) ; le compte rendu s'ouvre dans Visites (`emi-cr` = `s-<id>`).
+- **Les onglets de Visites**, dans son ordre : À venir, Compte rendu à faire, Effectuées, Toutes
+  (puis Demandes s'il y en a, Annulées). La page s'ouvre sur la première qui a quelque chose
+  (`rubriqueDArrivee`).
+- **« Organiser une visite »** (`OrganiserVisite.tsx`) : le bouton doré du bandeau (`bouton.vedette`
+  dans EnteteRubrique, il flotte doucement), une fenêtre en trois temps — qui visite (un acheteur
+  suivi, par nom ou téléphone, sa recherche ; ou hors du CRM), quel bien (propriétaire, prix,
+  adresse, référence ; les biens de l'agence d'« À suivre » à « Sous compromis », et ceux du dossier
+  de l'acheteur), quand. Elle écrit avec `visiteAcheteur`, `visiteExterne` ou `poserVisites`
+  (qui prend maintenant `duree`), comme la fiche du bien et celle du client.
+- **Avant le mandat** (À suivre, Estimation) : la visite se planifie au choix (FenGuide « Planifier
+  la visite quand même ») ; l'onglet « Visites et offres » du bien apparaît dès qu'il a une visite ;
+  la fenêtre de l'agenda trouve aussi ces biens. Avec un acheteur suivi, le bien entre dans son
+  dossier sans prix (V3.112).
+
 ### V3.145 — 9 octobre 2026 · Inter-cabinet ou pas : le prix de l'annonce partout, l'offre frais d'agence compris
 
 **SQL à passer** : `outils/sql/biens-inter.sql` (une colonne jsonb, `biens.inter`). Sans elle, tout
