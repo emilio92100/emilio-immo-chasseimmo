@@ -1499,6 +1499,20 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.156 — 10 octobre 2026 · Carte : les fiches du bas sur trois lignes
+
+Alexandre, après la V3.155 : « le but, c'est de voir tout d'un coup : le prix, l'adresse avec le
+code postal (la ville, ça ferait long), et en bas les statuts — propriétaire, vendeur… pour un
+contact ; à suivre, estimation, mandat en cours, annonce type pour un bien ».
+
+- Les fiches du bas de la carte, au téléphone (PageCarte.tsx, Carte.module.css) : **le nom** (un
+  bien : « Appartement 2 p. · 36,8 m² », son prix à droite) ; **l'adresse et son code postal**
+  (`adresseCp` : « 27 avenue Jean Jaurès, 92140 ») ; **les vignettes** (`Point.pastilles`) — l'étape
+  d'un bien dans sa couleur, les types d'un contact (Acheteur, Vendeur, Propriétaire, Revente
+  possible…), « Son bien » pour le bien d'un propriétaire. Les boutons (appeler ou itinéraire, la
+  fiche) à droite des deux dernières lignes. Les vignettes restent entières, seule la dernière se
+  raccourcit s'il y en a trop.
+
 ### V3.155 — 10 octobre 2026 · L'accueil arrondi au téléphone ; la carte : les annonces type, et le prix toujours visible
 
 - **L'accueil au téléphone** (Alexandre : « la date, Bonjour, et la vue d'ensemble, un peu plus
