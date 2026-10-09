@@ -1,0 +1,72 @@
+/* « Le mail est-il arrivé ? » en bas de l'écran (V3.151) : voir SuiviRemises.tsx. */
+
+.pile {
+  position: fixed; z-index: 10100; right: 22px; bottom: 22px; width: min(400px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+  font-family: 'DM Sans', sans-serif;
+}
+.carte {
+  position: relative; overflow: hidden; pointer-events: auto;
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) 28px; align-items: start; gap: 11px;
+  padding: 13px 10px 14px 13px; border-radius: 16px; border: 1px solid #e3e8f0; background: #fff;
+  box-shadow: 0 22px 48px -22px rgba(15, 23, 42, .5), 0 2px 6px rgba(15, 23, 42, .05);
+  animation: monte .36s cubic-bezier(.16, 1, .3, 1) both; transition: border-color .25s, background-color .25s;
+}
+@keyframes monte { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+.carte[data-sortie='oui'] { animation: sort .22s ease-in forwards; }
+@keyframes sort { to { opacity: 0; transform: translateY(10px) scale(.98); } }
+.carte[data-ton='vert'] { border-color: #a7f3d0; }
+.carte[data-ton='ambre'] { border-color: #fde68a; background: #fffdf6; }
+.carte[data-ton='rouge'] { border-color: #fca5a5; background: #fff7f7; box-shadow: 0 22px 48px -20px rgba(185, 28, 28, .35), 0 2px 6px rgba(15, 23, 42, .05); }
+
+.rond {
+  width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #fbf6e9; color: #a07c28; transition: background-color .25s, color .25s;
+}
+.carte[data-ton='vert'] .rond { background: #10b981; color: #fff; animation: pop .4s cubic-bezier(.2, 1.4, .4, 1) both; }
+.carte[data-ton='ambre'] .rond { background: #fef3c7; color: #b45309; }
+.carte[data-ton='rouge'] .rond { background: #dc2626; color: #fff; animation: pop .4s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes pop { from { transform: scale(.4); } }
+.roue { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid #ecdcb0; border-top-color: #c9a84c; box-sizing: border-box; animation: tourne .75s linear infinite; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.trait { fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 22; stroke-dashoffset: 22; animation: trace .35s ease-out .15s forwards; }
+@keyframes trace { to { stroke-dashoffset: 0; } }
+
+.tx { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 1px; }
+.tx > b { font: 800 14px/1.3 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.carte[data-ton='rouge'] .tx > b { color: #991b1b; }
+.objet { font-size: 12.5px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etat { font-size: 12.5px; line-height: 1.45; color: #64748b; }
+.carte[data-ton='vert'] .etat { color: #047857; font-weight: 700; }
+.carte[data-ton='ambre'] .etat { color: #92400e; }
+.carte[data-ton='rouge'] .etat { color: #7f1d1d; }
+.refus { list-style: none; margin: 4px 0 2px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.refus li { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 10px; background: #fff; border: 1px solid #fecaca; }
+.refus li span { font-size: 12.5px; font-weight: 700; color: #1a2332; overflow-wrap: anywhere; }
+.refus li em { font-style: normal; font-size: 12.5px; font-weight: 800; color: #b91c1c; }
+.lien {
+  align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+  border: 1px solid #fca5a5; background: #fff; color: #991b1b; font: 700 12.5px 'DM Sans', sans-serif;
+}
+.lien:hover { background: #fee2e2; }
+.fermer {
+  width: 28px; height: 28px; border-radius: 9px; border: none; background: transparent; color: #94a3b8; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.fermer:hover { background: #f1f5f9; color: #1a2332; }
+.carte[data-ton='rouge'] .fermer { color: #b91c1c; }
+.carte[data-ton='rouge'] .fermer:hover { background: #fee2e2; }
+
+/* Pendant la vérification : une lueur qui court sous la carte. */
+.barre { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #f3ead2; overflow: hidden; }
+.barre::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 3px; background: linear-gradient(90deg, transparent, #c9a84c, transparent); animation: court 1.2s ease-in-out infinite; }
+@keyframes court { from { left: -40%; } to { left: 100%; } }
+
+@media (max-width: 760px) {
+  .pile { right: 12px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carte, .carte[data-sortie='oui'], .rond, .trait { animation: none; }
+  .trait { stroke-dashoffset: 0; }
+  .barre::after { animation: none; left: 30%; }
+}
