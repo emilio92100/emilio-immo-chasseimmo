@@ -1056,3 +1056,7 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
   color: #0f7a4f; background: #ecfdf5;
 }
 .abLie[data-main="oui"] { color: #64748b; background: #f1f5f9; }
+
+/* V3.159 — « Pour qui ? » : les biens de l'acheteur, avec leur photo. */
+.ndBiens { max-height: 340px; }
+.ndBiens .resDeux i + i { color: #94a3b8; }

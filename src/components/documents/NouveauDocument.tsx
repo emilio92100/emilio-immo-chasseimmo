@@ -4,7 +4,9 @@ import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import { MODELES, modele, type Contexte, type Donnees } from '@/lib/actes';
 import { depuisConfrere, type ContactConfrere } from '@/lib/actes/delegation';
-import { ligneContact, lirePro, typesDe } from '@/lib/contacts';
+import { ligneContact, lirePro, typeDe, typesDe } from '@/lib/contacts';
+import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
+import { nomFoyer } from '@/lib/foyer';
 import { Croix, Ic } from './ApercuActe';
 import { etapeDe, type BienVente } from '@/lib/biens-vente';
 import { jourParis } from '@/lib/mandat';
@@ -23,11 +25,17 @@ import s from './Documents.module.css';
       parmi tous (un nom, un numéro, une adresse), et le client vient avec.
    Puis le brouillon est créé et l'éditeur s'ouvre. */
 
-type ClientMini = { id: string; prenom: string; nom: string; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null };
-type BienMini = NonNullable<Contexte['bien']> & { recherche_id?: string | null; prix_vendeur?: number | null };
+type ClientMini = {
+  id: string; prenom: string; nom: string; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null;
+  /* V3.159 : pour son avatar et ses types, comme dans Mes contacts. */
+  civilite?: string | null; couple?: boolean | null; conjoint?: unknown; types?: unknown; archive?: boolean | null;
+};
+type BienMini = NonNullable<Contexte['bien']> & { recherche_id?: string | null; prix_vendeur?: number | null; photos?: unknown; etape?: string | null };
 type RechercheMini = Record<string, unknown> & { id: string; nom?: string | null; active?: boolean | null; mandat_date_signature?: string | null; mandat_date_expiration?: string | null };
 
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/* V3.159 — Sous le nom d'un client : ses types (Acheteur, Vendeur…), puis son adresse. */
+const sousClient = (c: ClientMini) => [typesDe(c).map(k => typeDe(k).lib).join(' · '), c.adresse || ''].filter(Boolean).join(' · ');
 /* « Mandataire IAD · Agence du Parc », sous le nom d'un confrère. */
 const ligneConfrere = (c: ContactConfrere) => ligneContact({ types: ['confrere'], pro: c.pro }) || 'Confrère';
 
@@ -91,7 +99,7 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
   /* Les clients, une fois, pour chercher sans attendre. */
   useEffect(() => {
     if (etape !== 2 || clients) return;
-    toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select('id, prenom, nom, adresse, emails, telephones').order('created_at', { ascending: false }).order('id').range(de, a))
+    toutLire<Record<string, unknown>>((de, a) => supabase.from('clients').select('*').order('created_at', { ascending: false }).order('id').range(de, a))
       .then(({ data, erreur: error }) => {
         if (error) { setErreur('Les clients n’ont pas pu être lus : ' + error); setClients([]); return; }
         const l = (data || []) as ClientMini[];
@@ -160,8 +168,8 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
     setBien(null); setBiens(null);
     if (!client || lien !== 'bien' || pourVendre) return;
     supabase.from('biens')
-      .select('id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id, commission_type, commission_val, bien_vente_id, est_particulier')
-      .eq('client_id', client.id).order('created_at', { ascending: false }).limit(60)
+      .select('id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id, commission_type, commission_val, bien_vente_id, est_particulier, photos, etape')
+      .eq('client_id', client.id).order('created_at', { ascending: false }).limit(150)
       .then(({ data, error }) => {
         if (error) { setErreur('Ses biens n’ont pas pu être lus : ' + error.message); setBiens([]); return; }
         setBiens((data || []) as BienMini[]);
@@ -198,9 +206,22 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
   const trouves = useMemo(() => {
     if (!clients) return [];
     const q = sansAccent(cherche.trim());
-    const l = q ? clients.filter(c => sansAccent(`${c.prenom} ${c.nom} ${c.nom} ${c.prenom}`).includes(q)) : clients;
+    const l = q ? clients.filter(c => sansAccent(`${c.prenom} ${c.nom} ${c.nom} ${c.prenom} ${nomFoyer(c)}`).includes(q)) : clients;
     return l.slice(0, 8);
   }, [clients, cherche]);
+  /* V3.159 : ses biens, cherchés par ce qu'on en sait (« 78 m² », « 4 pièces »,
+     une rue, un quartier, un prix). */
+  const [chercheB, setChercheB] = useState('');
+  const trouvesB = useMemo(() => {
+    if (!biens) return [];
+    const q = sansAccent(chercheB.trim()).replace(/\s+/g, ' ');
+    if (!q) return biens;
+    return biens.filter(b => sansAccent([
+      b.titre, b.adresse, b.code_postal, b.ville, b.quartier, b.agence_nom,
+      b.nb_pieces ? `${b.nb_pieces} pieces ${b.nb_pieces}p t${b.nb_pieces}` : '', b.surface ? `${b.surface} m2 ${b.surface}m2 ${String(b.surface).replace('.', ',')} m²` : '',
+      b.prix_acquereur ? `${b.prix_acquereur} ${new Intl.NumberFormat('fr-FR').format(b.prix_acquereur).replace(/[\u202f\u00a0]/g, ' ')}` : '',
+    ].filter(Boolean).join(' ')).includes(q));
+  }, [biens, chercheB]);
 
   async function creer() {
     if (!m) return;
@@ -379,8 +400,8 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
               <label htmlFor="nd-client">{lien === 'mandat' ? 'Le client (pour ranger le document sur sa fiche)' : 'Le client'}</label>
               {client ? (
                 <div className={`${s.resultat} ${s.resultatOn}`} style={{ border: '1px solid #ecdcb0', borderRadius: 12 }}>
-                  <Ic n="personne" t={16} />
-                  <b>{`${client.prenom} ${client.nom}`}</b>
+                  <AvatarContact c={client} teinte={teinteDe(client)} taille={36} />
+                  <span className={s.resDeux}><b>{nomFoyer(client) || 'Client'}</b><i>{sousClient(client)}</i></span>
                   <button type="button" className={s.btnLien} style={{ marginLeft: 'auto' }} onClick={() => setClient(null)}>Changer</button>
                 </div>
               ) : (
@@ -393,8 +414,8 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
                       <div className={s.resultats}>
                         {trouves.map(c => (
                           <button key={c.id} type="button" className={s.resultat} onClick={() => setClient(c)}>
-                            <Ic n="personne" t={16} /><span>{`${c.prenom} ${c.nom}`}</span>
-                            {c.adresse && <small>{c.adresse.slice(0, 40)}</small>}
+                            <AvatarContact c={c} teinte={teinteDe(c)} taille={36} />
+                            <span className={s.resDeux}><b>{nomFoyer(c) || 'Client'}</b><i>{sousClient(c)}</i></span>
                           </button>
                         ))}
                       </div>
@@ -455,22 +476,43 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
 
             {client && lien === 'bien' && !pourVendre && (
               <div className={s.champLigne}>
-                <label>Le bien</label>
+                {/* V3.159 — Alexandre : « il faut préciser d'où viennent les
+                    biens, ajouter les photos et une petite recherche (par
+                    une surface…) ». */}
+                <label htmlFor="nd-bien">{m.id === 'bon_visite' ? 'Le bien visité' : 'Le bien'}</label>
+                <div className={s.chAide} style={{ marginTop: -2 }}>{`Parmi les biens de ${client.prenom || 'sa fiche'} : sa Sélection et les biens présentés dans son espace.`}</div>
                 {biens === null ? <div className={s.chAide}>Chargement de ses biens…</div>
                   : biens.length === 0 ? <div className={s.chAide}>Aucun bien sur sa fiche : tu saisiras l’adresse dans le document.</div>
                     : (
-                      <div className={s.resultats}>
-                        <button type="button" className={`${s.resultat} ${!bien ? s.resultatOn : ''}`} onClick={() => setBien(null)}>
-                          <Ic n="doc" t={16} /><span>Aucun, je saisirai le bien</span>
-                        </button>
-                        {biens.map(b => (
-                          <button key={b.id} type="button" className={`${s.resultat} ${bien?.id === b.id ? s.resultatOn : ''}`} onClick={() => setBien(b)}>
-                            <Ic n="maison" t={16} />
-                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.titre || [b.adresse, b.ville].filter(Boolean).join(', ') || 'Bien sans titre'}</span>
-                            {b.prix_acquereur ? <small>{`${new Intl.NumberFormat('fr-FR').format(b.prix_acquereur).replace(/[\u202f\u00a0]/g, ' ')} €`}</small> : null}
-                          </button>
-                        ))}
-                      </div>
+                      <>
+                        {biens.length > 4 && (
+                          <input id="nd-bien" className={s.cherche} placeholder="Une surface, un nombre de pièces, une rue, un prix…" value={chercheB}
+                            onChange={e => setChercheB(e.target.value)} autoComplete="off" />
+                        )}
+                        <div className={`${s.resultats} ${s.ndBiens}`}>
+                          {!chercheB.trim() && (
+                            <button type="button" className={`${s.resultat} ${!bien ? s.resultatOn : ''}`} onClick={() => setBien(null)}>
+                              <span className={s.abPhoto} data-vide="oui"><Ic n="crayon" t={16} /></span>
+                              <span className={s.resDeux}><b>Aucun de ceux-là</b><i>Je l’écrirai dans le document.</i></span>
+                            </button>
+                          )}
+                          {trouvesB.map(b => {
+                            const ph = Array.isArray(b.photos) ? String((b.photos as unknown[]).find(x => typeof x === 'string' && x) || '') : '';
+                            const presente = b.etape === 'presente';
+                            return (
+                              <button key={b.id} type="button" className={`${s.resultat} ${bien?.id === b.id ? s.resultatOn : ''}`} onClick={() => setBien(b)}>
+                                <span className={s.abPhoto} style={ph ? { backgroundImage: `url(${ph})` } : undefined}>{!ph && <Ic n="maison" t={16} />}</span>
+                                <span className={s.resDeux}>
+                                  <b>{b.titre || [b.adresse, b.ville].filter(Boolean).join(', ') || 'Bien sans titre'}</b>
+                                  <i>{[[b.adresse, b.quartier || b.ville].filter(Boolean).join(', '), b.bien_vente_id ? 'Mon mandat' : b.agence_nom || ''].filter(Boolean).join(' · ') || 'Adresse non notée'}</i>
+                                  <i>{[b.prix_acquereur ? `${new Intl.NumberFormat('fr-FR').format(b.prix_acquereur).replace(/[\u202f\u00a0]/g, ' ')} €` : '', b.etape ? (presente ? 'Présenté' : 'Sélection') : ''].filter(Boolean).join(' · ')}</i>
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {chercheB.trim() && !trouvesB.length && <div className={s.resultat} style={{ cursor: 'default', color: '#64748b' }}>Aucun de ses biens ne correspond.</div>}
+                        </div>
+                      </>
                     )}
               </div>
             )}
