@@ -568,12 +568,17 @@ export async function envoyerExemplaire(o: {
       : 'les autres signataires l’auront signé'}.`;
   const pied = retr ? 'Le document joint rappelle votre délai de rétractation de 14 jours et la façon de l’exercer.' : 'Gardez ce message : c’est votre exemplaire.';
   const prenom = o.s.personne.prenom || nomSig(o.s);
+  /* V3.145 : son rappel (une offre d'achat : son total, frais d'agence
+     compris, et nos honoraires) — pour lui, pas pour l'agence qui transmet.
+     C'est la trace écrite de ce qu'il a vu en signant. */
+  const r = o.s.cle !== 'agence' && o.m.rappel ? o.m.rappel(o.d) : null;
+  const rappel = r ? `Pour rappel : ${r.titre.charAt(0).toLowerCase() + r.titre.slice(1)}, ${r.valeur}${r.detail ? ` (${r.detail})` : ''}.` : '';
   return envoyerMail({
     a: o.s.personne.email, nomA: nomSig(o.s), pj, repondreA: 'agence@emilio-immo.com',
     sujet: o.complet ? `${Doc}, signé par tous` : `${Doc} : votre signature est enregistrée`,
-    texte: `Bonjour ${prenom},\n\n${sansCourbes(corps)}\n\nAlexandre Rogelet — Emilio Immobilier\n\n—\n${sansCourbes(pied)}`,
+    texte: `Bonjour ${prenom},\n\n${sansCourbes(corps)}${rappel ? `\n\n${sansCourbes(rappel)}` : ''}\n\nAlexandre Rogelet — Emilio Immobilier\n\n—\n${sansCourbes(pied)}`,
     html: gabarit(o.complet ? 'Votre document signé' : 'Votre signature est enregistrée',
-      `<p>Bonjour ${echappe(prenom)},</p><p>${echappe(corps)}</p><p>Alexandre Rogelet — Emilio Immobilier</p>`, pied),
+      `<p>Bonjour ${echappe(prenom)},</p><p>${echappe(corps)}</p>${rappel ? `<p>${echappe(rappel)}</p>` : ''}<p>Alexandre Rogelet — Emilio Immobilier</p>`, pied),
   });
 }
 
