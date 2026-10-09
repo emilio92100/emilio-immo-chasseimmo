@@ -1499,6 +1499,36 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.157 — 10 octobre 2026 · Le bon de visite : retour là d'où l'on vient, supprimer depuis le document, ajouter un bien du CRM
+
+Alexandre : « quand je clique Bon de visite depuis Visites, à venir, et que je fais retour, ça me
+remet sur Documents : il faut que ça marque Retour Visites, et que je revienne comme si je n'avais
+rien fait » ; « sur le document, je n'ai pas l'option supprimer : il faut le bouton Supprimer le
+brouillon, ça supprime et ça se ferme » ; « Ajouter un bien : comment il fait le lien avec un mandat
+que j'ai ? Il faut que ça propose : depuis vos mandats (la référence, le propriétaire ou l'adresse,
+avec la photo), ou un bien que j'ajoute moi-même, sans suivi possible ».
+
+- **Le retour** : `IntentionDocuments.retour = { page, data, lib, place }` (PageDocuments.tsx). Le
+  bon ouvert depuis une visite (page Visites, onglet Visites du contact, fiche du bien) : le bouton
+  retour de l'éditeur dit « Visites » (`retourLib` ; « Documents » sinon) et ramène à l'écran de
+  départ ; la fiche d'un bon prêt ou signé aussi, quand on la ferme (et après une suppression). La
+  page Visites note sa rubrique et sa recherche en partant (`page:visites`, lib/place-fiche.ts) et
+  les reprend au retour, à la même hauteur ; la fiche du contact et celle du bien reprennent déjà
+  d'elles-mêmes leur onglet et leur hauteur.
+- **Supprimer depuis l'éditeur** : « Supprimer » (corbeille rouge, à droite de Finaliser ; l'icône
+  seule au téléphone) sur un brouillon, avec la même fenêtre que depuis sa fiche. La suppression est
+  désormais partagée (`ligneRegistreDe`, `supprimerBrouillon`, documents/outils.ts) entre la fiche
+  et l'éditeur. Un mandat de vente supprimé pose ensuite la question de son bien, comme avant.
+- **« Ajouter un bien » à un bon** (`ChoixBienCrm.tsx`, champ `groupes` avec `crm: 'biens'`) : trois
+  chemins — « Depuis mes mandats » (les biens en vente non archivés, cherchés par référence,
+  propriétaire, adresse ou ville, avec leur photo), « Depuis son dossier » (les biens de l'acheteur,
+  quand le bon a son client — `ContexteActe` donne `clientId` aux questions), « Je l'écris
+  moi-même » (une carte vide, sans lien). Un bien choisi remplit sa carte (`valeursBien`, comme un
+  bon préparé depuis une visite : adresse, ville, description, prix de l'annonce, référence, et ses
+  colonnes si ses réponses sont incomplètes) et garde son lien (`bienId`, `bienVenteId`). Chaque
+  carte le dit dans son titre : « Mon mandat », « Son dossier », ou « À la main » (pas de suivi).
+  « Agence du vendeur » reste vide pour un bien de l'agence.
+
 ### V3.156 — 10 octobre 2026 · Carte : les fiches du bas sur trois lignes
 
 Alexandre, après la V3.155 : « le but, c'est de voir tout d'un coup : le prix, l'adresse avec le
