@@ -244,13 +244,17 @@
   .nav { padding: 6px 12px 12px; }
   .navSection { padding: 14px 10px 6px; }
   .navItem { padding: 12px 14px; font-size: 15px; gap: 13px; border-radius: 12px; margin-bottom: 3px; }
+  /* V3.162 : chaque rubrique dans sa couleur (`--nc`, `--nf`, Sidebar.tsx),
+     et son nom en bleu nuit plutôt qu'en gris. */
+  .navItem { color: var(--emilio); font-weight: 600; }
   .navPicto {
     display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
-    background: #f1f5f9; color: #64748b;
+    background: var(--nf, #f1f5f9); color: var(--nc, #64748b);
   }
+  .navItem:hover .navPicto { color: var(--nc, var(--emilio)); }
   .navItem.active .navPicto { background: var(--emilio-fond); color: #c9a84c; }
-  .navParent .navPicto { background: #e8edf5; color: var(--emilio); }
+  .navParent .navPicto { background: var(--nf, #e8edf5); color: var(--nc, var(--emilio)); }
   .navItemBascule { padding-right: 50px; }
   .navBascule { right: 8px; width: 36px; height: 36px; border-radius: 10px; }
   .sousListe { margin: 0 0 8px 22px; }

@@ -34,6 +34,17 @@ const cleMenu = (k: string, telephone: boolean) => (telephone ? `menu.tel.${k}` 
  * vendeurs », « Mes estimations »), et l'entrée de ce qui est affiché
  * s'illumine.
  */
+/* V3.162 — Alexandre : « sur téléphone, le menu de gauche : Dashboard,
+   Contacts, Biens… tout est gris ; mettre un peu plus de couleurs ». Chaque
+   rubrique a sa couleur : son pictogramme sur une pastille de cette teinte,
+   comme les sous-menus (Mes acheteurs, Mes estimations…). Téléphone seulement
+   (Sidebar.module.css) ; la rubrique ouverte garde sa pastille bleu Emilio. */
+const COULEUR_RUBRIQUE: Record<string, string> = {
+  dashboard: '#22497D', clients: '#2563eb', biens: '#a07c28',
+  demandes: '#7c3aed', agenda: '#0ea5a4', visites: '#0f7a4f', relances: '#E68B23',
+  carte: '#0891b2', documents: '#34496e', activite: '#c026d3', parametres: '#64748b',
+};
+
 export default function Sidebar({ activePage, onNavigate, ouvert = false, onFermer, reduit = false }: {
   activePage: string;
   onNavigate: (page: string, data?: unknown) => void;
@@ -283,6 +294,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
                     key={item.id}
                     className={`${styles.navItem} ${courant === item.id && !sousActif ? styles.active : ''} ${sous ? styles.navItemBascule : ''} ${sousActif ? styles.navParent : ''}`}
                     onClick={() => allerRubrique(item.id)}
+                    style={{ '--nc': COULEUR_RUBRIQUE[item.id] || '#64748b', '--nf': `${COULEUR_RUBRIQUE[item.id] || '#64748b'}24` } as React.CSSProperties}
                     title={reduit ? item.label : undefined}
                     aria-label={reduit ? item.label : undefined}
                   >
