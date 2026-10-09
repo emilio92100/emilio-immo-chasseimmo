@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { mouvementActif } from '@/lib/mouvement';
 import { addJournal, supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import { TYPES_CONTACT, colonneContactAbsente, typeDe, typesDe, type TypeContact } from '@/lib/contacts';
@@ -187,6 +188,9 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
      ouverte pendant la sortie annule la fermeture. */
   const minuteSortie = useRef<number | null>(null);
   const fermer = useCallback(() => {
+    /* V3.152 : quand le mouvement global tourne, la fenêtre se ferme tout
+       de suite et rentre dans la carte qui l'a ouverte (src/lib/mouvement.ts). */
+    if (mouvementActif()) { setChoisie(null); setSortie(false); return; }
     setSortie(true);
     if (minuteSortie.current) window.clearTimeout(minuteSortie.current);
     minuteSortie.current = window.setTimeout(() => { minuteSortie.current = null; setChoisie(null); setSortie(false); }, 190);
@@ -489,7 +493,7 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
           </div>
         )}
         {demandes.length > 0 && prov !== 'site' && (cat !== 'toutes' || CATEGORIES.some(c => nbCat(c.k) > 0)) && (
-            <div className={s.cats} role="group" aria-label="Filtrer par sorte de demande">
+            <div className={s.cats} role="group" aria-label="Filtrer par sorte de demande" data-defile="">
               <button type="button" aria-pressed={cat === 'toutes'} style={teinte(MARINE)}
                 className={`${s.cat} ${cat === 'toutes' ? s.catOn : ''}`} onClick={() => setCat('toutes')}>
                 <span>Toutes</span>
