@@ -22,6 +22,8 @@ import Bienvenue from './Bienvenue';
 /* ══ types ════════════════════════════════════════ */
 type Bien = {
   id: string; titre: string; secteur: string; prix: number | null;
+  /* V3.145 : ses honoraires, quand ils s'ajoutent au prix de l'annonce. */
+  hono?: number;
   surface: number | null; pieces: number | null; chambres: number | null;
   etage: number | null; etageTotal: number | null; expo: string | null;
   dpe: string | null; ges: string | null; annee: number | null;
@@ -154,6 +156,10 @@ const EUR = (n?: number | null) =>
 /* V3.113 : le prix d'un BIEN. Un bien de l'agence présenté avant le mandat
    arrive sans prix (prixCopie) : « Prix à venir », pas un tiret. */
 const PRIX = (n?: number | null) => (n ? EUR(n) : 'Prix à venir');
+/* V3.145 : sous le prix d'un bien, quand ses honoraires ne sont pas partagés
+   (voir src/lib/honoraires-bien.ts, la même phrase partout). */
+const honoDe = (b: { prix: number | null; hono?: number }) =>
+  `+ ${EUR(b.hono || 0)} de nos honoraires, soit ${EUR((b.prix || 0) + (b.hono || 0))} frais d’agence compris`;
 /* Les descriptions d'annonces arrivent souvent d'un bloc, sans le moindre
    saut de ligne. On respire pour le lecteur : on coupe d'abord sur les sauts
    existants, puis on regroupe les phrases par paquets. On ne touche jamais
@@ -2575,6 +2581,7 @@ function CarrouselNeufs({ biens, crit, onOuvrir, aller, onDecouvrir, nbDecouvrir
                   <b className="tab">{PRIX(b.prix)}</b>
                   {b.prix && b.surface ? <i className="tab">{`${nombre(Math.round(b.prix / b.surface))} €/m²`}</i> : null}
                 </span>
+                {b.prix && b.hono ? <span className="cn-h">{`+ ${EUR(b.hono)} de nos honoraires`}</span> : null}
                 <span className="cn-t">{b.titre}</span>
                 <span className="cn-m">{[b.surface && b.surface + ' m²', b.pieces && b.pieces + ' pièces', b.secteur].filter(Boolean).join(' · ')}</span>
                 {corr && (
@@ -2970,6 +2977,7 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
                 b.chambres && b.chambres + ' chambres', b.secteur,
               ].filter(Boolean).join(' · ')}</span>
               <span className="prix tab">{PRIX(b.prix)}</span>
+              {b.prix && b.hono ? <span className="hono-c">{`+ ${EUR(b.hono)} de nos honoraires`}</span> : null}
               {b.visitePrevue && !b.visiteFaite && (
                 <span className="rdv-l"><Ico n="calendrier" t={13} />
                   Visite le {dateCourte(b.visitePrevue.date)}
@@ -3749,7 +3757,7 @@ const TON_ISSUE: Record<Issue, string> = { offre: 'or', revoir: 'visite', reflex
 const QUESTION_VISITE: Record<Issue, { t: string; p: string; ph: string; btn: string; ok: string }> = {
   offre: {
     t: 'Vous avez un prix en tête ?',
-    p: 'Facultatif. Votre conseiller vous appelle pour préparer l’offre avec vous : le prix, le financement, les conditions.',
+    p: 'Facultatif, frais d’agence compris. Votre conseiller vous appelle pour préparer l’offre avec vous : le prix, le financement, les conditions.',
     ph: 'Un mot pour votre conseiller, si vous voulez…',
     btn: 'Prévenir mon conseiller',
     ok: 'Votre conseiller est prévenu. Il vous appelle pour préparer l’offre avec vous.',
@@ -4156,6 +4164,8 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
   /* La note de correspondance, et son détail en pop-up. */
   const corr = correspondance(b, crit);
   const [voirCorr, setVoirCorr] = useState(false);
+  /* V3.145 : le « ? » du prix. */
+  const [aidePrix, setAidePrix] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
   /* Les pastilles cochées, le texte libre seulement s'il le demande, et le
      panneau de la barre du bas. */
@@ -4291,6 +4301,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
       {bientot && <ModaleBientot onFermer={() => setBientot(false)}
         onPartager={() => { setBientot(false); setPartage(true); }} />}
       {voirCorr && corr && <ModaleCorrespondance b={b} r={corr} onFermer={() => setVoirCorr(false)} />}
+      {aidePrix && <ModaleAide a={AIDES.prix} onFermer={() => setAidePrix(false)} />}
       <div className="fiche-droite" data-barre={!envoye && !dec && !b.vente ? '1' : undefined}>
       {dec?.colonne && (
         <div className="dec-f-haut">
@@ -4300,9 +4311,11 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
         </div>
       )}
       <div className="bandeau-prix">
-        <span className="p tab">{PRIX(b.prix)}</span>
+        <span className="p tab">{b.prix ? <span className="nv">{PRIX(b.prix)}<BtnAide cle="prix" onAide={() => setAidePrix(true)} /></span> : PRIX(b.prix)}</span>
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
       </div>
+      {/* V3.145 : ses honoraires, seulement quand ils s'ajoutent — en petit. */}
+      {b.prix && b.hono ? <div className="hono-l">{honoDe(b)}</div> : null}
       <div className="tete-f" style={{ paddingTop: 10 }}>
         <div><h3>{b.titre}</h3>
           {b.secteur && <div className="meta" style={{ color: 'var(--plume)', fontSize: 13, marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -4582,6 +4595,19 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
    pas. On dit donc en toutes lettres que la fonction est en cours de
    développement, que rien n'est en route vers l'appareil, et ce qu'on peut
    faire à la place tout de suite : partager le bien. */
+/* Un « ? » ouvert depuis une fiche (V3.145) : la même explication, dans une
+   fenêtre posée sur la fiche. */
+function ModaleAide({ a, onFermer }: { a: typeof AIDES[string]; onFermer: () => void }) {
+  useEchap(true, onFermer);
+  return createPortal(
+    <div className="pop" role="dialog" aria-modal="true">
+      <div className="pop-voile" onClick={onFermer} />
+      <div className="pop-carte"><div className="pop-aide"><Explication a={a} onFermer={onFermer} /></div></div>
+    </div>,
+    document.body,
+  );
+}
+
 function ModaleBientot({ onFermer, onPartager }: { onFermer: () => void; onPartager: () => void }) {
   useEchap(true, onFermer);
   return createPortal(
@@ -5341,6 +5367,15 @@ function ProchaineVisite({ v, autres, token, onBien, titre = 'Votre prochaine vi
    lues », lues par qui, et pour quoi faire ? Chacun a son explication, derrière
    un point d'interrogation. On dit ce que le chiffre est, et ce qu'il n'est pas. */
 const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: string; puces: string[] }> = {
+  /* V3.145 : le « ? » du prix d'un bien (texte validé par Alexandre). */
+  prix: {
+    ico: 'euro', sur: 'Le prix', titre: 'Prix demandé pour ce bien.',
+    texte: 'Le plus souvent, vous n’avez rien à payer en plus.',
+    puces: [
+      'Sinon, nos honoraires s’ajoutent : c’est alors écrit sur le bien, avec leur montant.',
+      'Les frais de notaire sont toujours en plus.',
+    ],
+  },
   decouvrir: {
     ico: 'etoile', sur: 'Vos nouveautés', titre: 'Ce que veut dire « à découvrir »',
     texte: "C'est le nombre de biens retenus pour vous que vous n'avez pas encore ouverts.",
@@ -6396,6 +6431,12 @@ input, textarea, select{font-family:inherit}
 .avis-vente.vous{background:#fbf6e9; color:#5c4a1a}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
+.bandeau-prix .nv{position:relative; display:inline-block; padding-right:22px}
+.bandeau-prix .nv .aide-pt{position:absolute; right:0; top:4px}
+.hono-l{padding:5px 20px 0; font-size:12px; line-height:1.45; color:var(--plume); font-weight:600}
+.bien .hono-c{display:block; font-size:11.5px; color:var(--plume); font-weight:600; margin-top:3px}
+.cn-h{display:block; font-size:11.5px; color:var(--plume); font-weight:600; margin-top:-2px}
+.pop-aide{padding:26px 22px 22px}
 .specs{display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:8px; margin:16px 0 4px}
 .spec{background:var(--fond); border:1px solid var(--trait); border-radius:13px; padding:11px 8px; text-align:center}
 .spec .v{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:15px}
@@ -6714,6 +6755,7 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .feuille.fiche .compteur{top:14px; left:66px; right:auto}
   .feuille.fiche .points{display:none}
   .feuille.fiche .bandeau-prix{padding:22px 26px 0}
+  .feuille.fiche .hono-l{padding:5px 26px 0}
   .feuille.fiche .tete-f{padding:14px 26px 12px}
   .feuille.fiche .corps-f{padding:0 26px}
   .feuille.fiche .corps-f .txt{max-width:74ch}
