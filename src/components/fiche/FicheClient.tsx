@@ -1394,7 +1394,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   /* V3.154 : « Bon de visite » sur ses visites (BonDeVisite.tsx) : le bon
      existant s'ouvre ; sinon il se prépare avec lui (et son conjoint), le
      bien et la visite — ses autres visites du jour, on demande. */
-  const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id }) });
+  /* V3.157 : le retour du bon ramène sur sa fiche, à l'onglet Visites
+     (la fiche reprend d'elle-même sa rubrique et sa hauteur, place-fiche). */
+  const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id, retour: { page: 'fiche', data: client, lib: 'Visites' } }) });
   const etatBon = useEtatsBons();
   const departBon = (v: any): DepartBon => {
     const b = biens.find(x => x.id === v.bien_id);
