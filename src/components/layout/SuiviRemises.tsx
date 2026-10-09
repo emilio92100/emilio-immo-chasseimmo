@@ -119,7 +119,10 @@ export default function SuiviRemises({ onFiche }: { onFiche: (client: Record<str
   const vus = suivis.filter(x => x.visible);
   if (!vus.length || typeof document === 'undefined') return null;
   return createPortal(
-    <div className={s.pile}>
+    /* data-emi-anim="non" : les cartes ont leur propre entrée et leur
+       propre sortie ; le mouvement global (src/lib/mouvement.ts) n'y touche
+       pas. */
+    <div className={s.pile} data-emi-anim="non">
       {vus.map(x => {
         const refuses = x.remises.filter(r => x.etats[r.id]?.etat === 'refuse');
         const remis = x.remises.filter(r => x.etats[r.id]?.etat === 'remis');

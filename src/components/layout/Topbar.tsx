@@ -386,9 +386,11 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
           fenêtre s'ouvre par-dessus l'écran en cours. */}
       <button className={`${styles.btn} ${styles.btnBureau}`} onClick={demanderNouveauRdv}>📅 Nouveau rendez-vous</button>
       {/* Le bouton créait un client… en affichant la liste des clients. Il
-          ouvre maintenant le formulaire, depuis n'importe quel écran. */}
+          ouvre maintenant le formulaire, depuis n'importe quel écran.
+          V3.152 : par-dessus l'écran en cours, sans aller sur Contacts
+          (NouveauContactPartout, dans Clients.tsx). */}
       <button className={`${styles.btn} ${styles.btnDark} ${styles.btnBureau}`}
-        onClick={() => { demanderNouveauClient(); onNavigate('clients'); }}>+ Nouveau contact</button>
+        onClick={demanderNouveauClient}>+ Nouveau contact</button>
     </header>
   );
 }

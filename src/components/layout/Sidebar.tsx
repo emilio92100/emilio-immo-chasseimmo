@@ -384,7 +384,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
           <div className={styles.plusVoile} onClick={() => setPlusOuvert(false)} aria-hidden="true" />
           <div className={styles.plusMenu} role="menu" aria-label="Créer">
             {([
-              { cle: 'client', ico: 'clients', t: 'Nouveau contact', s: 'Acheteur, vendeur, notaire…', go: () => { demanderNouveauClient(); onNavigate('clients'); } },
+              { cle: 'client', ico: 'clients', t: 'Nouveau contact', s: 'Acheteur, vendeur, notaire…', go: () => demanderNouveauClient() },
               { cle: 'bien', ico: 'maison', t: 'Nouveau bien', s: 'À suivre, estimation, mandat…', go: () => { demanderNouveauBien(); onNavigate('biens'); } },
               { cle: 'rdv', ico: 'calendrier', t: 'Nouveau rendez-vous', s: 'Visite, appel, signature…', go: () => demanderNouveauRdv() },
               { cle: 'mail', ico: 'mail', t: 'Envoyer un mail', s: 'À un ou plusieurs contacts', go: () => demanderNouveauMail() },

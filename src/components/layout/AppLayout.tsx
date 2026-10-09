@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import Dashboard from '@/components/dashboard/Dashboard';
-import Clients from '@/components/clients/Clients';
+import Clients, { NouveauContactPartout } from '@/components/clients/Clients';
 import FicheSelonType from '@/components/contacts/FicheContact';
 import PageRelances from '@/components/pages/PageRelances';
 import PageVisites from '@/components/pages/PageVisites';
@@ -22,6 +22,8 @@ import NouvelleVersion from '@/components/layout/NouvelleVersion';
 import EnvoiPortails from '@/components/layout/EnvoiPortails';
 import Avertissements from '@/components/layout/Avertissements';
 import SuiviRemises from '@/components/layout/SuiviRemises';
+import Defilement from '@/components/layout/Defilement';
+import Mouvement from '@/components/layout/Mouvement';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
 import '@/styles/crm-mobile.css';
@@ -390,6 +392,9 @@ export default function AppLayout() {
       {/* « Nouveau rendez-vous », de n'importe quel écran : la fenêtre de
           l'agenda, posée ici une fois pour toutes (voir PageAgenda). */}
       <NouveauRdvPartout />
+      {/* « Nouveau contact », de même, sans quitter l'écran (V3.152). Sur
+          Contacts, c'est la page qui ouvre sa fenêtre. */}
+      <NouveauContactPartout actif={activePage !== 'clients'} onNavigate={handleNavigate} />
       <NouveauMailPartout />
       {/* « Une nouvelle version est prête — Recharger », après une mise en ligne. */}
       <NouvelleVersion />
@@ -398,6 +403,11 @@ export default function AppLayout() {
       <Avertissements />
       {/* « Le mail est-il arrivé ? » après chaque envoi (V3.151). */}
       <SuiviRemises onFiche={c => handleNavigate('fiche', c)} />
+      {/* Le fondu au bord des rangées qui défilent de côté (V3.152). */}
+      <Defilement />
+      {/* Les fenêtres sortent du bouton touché et y rentrent, les onglets
+          arrivent en cascade (V3.152, src/lib/mouvement.ts). */}
+      <Mouvement />
     </div>
   );
 }
