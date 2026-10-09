@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { modele, modeSignature, electronique, type CaseSignature } from '@/lib/actes';
+import { modele, modeSignature, electronique, surPlaceSansCode, type CaseSignature } from '@/lib/actes';
 import { dateCourte, heureParis } from '@/lib/mandat';
 import { appareilDe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import {
   lireSignataires, casesDe, jetonSigner, envoyerLien, inviter, envoyerCode, validerSignature, sceller, assembler, envoyerExemplaire,
   classer, lireFichier, nomSig, actif, attendu, emailValide, nomDocument, ALERTES, envoyerMail, gabarit, echappe, lienCrmDocument,
-  finLien, offreFinie, autreEnSignature, ARRETEE, prevenirArret,
+  finLien, offreFinie, autreEnSignature, ARRETEE, prevenirArret, validerSansCode, signeSansCodeFait, codeValideFait,
   type DocSigne, type SigDoc, type SignatureDoc, type PersonneSig,
 } from '@/lib/signature-documents';
+import { signeSansCode } from '@/lib/signature-sans-code';
+import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
 import { solderRelancesSignature } from '@/lib/documents-relances';
 import { avecRemises } from '@/lib/remise-mail';
 
@@ -46,6 +48,10 @@ import { avecRemises } from '@/lib/remise-mail';
  *        par e-mail (mailArret), sauf `prevenir: false`
  *   { action: 'code', id, sig, email }                     (sur place)
  *   { action: 'signer', id, sig, code, griffe, accepte }  (sur place)
+ *        V3.154 : le bon de visite sur place se signe SANS code (pas de
+ *        `code`) — seulement si la règle de src/lib/signature-sans-code.ts
+ *        le permet (bon de visite, « Sur place », signataire attendu sur
+ *        place, badge du CRM revérifié ici). Tout le reste exige le code.
  *   { action: 'finaliser', id, etape }                     (sur place, à la fin)
  *        etape : verifier · assembler · sceller · envoyer · classer — les
  *        étapes réelles que l'écran montre une à une
@@ -120,10 +126,15 @@ async function traiterPost(req: NextRequest) {
       const saisis: Record<string, Record<string, unknown>> = {};
       for (const x of Array.isArray(body.signataires) ? body.signataires : []) if (x && typeof x.cle === 'string') saisis[x.cle] = x;
       const personnes = cases.map(c => personneDe(c, saisis[c.cle]));
+      /* V3.154 : le bon de visite sur place se signe sans code. L'adresse ne
+         sert plus qu'à recevoir son exemplaire : facultative (juste si elle
+         est donnée), et un couple peut partager la sienne. */
+      const sansCode = mode === 'sur_place' && surPlaceSansCode(doc.modele, d);
       const champs: Record<string, string> = {};
       personnes.forEach((p, i) => {
-        if (!emailValide(p.email)) champs[cases[i].cle] = 'Une adresse e-mail valide';
-        else if (personnes.some((q, j) => j < i && q.email === p.email)) champs[cases[i].cle] = 'Chacun signe avec sa propre adresse';
+        if (sansCode && !p.email) return;
+        if (!emailValide(p.email)) champs[cases[i].cle] = sansCode ? 'Une adresse e-mail valide, ou rien' : 'Une adresse e-mail valide';
+        else if (!sansCode && personnes.some((q, j) => j < i && q.email === p.email)) champs[cases[i].cle] = 'Chacun signe avec sa propre adresse';
       });
       if (Object.keys(champs).length) return ko('emails', 400, { champs });
       const le = new Date().toISOString();
@@ -131,7 +142,9 @@ async function traiterPost(req: NextRequest) {
         mode, lance_le: le, agence_le: le,
         deroule: [{ t: le, x: mode === 'en_ligne'
           ? 'Document signé pour l’agence et adressé aux signataires, chacun par son lien personnel'
-          : 'Document signé pour l’agence ; signature sur place ouverte' }],
+          : sansCode
+            ? 'Document signé pour l’agence ; signature sur place ouverte, sans code : chacun signe dans son cadre, sur l’appareil de l’Agence'
+            : 'Document signé pour l’agence ; signature sur place ouverte' }],
       };
       /* V3.55 : le document se réserve d'abord, en une écriture qui ne passe
          qu'une fois (toujours « à faire signer », signature encore vide).
@@ -195,7 +208,7 @@ async function traiterPost(req: NextRequest) {
             /* Quinze jours, ou moins pour une offre d'achat (sa validité). */
             lien_expire_le: enLigne ? finLien(m, d, le) : null,
             invite_le: enLigne ? le : null,
-            deroule: [{ t: le, x: `${enLigne ? `Lien personnel envoyé à ${p.email}` : 'Attendu pour signer sur place'}${marque}` }],
+            deroule: [{ t: le, x: `${enLigne ? `Lien personnel envoyé à ${p.email}` : sansCode ? 'Attendu pour signer sur place, sans code' : 'Attendu pour signer sur place'}${marque}` }],
             relances: 0, code_essais: 0, codes_envoyes: 0,
           };
         });
@@ -288,6 +301,8 @@ async function traiterPost(req: NextRequest) {
       if (!s || !attendu(s)) return ko('signataire', 404);
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
       if (email && !emailValide(email)) return ko('email', 400);
+      /* V3.154 : un visiteur sans adresse (bon de visite sur place) n'a pas de lien à recevoir. */
+      if (!email && !emailValide(s.personne.email || '')) return ko('email', 400);
       if (email && sigs.some(x => x.id !== s.id && actif(x) && x.personne.email.toLowerCase() === email)) return ko('email_pris', 400);
       let x = s;
       const change = !!email && email !== s.personne.email.toLowerCase();
@@ -332,7 +347,16 @@ async function traiterPost(req: NextRequest) {
       if (body.accepte !== true) return ko('accepte', 400);
       const s = cible();
       if (!s) return ko('signataire', 404);
-      const r = await validerSignature(sb, s, m, d, { code: String(body.code || ''), griffe: body.griffe, ip, appareil, surPlace: true, demande: body.demande === true });
+      /* V3.154 : sans code, seulement quand la règle le permet ; le badge du
+         CRM est relu ici même (pas seulement par le portail). Sinon, le code
+         reste exigé, comme avant. */
+      const sansCode = signeSansCode({
+        modele: doc.modele, donnees: d, signature: sd, signataire: s,
+        badge: await badgeValide(req.cookies.get(COOKIE_BADGE)?.value),
+      });
+      const r = sansCode
+        ? await validerSansCode(sb, s, m, d, { griffe: body.griffe, ip, appareil, demande: body.demande === true })
+        : await validerSignature(sb, s, m, d, { code: String(body.code || ''), griffe: body.griffe, ip, appareil, surPlace: true, demande: body.demande === true });
       if ('erreur' in r) return ko(r.erreur, r.statut, r.plus || {});
       const tous = sigs.map(x => (x.id === r.s.id ? r.s : x));
       const restants = tous.filter(x => actif(x) && attendu(x));
@@ -356,9 +380,12 @@ async function traiterPost(req: NextRequest) {
         if (doc.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
         const manquent = membres.filter(attendu);
         if (manquent.length) return ko('attendus', 409, { noms: manquent.map(nomSig) });
-        const sansCode = signes.filter(s => !(s.deroule || []).some(e => /^Code saisi et validé/.test(e.x)));
-        if (sansCode.length) return ko('preuves', 409, { noms: sansCode.map(nomSig) });
-        return NextResponse.json({ ok: true, n: signes.length, detail: signes.map(s => `${nomSig(s)} · ${dateCourte(s.signe_le!)} à ${heureParis(s.signe_le!)}`) });
+        /* Chaque signature a sa preuve : son code validé, ou (V3.154, le bon
+           de visite sur place) sa signature sans code sur l'écran de l'agence. */
+        const sansCodeOk = sd.mode === 'sur_place' && surPlaceSansCode(doc.modele, d);
+        const sansPreuve = signes.filter(s => !codeValideFait(s) && !(sansCodeOk && s.mode === 'sur_place' && signeSansCodeFait(s)));
+        if (sansPreuve.length) return ko('preuves', 409, { noms: sansPreuve.map(nomSig) });
+        return NextResponse.json({ ok: true, n: signes.length, sansCode: signes.filter(signeSansCodeFait).length, detail: signes.map(s => `${nomSig(s)} · ${dateCourte(s.signe_le!)} à ${heureParis(s.signe_le!)}`) });
       }
       if (etape === 'assembler') {
         if (doc.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
@@ -392,7 +419,10 @@ async function traiterPost(req: NextRequest) {
         const pbE = await ecrire({ signature: { ...sd, envoi_le: envoiLe } });
         if (pbE) return pbE;
         const echecs: string[] = [];
-        for (const s of signes) {
+        /* V3.154 : un visiteur sans adresse (bon de visite sur place) ne
+           reçoit rien ; l'exemplaire reste rangé dans le CRM. */
+        const sansAdresse = signes.filter(s => !emailValide(s.personne.email || ''));
+        for (const s of signes.filter(x => !sansAdresse.includes(x))) {
           const e = await envoyerExemplaire({ s, m, d, signe: pdf, complet: true, attendus: [] });
           if (e) echecs.push(`${nomSig(s)} : ${e}`);
         }
@@ -403,7 +433,7 @@ async function traiterPost(req: NextRequest) {
             texte: `Le document signé sur place n'a pas pu être envoyé à : ${echecs.join(' ; ')}.\n\n${lienCrmDocument(doc)}`,
             html: gabarit('Exemplaire non envoyé', `<p>Le document signé sur place n’a pas pu être envoyé à : ${echappe(echecs.join(' ; '))}.</p>`) });
         }
-        return NextResponse.json({ ok: true, a: signes.filter(s => !echecs.some(e => e.startsWith(nomSig(s)))).map(s => s.personne.email), echecs });
+        return NextResponse.json({ ok: true, a: signes.filter(s => !sansAdresse.includes(s) && !echecs.some(e => e.startsWith(nomSig(s)))).map(s => s.personne.email), echecs, sans: sansAdresse.map(nomSig) });
       }
       if (etape === 'classer') {
         if (doc.statut === 'signe') return NextResponse.json({ ok: true, deja: true });
