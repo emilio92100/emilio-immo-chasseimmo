@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { envoyerMail, gabarit, echappe } from '@/lib/mandat-serveur';
+import { avecRemises } from '@/lib/remise-mail';
 
 /**
  * « Retirer la proposition » du mandat de recherche (fiche › Mandat de
@@ -52,7 +53,11 @@ function mailRetrait(prenom: string, commence: boolean) {
   };
 }
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`), pour
+   vérifier qu'ils sont bien arrivés (src/lib/remise-mail.ts). */
+export async function POST(req: NextRequest) { return avecRemises(() => traiterPost(req)); }
+
+async function traiterPost(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !cle) return ko('Variables Supabase manquantes', 500);
   const sb = createClient(url, cle, { auth: { persistSession: false } });
