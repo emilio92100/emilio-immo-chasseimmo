@@ -34,6 +34,7 @@ import {
 import { alerteMailActive } from './alertes';
 import { lireDepart } from './registre';
 import { enveloppeMail } from '@/lib/mail-charte';
+import { noterRemises } from '@/lib/remise-mail';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
 export const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -305,6 +306,9 @@ export async function envoyerMail(o: {
       }),
     });
     if (!r.ok) return `Mailjet ${r.status}`;
+    /* V3.151 : on vérifiera qu'il est bien arrivé (src/lib/remise-mail.ts) ;
+       pas les alertes du CRM à Alexandre. */
+    if (o.deLaPartDe !== 'crm') noterRemises(await r.json().catch(() => null), { nom: o.nomA, objet: o.sujet });
     return null;
   } catch (e) {
     return e instanceof Error ? e.message : 'envoi impossible';
