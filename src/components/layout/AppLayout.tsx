@@ -21,6 +21,7 @@ import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
 import EnvoiPortails from '@/components/layout/EnvoiPortails';
 import Avertissements from '@/components/layout/Avertissements';
+import SuiviRemises from '@/components/layout/SuiviRemises';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
 import '@/styles/crm-mobile.css';
@@ -395,6 +396,8 @@ export default function AppLayout() {
       <EnvoiPortails />
       {/* « … : pas enregistré », quand une écriture échoue (V3.17). */}
       <Avertissements />
+      {/* « Le mail est-il arrivé ? » après chaque envoi (V3.151). */}
+      <SuiviRemises onFiche={c => handleNavigate('fiche', c)} />
     </div>
   );
 }
