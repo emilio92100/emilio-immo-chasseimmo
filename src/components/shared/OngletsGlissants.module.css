@@ -8,7 +8,8 @@
   border-radius: 10px; background: var(--emilio-fond);
   box-shadow: 0 8px 18px -10px rgba(26, 35, 50, .7);
 }
-.anime { transition: transform .42s cubic-bezier(.16, 1, .3, 1), width .42s cubic-bezier(.16, 1, .3, 1); }
+/* V3.152 : 300 ms, accélérée puis freinée (la maquette « C »). */
+.anime { transition: transform .3s cubic-bezier(.65, 0, .35, 1), width .3s cubic-bezier(.65, 0, .35, 1); }
 
 .onglet {
   position: relative; z-index: 1; flex-shrink: 0;
@@ -30,8 +31,10 @@
 .onSeul { background: var(--emilio-fond); }
 
 /* Le contenu arrive en fondu, glissé du côté où l'on va. La dernière image
-   ne garde aucun `transform` : les fenêtres fixes du contenu restent fixes. */
-.corps { animation: arrive .38s cubic-bezier(.16, 1, .3, 1) both; }
+   ne garde aucun `transform` : les fenêtres fixes du contenu restent fixes.
+   V3.152 : seulement quand le mouvement ne tourne pas (src/lib/mouvement.ts
+   fait alors tomber les blocs en cascade, voir Cascade.tsx). */
+:global(html:not(.emi-mvt)) .corps { animation: arrive .38s cubic-bezier(.16, 1, .3, 1) both; }
 @keyframes arrive {
   from { opacity: 0; transform: translateX(calc(var(--sens, 1) * 18px)); }
   to { opacity: 1; transform: none; }

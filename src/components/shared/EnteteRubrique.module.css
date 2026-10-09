@@ -278,7 +278,8 @@
     display: block; position: absolute; left: 0; top: 0; z-index: 0; border-radius: 11px; pointer-events: none;
     background: var(--emilio-fond); box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85);
   }
-  .glisseAnime { transition: transform .45s cubic-bezier(.16, 1, .3, 1), width .45s cubic-bezier(.16, 1, .3, 1), height .45s cubic-bezier(.16, 1, .3, 1); }
+  /* V3.152 : 300 ms, la courbe de la maquette « C », comme les onglets des fiches. */
+  .glisseAnime { transition: transform .3s cubic-bezier(.65, 0, .35, 1), width .3s cubic-bezier(.65, 0, .35, 1), height .3s cubic-bezier(.65, 0, .35, 1); }
   .cheval .tuile { z-index: 1; transition: background .2s, border-color .2s, transform .15s; }
   .cheval .n, .cheval .lib, .cheval .teteIc, .cheval .archIc { transition: color .3s ease, background .3s ease; }
   /* La pastille fait le fond : la tuile choisie s'efface derrière elle. */
@@ -294,6 +295,19 @@
 }
 /* V3.136 : « Ctrl + clic… » n'a pas de sens au doigt. */
 @media (max-width: 760px) { .phraseOrdi { display: none; } }
+
+/* ── V3.152 : au téléphone, le bloc d'un bord à l'autre ─────────────────
+   Alexandre : « sur le mobile tout est bridé, condensé ». Les pages ne
+   gardent plus de marge sur les côtés : le bloc va au bord de l'écran, sans
+   arrondi ni cadre sur les côtés. La rangée des chiffres défile et s'efface
+   au bord (Defilement.tsx) : le trait qui la sépare du titre passe au titre,
+   sinon il s'effacerait avec elle. */
+@media (max-width: 760px) {
+  .bloc { border-radius: 0; border-left: none; border-right: none; }
+  .haut:has(+ .rangee) { border-bottom: 1px solid #eef1f6; }
+  .rangee { border-top: none; }
+  .on::before { top: 0; }
+}
 @media (prefers-reduced-motion: reduce) { .glisseAnime { transition: none; } }
 
 /* ── V3.146 : le geste principal de la page, « vedette » (Visites :

@@ -478,7 +478,7 @@ export function BasculeCriteres({ mode, onMode }: { mode: ModeCrit; onMode: (m: 
 
 export function FriseCriteres({ etapes, i, onAller }: { etapes: EtapeCrit[]; i: number; onAller: (n: number) => void }) {
   return (
-    <div className={styles.critFrise}>
+    <div className={styles.critFrise} data-defile="">
       {etapes.map((sE, k) => (
         <Fragment key={sE.id}>
           {k > 0 && <span className={cls(styles.critTrait, k <= i && styles.critTraitFait)} />}

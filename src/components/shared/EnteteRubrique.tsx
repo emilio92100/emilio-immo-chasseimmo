@@ -172,7 +172,8 @@ export default function EnteteRubrique({
     const on = r.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!on) return;
     const g = on.offsetLeft - r.offsetLeft, d = g + on.offsetWidth;
-    if (g < r.scrollLeft || d > r.scrollLeft + r.clientWidth) r.scrollLeft = Math.max(0, d - r.clientWidth + 12);
+    /* 36 px : la tuile reste hors du fondu du bord (V3.152, Defilement.tsx). */
+    if (g < r.scrollLeft || d > r.scrollLeft + r.clientWidth) r.scrollLeft = Math.max(0, d - r.clientWidth + 36);
   }, [cleActive, tuiles.length, defiler]);
 
   /* V3.132 (Alexandre : « quand on va sur diffusion en cours, ça ne fait pas
@@ -250,7 +251,7 @@ export default function EnteteRubrique({
         )}
       </div>
 
-      {tuiles.length > 0 && <div ref={rangee} className={`${styles.rangee} ${plusieurs ? styles.plusieurs : ''}`} role="group" aria-label={label}>
+      {tuiles.length > 0 && <div ref={rangee} className={`${styles.rangee} ${plusieurs ? styles.plusieurs : ''}`} role="group" aria-label={label} data-defile="fondu">
         {aCheval && glisse && !plusieurs && (
           <span className={`${styles.glisse} ${anime ? styles.glisseAnime : ''}`} aria-hidden="true"
             style={{ transform: `translate(${glisse.x}px, ${glisse.y}px)`, width: glisse.l, height: glisse.h }} />

@@ -57,3 +57,11 @@
 @media (prefers-reduced-motion: reduce) {
   .corps { transition: none; }
 }
+
+/* V3.152 — Au téléphone, une seule colonne : les blocs perdent leur cadre,
+   comme empilés (un filet entre deux). Le cadre mangeait 14 px de chaque
+   côté sur un écran déjà étroit. */
+@media (max-width: 640px) {
+  .colonnes > .bloc { padding: 0; border: none; background: none; border-radius: 0; }
+  .colonnes > .bloc + .bloc { padding-top: 10px; border-top: 1px dashed #e3e8f0; }
+}
