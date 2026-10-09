@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
 import { rechercheRingover, signatureValide } from '@/lib/ringover-serveur';
@@ -17,11 +18,22 @@ import { rechercheRingover, signatureValide } from '@/lib/ringover-serveur';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+/* V3.143b — les premiers essais ont été refusés (401). Pour savoir pourquoi
+   sans montrer de secret : le GET d'essai donne l'empreinte de chaque clé
+   (six caractères de son SHA-256, à comparer à celle de la clé affichée dans
+   Ringover) et ce qu'on sait du dernier refus. Une signature faite avec la
+   clé de « Contact Call » est acceptée aussi : c'est une clé de Ringover. */
+const empreinte = (k?: string) => (k ? createHash('sha256').update(k.trim()).digest('hex').slice(0, 6) : null);
+let dernierRefus: Record<string, unknown> | null = null;
+
 export async function POST(req: NextRequest) {
   const cle = process.env.RINGOVER_CLE_RECHERCHE;
   const jeton = req.headers.get('x-ringover-webhook-signature') || req.headers.get('authorization');
-  if (!signatureValide(jeton, cle)) {
-    console.error('[ringover] recherche : signature absente ou refusée', cle ? '' : '(RINGOVER_CLE_RECHERCHE absente de Vercel)');
+  if (!signatureValide(jeton, cle) && !signatureValide(jeton, process.env.RINGOVER_CLE_CONTACT)) {
+    let alg: unknown = null;
+    try { alg = (JSON.parse(Buffer.from(String(jeton || '').replace(/^Bearer\s+/i, '').split('.')[0], 'base64url').toString('utf8')) as { alg?: unknown }).alg; } catch { /* pas un JWT */ }
+    dernierRefus = { le: new Date().toISOString(), jeton: !!jeton, enTetes: [...req.headers.keys()].filter(k => /ringover|signature|authorization/i.test(k)), alg };
+    console.error('[ringover] recherche : signature absente ou refusée', cle ? '' : '(RINGOVER_CLE_RECHERCHE absente de Vercel)', JSON.stringify(dernierRefus));
     return NextResponse.json({ erreur: 'non_autorise' }, { status: 401 });
   }
   let corps: { data?: { query_search?: unknown } } | null = null;
@@ -39,7 +51,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') || '';
   try {
     const r = await rechercheRingover(q);
-    return NextResponse.json({ ok: true, clePosee: !!process.env.RINGOVER_CLE_RECHERCHE, q, n: r.length, resultats: r });
+    return NextResponse.json({ ok: true, clePosee: !!process.env.RINGOVER_CLE_RECHERCHE, empreintes: { recherche: empreinte(process.env.RINGOVER_CLE_RECHERCHE), contact: empreinte(process.env.RINGOVER_CLE_CONTACT) }, dernierRefus, q, n: r.length, resultats: r });
   } catch (e) {
     return NextResponse.json({ ok: false, erreur: (e as Error).message }, { status: 500 });
   }
