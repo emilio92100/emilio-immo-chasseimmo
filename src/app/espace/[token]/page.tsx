@@ -11,6 +11,7 @@ import { lireReserve, mandatDocumentEnRoute, mandatDocumentSigne, mandatDocument
 import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/visites';
 import { lireDocumentsEspace, fichierDe, modeDoc, type DocEspace, type MandatDocEspace } from '@/lib/documents-espace';
 import { ecritServeur } from '@/lib/ecritures';
+import { prixDuBien } from '@/lib/honoraires-bien';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -261,7 +262,9 @@ export default async function PageEspace({ params, searchParams }: {
        son temps à pied jusqu'à la station (voir trajetDe). */
     ville: b.ville || null, quartier: b.quartier || null,
     trajet: trajetDe(b.situation, recherche.transport_arrets || []),
-    prix: b.prix_acquereur || b.prix_vendeur,
+    /* V3.145 : le prix de l'annonce ; `hono`, ce qui s'y ajoute quand ses
+       honoraires ne sont pas partagés (0 en inter-cabinet). */
+    prix: prixDuBien(b).demande, hono: prixDuBien(b).hono,
     surface: b.surface, pieces: b.nb_pieces, chambres: b.nb_chambres,
     etage: b.etage, etageTotal: b.etage_total, expo: b.exposition,
     dpe: b.dpe, ges: b.ges, annee: b.annee_construction,
