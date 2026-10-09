@@ -143,7 +143,12 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
 }) {
   const m = modele(doc.modele);
   const [row, setRow] = useState<DocumentRow>(doc);
-  const [d, setD] = useState<Donnees>(() => ({ ...(doc.donnees || {}) }));
+  /* V3.145 : ce qui se déduit des réponses (Modele.deduire), dès l'ouverture —
+     une offre d'avant n'avait que son prix, son total s'en déduit. */
+  const [d, setD] = useState<Donnees>(() => {
+    const x = { ...(doc.donnees || {}) };
+    return m?.deduire ? m.deduire(x, '') : x;
+  });
   const [etape, setEtape] = useState(0);
   const [vue, setVue] = useState<'form' | 'apercu'>('form');
   /* Étape par étape, ou tout sur une page : le choix est retenu (dans ce
@@ -273,7 +278,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   const maj = useCallback((cle: string, v: unknown) => {
     if (off) return;
     setD(prev => {
-      const n = { ...prev, [cle]: v };
+      let n: Donnees = { ...prev, [cle]: v };
+      if (m?.deduire) n = m.deduire(n, cle);
       dernier.current = n;
       return n;
     });
@@ -281,7 +287,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     setEnreg('attente');
     if (minuterie.current) clearTimeout(minuterie.current);
     minuterie.current = setTimeout(() => { enregistrer(); }, 800);
-  }, [off, enregistrer]);
+  }, [off, enregistrer, m]);
 
   /* Quitter la page avec une saisie pas encore partie : le navigateur prévient. */
   useEffect(() => {
