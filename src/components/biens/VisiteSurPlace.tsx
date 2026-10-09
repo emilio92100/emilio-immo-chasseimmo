@@ -266,7 +266,7 @@ function EcranPieces({ d, maj, photosEnAttente, envoyerPhoto }: {
           <b>{`${l.length} pièce${l.length > 1 ? 's' : ''}`}</b>
           <span>{total ? `${m2(total)} à vivre${declaree ? ` sur ${m2(declaree)}` : ''}` : 'Les surfaces s’additionnent ici'}</span>
         </div>
-        <div className={b.vListeL}>
+        <div className={b.vListeL} data-defile="">
           {l.map(x => {
             const e = ETATS_PIECE.find(y => y.v === x.etat);
             const nbP = photos.filter(ph => ph.legende === x.nom).length;
@@ -535,7 +535,7 @@ export default function VisiteSurPlace({ bien, onFermer }: { bien: BienVente; on
         </span>
       </header>
 
-      <nav className={b.vFil} aria-label="Écrans de la visite">
+      <nav className={b.vFil} aria-label="Écrans de la visite" data-defile="">
         {ECRANS.map((x, i) => (
           <button key={x.id} type="button" className={`${b.vFilB} ${i === ecran ? b.vFilOn : i < ecran ? b.vFilFait : ''}`} aria-current={i === ecran ? 'step' : undefined} onClick={() => aller(i)}>
             <span className={b.vFilN}><Ic n={x.ic} t={15} />{i < ecran && <i className={b.pasCoche}><Ic n="check" t={8} e={3.6} /></i>}</span>

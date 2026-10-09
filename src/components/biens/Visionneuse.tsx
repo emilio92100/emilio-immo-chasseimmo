@@ -68,7 +68,7 @@ export default function Visionneuse({ photos, depart, onFermer }: { photos: Phot
       <div className={v.bas} onClick={e => e.stopPropagation()}>
         {p.legende && <div className={v.legende}>{p.legende}</div>}
         {n > 1 && (
-          <div className={v.vignettes}>
+          <div className={v.vignettes} data-defile="">
             {photos.map((x, j) => (
               <button key={x.url} type="button" className={`${v.vignette} ${j === i ? v.vignetteOn : ''}`} onClick={() => setI(j)} aria-label={`Photo ${j + 1}`} aria-current={j === i}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}

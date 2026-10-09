@@ -180,3 +180,10 @@ li[data-etat='encours'] .jTx b { color: #8a6a1f; }
   .barre span { animation: none; }
   .jBarre::after { animation: none !important; }
 }
+
+/* V3.152 — Le téléphone bord à bord : une carte par ligne, d'un bord à
+   l'autre, sans arrondi ni cadre sur les côtés. */
+@media (max-width: 760px) {
+  .kpi, .bloc, .parcours { border-radius: 0; border-left: none; border-right: none; }
+  .kpi, .parcours { padding-left: 14px; padding-right: 14px; }
+}

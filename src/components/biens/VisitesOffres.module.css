@@ -123,3 +123,13 @@
   .jour b { font-size: 16px; }
   .source { margin-left: 0; }
 }
+
+/* V3.152 — Le téléphone bord à bord : les cartes de l'onglet vont d'un bord
+   à l'autre (ni arrondi ni cadre sur les côtés) ; les titres posés sur le
+   fond gardent 14 px de marge. */
+@media (max-width: 760px) {
+  .tete, .etape, .encart, .rubrique[data-ouvert='non'] { border-radius: 0; border-left: none; border-right: none; }
+  .tete, .etape, .encart, .rubrique[data-ouvert='non'] { padding-left: 14px; padding-right: 14px; }
+  .blocT, .rubrique, .histoT, .sousBloc h4, .vide { padding-left: 14px; padding-right: 14px; }
+  .histoT .rubrique { padding-left: 0; padding-right: 0; }
+}
