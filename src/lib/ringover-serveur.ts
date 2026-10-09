@@ -7,10 +7,9 @@
    C'est le webhook « Contact Call » de Ringover (Développeur › Webhooks) : à
    chaque appel, entrant ou sortant, Ringover demande à notre adresse
    (/api/ringover/contact) qui est ce numéro. On répond avec le nom, une
-   ligne sous le nom — la seule que Ringover montre pendant l'appel (V3.142) :
-   le type, puis son bien en vente ou sa recherche (« Vendeur · En vente ·
-   Appart. 2 p. · 38,11 m² · Boulogne-Billancourt ») —, quelques lignes en
-   plus (`data`, que Ringover ne semble pas afficher) et le lien de sa fiche. Ringover l'affiche dans son application, même si
+   ligne sous le nom (« Acheteur · Vendeur », « Étude Durand · Boulogne »),
+   quelques lignes en plus (sa recherche, son bien et son étape) et le lien
+   de sa fiche dans le CRM. Ringover l'affiche dans son application, même si
    le contact n'y a jamais été enregistré. Un numéro inconnu : 404, Ringover
    affiche le numéro, comme avant.
 
@@ -128,26 +127,6 @@ const phraseRecherche = (r: RechercheLue) => [
   (r.secteurs || []).filter(Boolean).slice(0, 2).join(', '),
 ].filter(Boolean).join(' · ') || String(r.nom || '').trim() || 'Recherche ouverte';
 
-/* ── V3.142 : la ligne sous le nom, la seule que Ringover montre ──
-   Alexandre : « je ne vois pas plus d'infos que le nom ». Ringover
-   n'affiche que le nom et `company` pendant l'appel : l'essentiel y passe,
-   en court (elle se coupe à droite, la ville en dernier).
-   « Vendeur · En vente · Appart. 2 p. · 38,11 m² · Boulogne-Billancourt »,
-   « Acheteur · Appart. 3 p.+ · 600 k€ max · Boulogne-Billancourt ». */
-export const kEuros = (n: number) => (n >= 1_000_000
-  ? `${(Math.round(n / 100_000) / 10).toString().replace('.', ',')} M€`
-  : n >= 1000 ? `${Math.round(n / 1000)} k€` : `${n} €`);
-const court = (t: string) => t.replace(/\bappartement\b/gi, 'Appart.').replace(/\s*\bpi[eè]ces?\b/gi, ' p.').replace(/\s+/g, ' ').trim();
-const EN_VENTE = ['mandat', 'offre', 'compromis', 'suspendu'];
-const ligneBien = (b: BienLu) => [
-  etapeDe(b.etape).court, court(String(b.titre || '').trim() || titreBien(b.donnees || {})), b.ville || '',
-].filter(Boolean).join(' · ');
-const ligneRecherche = (r: RechercheLue) => [
-  [r.type_bien ? court(String(r.type_bien).charAt(0).toUpperCase() + String(r.type_bien).slice(1)) : '', r.nb_pieces_min ? `${r.nb_pieces_min} p.+` : ''].filter(Boolean).join(' '),
-  r.budget_max ? `${kEuros(r.budget_max)} max` : '',
-  (r.secteurs || []).filter(Boolean)[0] || '',
-].filter(Boolean).join(' · ');
-
 export async function reponsePour(numero: string, sb: SupabaseClient = baseServeur()): Promise<ReponseRingover | null> {
   const trouves = trouverNumero(await lireContacts(sb), numero);
   if (!trouves.length) return null;
@@ -170,12 +149,7 @@ export async function reponsePour(numero: string, sb: SupabaseClient = baseServe
   ]);
   const r0 = ((rech.data || []) as RechercheLue[])[0];
   if (r0) data['Recherche'] = phraseRecherche(r0);
-  const lesBiens = (biens.data || []) as BienLu[];
-  /* La ligne visible : un bien en vente d'abord, sinon sa recherche, sinon
-     son bien (une estimation, un projet à suivre). */
-  const enVente = lesBiens.find(b => EN_VENTE.includes(String(b.etape || '')));
-  const detail = enVente ? ligneBien(enVente) : r0 ? ligneRecherche(r0) : lesBiens[0] ? ligneBien(lesBiens[0]) : '';
-  lesBiens.slice(0, 2).forEach((b, i) => {
+  ((biens.data || []) as BienLu[]).slice(0, 2).forEach((b, i) => {
     const titre = String(b.titre || '').trim() || titreBien(b.donnees || {});
     data[i ? 'Autre bien' : 'Bien'] = [titre, b.ville, etapeDe(b.etape).court].filter(Boolean).join(' · ');
   });
@@ -193,7 +167,7 @@ export async function reponsePour(numero: string, sb: SupabaseClient = baseServe
     uuid: c.id,
     firstname: prenom,
     lastname: nom || (prenom ? '' : 'Contact sans nom'),
-    company: [c.archive === true ? 'Archivé' : '', ligneContact(c) || libTypes, detail].filter(Boolean).join(' · '),
+    company: ligneContact(c) || libTypes,
     url: `${crmUrl()}/?page=fiche&client=${encodeURIComponent(c.id)}`,
     data,
     is_shared: true,
