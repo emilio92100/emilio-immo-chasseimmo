@@ -185,6 +185,9 @@ async function pageDocument(sb: SupabaseClient, jeton: string): Promise<DonneesS
     /* « 14 jours pour changer d'avis » seulement si le document le dit. */
     retractation: aRetractation(m, doc.donnees), tel: TEL_AGENT,
     finValidite: finOffre ? finOffre.toISOString() : null,
+    /* V3.145 : son total frais d'agence compris (une offre d'achat), pour lui
+       seul — pas pour l'agence qui transmet. */
+    rappel: s.cle !== 'agence' && m.rappel ? m.rappel(doc.donnees) : null,
   };
 }
 
