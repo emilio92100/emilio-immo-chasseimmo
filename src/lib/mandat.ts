@@ -604,7 +604,7 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
         P('L’Agence indique au MANDANT par écrit, avant toute offre d’achat, dans lequel de ces deux cas se trouve le bien, notamment dans son espace personnel.', true),
         /* V3.145 : les prix de l'espace sont ceux des annonces ; ses honoraires y
            sont dits sur le bien, quand ils s'ajoutent (src/lib/honoraires-bien.ts). */
-        P('Les prix des biens présentés dans l’espace personnel du MANDANT sont ceux de leurs annonces. Lorsque des honoraires sont dus au titre du présent mandat, l’espace l’indique sur le bien concerné, avec leur montant.'),
+        P('Dans l’espace personnel du MANDANT, le prix affiché pour chaque bien est celui de son annonce. Si des honoraires de l’Agence s’y ajoutent (second cas ci-dessus), l’espace le précise sur le bien concerné, avec leur montant.'),
         P('Lorsqu’ils sont dus, les honoraires sont payés le jour de la signature de l’acte authentique, par l’intermédiaire du notaire : aucune somme n’est due avant. En cas de préemption, le titulaire du droit de préemption les doit à la place de l’acquéreur.'),
       ] },
       { titre: 'Durée', ic: 'calendrier', blocs: plusieurs
