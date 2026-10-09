@@ -8,7 +8,9 @@
    En ligne : quand Alexandre envoie les liens, chaque signataire reçoit le
    sien (espace.emilio-immo.com/signer/<jeton>), demande son code, signe au
    doigt. Sur place : sur l'écran d'Alexandre, chacun son tour, avec un code
-   reçu sur sa propre adresse. Dans les deux cas, l'agence signe au moment où
+   reçu sur sa propre adresse — sauf le bon de visite (V3.154), où chacun
+   signe dans son cadre, au stylet, sans code (voir validerSansCode et
+   src/lib/signature-sans-code.ts). Dans les deux cas, l'agence signe au moment où
    Alexandre lance la signature, avec la signature rangée dans le dossier
    privé (`agence/signature.png`).
 
@@ -46,6 +48,7 @@ import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { noterSignature } from './registre';
 import { noteOffre } from './actes/offre-achat';
+import { biensDuBon, type BienVisite } from './actes/bon-visite';
 import { mandatSigneSurBien } from './mandat-bien';
 import { avenantSigneSurBien } from './documents-avenant-bien';
 import { solderRelancesSignature } from './documents-relances';
@@ -409,6 +412,54 @@ export async function validerSignature(sb: SupabaseClient, s: SigDoc, m: Modele,
   return { s: data as SigDoc };
 }
 
+/* ── Sur place, sans code : le bon de visite (V3.154) ──────────────────────
+   Alexandre : « sur place, chacun a son cadre et signe avec le stylet que
+   je lui donne ». La règle qui l'autorise est dans signature-sans-code.ts
+   (bon de visite, « Sur place », signataire attendu sur place, badge du
+   CRM) : la route la vérifie AVANT d'appeler ceci.
+   Sans code, le tracé est la seule marque du signataire : pas de tracé
+   lisible, ou pas rangé, pas de signature. Le déroulé dit exactement ce
+   qui s'est passé, et le certificat le reprend (voir signeSansCodeFait). */
+export const PREUVE_SANS_CODE = 'Signé sur place, en présence de l’Agence, sur l’appareil de l’Agence, sans code à usage unique';
+/* A-t-il signé sans code ? Lu dans son déroulé (aucune colonne à ajouter). */
+export const signeSansCodeFait = (s: Pick<SigDoc, 'statut' | 'deroule'>) => s.statut === 'signe' && (s.deroule || []).some(e => e.x === PREUVE_SANS_CODE);
+/* La preuve de code qu'exige la finalisation sur place. */
+export const codeValideFait = (s: Pick<SigDoc, 'deroule'>) => (s.deroule || []).some(e => /^Code saisi et validé/.test(e.x));
+
+export async function validerSansCode(sb: SupabaseClient, s: SigDoc, m: Modele, d: Donnees, o: {
+  griffe: unknown; ip: string; appareil: string; demande?: boolean;
+}): Promise<Refus | { s: SigDoc }> {
+  const demande = demandeExpresse(m, d, s.cle);
+  if (demande && o.demande !== true) return { erreur: 'demande', statut: 400 };
+  if (s.statut === 'signe') return { erreur: 'deja', statut: 409 };
+  if (s.statut !== 'attendu' || s.mode !== 'sur_place') return { erreur: 'signataire', statut: 409 };
+  const png = lireGriffe(o.griffe);
+  if (!png) return { erreur: 'griffe', statut: 400 };
+  const griffe = await rangerGriffe(sb, s.document_id, s.cle, png);
+  if (!griffe) return { erreur: 'stockage', statut: 500 };
+  const le = new Date().toISOString();
+  const accepte = m.accepter ? m.accepter(d, s.cle) : 'J’ai lu le document en entier et je l’accepte.';
+  const maj = {
+    /* `email_verifie` reste vide : sans code, rien n'a été vérifié. */
+    statut: 'signe' as const, signe_le: le, ip: o.ip, appareil: o.appareil, griffe_chemin: griffe, code_hash: null,
+    deroule: [...(s.deroule || []),
+      { t: le, x: PREUVE_SANS_CODE },
+      { t: le, x: 'Signature tracée à l’écran, dans son cadre' },
+      { t: le, x: `Case cochée : « ${accepte} »` },
+      ...(demande ? [{ t: le, x: `Case à part cochée : « ${demande} »` }] : []),
+    ],
+  };
+  /* Seulement s'il est encore attendu sur place : un double appui ne signe
+     pas deux fois, une signature arrêtée entre-temps ne revient pas. */
+  const { data, error } = await sb.from('documents_signataires').update(maj).eq('id', s.id).eq('statut', 'attendu').eq('mode', 'sur_place').select('*').maybeSingle();
+  if (error) return { erreur: 'enregistrement', statut: 500, plus: { detail: error.message } };
+  if (!data) {
+    const { data: frais } = await sb.from('documents_signataires').select('statut').eq('id', s.id).maybeSingle();
+    return (frais as { statut?: string } | null)?.statut === 'signe' ? { erreur: 'deja', statut: 409 } : { erreur: ARRETEE, statut: 409 };
+  }
+  return { s: data as SigDoc };
+}
+
 /* ── Le PDF, refait avec les signatures ────────────────────────────────── */
 
 async function lireFichier(sb: SupabaseClient, chemin: string | null | undefined): Promise<Uint8Array | null> {
@@ -448,7 +499,7 @@ async function cadres(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[]): Promis
   const out: Record<string, CadreSigne> = {};
   for (const s of sigs.filter(actif)) {
     out[s.cle] = s.statut === 'signe' && s.signe_le
-      ? { le: s.signe_le, griffe: await lireFichier(sb, s.griffe_chemin), surPlace: s.mode === 'sur_place' }
+      ? { le: s.signe_le, griffe: await lireFichier(sb, s.griffe_chemin), surPlace: s.mode === 'sur_place', ...(signeSansCodeFait(s) ? { sansCode: true } : {}) }
       : { le: null };
   }
   if (doc.signature?.agence_le) out.agence = { le: doc.signature.agence_le };
@@ -487,6 +538,7 @@ export async function sceller(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[],
     nom: nomSig(s), adresse: s.personne.adresse || '', email: s.email_verifie || s.personne.email, telephone: s.personne.telephone || '',
     le: s.statut === 'signe' ? s.signe_le : null, ip: s.ip || (s.mode === 'sur_place' ? 'sur place' : ''), appareil: s.appareil || '',
     invite: s.mode === 'en_ligne' ? s.invite_le : null,
+    ...(signeSansCodeFait(s) ? { sansCode: true } : {}),
   }));
   const retr = aRetractation(m, d);
   const execution = retr && (d.execution === 'oui' || d.execution === 'non')
@@ -594,6 +646,40 @@ export async function envoyerExemplaire(o: {
    V3.50 : seulement s'il est encore « à faire signer ». Déjà classé (deux
    derniers signataires au même moment), rien n'est refait : ni registre,
    ni fiche, ni suivi. */
+/* V3.154 — Les biens d'un bon de visite, pour la ligne « Bon de visite
+   signé » du suivi : Alexandre veut voir d'un coup d'œil les biens visités,
+   et les ouvrir d'un clic (FriseSuivi en fait des étiquettes). Chaque bien
+   retrouve sa fiche dans le dossier du client : par le lien posé quand le
+   bon est préparé depuis la visite (`bienId`, ou le bien de l'agence
+   `bienVenteId`), sinon par son adresse (un bien ajouté à la main dans le
+   bon). Pas retrouvé : l'étiquette dit l'adresse, sans clic. */
+export type BienDuSuivi = { id: string | null; lib: string };
+async function biensPourSuivi(sb: SupabaseClient, doc: DocSigne): Promise<BienDuSuivi[]> {
+  const bs = biensDuBon(doc.donnees || {});
+  const plat = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  type Copie = { id: string; adresse: string | null; ville: string | null; bien_vente_id: string | null };
+  let copies: Copie[] = [];
+  if (doc.client_id) {
+    const { data, error } = await sb.from('biens').select('id, adresse, ville, bien_vente_id').eq('client_id', doc.client_id).limit(500);
+    if (error) console.error('[documents] biens du bon de visite', error.message);
+    else copies = (data || []) as Copie[];
+  }
+  return bs.map((b, i) => {
+    const lib = [b.adresse, b.ville].filter(Boolean).join(', ') || b.description || 'Bien';
+    const direct = b.bienId || (i === 0 ? doc.bien_id || '' : '');
+    if (direct) return { id: direct, lib };
+    const parVente = b.bienVenteId ? copies.find(c => c.bien_vente_id === b.bienVenteId) : null;
+    if (parVente) return { id: parVente.id, lib };
+    const a = plat(b.adresse), v = plat(b.ville);
+    const parAdresse = a.length >= 6 ? copies.find(c => {
+      const ca = plat(c.adresse);
+      if (!ca || !(ca === a || ca.includes(a) || a.includes(ca))) return false;
+      return !v || !c.ville || plat(c.ville) === v;
+    }) : null;
+    return { id: parAdresse?.id || null, lib };
+  });
+}
+
 export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDoc, le: string, o: { echecs?: string[] } = {}): Promise<string[]> {
   const m = modele(doc.modele);
   const pbs: string[] = [];
@@ -637,6 +723,7 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
     if (e2) pbs.push('bloc Mandat de la recherche : ' + e2.message);
   }
   if (doc.client_id) {
+    const biensBon = doc.modele === 'bon_visite' ? await biensPourSuivi(sb, doc) : null;
     const { error: e3 } = await sb.from('journal').insert({
       client_id: doc.client_id, type: 'mandat',
       titre: `✍️ ${m?.titre || 'Document'} signé ${sd.mode === 'sur_place' ? 'sur place' : 'en ligne'}`,
@@ -644,7 +731,7 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
         /* V3.145 : une offre d'achat — son total et ses honoraires, pour lui seul. */
         + (doc.modele === 'offre_achat' && noteOffre(doc.donnees) ? `\n💶 ${noteOffre(doc.donnees)}` : '')
         + ([...(o.echecs || []), ...pbs].length ? `\n⚠️ ${[...(o.echecs || []), ...pbs].join(' ; ')}` : ''),
-      metadata: { document_id: doc.id },
+      metadata: { document_id: doc.id, ...(biensBon ? { biens: biensBon } : {}) },
     });
     if (e3) pbs.push('suivi du client : ' + e3.message);
   }
@@ -722,7 +809,9 @@ export async function terminer(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[]
     }
     envoi = true;
     const echecs: string[] = [];
-    for (const s of sigs.filter(x => x.statut === 'signe')) {
+    /* V3.154 : un visiteur qui a signé un bon de visite sur place sans donner
+       d'adresse n'a pas d'exemplaire par e-mail (l'agence le garde). */
+    for (const s of sigs.filter(x => x.statut === 'signe' && emailValide(x.personne.email || ''))) {
       const e = await envoyerExemplaire({ s, m, d: doc.donnees, signe: sc.signe, complet: true, attendus: [] });
       if (e) echecs.push(`${nomSig(s)} : ${e}`);
     }
@@ -827,6 +916,20 @@ export async function autreEnSignature(sb: SupabaseClient, doc: DocSigne): Promi
   const memeRecherche = (b: DocSigne) => (doc.recherche_id && b.recherche_id ? doc.recherche_id === b.recherche_id : !!doc.client_id && doc.client_id === b.client_id);
   const numero = champ(doc.donnees, 'mandatNumero');
   const memeMandat = (b: DocSigne) => !!numero && numero === champ(b.donnees, 'mandatNumero');
+  /* V3.154 : un bon de visite peut porter plusieurs biens (biensDuBon) :
+     il suffit d'une visite en commun — le même bien (comme memeBien), le
+     même jour. Le premier bien garde ses clés d'avant. */
+  const memeVisite = (b: DocSigne) => {
+    const cle = (x: DocSigne, v: BienVisite, i: number) => (i === 0 ? bienDe(x) : v.bienVenteId || (v.bienId ? venteDe[v.bienId] || `copie:${v.bienId}` : ''));
+    const adr = (v: BienVisite) => { const a = net(v.adresse), c = net(v.ville); return a && c ? `${a}|${c}` : ''; };
+    const l = biensDuBon(b.donnees || {});
+    return biensDuBon(doc.donnees || {}).some((p, i) => l.some((q, j) => {
+      if (p.dateVisite !== q.dateVisite) return false;
+      const ka = cle(doc, p, i), kb = cle(b, q, j);
+      if (ka && kb) return ka === kb;
+      return !!adr(p) && adr(p) === adr(q) && memesSignataires(doc, b);
+    }));
+  };
   const pareil = (b: DocSigne): boolean => {
     switch (doc.modele) {
       case 'mandat_vente': return memeBien(doc, b);
@@ -834,7 +937,7 @@ export async function autreEnSignature(sb: SupabaseClient, doc: DocSigne): Promi
       case 'mandat_recherche': return memeRecherche(b);
       case 'avenant_recherche': return numero ? memeMandat(b) : memeRecherche(b);
       case 'offre_achat': return memeBien(doc, b) && memesPersonnes(b);
-      case 'bon_visite': return memeBien(doc, b) && memesPersonnes(b) && champ(doc.donnees, 'dateVisite') === champ(b.donnees, 'dateVisite');
+      case 'bon_visite': return memesPersonnes(b) && memeVisite(b);
       case 'delegation': return memeMandat(b) && champ(doc.donnees, 'confrereId') === champ(b.donnees, 'confrereId');
       default: return false;
     }

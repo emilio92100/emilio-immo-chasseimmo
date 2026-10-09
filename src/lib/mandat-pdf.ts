@@ -271,7 +271,9 @@ export type OptionsPdf = {
      posée dans son cadre ; celle de l'agence vient de `signatureAgence`. */
   signes?: Record<string, CadreSigne>;
 };
-export type CadreSigne = { le: string | null; griffe?: Uint8Array | null; refus?: boolean; surPlace?: boolean };
+/* `sansCode` (V3.154) : signé sur place, sur l'appareil de l'agence, sans
+   code à usage unique (le bon de visite). */
+export type CadreSigne = { le: string | null; griffe?: Uint8Array | null; refus?: boolean; surPlace?: boolean; sansCode?: boolean };
 
 /* Les tailles du texte courant : lisibles à l'écran d'un téléphone comme
    imprimées. */
@@ -586,8 +588,10 @@ class Plume {
   /* Les cadres d'un document signé en ligne ou sur place : deux par ligne,
      chacun avec son état (signé, en attente), l'heure de la signature et
      le trait tracé à l'écran ; celui de l'agence porte la signature
-     d'Alexandre. Même dessin que les cadres du mandat de recherche. */
-  signaturesElectroniques(cases: { qui: string; nom: string; lignes: string[]; cle?: string; agence?: boolean }[], mention?: string) {
+     d'Alexandre. Même dessin que les cadres du mandat de recherche.
+     `sansCode` (V3.154) : le document se signe sur place sans code (le bon
+     de visite) ; chaque cadre signé dit, lui, comment il l'a été. */
+  signaturesElectroniques(cases: { qui: string; nom: string; lignes: string[]; cle?: string; agence?: boolean }[], mention?: string, sansCode = false) {
     const gap = 14, w = (LARGEUR - gap) / 2;
     if (mention) this.paragraphe(mention, { taille: 8.9, couleur: GRIS, apres: 8 });
     type Cadre = { qui: string; nom: string; lignes: string[]; ton: 'vert' | 'or' | 'rouge'; etat: string; griffe: PDFImage | null; agence: boolean };
@@ -599,8 +603,10 @@ class Plume {
       const quand = fait ? `le ${dateCourte(x.le!)} à ${heureParis(x.le!)} (heure de Paris)` : '';
       const ligne = c.agence
         ? fait ? `Signé électroniquement ${quand}, en ouvrant la signature aux autres parties.` : 'Signé par l’Agence en ouvrant la signature aux autres parties.'
+        : fait && x.sansCode ? `Signé électroniquement ${quand}, sur place, en présence de l’Agence et sur son appareil, sans code à usage unique${this.griffesCle[c.cle || ''] ? ', signature tracée à l’écran' : ''}.`
         : fait ? `Signé électroniquement ${quand}${x.surPlace ? ', sur place' : ''}, par code à usage unique reçu par e-mail${this.griffesCle[c.cle || ''] ? ' et signature tracée à l’écran' : ''}.`
         : x.refus ? 'N’a pas signé.'
+        : sansCode ? 'Signature électronique tracée à l’écran, dans ce cadre.'
         : 'Signature électronique par code à usage unique reçu par e-mail.';
       return {
         qui: c.qui.toUpperCase(), nom: c.nom, lignes: [...c.lignes, ligne], agence: !!c.agence,
@@ -981,7 +987,7 @@ function dessinerBloc(pl: Plume, b: Bloc, o: OptionsPdf) {
   else if (b.t === 'fiches') pl.fiches(b.items);
   else if (b.t === 'case') pl.caseACocher(b.x, b.coche);
   else if (b.t === 'sig') pl.signatures(o.sig, o.mandantNom, b.noms);
-  else if (b.t === 'sigs' && b.electronique) pl.signaturesElectroniques(b.cases, b.mention);
+  else if (b.t === 'sigs' && b.electronique) pl.signaturesElectroniques(b.cases, b.mention, !!b.sansCode);
   else if (b.t === 'sigs') pl.signaturesPapier(b.cases, b.mention);
 }
 
@@ -1124,6 +1130,9 @@ export type SignataireCertif = {
   invite?: string | null;       // quand son lien est parti
   refus?: boolean;              // il ne signera pas
   execution?: boolean | null;   // sa demande d'exécution immédiate
+  /* V3.154 : signé sur place, sur l'appareil de l'agence, sans code à usage
+     unique (le bon de visite) : son adresse e-mail n'est pas vérifiée. */
+  sansCode?: boolean;
 };
 
 export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8Array> {
@@ -1163,11 +1172,21 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
   const phrase = !sgn
     ? `Signé par les deux parties. Le client, ${c.mandant.nom}, a signé le ${dateLongue(c.signeLe)} à ${heureParis(c.signeLe, true)} (heure de Paris).`
     : `Signé par ${faits.map(qui).join(', puis par ')} (heure de Paris).${attendus.length ? ` En attente de la signature de ${attendus.map(x => x.nom).join(' et de ')}.` : ''}`;
+  /* V3.154 : le bon de visite signé sur place, sans code. Le certificat dit
+     comment chacun a signé, sans prétendre à une adresse vérifiée. */
+  const sansCode = faits.filter(x => x.sansCode);
+  const avecCode = faits.filter(x => !x.sansCode);
+  const preuveQui = !sansCode.length
+    ? 'Adresse e-mail de chaque signataire vérifiée par un code à usage unique, reçu sur sa propre adresse'
+    : !avecCode.length
+      ? 'Signé sur place, en présence de l’Agence, sur l’appareil de l’Agence, sans code à usage unique : chaque signataire a coché la case « J’ai lu » puis tracé sa signature à l’écran'
+      : `Signé sur place, en présence de l’Agence, sur l’appareil de l’Agence, sans code à usage unique : ${sansCode.map(x => x.nom).join(', ')}. Avec un code à usage unique reçu sur sa propre adresse e-mail : ${avecCode.map(x => x.nom).join(', ')}`;
+  const sansMail = (sgn || []).some(x => !x.email);
   const preuves = c.doc ? [
-    'Adresse e-mail de chaque signataire vérifiée par un code à usage unique, reçu sur sa propre adresse',
+    preuveQui,
     c.agenceLe ? `Signé pour l’agence le ${dateCourte(c.agenceLe)} par ${id.signataireNom}` : `Signé pour l’agence par ${id.signataireNom}`,
     'Document scellé : son empreinte, relevée à la signature, révèle toute modification',
-    'Un exemplaire est adressé à chaque signataire par e-mail',
+    sansMail ? 'Un exemplaire est adressé par e-mail à chaque signataire qui a donné son adresse ; l’Agence conserve l’original' : 'Un exemplaire est adressé à chaque signataire par e-mail',
   ] : sgn ? [
     /* « Adresse e-mail vérifiée », pas « identité vérifiée » (V3.22) : le code
        prouve l'accès à la boîte mail, pas l'identité de la personne. */
@@ -1256,12 +1275,18 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
     titre('Les signataires');
     sgn.forEach((x, i) => {
       ligne(role(i), x.nom, { gras: true });
-      ligne('E-mail', x.le ? `${x.email} (vérifié par le code)` : x.email);
+      /* V3.154 : sans code, l'adresse est celle qu'il a donnée, rien de plus. */
+      ligne('E-mail', x.le && x.sansCode ? (x.email ? `${x.email} (déclarée, non vérifiée : signé sans code)` : 'Non communiquée') : x.le ? `${x.email} (vérifié par le code)` : x.email || '—');
       ligne('Téléphone déclaré', x.telephone || '—');
       ligne('Signature', x.le
         ? `Le ${dateCourte(x.le)} à ${heureParis(x.le, true)} (heure de Paris)`
         : x.refus ? 'N’a pas signé : non engagé' : `En attente${x.invite ? ` · lien personnel envoyé le ${dateCourte(x.invite)} à ${heureParis(x.invite)}` : ''}`);
-      if (x.le) { ligne('Adresse IP', x.ip || '—', { mono: true }); ligne('Appareil', x.appareil || '—'); }
+      if (x.le && x.sansCode) ligne('Méthode', 'Sur place, en présence de l’Agence, sur l’appareil de l’Agence, sans code à usage unique : case « J’ai lu » cochée, signature tracée à l’écran dans son cadre');
+      if (x.le) {
+        const chez = x.sansCode ? ' (appareil de l’Agence)' : '';
+        ligne('Adresse IP', x.ip ? `${x.ip}${chez}` : '—', { mono: true });
+        ligne('Appareil', x.appareil ? `${x.appareil}${chez}` : '—');
+      }
     });
   } else {
     titre('Le signataire');

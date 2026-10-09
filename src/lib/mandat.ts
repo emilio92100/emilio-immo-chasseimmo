@@ -473,8 +473,10 @@ export type Bloc =
   /* Les cadres de signature d'un document signé sur papier : un par
      signataire, deux par ligne, avec la mention à recopier. `electronique` :
      signé en ligne ou sur place, chaque cadre (retrouvé par sa `cle`) dit
-     s'il est signé, quand, et porte la signature tracée. */
-  | { t: 'sigs'; cases: { qui: string; nom: string; lignes: string[]; cle?: string; agence?: boolean }[]; mention?: string; electronique?: boolean };
+     s'il est signé, quand, et porte la signature tracée. `sansCode`
+     (V3.154, le bon de visite signé sur place) : chacun signe dans son
+     cadre, sur l'écran de l'agence, sans code à usage unique. */
+  | { t: 'sigs'; cases: { qui: string; nom: string; lignes: string[]; cle?: string; agence?: boolean }[]; mention?: string; electronique?: boolean; sansCode?: boolean };
 export type Section = { titre?: string; ic?: Icone; blocs: Bloc[] };
 /* `court` : son nom dans le sommaire de la page de garde. */
 export type Partie = { titre: string; court: string; sous?: string; ic: Icone; sections: Section[] };

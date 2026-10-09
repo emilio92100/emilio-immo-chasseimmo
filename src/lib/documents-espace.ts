@@ -31,6 +31,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { modele } from './actes';
 import { finValiditeOffre } from './actes/offre-achat';
+import { biensDuBon } from './actes/bon-visite';
 
 /* ── Les documents que l'espace acheteur montre (V3.56) ──
    L'espace est celui de l'ACHETEUR : il y retrouve ses documents d'acheteur
@@ -253,6 +254,20 @@ export function pourVous(sigs: SignataireEspace[]): Pick<DocEspace, 'etat' | 'li
   return null;
 }
 
+/* Un bon de visite signé, pour « Mes bons de visite » : la visite du
+   premier bien (sa date range la liste) ; V3.154, un bon à plusieurs biens
+   nomme les autres sous le premier (« et 2 autres biens : … »). */
+function visiteDuBon(d: Record<string, unknown>): NonNullable<DocEspace['visite']> {
+  const [b, ...autres] = biensDuBon(d);
+  const lieu = (x: typeof b) => [x.adresse, x.ville].filter(Boolean).join(', ');
+  const ou = autres.map(lieu).filter(Boolean).join(' ; ');
+  const suite = autres.length ? `et ${autres.length} autre${autres.length > 1 ? 's' : ''} bien${autres.length > 1 ? 's' : ''}${ou ? ` : ${ou}` : ''}` : '';
+  return {
+    date: /^\d{4}-\d{2}-\d{2}/.test(b.dateVisite) ? b.dateVisite.slice(0, 10) : null, heure: b.heure, adresse: b.adresse, ville: b.ville,
+    bien: [b.description, suite].filter(Boolean).join(' · '),
+  };
+}
+
 /** Ses documents, pour l'accueil de l'espace : ceux qui attendent quelque
     chose de lui (ou d'un proche, une fois qu'il a signé), et ceux qui sont
     signés et dont l'exemplaire est déposé — signés en ligne, sur place ou à
@@ -280,10 +295,8 @@ export async function lireDocumentsEspace(sb: SupabaseClient, clientId: string, 
       const mandat = x.modele === 'mandat_recherche';
       if (x.statut === 'signe') {
         const fichier = fichierDe(x.signe_chemin);
-        const v = x.modele === 'bon_visite' ? (x.donnees || {}) : null;
-        const t = (k: string) => (v && typeof v[k] === 'string' ? String(v[k]).trim() : '');
         if (fichier) out.push({ id: x.id, titre, etat: 'signe', le: x.signe_le, fichier, mandat,
-          ...(v ? { visite: { date: /^\d{4}-\d{2}-\d{2}/.test(t('dateVisite')) ? t('dateVisite').slice(0, 10) : null, heure: t('heure'), adresse: t('adresse'), ville: t('ville'), bien: t('description') } } : {}) });
+          ...(x.modele === 'bon_visite' ? { visite: visiteDuBon(x.donnees || {}) } : {}) });
         continue;
       }
       if (!x.signature) continue;
