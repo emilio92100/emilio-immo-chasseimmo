@@ -1342,7 +1342,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
      porte déjà s'ouvre ; sinon il se prépare avec l'acheteur (et son
      conjoint), ce bien et la visite. Ses autres visites du jour, sur
      d'autres biens : on demande s'il faut les y mettre. */
-  const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id }), onErreur: t => setMessage({ t, ok: false }) });
+  /* V3.157 : le retour du bon ramène sur la fiche du bien (elle reprend son
+     onglet et sa hauteur d'elle-même, place-fiche). */
+  const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id, retour: { page: 'biens', data: { bien: bien.id }, lib: 'Visites' } }), onErreur: t => setMessage({ t, ok: false }) });
   const etatBon = useEtatsBons();
   function departDe(v: VisiteU): DepartBon {
     const cl = v.clientId ? liste.clients[v.clientId] : null;
