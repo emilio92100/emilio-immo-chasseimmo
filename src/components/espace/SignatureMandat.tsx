@@ -121,6 +121,19 @@ export function Ic({ n, t = 18 }: { n: string; t?: number }) {
    Tant qu'il n'est pas signé, il le dit : un bandeau en tête, et « Non
    signé » à côté de chacune des deux parties, l'agence comprise. La
    signature d'Alexandre n'apparaît que sur le PDF, une fois le code saisi. */
+/* V3.145 : le rappel montré à celui qui signe, sous « L'essentiel » (une
+   offre d'achat : son total, frais d'agence compris). Pas dans le document. */
+export function RappelSignataire({ r }: { r: { titre: string; valeur: string; detail: string } | null | undefined }) {
+  if (!r) return null;
+  return (
+    <div className="mdt-total">
+      <div className="t">{r.titre}</div>
+      <div className="v">{r.valeur}</div>
+      {r.detail && <div className="d">{r.detail}</div>}
+    </div>
+  );
+}
+
 export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau, cadres }: {
   parties: Partie[]; identite: IdentiteAgence;
   /* À plusieurs : qui lit (son cadre dit « vous »), et qui a déjà signé. */
@@ -1866,6 +1879,10 @@ export const CSS_MANDAT = `
 .mdt-ligne .t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--or-fonce)}
 .mdt-ligne .v{margin-top:4px; font-size:15px; font-weight:800; color:var(--encre); line-height:1.35}
 .mdt-ligne .d{margin-top:2px; font-size:12.5px; color:var(--plume)}
+.mdt-total{margin-top:12px; border:1px solid var(--or-trait); background:var(--or-fond); border-radius:16px; padding:13px 16px}
+.mdt-total .t{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; font-weight:800; color:var(--or-fonce)}
+.mdt-total .v{margin-top:4px; font-size:19px; font-weight:800; color:var(--encre); line-height:1.25}
+.mdt-total .d{margin-top:3px; font-size:12.5px; color:var(--plume); line-height:1.45}
 
 .mdt-civ{display:grid; grid-template-columns:1fr 1fr; gap:8px}
 .mdt-civ button{padding:12px; border-radius:14px; border:1.5px solid var(--trait); background:var(--carte);
