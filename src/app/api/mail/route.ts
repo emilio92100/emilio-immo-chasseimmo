@@ -7,6 +7,7 @@ import {
   habillageDe, htmlVersTexte, htmlVide, mailLibreHtml, nettoyerHtml, personnaliserHtml, personnaliserObjet, personnaliserTexte, texteLiens,
   type LienPiece, type StyleMail,
 } from '@/lib/mail-libre';
+import { avecRemises, noterRemises } from '@/lib/remise-mail';
 
 /**
  * « Nouveau mail » (V3.41) : un mail écrit à la main, à des contacts du CRM
@@ -71,7 +72,7 @@ type Message = { a: { email: string; nom: string }[]; sujet: string; texte: stri
 type Pj = { nom: string; type: string; base64: string };
 const LOT_MAX_MESSAGES = 50;
 const LOT_MAX_OCTETS = 14_000_000;
-async function mailjetLot(messages: Message[], pj: Pj[], limite: number): Promise<{ erreurs: (string | null)[]; incertain: boolean }> {
+async function mailjetLot(messages: Message[], pj: Pj[], limite: number): Promise<{ erreurs: (string | null)[]; incertain: boolean; brut?: unknown }> {
   const k = process.env.MAILJET_API_KEY, s = process.env.MAILJET_API_SECRET;
   if (!k || !s) return { erreurs: messages.map(() => 'Mailjet non configuré'), incertain: false };
   const arret = new AbortController();
@@ -94,7 +95,7 @@ async function mailjetLot(messages: Message[], pj: Pj[], limite: number): Promis
     const j = await r.json().catch(() => null) as { Messages?: { Status?: string; Errors?: { ErrorMessage?: string }[] }[]; ErrorMessage?: string } | null;
     const l = j?.Messages;
     if (Array.isArray(l) && l.length === messages.length) {
-      return { erreurs: l.map(m => (m?.Status === 'success' ? null : m?.Errors?.[0]?.ErrorMessage || `Mailjet ${r.status}`)), incertain: false };
+      return { erreurs: l.map(m => (m?.Status === 'success' ? null : m?.Errors?.[0]?.ErrorMessage || `Mailjet ${r.status}`)), incertain: false, brut: j };
     }
     /* Pas de réponse message par message : refusé en bloc (rien n'est
        parti), ou une panne de Mailjet (on ne sait pas). */
@@ -108,7 +109,10 @@ async function mailjetLot(messages: Message[], pj: Pj[], limite: number): Promis
   }
 }
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`). */
+export async function POST(req: NextRequest) { return avecRemises(() => envoyer(req)); }
+
+async function envoyer(req: NextRequest) {
   /* Le temps qu'il reste : Mailjet doit avoir répondu assez tôt pour qu'on
      ait le temps de tout noter avant la limite de Vercel (maxDuration). */
   const debut = Date.now();
@@ -268,7 +272,11 @@ export async function POST(req: NextRequest) {
       if (fin - Date.now() < 8_000) break;
       parti = true;
       const r = await mailjetLot(l.map(i => ({ a: lot[i].d.a.map(email => ({ email, nom: lot[i].d.nom })), sujet: lot[i].sujet, texte: lot[i].texte, html: lot[i].html, id: lot[i].id })), pj, fin - Date.now());
-      l.forEach((i, n) => { etat[i] = r.incertain ? 'incertain' : r.erreurs[n]; });
+      l.forEach((i, n) => {
+        etat[i] = r.incertain ? 'incertain' : r.erreurs[n];
+        /* V3.151 : on vérifiera qu'il est bien arrivé (src/lib/remise-mail.ts). */
+        if (etat[i] === null) noterRemises(r.brut, { clientId: lot[i].d.clientId, rechercheId: lot[i].d.clientId ? dossier[lot[i].d.clientId!] || null : null, nom: lot[i].d.nom, objet: lot[i].sujet }, n);
+      });
     }
 
     /* La trace, pour un contact du CRM : l'envoi, et son Suivi. Tout en même
