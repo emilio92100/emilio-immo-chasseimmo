@@ -1499,6 +1499,16 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.149 — 9 octobre 2026 · Nouveau contact, un couple : chaque personne sur toute la largeur
+
+Alexandre : « le prénom et le nom, c'est des petites cases, ça dépasse… le mail, il faut appuyer
+dedans et défiler ». Dans « Nouveau contact » (Clients.tsx), les deux personnes d'un couple étaient
+côte à côte, chacune avec deux colonnes : des cases de 120 px. Elles sont maintenant l'une sous
+l'autre (`.nc-couple`), le titre et Monsieur/Madame sur la même ligne, le prénom et le nom sur une
+ligne (`.nc-id`), le téléphone et l'e-mail sur la suivante, l'e-mail avec la grande case (`.nc-co`,
+aussi dans « Le joindre » pour une personne seule). Un libellé sur deux lignes ne décale plus sa
+case. Sur téléphone, un champ par ligne.
+
 ### V3.148 — 9 octobre 2026 · « Envoyer ce bien » : chacun sur sa ligne, le vrai mail avant l'envoi, la confirmation
 
 Alexandre : « quand je sélectionne quelqu'un, je ne peux pas le désélectionner » ; « que ça
