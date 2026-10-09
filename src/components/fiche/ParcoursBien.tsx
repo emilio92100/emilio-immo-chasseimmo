@@ -7,6 +7,10 @@ import { verifie } from '@/lib/ecritures';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
 import { lienEspace, lienBienPublic } from '@/lib/jeton';
 import { HONORAIRES_TAUX } from '@/lib/mandat';
+import {
+  prixDuBien, casDuBien, partageDe, gainInter, plafondMandat, montantHonoraires, colonneInterAbsente, honorairesDuMandat,
+  type TypeHono, type HonoMandat, type CasHono,
+} from '@/lib/honoraires-bien';
 
 /**
  * Briques partagées par les onglets Veille, Sélection et Présentés.
@@ -847,47 +851,21 @@ export function CaseACocher({ actif, partiel, onClick, titre, taille = 20 }: {
 }
 
 /* ══ Honoraires : ce qu'on propose d'office ════════════════════
-   Le mandat de recherche en cours fixe les honoraires convenus avec le
-   client (« 2,5 % TTC », « 5 000 € TTC ») : c'est eux qu'on propose.
-   Un bien dont tu as déjà fixé les honoraires garde les siens — un
-   geste négocié bien par bien ne doit pas s'effacer. Sans l'un ni
-   l'autre : 2,5 %, le taux par défaut d'un mandat de recherche
-   (src/lib/mandat.ts). */
+   V3.145 (Alexandre : « tous les biens au même prix que SeLoger ; si on
+   n'arrive pas à faire un inter-cabinet, on rajoute notre commission ») :
+   trois cas, choisis à l'envoi et modifiables ensuite (ModaleHonoraires) —
+   avec inter (par défaut : rien ne s'ajoute), sans inter, particulier (coché
+   d'office quand la veille le dit). Le calcul et les mots sont dans
+   src/lib/honoraires-bien.ts.
 
-export type TypeHono = 'pourcentage' | 'fixe';
-export type HonoMandat = { type: TypeHono; val: number; texte: string };
+   Quand ses honoraires s'ajoutent, on propose ceux du mandat de recherche
+   en cours (« 2,5 % TTC », « 5 000 € TTC »). Un bien dont il a déjà fixé
+   les honoraires garde les siens — un geste négocié bien par bien ne doit
+   pas s'effacer. Sans l'un ni l'autre : 2,5 %. Jamais au-dessus du mandat :
+   la loi Hoguet ne le permet pas, la fenêtre l'arrête. */
 
-/** Les honoraires du mandat, s'il y en a un en cours et qu'on sait les lire. */
-export function honorairesDuMandat(r: any): HonoMandat | null {
-  if (!r || r.sans_mandat) return null;
-  if (!r.mandat_date_signature && !r.mandat_date_expiration) return null;
-  if (r.mandat_date_expiration) {
-    const fin = new Date(r.mandat_date_expiration);
-    if (!isNaN(fin.getTime()) && fin.getTime() + 86400000 < Date.now()) return null;   // expiré
-  }
-  const texte = String(r.mandat_honoraires || '').trim();
-  if (!texte) return null;
-  const serre = texte.replace(/[\s  ]/g, '');
-  const pct = serre.match(/(\d+(?:[.,]\d+)?)%/);
-  if (pct) {
-    const v = parseFloat(pct[1].replace(',', '.'));
-    return v > 0 && v < 30 ? { type: 'pourcentage', val: v, texte } : null;
-  }
-  const milliers = serre.match(/(\d+(?:[.,]\d+)?)k/i);
-  if (milliers) {
-    const v = Math.round(parseFloat(milliers[1].replace(',', '.')) * 1000);
-    return v > 0 ? { type: 'fixe', val: v, texte } : null;
-  }
-  const euros = serre.match(/(\d[\d.]*(?:,\d{1,2})?)(?:€|eur)/i) || serre.match(/^(\d[\d.]*(?:,\d{1,2})?)/);
-  if (euros) {
-    /* « 5.000 » est un millier, « 3.5 » une décimale. */
-    const brut = euros[1];
-    const v = /^\d+\.\d{1,2}$/.test(brut) ? parseFloat(brut) : parseFloat(brut.replace(/\./g, '').replace(',', '.'));
-    if (v >= 100) return { type: 'fixe', val: Math.round(v), texte };
-    if (v > 0 && v < 30) return { type: 'pourcentage', val: v, texte };
-  }
-  return null;
-}
+export type { TypeHono, HonoMandat, CasHono } from '@/lib/honoraires-bien';
+export { honorairesDuMandat, montantHonoraires } from '@/lib/honoraires-bien';
 
 /** D'où partent les honoraires d'un bien : les siens, sinon le mandat, sinon 2,5 %. */
 export function honorairesDepart(bien: any, mandat: HonoMandat | null): { type: TypeHono; valeur: string } {
@@ -897,23 +875,28 @@ export function honorairesDepart(bien: any, mandat: HonoMandat | null): { type: 
   return { type: 'pourcentage', valeur: String(HONORAIRES_TAUX) };
 }
 
-export function montantHonoraires(base: number, type: TypeHono, valeur: string | number): number {
-  const v = parseFloat(String(valeur).replace(',', '.')) || 0;
-  return type === 'pourcentage' ? Math.round(base * (v / 100)) : Math.round(v);
-}
+const pctFr = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' %';
+const nbSaisi = (v: string) => parseFloat(String(v).replace(/\s/g, '').replace(',', '.')) || 0;
 
-const pctFr = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' %';
-
-/** « dont 24 600 € d'honoraires · 3 % » — le rappel sous le prix d'un bien envoyé. */
-export function libelleHonoraires(b: any): string | null {
-  const vendeur = Number(b?.prix_vendeur) || 0;
-  const acq = Number(b?.prix_acquereur) || 0;
-  const h = acq && vendeur ? acq - vendeur : 0;
-  if (h <= 0) return null;
-  const montant = `dont ${h.toLocaleString('fr-FR')} € d'honoraires`;
-  if (b.commission_type === 'pourcentage' && Number(b.commission_val) > 0) return `${montant} · ${pctFr(Number(b.commission_val))}`;
-  if (b.commission_type === 'fixe') return `${montant} · forfait, ${pctFr((h / vendeur) * 100)}`;
-  return `${montant} · ${pctFr((h / vendeur) * 100)}`;
+/** Sous le prix d'un bien, dans le CRM : « + 12 500 € d'honoraires · 2,5 % ·
+ *  sans inter », « Inter · rien ne s'ajoute · ta part ≈ 12 500 € », ou, pour
+ *  un mandat de l'agence, « dont 24 600 € d'honoraires de l'agence ».
+ *  `presente` : un bien encore en sélection ne dit rien tant qu'il est à 0. */
+export function libelleHonoraires(b: any, presente = true): string | null {
+  const p = prixDuBien(b);
+  if (p.agence) {
+    const h = Math.max(0, (Number(b?.prix_acquereur) || 0) - (Number(b?.prix_vendeur) || 0));
+    return h > 0 && Number(b?.prix_vendeur) ? `dont ${h.toLocaleString('fr-FR')} € d'honoraires de l’agence` : null;
+  }
+  if (p.hono > 0) {
+    const taux = b.commission_type === 'pourcentage' && Number(b.commission_val) > 0
+      ? pctFr(Number(b.commission_val))
+      : `forfait, ${pctFr(p.demande ? (p.hono / p.demande) * 100 : 0)}`;
+    return `+ ${p.hono.toLocaleString('fr-FR')} € d'honoraires · ${taux} · ${b.est_particulier ? 'particulier' : 'sans inter'}`;
+  }
+  if (!presente) return null;
+  const g = gainInter(p.demande, partageDe(b));
+  return `Inter · rien ne s’ajoute${g ? ` · ta part ≈ ${g.gain.toLocaleString('fr-FR')} €` : ''}`;
 }
 
 /** La ligne « Mandat en cours : 2,5 % TTC » des fenêtres d'envoi, avec de quoi
@@ -939,6 +922,315 @@ function RappelMandat({ mandat, applique, onAppliquer, pour }: {
         </button>
       )}
     </div>
+  );
+}
+
+/* ── L'état de la fenêtre : le cas, le taux ou le forfait, le partage ── */
+export type EtatHono = { cas: CasHono; type: TypeHono; valeur: string; agenceType: TypeHono; agenceVal: string; part: string };
+
+export function etatHonoDepart(bien: any, mandat: HonoMandat | null): EtatHono {
+  const dep = honorairesDepart(bien, mandat);
+  const p = partageDe(bien);
+  return {
+    cas: casDuBien(bien), type: dep.type, valeur: dep.valeur,
+    agenceType: p?.agenceType || 'pourcentage', agenceVal: p?.agenceVal ? String(p.agenceVal) : '', part: p?.part ? String(p.part) : '',
+  };
+}
+
+/* Ce que donne cet état : ce qui s'ajoute, le total, et s'il dépasse le
+   mandat (une marge d'un euro pour les arrondis). */
+export function calculHono(bien: any, e: EtatHono, mandat: HonoMandat | null) {
+  const base = Number(bien?.prix_vendeur) || 0;
+  const ajoute = e.cas !== 'inter';
+  const hono = ajoute ? montantHonoraires(base, e.type, e.valeur) : 0;
+  const plafond = ajoute ? plafondMandat(mandat, base) : null;
+  return { base, hono, total: base + hono, plafond, trop: plafond !== null && hono > plafond + 1, v: ajoute ? nbSaisi(e.valeur) : 0 };
+}
+
+/* Les colonnes à écrire. Le prix présenté (`prix_acquereur`) seulement si
+   l'annonce a un prix. `inter` : le partage, pour lui seul (null sinon). */
+export function champsHono(bien: any, e: EtatHono, mandat: HonoMandat | null): Record<string, unknown> {
+  const c = calculHono(bien, e, mandat);
+  const agenceVal = nbSaisi(e.agenceVal), part = nbSaisi(e.part);
+  return {
+    commission_type: e.type, commission_val: c.v,
+    ...(c.base > 0 ? { prix_acquereur: c.total } : {}),
+    est_particulier: e.cas === 'particulier',
+    inter: e.cas === 'inter' && (agenceVal || part) ? { agenceType: e.agenceType, agenceVal: agenceVal || null, part: part || null } : null,
+  };
+}
+
+/* Écrit les honoraires d'un bien (avec, au besoin, d'autres colonnes). Sans
+   la colonne `inter` (le SQL pas encore passé), tout le reste s'écrit quand
+   même ; `sansPartage` dit si un partage saisi n'a pas pu être gardé. */
+export async function ecrireHonoraires(id: string, champs: Record<string, unknown>, quoi: string): Promise<{ ok: boolean; sansPartage: boolean }> {
+  const essai = await supabase.from('biens').update(champs).eq('id', id).select('id');
+  if (essai.error && 'inter' in champs && colonneInterAbsente(essai.error.message)) {
+    const { inter, ...reste } = champs;
+    const ok = await verifie(quoi, supabase.from('biens').update(reste).eq('id', id).select('id'), { ligne: true });
+    return { ok, sansPartage: ok && !!inter };
+  }
+  return { ok: await verifie(quoi, Promise.resolve(essai), { ligne: true }), sansPartage: false };
+}
+export const MSG_SQL_INTER = 'Le partage n’est pas gardé : passe d’abord le fichier outils/sql/biens-inter.sql dans Supabase › SQL Editor. Le reste est enregistré.';
+
+/* Une ligne du journal du client : ce qui a été fixé. */
+export function phraseHono(bien: any, e: EtatHono, mandat: HonoMandat | null): string {
+  const c = calculHono(bien, e, mandat);
+  if (e.cas === 'inter') {
+    const g = gainInter(c.base, { agenceType: e.agenceType, agenceVal: nbSaisi(e.agenceVal) || null, part: nbSaisi(e.part) || null });
+    return `Avec inter : rien ne s’ajoute au prix${g ? ` (ta part ≈ ${g.gain.toLocaleString('fr-FR')} €)` : ''}`;
+  }
+  return `${e.cas === 'particulier' ? 'Particulier' : 'Sans inter'} : + ${c.hono.toLocaleString('fr-FR')} € d'honoraires, soit ${c.total.toLocaleString('fr-FR')} € frais d’agence compris`;
+}
+
+/* ── Le choix, tel qu'il s'affiche dans les fenêtres ── */
+export function ChoixHonoraires({ bien, mandat, e, onChange, prenom }: {
+  bien: any; mandat: HonoMandat | null; e: EtatHono; onChange: (m: Partial<EtatHono>) => void; prenom?: string;
+}) {
+  const c = calculHono(bien, e, mandat);
+  const v = nbSaisi(e.valeur);
+  const surMandat = !!mandat && mandat.type === e.type && mandat.val === v;
+  const g = e.cas === 'inter' ? gainInter(c.base, { agenceType: e.agenceType, agenceVal: nbSaisi(e.agenceVal) || null, part: nbSaisi(e.part) || null }) : null;
+  const lui = prenom || 'Ton client';
+
+  const cas = (id: CasHono, titre: string, sous: string) => {
+    const actif = e.cas === id;
+    return (
+      <button type="button" key={id} aria-pressed={actif} onClick={() => onChange({ cas: id })}
+        style={{
+          flex: '1 1 140px', minWidth: 0, textAlign: 'left', background: actif ? '#fdfaf1' : 'white',
+          border: `1.5px solid ${actif ? OR : BORD}`, borderRadius: 12, padding: '9px 11px', cursor: 'pointer', fontFamily: 'inherit',
+          transition: 'border-color .15s, background .15s',
+        }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 800, color: NAVY }}>
+          <span style={{
+            width: 14, height: 14, borderRadius: 7, flexShrink: 0, boxSizing: 'border-box',
+            border: `2px solid ${actif ? OR : '#cbd5e1'}`, background: actif ? `radial-gradient(circle, ${OR} 0 3px, white 3.5px)` : 'white',
+          }} />
+          <span>{titre}</span>
+        </span>
+        <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 2, paddingLeft: 21 }}>{sous}</span>
+      </button>
+    );
+  };
+  const bascule = (actif: boolean, onClick: () => void, label: string) => (
+    <button type="button" onClick={onClick}
+      style={{
+        flex: 1, background: actif ? 'white' : 'transparent', color: actif ? NAVY : '#94a3b8',
+        border: 'none', borderRadius: 9, padding: '8px 0', fontSize: 13, fontWeight: actif ? 800 : 600,
+        cursor: 'pointer', fontFamily: 'inherit',
+        boxShadow: actif ? '0 2px 6px rgba(16,24,40,.14)' : 'none', transition: 'all .2s cubic-bezier(.16,1,.3,1)',
+      }}>{label}</button>
+  );
+  const defautPour = (t: TypeHono) => (mandat && mandat.type === t ? String(mandat.val) : t === 'pourcentage' ? String(HONORAIRES_TAUX) : '25000');
+  const champ: React.CSSProperties = { width: '100%', border: `1.5px solid ${BORD}`, borderRadius: 11, padding: '9px 12px', fontSize: 15, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none', boxSizing: 'border-box' };
+
+  return (
+    <>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
+        Tes honoraires sur ce bien
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 13 }}>
+        {cas('inter', 'Agence, avec inter', `Rien ne s’ajoute pour ${prenom || 'lui'}`)}
+        {cas('sans', 'Agence, sans inter', 'Tes honoraires s’ajoutent')}
+        {cas('particulier', 'Particulier', 'Tes honoraires s’ajoutent')}
+      </div>
+
+      {e.cas === 'inter' ? (
+        <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '11px 13px', marginBottom: 13 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: NAVY, marginBottom: 9 }}>
+            {'Le partage, pour toi seul '}<span style={{ fontWeight: 600, color: '#94a3b8' }}>· facultatif</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ flex: '1 1 150px', fontSize: 13, color: '#64748b' }}>{'Honoraires de l’agence'}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 210px' }}>
+              <input type="number" min="0" step={e.agenceType === 'pourcentage' ? '0.1' : '500'} value={e.agenceVal} placeholder={e.agenceType === 'pourcentage' ? '5' : '25000'}
+                aria-label="Honoraires de l’agence" onChange={x => onChange({ agenceVal: x.target.value })} style={champ} />
+              <span style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 92, flexShrink: 0 }}>
+                {bascule(e.agenceType === 'pourcentage', () => onChange({ agenceType: 'pourcentage' }), '%')}
+                {bascule(e.agenceType === 'fixe', () => onChange({ agenceType: 'fixe' }), '€')}
+              </span>
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ flex: '1 1 150px', fontSize: 13, color: '#64748b' }}>Ta part</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 210px' }}>
+              <input type="number" min="0" max="100" step="5" value={e.part} placeholder="50"
+                aria-label="Ta part des honoraires de l’agence" onChange={x => onChange({ part: x.target.value })} style={champ} />
+              <span style={{ width: 92, flexShrink: 0, fontSize: 15, fontWeight: 700, color: '#64748b' }}>%</span>
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 9, lineHeight: 1.5 }}>
+            {g
+              ? `Tu toucheras environ ${g.gain.toLocaleString('fr-FR')} €, sur ${g.agence.toLocaleString('fr-FR')} € d’honoraires de l’agence. ${lui} ne le voit jamais.`
+              : `Tu peux laisser vide et le remplir quand tu le sauras. ${lui} ne le voit jamais.`}
+          </div>
+        </div>
+      ) : (
+        <>
+          <RappelMandat mandat={mandat} applique={surMandat}
+            onAppliquer={() => { if (mandat) onChange({ type: mandat.type, valeur: String(mandat.val) }); }} />
+          <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
+              {bascule(e.type === 'pourcentage', () => onChange({ type: 'pourcentage', valeur: defautPour('pourcentage') }), '% du prix')}
+              {bascule(e.type === 'fixe', () => onChange({ type: 'fixe', valeur: defautPour('fixe') }), 'Montant fixe')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 140px' }}>
+              <input type="number" step={e.type === 'pourcentage' ? '0.1' : '500'} min="0" value={e.valeur}
+                aria-label="Tes honoraires" onChange={x => onChange({ valeur: x.target.value })} style={{ ...champ, fontSize: 15, padding: '10px 13px' }} />
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 14 }}>{e.type === 'pourcentage' ? '%' : '€'}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: c.trop ? 9 : 13 }}>
+            <span>Soit</span>
+            <span style={{ fontWeight: 700, color: NAVY }}>
+              {`+ ${c.hono.toLocaleString('fr-FR')} €`}
+              {e.type === 'fixe' && c.base > 0 && <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 12.5 }}>{` (${((c.hono / c.base) * 100).toFixed(1)} %)`}</span>}
+            </span>
+          </div>
+          {c.trop && mandat && (
+            <div role="alert" style={{ fontSize: 12.5, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '8px 11px', marginBottom: 13, lineHeight: 1.5 }}>
+              {`Au-dessus de son mandat (${mandat.texte}, soit ${(c.plafond || 0).toLocaleString('fr-FR')} € à ce prix) : tu ne peux pas prendre plus que ce qu’il a signé. Baisse le montant pour continuer.`}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/* Ce que le client verra, sous le prix : le même rendu que son espace. */
+export function ApercuPrixClient({ bien, e, mandat, prenom }: { bien: any; e: EtatHono; mandat: HonoMandat | null; prenom?: string }) {
+  const c = calculHono(bien, e, mandat);
+  return (
+    <div style={{ paddingTop: 14, borderTop: `2px solid ${BORD}` }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: .8 }}>{`Ce que ${prenom || 'ton client'} verra`}</span>
+        <span style={{ fontSize: 26, fontWeight: 800, color: OR, letterSpacing: -.6 }}>{c.base > 0 ? `${c.base.toLocaleString('fr-FR')} €` : '—'}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4, textAlign: 'right' }}>
+        {c.hono > 0 && c.base > 0
+          ? `+ ${c.hono.toLocaleString('fr-FR')} € de nos honoraires, soit ${c.total.toLocaleString('fr-FR')} € frais d’agence compris`
+          : 'le prix de l’annonce, rien ne s’ajoute'}
+      </div>
+    </div>
+  );
+}
+
+/* Le message pour le prévenir, quand ses honoraires s'ajoutent à un bien
+   qu'il a déjà vu sans. */
+export function messagePrevenir(bien: any, client: any, e: EtatHono, mandat: HonoMandat | null): { sujet: string; texte: string } {
+  const c = calculHono(bien, e, mandat);
+  const nom = bien?.titre || [bien?.type_bien, bien?.ville].filter(Boolean).join(' à ') || 'ce bien';
+  const pourquoi = e.cas === 'particulier'
+    ? 'il est vendu directement par son propriétaire'
+    : 'l’agence qui le vend ne partage pas ses honoraires avec nous';
+  return {
+    sujet: `Une précision sur « ${nom} »`,
+    texte: `Bonjour ${client?.prenom || ''},\n\nUne précision sur « ${nom} » : ${pourquoi}. Nos honoraires s’ajoutent donc au prix : ${c.hono.toLocaleString('fr-FR')} €, soit ${c.total.toLocaleString('fr-FR')} € frais d’agence compris (hors frais de notaire).\n\nC’est indiqué sur le bien, dans votre espace. N’hésitez pas si vous avez une question.`.replace('Bonjour ,', 'Bonjour,'),
+  };
+}
+
+/* La ligne du prix dans un message WhatsApp : le prix de l'annonce, et ses
+   honoraires seulement s'ils s'ajoutent. */
+export function prixWhatsapp(prix: number, hono: number): string {
+  if (!(prix > 0)) return '';
+  const f = (n: number) => n.toLocaleString('fr-FR');
+  return hono > 0
+    ? `Prix : ${f(prix)} € (+ ${f(hono)} € de nos honoraires, soit ${f(prix + hono)} € frais d’agence compris)`
+    : `Prix : ${f(prix)} €`;
+}
+
+/* ══ Changer les honoraires d'un bien déjà présenté ═════════════
+   Alexandre appelle l'agence, elle refuse l'inter : il passe le bien en
+   « sans inter », l'espace du client affiche aussitôt la ligne « + … de nos
+   honoraires ». Il le prévient dans la foulée (WhatsApp ou mail, message
+   prêt), pour qu'il ne le découvre pas tout seul. */
+export function ModaleHonoraires({ bien, clientId, client, mandat = null, onFerme, onEnregistre }: {
+  bien: any; clientId: string; client: any; mandat?: HonoMandat | null; onFerme: () => void; onEnregistre: () => void;
+}) {
+  const [e, setE] = useState<EtatHono>(() => etatHonoDepart(bien, mandat));
+  const [travail, setTravail] = useState(false);
+  const [apres, setApres] = useState<{ prevenir: boolean; note: string } | null>(null);
+  const c = calculHono(bien, e, mandat);
+  const avant = prixDuBien(bien).hono;
+  const prenom = client?.prenom || '';
+  const change = (m: Partial<EtatHono>) => setE(x => ({ ...x, ...m }));
+
+  async function enregistrer() {
+    if (c.trop) return;
+    setTravail(true);
+    const r = await ecrireHonoraires(bien.id, champsHono(bien, e, mandat), 'Les honoraires du bien');
+    if (!r.ok) { setTravail(false); return; }
+    await verifie('L’historique du client', supabase.from('journal').insert({
+      client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id, type: 'note',
+      titre: 'Honoraires du bien', description: phraseHono(bien, e, mandat), metadata: {},
+    }));
+    setTravail(false);
+    onEnregistre();
+    /* Il voit déjà le bien, et ce qu'il paiera augmente : on propose de le
+       prévenir. Sinon, on ferme. */
+    const prevenir = bien.etape === 'presente' && c.hono > avant && c.base > 0;
+    if (prevenir || r.sansPartage) setApres({ prevenir, note: r.sansPartage ? MSG_SQL_INTER : '' });
+    else onFerme();
+  }
+
+  const msg = messagePrevenir(bien, client, e, mandat);
+  const email = (client?.emails || [])[0] || '';
+
+  return (
+    <Modale onFerme={onFerme} largeur={545}>
+      <div style={{ background: NAVY, padding: '18px 24px', display: 'flex', gap: 14, alignItems: 'center' }}>
+        {bien.photos?.[0] && <img src={bien.photos[0]} alt="" style={{ width: 50, height: 50, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: OR, textTransform: 'uppercase', letterSpacing: 1 }}>Tes honoraires sur ce bien</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'white', marginTop: 3, lineHeight: 1.3 }}>{bien.titre || `${bien.type_bien || 'Bien'} — ${bien.ville || ''}`}</div>
+        </div>
+      </div>
+
+      {apres ? (
+        <div style={{ padding: '20px 24px' }}>
+          {apres.prevenir ? (
+            <>
+              <div style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginBottom: 6 }}>{`C’est enregistré. Tu préviens ${prenom || 'ton client'} ?`}</div>
+              <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.55, marginBottom: 12 }}>
+                {'Son espace affiche déjà la ligne sous le prix. Un mot de ta part évite qu’il le découvre seul :'}
+              </div>
+              <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, color: NAVY, background: '#f8fafc', border: `1px solid ${BORD}`, borderRadius: 11, padding: '11px 13px', lineHeight: 1.55, marginBottom: 14 }}>{msg.texte}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a href={`https://wa.me/?text=${encodeURIComponent(msg.texte)}`} target="_blank" rel="noreferrer" onClick={() => setTimeout(onFerme, 300)}
+                  style={{ ...btnPrincipal, textDecoration: 'none', background: '#25d366' }}>Par WhatsApp</a>
+                <a href={`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(msg.sujet)}&body=${encodeURIComponent(msg.texte)}`} onClick={() => setTimeout(onFerme, 300)}
+                  style={{ ...btnPrincipal, textDecoration: 'none' }}>Par mail</a>
+                <button type="button" onClick={onFerme} style={btnSecondaire}>Plus tard</button>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13.5, color: NAVY, lineHeight: 1.55 }}>C’est enregistré.</div>
+          )}
+          {apres.note && <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', lineHeight: 1.5, marginTop: 12 }}>{apres.note}</div>}
+          {!apres.prevenir && <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}><button type="button" onClick={onFerme} style={btnSecondaire}>Fermer</button></div>}
+        </div>
+      ) : (
+        <>
+          <div style={{ padding: '18px 24px', background: '#fbfcfe' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>
+              <span>{'Prix de l’annonce'}</span>
+              <span style={{ fontWeight: 700, color: NAVY, fontSize: 15 }}>{c.base > 0 ? `${c.base.toLocaleString('fr-FR')} €` : 'pas de prix'}</span>
+            </div>
+            <ChoixHonoraires bien={bien} mandat={mandat} e={e} onChange={change} prenom={prenom} />
+            <ApercuPrixClient bien={bien} e={e} mandat={mandat} prenom={prenom} />
+          </div>
+          <div style={{ padding: '13px 24px', borderTop: `1px solid ${BORD}`, display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={onFerme} style={btnSecondaire} disabled={travail}>Annuler</button>
+            <button type="button" onClick={enregistrer} disabled={travail || c.trop} style={{ ...btnPrincipal, opacity: travail || c.trop ? .55 : 1 }}>
+              {travail ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
+        </>
+      )}
+    </Modale>
   );
 }
 
@@ -2322,11 +2614,12 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
   /** Les honoraires du mandat de recherche en cours : proposés d'office. */
   mandat?: HonoMandat | null;
 }) {
-  const depart = honorairesDepart(bien, mandat);
-  const [type, setType] = useState<TypeHono>(depart.type);
-  const [valeur, setValeur] = useState<string>(depart.valeur);
+  const [e, setE] = useState<EtatHono>(() => etatHonoDepart(bien, mandat));
+  const changeHono = (m: Partial<EtatHono>) => setE(x => ({ ...x, ...m }));
   const [envoi, setEnvoi] = useState(false);
   const [copie, setCopie] = useState(false);
+  /* Le partage n'a pas pu être gardé (SQL pas encore passé) : on le dit. */
+  const [note, setNote] = useState('');
 
   /* V3.50 — Un mandat de l'agence (une copie portant `bien_vente_id`) : son
      prix est celui de la fiche du bien, honoraires de l'agence compris. On n'y
@@ -2334,26 +2627,31 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
      vendeur passait de 500 000 € à 486 875 € — et on ne le réécrit pas. */
   const agence = !!bien?.bien_vente_id;
   const base = Number(bien.prix_vendeur) || 0;
-  const v = parseFloat(String(valeur).replace(',', '.')) || 0;
   const prixAgence = Number(bien.prix_acquereur) || base;
-  const honoraires = agence ? Math.max(0, prixAgence - base) : montantHonoraires(base, type, valeur);
-  const surMandat = !agence && !!mandat && mandat.type === type && mandat.val === v;
-  const total = agence ? prixAgence : base + honoraires;
-  const pctEq = base > 0 ? (honoraires / base) * 100 : 0;
+  const c = calculHono(bien, e, mandat);
+  const honoraires = agence ? Math.max(0, prixAgence - base) : c.hono;
+  const total = agence ? prixAgence : c.total;
+  /* Ce que le client voit en grand : le prix de l'annonce (V3.145). */
+  const prixVu = agence ? total : base;
+  const bloque = !agence && c.trop;
 
   async function marquer(canal: string) {
     setEnvoi(true);
     /* Avant la mise à jour : un bien déjà présenté qu'on renvoie n'est pas une
        nouvelle pour le client, il ne déclenche pas de notification. */
     const neuf = bien.etape !== 'presente';
-    if (!(await verifie('Le bien « présenté »', supabase.from('biens').update({
+    const r = await ecrireHonoraires(bien.id, {
       etape: 'presente', envoye_le: new Date().toISOString(), canal_envoi: canal,
-      ...(agence ? {} : { commission_type: type, commission_val: v, prix_acquereur: total }), badge_retour: 'propose',
-    }).eq('id', bien.id).select('id'), { ligne: true }))) { setEnvoi(false); return; }
+      ...(agence ? {} : champsHono(bien, e, mandat)), badge_retour: 'propose',
+    }, 'Le bien « présenté »');
+    if (!r.ok) { setEnvoi(false); return false; }
+    if (r.sansPartage) setNote(MSG_SQL_INTER);
     await verifie('L’historique du client', supabase.from('journal').insert({
       client_id: clientId, bien_id: bien.id, recherche_id: bien.recherche_id, type: 'envoi_bien',
       titre: `Envoyé au client · ${canal === 'mail' ? 'mail' : canal === 'whatsapp' ? 'WhatsApp' : 'lien'}`,
-      description: `Prix présenté ${total.toLocaleString('fr-FR')} €${honoraires > 0 || !agence ? ` — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires ${agence ? 'de l’agence' : 'de chasse'}` : ''}`,
+      description: agence
+        ? `Prix présenté ${total.toLocaleString('fr-FR')} €${honoraires > 0 ? ` — dont ${honoraires.toLocaleString('fr-FR')} € d'honoraires de l’agence` : ''}`
+        : `Prix présenté ${base.toLocaleString('fr-FR')} € · ${phraseHono(bien, e, mandat)}`,
       metadata: {},
     }));
     /* Présenté = en attente d'une réponse : la relance se programme ici. */
@@ -2369,18 +2667,18 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
     }
 
     setEnvoi(false); onEnvoye();
+    return !r.sansPartage;
   }
 
   /* Choisir « par mail » n'est pas envoyer : ça ouvre la fenêtre de rédaction,
      et on peut encore annuler. On n'enregistre donc que les honoraires qu'on
      vient de fixer ; le passage en « Présenté » se fait à l'envoi réel. */
-  async function enregistrerPrix() {
-    if (agence) return;   // le prix de l'agence ne se réécrit pas (V3.50)
+  async function enregistrerPrix(): Promise<boolean> {
+    if (agence) return true;   // le prix de l'agence ne se réécrit pas (V3.50)
     setEnvoi(true);
-    await verifie('Les honoraires du bien', supabase.from('biens').update({
-      commission_type: type, commission_val: v, prix_acquereur: total,
-    }).eq('id', bien.id).select('id'), { ligne: true });
+    const r = await ecrireHonoraires(bien.id, champsHono(bien, e, mandat), 'Les honoraires du bien');
     setEnvoi(false);
+    return r.ok;
   }
 
   /* Le lien envoyé est toujours la fiche vivante, jamais le PDF : c'est la
@@ -2392,25 +2690,29 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
   const lien = lienBienPublic(bien.id);
 
   async function viaWhatsapp() {
-    const txt = `Bonjour ${client?.prenom || ''}, voici un bien qui correspond à votre recherche :\n\n${bien.titre || ''}\n${bien.surface ? bien.surface + ' m²' : ''}${bien.nb_pieces ? ' · ' + bien.nb_pieces + ' pièces' : ''}\nPrix : ${total.toLocaleString('fr-FR')} € tout compris\n\n${lien}`;
-    await marquer('whatsapp');
+    const txt = `Bonjour ${client?.prenom || ''}, voici un bien qui correspond à votre recherche :\n\n${bien.titre || ''}\n${bien.surface ? bien.surface + ' m²' : ''}${bien.nb_pieces ? ' · ' + bien.nb_pieces + ' pièces' : ''}\n${prixWhatsapp(prixVu, agence ? 0 : honoraires)}\n\n${lien}`;
+    if (bloque) return;
+    /* WhatsApp s'ouvre dans le geste du clic : sur iPhone, une fenêtre
+       ouverte après une attente est bloquée. */
     window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
-    onFerme();
+    if (await marquer('whatsapp')) onFerme();
   }
   async function viaLien() {
+    if (bloque) return;
     try { await navigator.clipboard.writeText(lien); setCopie(true); } catch { /* ignore */ }
-    await marquer('lien'); setTimeout(onFerme, 800);
+    if (await marquer('lien')) setTimeout(onFerme, 800);
   }
-  async function viaMail() { await enregistrerPrix(); onFerme(); onMail(bien.id); }
+  async function viaMail() { if (bloque) return; if (await enregistrerPrix()) { onFerme(); onMail(bien.id); } }
 
   const canal = (icone: string, titre: string, sous: string, action: () => void, teinte: string) => (
-    <button type="button" onClick={action} disabled={envoi}
+    <button type="button" onClick={action} disabled={envoi || bloque}
       style={{
         display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left',
         background: 'white', border: `1.5px solid ${BORD}`, borderRadius: 14, padding: '13px 15px',
-        cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'all .18s cubic-bezier(.16,1,.3,1)',
+        cursor: envoi || bloque ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'all .18s cubic-bezier(.16,1,.3,1)',
+        opacity: bloque ? .5 : 1,
       }}
-      onMouseEnter={e => { if (!envoi) { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.transform = 'translateX(4px)'; } }}
+      onMouseEnter={e => { if (!envoi && !bloque) { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.transform = 'translateX(4px)'; } }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.transform = 'none'; }}>
       <span style={{ width: 38, height: 38, borderRadius: 11, background: `${teinte}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>{icone}</span>
       <span style={{ flexGrow: 1, minWidth: 0 }}>
@@ -2420,19 +2722,6 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
       <span style={{ color: '#cbd5e1', fontSize: 19 }}>›</span>
     </button>
   );
-
-  const bascule = (id: 'pourcentage' | 'fixe', label: string) => {
-    const actif = type === id;
-    return (
-      <button type="button" onClick={() => { setType(id); setValeur(mandat && mandat.type === id ? String(mandat.val) : id === 'pourcentage' ? String(HONORAIRES_TAUX) : '25000'); }}
-        style={{
-          flex: 1, background: actif ? 'white' : 'transparent', color: actif ? NAVY : '#94a3b8',
-          border: 'none', borderRadius: 9, padding: '8px 0', fontSize: 13, fontWeight: actif ? 800 : 600,
-          cursor: 'pointer', fontFamily: 'inherit',
-          boxShadow: actif ? '0 2px 6px rgba(16,24,40,.14)' : 'none', transition: 'all .2s cubic-bezier(.16,1,.3,1)',
-        }}>{label}</button>
-    );
-  };
 
   return (
     <Modale onFerme={onFerme} largeur={545}>
@@ -2467,41 +2756,19 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
             </div>
           </>
         ) : (
-          <>
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
-              Tes honoraires de chasse
-            </div>
-            <RappelMandat mandat={mandat} applique={surMandat}
-              onAppliquer={() => { if (mandat) { setType(mandat.type); setValeur(String(mandat.val)); } }} />
-
-            <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 14 }}>
-              <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
-                {bascule('pourcentage', '% du prix')}
-                {bascule('fixe', 'Montant fixe')}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexGrow: 1 }}>
-                <input type="number" step={type === 'pourcentage' ? '0.1' : '500'} min="0" value={valeur}
-                  onChange={e => setValeur(e.target.value)}
-                  style={{ width: '100%', border: `1.5px solid ${BORD}`, borderRadius: 11, padding: '10px 13px', fontSize: 15, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
-                <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 14 }}>{type === 'pourcentage' ? '%' : '€'}</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13.5, color: '#64748b', marginBottom: 13 }}>
-              <span>Soit</span>
-              <span style={{ fontWeight: 700, color: NAVY }}>
-                {`+ ${honoraires.toLocaleString('fr-FR')} €`}
-                {type === 'fixe' && base > 0 && <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 12.5 }}>{` (${pctEq.toFixed(1)} %)`}</span>}
-              </span>
-            </div>
-          </>
+          <ChoixHonoraires bien={bien} mandat={mandat} e={e} onChange={changeHono} prenom={client?.prenom || ''} />
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTop: `2px solid ${BORD}` }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
-          <span style={{ fontSize: 26, fontWeight: 800, color: OR, letterSpacing: -.6 }}>{total.toLocaleString('fr-FR')} €</span>
-        </div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4, textAlign: 'right' }}>{agence ? 'tout compris, honoraires de l’agence inclus' : 'tout compris, honoraires de chasse inclus'}</div>
+        {agence ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTop: `2px solid ${BORD}` }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
+              <span style={{ fontSize: 26, fontWeight: 800, color: OR, letterSpacing: -.6 }}>{total.toLocaleString('fr-FR')} €</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4, textAlign: 'right' }}>{'tout compris, honoraires de l’agence inclus'}</div>
+          </>
+        ) : <ApercuPrixClient bien={bien} e={e} mandat={mandat} prenom={client?.prenom || ''} />}
+        {note && <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', lineHeight: 1.5, marginTop: 12 }}>{note}</div>}
       </div>
 
       <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -2522,9 +2789,10 @@ export function ModaleEnvoi({ bien, clientId, client, onFerme, onEnvoye, onMail,
    Plusieurs biens cochés dans « Sélection » partent ensemble : un seul
    mail, une seule notification sur le téléphone du client (« 3 nouveaux
    biens vous attendent »), une seule relance. Les honoraires se fixent
-   ici, pour tous d'un coup ou bien par bien, avant l'envoi. */
+   ici, bien par bien (V3.145 : avec inter, sans inter, particulier), avec
+   un taux commun pour ceux où ils s'ajoutent. */
 
-type LigneHono = { id: string; type: TypeHono; valeur: string };
+type LigneHono = { id: string } & EtatHono;
 
 export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme, onEnvoye, onMailGroupe }: {
   biens: any[]; clientId: string; client: any; recherche: any;
@@ -2536,12 +2804,13 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
   const pourTous = honorairesDepart(null, mandat);
   const [typeG, setTypeG] = useState<TypeHono>(pourTous.type);
   const [valG, setValG] = useState<string>(pourTous.valeur);
-  const [lignes, setLignes] = useState<LigneHono[]>(() => biens.map(b => ({ id: b.id, ...honorairesDepart(b, mandat) })));
+  const [lignes, setLignes] = useState<LigneHono[]>(() => biens.map(b => ({ id: b.id, ...etatHonoDepart(b, mandat) })));
   const [envoi, setEnvoi] = useState(false);
   const [copie, setCopie] = useState(false);
+  const [note, setNote] = useState('');
   const n = biens.length;
 
-  const ligneDe = (id: string) => lignes.find(l => l.id === id) || { id, ...pourTous };
+  const ligneDe = (id: string): LigneHono => lignes.find(l => l.id === id) || { id, ...etatHonoDepart(null, mandat) };
   /* V3.50 : un mandat de l'agence garde son prix, honoraires de l'agence
      compris — pas d'honoraires de chasse par-dessus (voir ModaleEnvoi). */
   const calc = (b: any) => {
@@ -2549,32 +2818,45 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
     const base = Number(b.prix_vendeur) || 0;
     if (b?.bien_vente_id) {
       const total = Number(b.prix_acquereur) || base;
-      return { l, base, h: Math.max(0, total - base), total, v: 0, agence: true };
+      return { l, base, h: Math.max(0, total - base), total, vu: total, trop: false, agence: true };
     }
-    const h = montantHonoraires(base, l.type, l.valeur);
-    return { l, base, h, total: base + h, v: parseFloat(String(l.valeur).replace(',', '.')) || 0, agence: false };
+    const c = calculHono(b, l, mandat);
+    return { l, base, h: c.hono, total: c.total, vu: base, trop: c.trop, agence: false };
   };
   const toutAppliquer = (type: TypeHono, valeur: string) => {
     setTypeG(type); setValG(valeur);
     setLignes(ls => ls.map(l => ({ ...l, type, valeur })));
   };
   const changerLigne = (id: string, m: Partial<LigneHono>) => setLignes(ls => ls.map(l => (l.id === id ? { ...l, ...m } : l)));
-  const vG = parseFloat(String(valG).replace(',', '.')) || 0;
-  const surMandat = !!mandat && lignes.filter(l => !biens.find(b => b.id === l.id)?.bien_vente_id)
-    .every(l => l.type === mandat.type && (parseFloat(String(l.valeur).replace(',', '.')) || 0) === mandat.val);
+  const vG = nbSaisi(valG);
+  const avecHono = biens.filter(b => !b?.bien_vente_id && ligneDe(b.id).cas !== 'inter');
+  const surMandat = !!mandat && avecHono.every(b => { const l = ligneDe(b.id); return l.type === mandat.type && nbSaisi(l.valeur) === mandat.val; });
+  const trop = biens.filter(b => calc(b).trop);
+  const bloque = trop.length > 0;
 
   /* Les prix d'abord : c'est ce que le mail et l'espace afficheront. */
-  function champsPrix(b: any) {
-    const { l, base, total, v, agence } = calc(b);
-    if (agence) return {};   // le prix de l'agence ne se réécrit pas (V3.50)
-    return { commission_type: l.type, commission_val: v, ...(base > 0 ? { prix_acquereur: total } : {}) };
+  function champsPrix(b: any): Record<string, unknown> {
+    if (b?.bien_vente_id) return {};   // le prix de l'agence ne se réécrit pas (V3.50)
+    return champsHono(b, ligneDe(b.id), mandat);
+  }
+  /* Une écriture, sans la colonne du partage si elle manque encore. */
+  async function ecrire(b: any, autres: Record<string, unknown> = {}): Promise<string> {
+    const champs = { ...champsPrix(b), ...autres };
+    if (!Object.keys(champs).length) return '';
+    let r = await supabase.from('biens').update(champs).eq('id', b.id);
+    if (r.error && 'inter' in champs && colonneInterAbsente(r.error.message)) {
+      const { inter, ...reste } = champs;
+      if (inter) setNote(MSG_SQL_INTER);
+      r = await supabase.from('biens').update(reste).eq('id', b.id);
+    }
+    return r.error ? r.error.message : '';
   }
 
   async function enregistrerPrix(): Promise<boolean> {
     for (const b of biens) {
       if (b?.bien_vente_id) continue;
-      const { error } = await supabase.from('biens').update(champsPrix(b)).eq('id', b.id);
-      if (error) { alert(`Les honoraires de « ${b.titre || 'un bien'} » n'ont pas pu être enregistrés.\n\n${error.message}`); return false; }
+      const err = await ecrire(b);
+      if (err) { alert(`Les honoraires de « ${b.titre || 'un bien'} » n'ont pas pu être enregistrés.\n\n${err}`); return false; }
     }
     return true;
   }
@@ -2586,15 +2868,17 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
     const nomCanal = canal === 'whatsapp' ? 'WhatsApp' : 'lien';
     let journalRate = '';
     for (const b of biens) {
-      const { base, h, total, agence } = calc(b);
-      const { error } = await supabase.from('biens').update({
-        ...champsPrix(b), etape: 'presente', envoye_le: quand, canal_envoi: canal, badge_retour: 'propose',
-      }).eq('id', b.id);
-      if (error) { alert(`« ${b.titre || 'Un bien'} » n'a pas pu passer en « Présentés ».\n\n${error.message}`); return false; }
+      const { base, h, total, agence, l } = calc(b);
+      const err = await ecrire(b, { etape: 'presente', envoye_le: quand, canal_envoi: canal, badge_retour: 'propose' });
+      if (err) { alert(`« ${b.titre || 'Un bien'} » n'a pas pu passer en « Présentés ».\n\n${err}`); return false; }
       const { error: ej } = await supabase.from('journal').insert({
         client_id: clientId, bien_id: b.id, recherche_id: b.recherche_id, type: 'envoi_bien',
         titre: `Envoyé au client · ${nomCanal} · avec ${n - 1} autre${n > 2 ? 's' : ''}`,
-        description: base > 0 ? `Prix présenté ${total.toLocaleString('fr-FR')} €${h > 0 || !agence ? ` — dont ${h.toLocaleString('fr-FR')} € d'honoraires ${agence ? 'de l’agence' : 'de chasse'}` : ''}` : null,
+        description: base > 0
+          ? agence
+            ? `Prix présenté ${total.toLocaleString('fr-FR')} €${h > 0 ? ` — dont ${h.toLocaleString('fr-FR')} € d'honoraires de l’agence` : ''}`
+            : `Prix présenté ${base.toLocaleString('fr-FR')} € · ${phraseHono(b, l, mandat)}`
+          : null,
         metadata: {},
       });
       if (ej) journalRate = ej.message;
@@ -2614,6 +2898,7 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
   }
 
   async function viaMail() {
+    if (bloque) return;
     setEnvoi(true);
     const ok = await enregistrerPrix();
     setEnvoi(false);
@@ -2623,10 +2908,12 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
   }
 
   async function viaWhatsapp() {
+    if (bloque) return;
     const corps = biens.map((b, i) => {
-      const { total } = calc(b);
+      const { vu, h, agence } = calc(b);
       const specs = [b.surface && `${b.surface} m²`, b.nb_pieces && `${b.nb_pieces} pièces`].filter(Boolean).join(' · ');
-      return `${i + 1}. ${b.titre || b.ville || 'Bien'}${specs ? `\n${specs}` : ''}${total ? `\nPrix : ${total.toLocaleString('fr-FR')} € tout compris` : ''}\n${lienBienPublic(b.id)}`;
+      const prix = prixWhatsapp(vu, agence ? 0 : h);
+      return `${i + 1}. ${b.titre || b.ville || 'Bien'}${specs ? `\n${specs}` : ''}${prix ? `\n${prix}` : ''}\n${lienBienPublic(b.id)}`;
     }).join('\n\n');
     const txt = `Bonjour ${client?.prenom || ''}, voici ${n} biens qui correspondent à votre recherche :\n\n${corps}`;
     /* WhatsApp s'ouvre tout de suite, dans le geste du clic : sur iPhone, une
@@ -2641,6 +2928,7 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
 
   const lienDossier = lienEspace(client?.token_espace || recherche?.token_espace);
   async function viaLien() {
+    if (bloque) return;
     try { if (lienDossier) { await navigator.clipboard.writeText(lienDossier); setCopie(true); } } catch { /* ignore */ }
     setEnvoi(true);
     const ok = await presenter('lien');
@@ -2661,13 +2949,13 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
   const defautPour = (t: TypeHono) => (mandat && mandat.type === t ? String(mandat.val) : t === 'pourcentage' ? String(HONORAIRES_TAUX) : '25000');
 
   const canal = (icone: string, titre: string, sous: string, action: () => void, teinte: string, principal?: boolean) => (
-    <button type="button" onClick={action} disabled={envoi}
+    <button type="button" onClick={action} disabled={envoi || bloque}
       style={{
         display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left',
         background: principal ? '#fdfaf1' : 'white', border: `1.5px solid ${principal ? '#ecdcb4' : BORD}`, borderRadius: 14, padding: '12px 15px',
-        cursor: envoi ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'all .18s cubic-bezier(.16,1,.3,1)', opacity: envoi ? .6 : 1,
+        cursor: envoi || bloque ? 'default' : 'pointer', fontFamily: 'inherit', transition: 'all .18s cubic-bezier(.16,1,.3,1)', opacity: envoi || bloque ? .55 : 1,
       }}
-      onMouseEnter={e => { if (!envoi) { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.transform = 'translateX(4px)'; } }}
+      onMouseEnter={e => { if (!envoi && !bloque) { e.currentTarget.style.borderColor = teinte; e.currentTarget.style.transform = 'translateX(4px)'; } }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = principal ? '#ecdcb4' : BORD; e.currentTarget.style.transform = 'none'; }}>
       <span style={{ width: 38, height: 38, borderRadius: 11, background: `${teinte}18`, color: teinte, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icone nom={icone} taille={19} epaisseur={1.8} />
@@ -2709,9 +2997,9 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
 
       <div style={{ padding: '16px 24px 14px', borderBottom: `1px solid ${BORD}`, background: '#fbfcfe' }}>
         <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9 }}>
-          {`Tes honoraires de chasse · pour les ${n}`}
+          {'Tes honoraires, quand ils s’ajoutent'}
         </div>
-        <RappelMandat mandat={mandat} applique={surMandat} pour={`aux ${n}`}
+        <RappelMandat mandat={mandat} applique={surMandat} pour={`aux ${avecHono.length || n}`}
           onAppliquer={() => { if (mandat) toutAppliquer(mandat.type, String(mandat.val)); }} />
         <div className="emi-hono-tous" style={{ display: 'flex', gap: 11, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', background: '#eef2f7', borderRadius: 11, padding: 3, width: 180, flexShrink: 0 }}>
@@ -2725,15 +3013,15 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
             <span style={{ fontSize: 15, fontWeight: 700, color: '#64748b', width: 14 }}>{typeG === 'pourcentage' ? '%' : '€'}</span>
           </div>
         </div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
-          {`S'applique aux ${n} biens. Un bien à part ? Ajuste-le dans sa ligne.`}
+        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>
+          {'Un bien d’agence part en « avec inter » : rien ne s’ajoute. Un bien de particulier prend ces honoraires. Change-le dans sa ligne.'}
         </div>
       </div>
 
       <div style={{ padding: '6px 24px 4px' }}>
         {biens.map((b, i) => {
-          const { l, base, h, total, agence } = calc(b);
-          const aPart = !agence && (l.type !== typeG || (parseFloat(String(l.valeur).replace(',', '.')) || 0) !== vG);
+          const { l, base, h, vu, agence, trop: auDessus } = calc(b);
+          const aPart = !agence && l.cas !== 'inter' && (l.type !== typeG || nbSaisi(l.valeur) !== vG);
           return (
             <div key={b.id} className="emi-hono-ligne" style={{
               display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '11px 0',
@@ -2746,35 +3034,58 @@ export function ModaleEnvoiGroupe({ biens, clientId, client, recherche, onFerme,
                 <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
                 </span>
-                <span style={{ display: 'block', fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
+                <span style={{ display: 'block', fontSize: 11.5, color: auDessus ? '#b91c1c' : '#94a3b8', marginTop: 2 }}>
                   {agence
                     ? 'Mandat de l’agence · honoraires de l’agence compris'
-                    : base > 0 ? `Annonce ${base.toLocaleString('fr-FR')} € · + ${h.toLocaleString('fr-FR')} €` : 'Prix de l’annonce manquant'}
+                    : auDessus
+                      ? 'Au-dessus de son mandat : baisse le montant'
+                      : base > 0 ? `Annonce ${base.toLocaleString('fr-FR')} €${h > 0 ? ` · + ${h.toLocaleString('fr-FR')} €` : ' · rien ne s’ajoute'}` : 'Prix de l’annonce manquant'}
                   {aPart ? ' · à part' : ''}
                 </span>
               </span>
-              <span className="emi-hono-droite" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' }}>
+              <span className="emi-hono-droite" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 1 auto', minWidth: 0, maxWidth: '100%', marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {!agence && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <input type="number" step={l.type === 'pourcentage' ? '0.1' : '500'} min="0" value={l.valeur}
-                    onChange={e => changerLigne(b.id, { valeur: e.target.value })}
-                    aria-label={`Honoraires de ${b.titre || 'ce bien'}`}
-                    style={{ width: 78, border: `1.5px solid ${aPart ? OR : BORD}`, borderRadius: 9, padding: '6px 8px', fontSize: 13.5, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
-                  <span style={{ display: 'flex', background: '#eef2f7', borderRadius: 9, padding: 2, width: 62 }}>
-                    {bascule(l.type === 'pourcentage', () => changerLigne(b.id, { type: 'pourcentage', valeur: defautPour('pourcentage') }), '%', true)}
-                    {bascule(l.type === 'fixe', () => changerLigne(b.id, { type: 'fixe', valeur: defautPour('fixe') }), '€', true)}
-                  </span>
-                </span>
+                  <select value={l.cas} aria-label={`Honoraires de ${b.titre || 'ce bien'}`}
+                    onChange={e => changerLigne(b.id, { cas: e.target.value as CasHono })}
+                    style={{ border: `1.5px solid ${BORD}`, borderRadius: 9, padding: '6px 8px', fontSize: 12.5, fontWeight: 700, color: NAVY, fontFamily: 'inherit', background: 'white', cursor: 'pointer' }}>
+                    <option value="inter">Avec inter</option>
+                    <option value="sans">Sans inter</option>
+                    <option value="particulier">Particulier</option>
+                  </select>
                 )}
-                <span style={{ textAlign: 'right', minWidth: 104 }}>
-                  <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .8 }}>Prix présenté</span>
-                  <span style={{ display: 'block', fontSize: 16, fontWeight: 800, color: OR, letterSpacing: -.3 }}>{(agence ? total : base) > 0 ? `${total.toLocaleString('fr-FR')} €` : '—'}</span>
+                {!agence && l.cas !== 'inter' && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <input type="number" step={l.type === 'pourcentage' ? '0.1' : '500'} min="0" value={l.valeur}
+                      onChange={e => changerLigne(b.id, { valeur: e.target.value })}
+                      aria-label={`Taux ou forfait de ${b.titre || 'ce bien'}`}
+                      style={{ width: 78, border: `1.5px solid ${auDessus ? '#dc2626' : aPart ? OR : BORD}`, borderRadius: 9, padding: '6px 8px', fontSize: 13.5, fontWeight: 700, color: NAVY, fontFamily: 'inherit', textAlign: 'right', outline: 'none' }} />
+                    <span style={{ display: 'flex', background: '#eef2f7', borderRadius: 9, padding: 2, width: 62 }}>
+                      {bascule(l.type === 'pourcentage', () => changerLigne(b.id, { type: 'pourcentage', valeur: defautPour('pourcentage') }), '%', true)}
+                      {bascule(l.type === 'fixe', () => changerLigne(b.id, { type: 'fixe', valeur: defautPour('fixe') }), '€', true)}
+                    </span>
+                  </span>
+                )}
+                <span style={{ textAlign: 'right', minWidth: 96 }}>
+                  <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .8 }}>Il verra</span>
+                  <span style={{ display: 'block', fontSize: 16, fontWeight: 800, color: OR, letterSpacing: -.3 }}>{vu > 0 ? `${vu.toLocaleString('fr-FR')} €` : '—'}</span>
+                  {!agence && h > 0 && vu > 0 && <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>{`+ ${h.toLocaleString('fr-FR')} €`}</span>}
                 </span>
               </span>
             </div>
           );
         })}
       </div>
+
+      {(bloque || note) && (
+        <div style={{ padding: '0 24px 10px' }}>
+          {bloque && mandat && (
+            <div role="alert" style={{ fontSize: 12.5, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '8px 11px', lineHeight: 1.5 }}>
+              {`${trop.length > 1 ? `${trop.length} biens dépassent` : 'Un bien dépasse'} son mandat (${mandat.texte}) : tu ne peux pas prendre plus que ce qu’il a signé.`}
+            </div>
+          )}
+          {note && <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', lineHeight: 1.5, marginTop: bloque ? 8 : 0 }}>{note}</div>}
+        </div>
+      )}
 
       <div style={{ padding: '10px 24px 16px', display: 'flex', flexDirection: 'column', gap: 9, borderTop: `1px solid ${BORD}` }}>
         {onMailGroupe && canal('mail', 'Par mail', `Un seul mail avec les ${n} biens — tu le relis avant de l'envoyer`, viaMail, '#3b82f6', true)}
