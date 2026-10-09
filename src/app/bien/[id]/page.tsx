@@ -6,6 +6,7 @@ import Image from 'next/image';
 import PhotoCarousel from './PhotoCarousel';
 import AboutPliable from './AboutPliable';
 import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
+import { prixDuBien } from '@/lib/honoraires-bien';
 
 /*
  * La fiche publique d'un bien — /bien/<id>
@@ -197,7 +198,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const arr = /^paris/i.test(b.ville || '') && /^75\d{3}$/.test(b.code_postal || '') ? parseInt(String(b.code_postal).slice(3), 10) : 0;
   const ville = arr > 0 ? `Paris ${arr}${arr === 1 ? 'er' : 'e'}` : (b.ville || '');
   const titre = String(b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` ${nb(b.surface)} m²` : ''}`).slice(0, 90);
-  const prix = b.prix_acquereur || b.prix_vendeur;
+  /* V3.145 : le prix de l'annonce (ses honoraires, s'ils s'ajoutent, sont dits sur la page). */
+  const prix = prixDuBien(b).demande;
   /* Ce que le titre dit déjà (« 3 pièces · 80 m² ») ne se répète pas dessous. */
   const details = [
     b.nb_pieces && !/pi[eè]ce/i.test(titre) ? `${b.nb_pieces} pièce${b.nb_pieces > 1 ? 's' : ''}` : '',
@@ -250,8 +252,12 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   const telConseiller = reglages.conseiller_telephone || TEL_DEFAUT;
   const mailConseiller = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(reglages.conseiller_email || '') ? reglages.conseiller_email : MAIL_DEFAUT;
 
-  const prix = bien.prix_acquereur || bien.prix_vendeur;
-  const labelPrix = bien.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix';
+  /* V3.145 : le prix de l'annonce, comme dans l'espace ; ses honoraires en
+     petit dessous, seulement quand ils s'ajoutent (pas d'inter-cabinet). Un
+     bien de l'agence garde son prix, honoraires de l'agence compris. */
+  const pb = prixDuBien(bien);
+  const prix = pb.demande;
+  const labelPrix = pb.agence && bien.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix demandé';
   const prixM2 = prix && bien.surface ? Math.round(prix / bien.surface) : null;
   const photos: string[] = Array.isArray(bien.photos) ? bien.photos.filter(Boolean) : [];
   const plans: string[] = Array.isArray(bien.plans) ? bien.plans.filter(Boolean) : [];
@@ -359,7 +365,12 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
           ) : null}
         </div>
         {/* V3.113 : sans prix (un bien de l'agence avant le mandat), pas de mention sous « Prix à venir ». */}
-        <div style={{ fontSize: 11.5, color: OR, fontWeight: 700, marginBottom: 14 }}>{prix ? labelPrix : ''}</div>
+        <div style={{ fontSize: 11.5, color: OR, fontWeight: 700, marginBottom: pb.hono && prix ? 4 : 14 }}>{prix ? labelPrix : ''}</div>
+        {pb.hono && prix && pb.total ? (
+          <div style={{ fontSize: 12, color: PLUME, fontWeight: 600, lineHeight: 1.45, marginBottom: 14 }}>
+            {`+ ${fmt(pb.hono)} € de nos honoraires, soit ${fmt(pb.total)} € frais d’agence compris`}
+          </div>
+        ) : null}
 
         <h1 className="fb-h1" style={{ fontFamily: JAKARTA, fontSize: 25, fontWeight: 800, letterSpacing: -.5, lineHeight: 1.25, margin: '0 0 6px' }}>
           {bien.titre || `${bien.type_bien || 'Bien'}${bien.surface ? ` — ${bien.surface} m²` : ''}`}
