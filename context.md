@@ -1499,6 +1499,26 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.153 — 9 octobre 2026 · Le mandat : la ville de naissance et l'adresse, accompagnées
+
+Alexandre : « une cliente a un peu galéré pour la ville de naissance… qu'il y ait une présélection
+qui les accompagne s'ils mettent un début d'adresse, de ville ou un code postal ; et si elle est
+née à l'étranger, une petite coche : un nouveau champ s'active, la ville et le pays ».
+
+- `src/components/espace/ChampsLieu.tsx` (mandat du client, son co-acquéreur, page du co-signataire) :
+  · **Lieu de naissance** : les communes de France à mesure qu'on tape (geo.api.gouv.fr,
+  arrondissements compris) → « Clamart (Hauts-de-Seine) », « Paris 15e arrondissement ». La coche
+  « Née / Né à l'étranger » remplace la case par « Ville de naissance » et « Pays de naissance »
+  (liste des pays) → « Casablanca (Maroc) ».
+  · **Adresse** : les adresses officielles dès le numéro et le début de la rue (data.geopf.fr, la
+  même base que « Nouveau contact ») remplissent rue, code postal et ville d'un coup ; un code
+  postal d'une seule commune remplit la ville, sinon il propose ses communes ; une ville propose ses
+  codes postaux. « J'habite à l'étranger » : rue, code postal, ville et pays libres, le pays en
+  dernier sur le mandat (« 12 rue Royale, 1000 Bruxelles, Belgique ») ; le code postal n'y est pas
+  exigé.
+- Rien n'est imposé (sans réseau, ou pour un lieu inconnu, on tape librement) ; le mandat garde ses
+  deux lignes `naissanceLieu` et `adresse` : rien ne change côté serveur ni dans le PDF.
+
 ### V3.152 — 9 octobre 2026 · Le mouvement « depuis le bouton » ; le téléphone bord à bord ; l'espace qui s'équilibre ; l'espace réservé aux clients actifs
 
 Alexandre a choisi, sur une maquette de quatre styles, le **C · Depuis le bouton** : « la fenêtre
