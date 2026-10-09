@@ -826,6 +826,33 @@
 .lienStatutOn { background: #22497c; color: white; text-decoration: none; }
 .lienStatutOn:hover { color: white; }
 
+/* V3.163 — Alexandre : « Reçues, ce mois-ci, 3 mois, 12 mois, depuis le
+   début, avec le chiffre à droite : le mettre en couleur, pour casser le
+   blanc et mieux le voir ». La ligne devient un bandeau bleu Emilio : la
+   période en pastilles claires (la choisie en blanc), le nombre de demandes
+   en orange clair, Toutes et Archivées en blanc. */
+.periodeLigne {
+  background: linear-gradient(135deg, #2b5288 0%, #22497D 55%, #1d3f6c 100%);
+  border: none; padding: 8px 10px 8px 14px; border-radius: 16px; margin-bottom: 10px;
+  box-shadow: 0 14px 28px -20px rgba(34, 73, 125, .9);
+}
+.recuesL { color: rgba(255, 255, 255, .78); }
+.periodes { background: rgba(255, 255, 255, .12); }
+.periode { color: rgba(255, 255, 255, .82); }
+.periode:hover { color: white; background: rgba(255, 255, 255, .1); }
+.periodeOn, .periodeOn:hover { background: white; color: #22497c; box-shadow: 0 6px 14px -8px rgba(0, 0, 0, .45); }
+.recues { color: rgba(255, 255, 255, .8); }
+.recues b { color: #F2B266; }
+.lienStatut { color: rgba(255, 255, 255, .85); text-decoration-color: rgba(255, 255, 255, .35); }
+.lienStatut:hover { color: white; }
+.lienStatutOn, .lienStatutOn:hover { background: white; color: #22497c; }
+/* « Toutes, Estimations… à cheval sur le bleu » : quand les sortes de
+   demande suivent (Tout, Portails), le bandeau descend un peu et elles
+   viennent se poser à cheval sur son bord. */
+.periodeLigne:has(+ .cats) { padding-bottom: 34px; margin-bottom: 0; }
+.periodeLigne + .cats { position: relative; z-index: 1; margin-top: -21px; padding-left: 12px; padding-right: 12px; }
+.periodeLigne + .cats .cat { box-shadow: 0 8px 18px -12px rgba(15, 30, 60, .55); }
+
 @media (max-width: 760px) {
   .pforms { gap: 6px; }
   .pform { height: 38px; font-size: 13px; padding-right: 9px; gap: 6px; }
