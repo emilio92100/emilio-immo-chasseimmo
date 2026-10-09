@@ -1499,6 +1499,21 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.163 — 10 octobre 2026 · Les fiches arrondies au téléphone ; « Reçues » en bandeau bleu
+
+- **La fiche d'un bien et celle d'un contact, au téléphone** (Alexandre : « finalement en arrondi,
+  c'est mieux, au plus large ») : la fiche garde 10 px de chaque côté (`.fiche` de Biens et de
+  Contacts, `.teteZone`/`.contentWrap` de FicheClient), le bandeau bleu et toutes les cartes
+  reprennent leurs coins arrondis — les règles « bord à bord » de la V3.152 sont retirées
+  d'OngletsBien, VisitesOffres, DossierBien, RapprochementBien, VueBien, Rapprochement (acheteur)
+  et Contacts (fiche d'un contact non acheteur). Les titres posés sur le fond passent à 4 px.
+- **Demandes Internet : la ligne « Reçues »** (« ce mois-ci, 3 mois, 12 mois, depuis le début, avec
+  le chiffre à droite : le mettre en couleur, pour casser le blanc ») : un bandeau bleu Emilio, la
+  période en pastilles claires (la choisie en blanc), le nombre de demandes en orange clair,
+  Toutes et Archivées en blanc (DemandesSite.module.css). Ordinateur et téléphone. Quand les
+  sortes de demande suivent (Tout, Portails), le bandeau descend et « Toutes, Estimations… » se
+  posent à cheval sur son bord (`.periodeLigne:has(+ .cats)`, « à cheval sur le bleu »).
+
 ### V3.162 — 10 octobre 2026 · Au téléphone : le menu en couleurs, Demandes Internet arrondi
 
 - **Le menu de gauche** (Alexandre : « Dashboard, Contacts, Biens, Demandes Internet, Agenda… tout
