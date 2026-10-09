@@ -2333,6 +2333,110 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   );
 }
 
+/* ══ l'accueil sur ordinateur : deux colonnes qui s'équilibrent (V3.152) ══
+   « Il faudrait mieux dispatcher […] en fonction de ce qu'il y a, du nombre
+   de biens proposés ; votre conseiller est encore trop en bas à droite, à
+   gauche il y a du vide » (Alexandre). La colonne des biens a la hauteur de ce
+   qu'elle contient ; celle de droite empilait toujours les mêmes sept blocs.
+   Avec un seul nouveau bien, la gauche s'arrêtait 800 px avant la droite.
+
+   La page est donc une grille de trois pistes de même largeur. Les biens
+   occupent les deux premières ; la troisième garde en haut ce qui doit y
+   rester (la visite, la carte, le rappel de la recherche). Les quatre autres
+   blocs vont là où ils comblent le mieux : sous les biens, côte à côte, ou à
+   droite. Les trois pistes ayant la même largeur, un bloc a la même hauteur
+   où qu'on le pose : on le mesure là où il est, et le calcul est exact — pas
+   d'aller-retour, pas d'oscillation.
+
+   Au téléphone et sur tablette (< 1024 px), rien ne bouge : tous les blocs
+   restent « à droite », c'est-à-dire dessous, dans l'ordre d'avant. Le
+   rendu du serveur est celui-là aussi ; l'ordinateur se rééquilibre dès que
+   la page s'anime, puis à chaque changement de taille (photos, police,
+   nouvelles données). */
+const BLOCS_LIBRES = ['marche', 'conseiller', 'engage', 'lien'];
+/** La piste de chaque bloc posé sous les biens (1 à gauche, 2 à droite). Un
+    bloc absent est à droite, dans la colonne d'origine. */
+type Repartition = Record<string, 1 | 2>;
+type Mesures = { main: number; fixe: number; h: Record<string, number>; ecart: number; sous: number };
+const memeRep = (a: Repartition, b: Repartition) =>
+  BLOCS_LIBRES.every(k => (a[k] || 0) === (b[k] || 0));
+
+/* Toutes les répartitions possibles (au plus 3⁴ = 81) : on garde celle dont
+   la plus longue des trois pistes est la plus courte — c'est elle qui laisse
+   le moins de blanc. L'ordre des blocs est gardé dans chaque piste. */
+function repartir(m: Mesures, avant: Repartition): Repartition {
+  const blocs = BLOCS_LIBRES.filter(k => m.h[k] != null);
+  const essais: { r: Repartition; cout: number; cons: number; bouges: number }[] = [];
+  for (let code = 0; code < 3 ** blocs.length; code++) {
+    const r: Repartition = {};
+    const bas = [m.main, m.main, m.fixe], nb = [0, 0, 0];
+    let c = code, cons = 0, bouges = 0, premier = -1;
+    for (const k of blocs) {
+      const p = c % 3; c = Math.floor(c / 3);      // 0 et 1 : sous les biens ; 2 : à droite
+      const haut = p === 2 || nb[p] ? bas[p] + m.ecart : m.main + m.sous;
+      if (k === 'conseiller') cons = haut;
+      bas[p] = haut + m.h[k]; nb[p]++;
+      if (p < 2) { r[k] = (p + 1) as 1 | 2; bouges++; if (premier < 0) premier = p; }
+    }
+    /* Sous les biens, on lit de gauche à droite : le premier bloc (dans
+       l'ordre d'avant) ouvre la piste de gauche. Un bloc seul y est à
+       gauche, pas au milieu. */
+    if (premier === 1) continue;
+    essais.push({ r, cout: Math.max(...bas), cons, bouges });
+  }
+  const min = Math.min(...essais.map(x => x.cout));
+  /* À une douzaine de pixels près, deux répartitions se valent. On garde
+     alors celle qui est à l'écran (rien ne saute au moindre redimensionnement),
+     sinon celle qui remonte le plus le conseiller, puis celle qui déplace le
+     moins de blocs. */
+  const proches = essais.filter(x => x.cout <= min + 12);
+  if (proches.some(x => memeRep(x.r, avant))) return avant;
+  proches.sort((a, b) => a.cons - b.cons || a.bouges - b.bouges || a.cout - b.cout);
+  return proches[0]?.r || {};
+}
+
+function useRepartition(ref: React.RefObject<HTMLDivElement | null>): Repartition {
+  const [rep, setRep] = useState<Repartition>({});
+  useLayoutEffect(() => {
+    const cols = ref.current;
+    if (!cols || typeof ResizeObserver === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(min-width:1024px)');
+    const calcule = () => {
+      if (!mq.matches) { setRep(r => (Object.keys(r).length ? {} : r)); return; }
+      const g = cols.querySelector<HTMLElement>('.acc-g'), main = cols.querySelector<HTMLElement>('.acc-main');
+      const d = cols.querySelector<HTMLElement>('.acc-d'), rech = cols.querySelector<HTMLElement>('[data-bloc="rech"]');
+      if (!g || !main || !d || !rech) return;
+      const h: Record<string, number> = {};
+      cols.querySelectorAll<HTMLElement>('[data-bloc]').forEach(x => { h[x.dataset.bloc || ''] = x.getBoundingClientRect().height; });
+      /* Les deux écarts viennent de la feuille de style (--ecart, --sous) :
+         une seule source, le calcul ne peut pas s'en écarter. */
+      const st = getComputedStyle(cols);
+      const m: Mesures = {
+        main: main.getBoundingClientRect().bottom - g.getBoundingClientRect().top,
+        fixe: rech.getBoundingClientRect().bottom - d.getBoundingClientRect().top,
+        h, ecart: parseFloat(st.getPropertyValue('--ecart')) || 0, sous: parseFloat(st.getPropertyValue('--sous')) || 0,
+      };
+      setRep(r => { const n = repartir(m, r); return memeRep(n, r) ? r : n; });
+    };
+    /* Ici, avant le premier affichage : passer d'un onglet à l'accueil ne
+       montre jamais la répartition par défaut. */
+    calcule();
+    /* La page arrive du serveur avec les blocs dans la colonne de droite : ils
+       restent invisibles sur ordinateur jusqu'à ce premier calcul, puis
+       apparaissent en fondu à leur place (rien ne saute sous les yeux). */
+    cols.dataset.pret = '1';
+    /* Ensuite, à chaque changement de taille : la colonne des biens (une
+       photo, un bien de plus), les deux colonnes (la police qui arrive, un
+       bloc qui grandit), la fenêtre. Un bloc déplacé change la taille de sa
+       colonne, le calcul repasse et retombe sur la même répartition. */
+    const ro = new ResizeObserver(calcule);
+    cols.querySelectorAll<HTMLElement>('.acc-main, .acc-g, .acc-d').forEach(x => ro.observe(x));
+    mq.addEventListener?.('change', calcule);
+    return () => { ro.disconnect(); mq.removeEventListener?.('change', calcule); };
+  }, [ref]);
+  return rep;
+}
+
 /* ══ accueil ══════════════════════════════════════
    Dans l'ordre où le client en a besoin : ce qui l'attend aujourd'hui (trois
    cases, toujours cliquables, même à zéro), les nouveaux biens en grand, les
@@ -2372,6 +2476,56 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
   const case3: Case = visites.length
     ? { cle: 'vis', cls: 'c-vis', ico: 'calendrier', n: visites.length, l: visites.length > 1 ? 'visites prévues' : 'visite prévue', go: () => aller('visites') }
     : reserve.shift() || { cle: 'vis', cls: 'c-vis', ico: 'calendrier', n: 0, l: 'visite prévue', go: () => aller('visites'), aucun: 'Aucune' };
+
+  /* V3.152 : les quatre blocs qui se déplacent sur ordinateur. `bloc` est une
+     fonction appelée, pas un composant (AGENTS.md §2.4). Leurs marges d'avant
+     (26 px au-dessus de « Votre conseiller », 12 px au-dessus de l'engagement
+     et du lien) viennent de la feuille de style, plus du style en ligne : sur
+     ordinateur, c'est l'écart de la colonne qui les remplace. */
+  const colsRef = useRef<HTMLDivElement>(null);
+  const rep = useRepartition(colsRef);
+  const dessous = (p: 1 | 2) => BLOCS_LIBRES.filter(k => rep[k] === p);
+  const bloc = (k: string) => (
+    <div key={k} className="acc-bl" data-bloc={k}>
+      {k === 'marche' && (
+        <button className="case large" onClick={() => aller('marche')}>
+          <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
+          <div><h3>Le marché sur vos critères</h3>
+            <p>{`${nombre(semaine.reduce((s: number, x: any) => s + x.lues, 0))} annonces lues ces 7 derniers jours`}</p></div>
+          <div className="apm">
+            <div className="apm-t">Annonces lues · 7 derniers jours</div>
+            <div className="mini">{semaine.map((d: any, i: number) => (
+              <i key={i} className={i === semaine.reduce((k: number, x: any, j: number) => (x.lues > 0 ? j : k), -1) ? 'fort' : ''}
+                style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
+            ))}</div>
+          </div>
+          <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
+        </button>
+      )}
+      {k === 'conseiller' && <>
+        <div className="sep"><span>Votre conseiller</span><i /></div>
+        <div className="chasseur">
+          <div className="av">AR</div>
+          <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous au quotidien</p></div>
+          <a className="tel" href="tel:0658957632"><Ico n="tel" t={15} /> Appeler</a>
+        </div>
+      </>}
+      {k === 'engage' && (
+        <div className="engage">
+          <div className="t">Mon engagement</div>
+          <div><span className="k"><Ico n="check" t={15} /></span><span>Une recherche menée chaque jour&nbsp;: les principaux portails immobiliers, notre carnet d&apos;adresses de confrères et de partenaires, et notre base off-market.</span></div>
+          <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
+          <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
+        </div>
+      )}
+      {k === 'lien' && (
+        <div className="avis-lien"><Ico n="lieu" t={16} />
+          <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
+            — gardez-le pour vous, ou transmettez-le à votre conjoint ou à un proche qui suit le projet avec vous&nbsp;:
+            il verra exactement la même chose.</span></div>
+      )}
+    </div>
+  );
   return (
     <div className="acc">
       <section className="auj" aria-label="Aujourd’hui pour vous">
@@ -2467,23 +2621,37 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
         </button>
       </div>
 
-      <div className="acc-cols">
+      {/* V3.152 : sur ordinateur, les blocs d'à côté se répartissent selon ce
+          que la page contient (voir useRepartition). Chacun est enveloppé
+          dans un .acc-bl sans marge ni bordure : au téléphone, les marges
+          traversent l'enveloppe et la page est exactement celle d'avant. */}
+      <div className="acc-cols" ref={colsRef}>
         <div className="acc-g">
-          {neufs.length > 0
-            ? <>
-              <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} onDecouvrir={onDecouvrir} nbDecouvrir={nbDecouvrir} />
-              {/* Le même récapitulatif que dans « Rien de nouveau », en une
-                  ligne : il y en a toujours un, et un seul, sur l'accueil. */}
-              {!!passage?.lues && <RecapRecherche aller={aller} />}
-            </>
-            : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} enCours={enCours} achat={achat || null} />}
-          {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
-          {/* Au téléphone (V3.28), la carte coiffe « Vos derniers retours » et
-              s'y fond : elle était tout en bas, après la visite. Sans retour,
-              elle se pose seule au même endroit. */}
-          {retours.length > 0
-            ? <DerniersRetours biens={retours} onOuvrir={onOuvrir} aller={aller} carte={apercuFondu} />
-            : apercu && <div className="ac-tel">{apercu}</div>}
+          <div className="acc-main">
+            {neufs.length > 0
+              ? <>
+                <CarrouselNeufs biens={neufs} crit={crit} onOuvrir={onOuvrir} aller={aller} onDecouvrir={onDecouvrir} nbDecouvrir={nbDecouvrir} />
+                {/* Le même récapitulatif que dans « Rien de nouveau », en une
+                    ligne : il y en a toujours un, et un seul, sur l'accueil. */}
+                {!!passage?.lues && <RecapRecherche aller={aller} />}
+              </>
+              : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} enCours={enCours} achat={achat || null} />}
+            {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
+            {/* Au téléphone (V3.28), la carte coiffe « Vos derniers retours » et
+                s'y fond : elle était tout en bas, après la visite. Sans retour,
+                elle se pose seule au même endroit. */}
+            {retours.length > 0
+              ? <DerniersRetours biens={retours} onOuvrir={onOuvrir} aller={aller} carte={apercuFondu} />
+              : apercu && <div className="ac-tel">{apercu}</div>}
+          </div>
+          {/* Sous les biens, sur ordinateur : deux pistes de la largeur de la
+              colonne de droite, pour les blocs qui y remplissent le vide. */}
+          {(dessous(1).length > 0 || dessous(2).length > 0) && (
+            <div className="acc-sous">
+              <div className="acc-p">{dessous(1).map(bloc)}</div>
+              <div className="acc-p">{dessous(2).map(bloc)}</div>
+            </div>
+          )}
         </div>
 
         <div className="acc-d">
@@ -2494,62 +2662,37 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
               ordinateur. Au téléphone, elle est plus haut (voir à gauche). */}
           {apercu && <div className="ac-pc">{apercu}</div>}
           <div className="acc-cartes">
-            <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
-              <button className="rech-haut" onClick={() => aller('recherche')}>
-                {/* Le badge « Recherche en cours » est monté dans l'en-tête ;
-                    la carte garde sa lueur verte quand la recherche tourne. */}
-                <div className="tete-case">
-                  <span className="ico"><Ico n="cible" /></span>
-                </div>
-                <div><h3>{plusieurs ? 'Les critères de cette recherche' : 'Rappel de ma recherche'}</h3>
-                  <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
-                    {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
-                    {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
-                <div className="pied-case">
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
-                  <span className="chev"><Ico n="fleche" t={18} /></span></div>
-              </button>
-              <button className="rech-bas" onClick={onFin}>
-                <span className="rb-ico">🏁</span>
-                <span className="rb-txt">
-                  <b>{plusieurs ? 'Cette recherche est terminée' : 'Ma recherche est terminée'}</b>
-                  <i>Vous avez trouvé, ou vous faites une pause&nbsp;? Dites-le-nous.</i>
-                </span>
-                <span className="chev"><Ico n="fleche" t={17} /></span>
-              </button>
-            </div>
-            <button className="case large" onClick={() => aller('marche')}>
-              <div className="tete-case"><span className="ico"><Ico n="graph" t={21} /></span></div>
-              <div><h3>Le marché sur vos critères</h3>
-                <p>{`${nombre(semaine.reduce((s: number, x: any) => s + x.lues, 0))} annonces lues ces 7 derniers jours`}</p></div>
-              <div className="apm">
-                <div className="apm-t">Annonces lues · 7 derniers jours</div>
-                <div className="mini">{semaine.map((d: any, i: number) => (
-                  <i key={i} className={i === semaine.reduce((k: number, x: any, j: number) => (x.lues > 0 ? j : k), -1) ? 'fort' : ''}
-                    style={{ height: Math.max(8, d.lues / maxLues * 100) + '%', animationDelay: i * .05 + 's' }} />
-                ))}</div>
+            {/* La visite, la carte et le rappel de la recherche restent en
+                haut à droite, quoi qu'il arrive : le calcul part de leur bas. */}
+            <div className="acc-bl" data-bloc="rech">
+              <div className={'case large bloc-rech' + (enCours ? ' vivant' : '')}>
+                <button className="rech-haut" onClick={() => aller('recherche')}>
+                  {/* Le badge « Recherche en cours » est monté dans l'en-tête ;
+                      la carte garde sa lueur verte quand la recherche tourne. */}
+                  <div className="tete-case">
+                    <span className="ico"><Ico n="cible" /></span>
+                  </div>
+                  <div><h3>{plusieurs ? 'Les critères de cette recherche' : 'Rappel de ma recherche'}</h3>
+                    <p>{crit.budgetMax ? `Jusqu'à ${EUR(crit.budgetMax)}` : 'Budget à préciser'}
+                      {crit.surfaceMin ? ` · ${crit.surfaceMin} m² minimum` : ''}
+                      {crit.piecesMin ? ` · ${crit.piecesMin} pièces` : ''}</p></div>
+                  <div className="pied-case">
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--plume)' }}>Vos critères ont changé&nbsp;? Modifiez-les ici</span>
+                    <span className="chev"><Ico n="fleche" t={18} /></span></div>
+                </button>
+                <button className="rech-bas" onClick={onFin}>
+                  <span className="rb-ico">🏁</span>
+                  <span className="rb-txt">
+                    <b>{plusieurs ? 'Cette recherche est terminée' : 'Ma recherche est terminée'}</b>
+                    <i>Vous avez trouvé, ou vous faites une pause&nbsp;? Dites-le-nous.</i>
+                  </span>
+                  <span className="chev"><Ico n="fleche" t={17} /></span>
+                </button>
               </div>
-              <div className="pied-case"><span /><span className="chev"><Ico n="fleche" t={18} /></span></div>
-            </button>
+            </div>
+            {!rep.marche && bloc('marche')}
           </div>
-          <div className="sep"><span>Votre conseiller</span><i /></div>
-          <div className="chasseur">
-            <div className="av">AR</div>
-            <div><h4>Alexandre Rogelet</h4><p>Il cherche pour vous au quotidien</p></div>
-            <a className="tel" href="tel:0658957632"><Ico n="tel" t={15} /> Appeler</a>
-          </div>
-
-          <div className="engage" style={{ marginTop: 12 }}>
-            <div className="t">Mon engagement</div>
-            <div><span className="k"><Ico n="check" t={15} /></span><span>Une recherche menée chaque jour&nbsp;: les principaux portails immobiliers, notre carnet d&apos;adresses de confrères et de partenaires, et notre base off-market.</span></div>
-            <div><span className="k"><Ico n="check" t={15} /></span><span>Tout bien qui passe vos critères arrive ici dans la journée, avant qu&apos;il ne circule.</span></div>
-            <div><span className="k"><Ico n="check" t={15} /></span><span>Chacun de vos retours est relu, et oriente les propositions suivantes.</span></div>
-          </div>
-
-          <div className="avis-lien" style={{ marginTop: 12 }}><Ico n="lieu" t={16} />
-            <span><b style={{ color: 'var(--encre)' }}>Ce lien est le vôtre.</b>{' '}Il vous ouvre votre espace sans mot de passe
-              — gardez-le pour vous, ou transmettez-le à votre conjoint ou à un proche qui suit le projet avec vous&nbsp;:
-              il verra exactement la même chose.</span></div>
+          {BLOCS_LIBRES.filter(k => k !== 'marche' && !rep[k]).map(bloc)}
         </div>
       </div>
     </div>
@@ -2557,20 +2700,27 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
 }
 
 /* Les nouveaux biens, en grand : la photo, le prix, et ce qui compte. Sur
-   téléphone ils défilent au doigt ; sur ordinateur, deux par ligne. */
+   téléphone ils défilent au doigt. Sur ordinateur (V3.152), la rangée prend
+   toujours toute la largeur : un seul bien s'affiche en grand, la photo à
+   gauche et tout le reste à droite (il occupait le tiers de la colonne, et
+   le reste était vide) ; deux biens côte à côte ; trois par ligne ensuite,
+   et une ligne de deux pour finir quand le compte tombe mal (cinq). */
 function CarrouselNeufs({ biens, crit, onOuvrir, aller, onDecouvrir, nbDecouvrir = 0 }: { biens: Bien[]; crit: Criteres; onOuvrir: (b: Bien) => void; aller: (v: string) => void; onDecouvrir?: () => void; nbDecouvrir?: number }) {
+  const n = Math.min(biens.length, 6);
   return (
-    <section className="bloc-n">
+    <section className="bloc-n" data-n={n}>
       <div className="bloc-h">
         <h2>Nouveaux biens pour vous</h2>
         <button type="button" className="bloc-lien" onClick={() => aller('neufs')}>Tout voir</button>
       </div>
-      <div className="carrou">
-        {biens.slice(0, 6).map(b => {
+      <div className="carrou" data-n={n}>
+        {biens.slice(0, 6).map((b, i) => {
           const corr = correspondance(b, crit);
           const quand = depuis(b.envoyeLe);
+          /* Sur ordinateur : cette carte est-elle dans une ligne de trois ? */
+          const tiers = n === 3 || n === 6 || (n === 5 && i < 3);
           return (
-            <button key={b.id} type="button" className="cn" onClick={() => onOuvrir(b)}>
+            <button key={b.id} type="button" className={'cn' + (tiers ? ' cn-tiers' : '')} onClick={() => onOuvrir(b)}>
               <span className="cn-ph">
                 {b.photos[0] ? <img src={b.photos[0]} alt="" /> : <span className="cn-vide"><Ico n="maison" t={40} /></span>}
                 <span className="cn-new">{quand ? `Nouveau · ${quand}` : 'Nouveau'}</span>
@@ -2589,6 +2739,13 @@ function CarrouselNeufs({ biens, crit, onOuvrir, aller, onDecouvrir, nbDecouvrir
                     <span className="cn-jb"><i style={{ width: corr.note + '%' }} /></span>
                     <b className="tab">{`${corr.note} % de vos critères`}</b>
                   </span>
+                )}
+                {/* Le bien en grand, sur ordinateur : « Le découvrir » est
+                    dans la carte (le bouton du dessous s'efface). Toucher la
+                    carte fait exactement la même chose : un seul bien à
+                    découvrir, c'est lui que « Découvrir » ouvre (ouvrirBien). */}
+                {n === 1 && onDecouvrir && (
+                  <span className="cn-go"><span>{nbDecouvrir > 1 ? 'Les découvrir un par un' : 'Le découvrir'}</span><Ico n="fleche" t={17} /></span>
                 )}
               </span>
             </button>
@@ -7539,9 +7696,12 @@ button.auj-c:active{transform:scale(.96)}
 
 /* — les blocs de l'accueil — */
 .acc-cols{display:block}
-.acc-g > section, .acc-d > .vc, .acc-cartes{margin-top:22px}
+.acc-main > section, .acc-d > .vc, .acc-cartes{margin-top:22px}
 .acc-cartes{display:flex; flex-direction:column; gap:12px}
-.acc-d > .sep{margin-top:26px}
+/* V3.152 : chaque bloc d'à côté a son enveloppe (.acc-bl), sans marge ni
+   bordure ; les marges de son contenu la traversent, comme avant. Ces 12 px
+   étaient écrits en ligne : ils sont ici pour que l'ordinateur les retire. */
+.acc-bl > .engage, .acc-bl > .avis-lien{margin-top:12px}
 .bloc-h{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:12px}
 .bloc-h h2{margin:0; font-size:18px; font-weight:800; letter-spacing:-.3px}
 .bloc-lien{font-size:13px; font-weight:700; color:var(--or-fonce); padding:4px 0; white-space:nowrap}
@@ -7576,6 +7736,8 @@ button.auj-c:active{transform:scale(.96)}
   animation:cn-jauge 1.1s cubic-bezier(.16,1,.3,1) .4s backwards}
 @keyframes cn-jauge{from{width:0}}
 .cn-j b{font-size:11.5px; font-weight:700; color:var(--or-fonce); white-space:nowrap}
+/* « Le découvrir » dans la carte du bien en grand : ordinateur seulement. */
+.cn-go{display:none}
 /* — « Les découvrir un par un » (V3.44) : le chemin vers « Découvrir ». Sur
    l'accueil, sous les nouveaux biens ; en tête de « Nouveautés ». — */
 .cn-decouvrir{margin-top:10px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
@@ -7792,7 +7954,9 @@ button.auj-c:active{transform:scale(.96)}
   .al3-r{width:fit-content; max-width:100%; margin:18px 0 22px}
   .al3{flex:0 0 auto; min-width:230px; flex-direction:row; align-items:center; gap:11px; padding:12px 18px 12px 14px}
   .al3:hover{background:#F5F8FC}
-  .auj-g{grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px}
+  /* V3.152 : autant de colonnes que de cases, trois ou quatre, sur toute la
+     largeur. Avec quatre colonnes fixes, trois cases laissaient un quart vide. */
+  .auj-g{grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:16px}
   .auj-c{flex-direction:row; align-items:center; gap:14px; padding:16px 18px; border-radius:20px;
     background:var(--carte) !important; box-shadow:0 16px 34px -26px rgba(27,61,107,.55)}
   button.auj-c:hover{box-shadow:0 20px 38px -24px rgba(27,61,107,.6)}
@@ -7801,11 +7965,58 @@ button.auj-c:active{transform:scale(.96)}
   .auj-n{font-size:27px}
   .auj-l{font-size:13.5px}
 
-  .acc-cols{display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:26px; align-items:start}
-  .acc-g, .acc-d{min-width:0}
+  /* V3.152 : trois pistes de même largeur. Les biens prennent les deux
+     premières, la colonne de droite la troisième ; sous les biens, .acc-sous
+     redécoupe la même largeur en deux pistes (même écart, donc mêmes
+     largeurs au pixel près). --ecart et --sous sont lus par useRepartition. */
+  .acc-cols{--ecart:16px; --sous:22px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:26px;
+    align-items:start; margin-top:20px}
+  .acc-g{grid-column:1 / 3; min-width:0}
+  .acc-d{min-width:0; display:flex; flex-direction:column; gap:var(--ecart)}
+  .acc-main > section:first-child, .acc-d > .vc{margin-top:0}
+  .acc-cartes{display:contents}
+  .ac-pc .apercu-carte{margin-top:0}
+  .acc-bl > .sep{margin:0 0 12px}
+  /* Le titre « Votre conseiller » sous un autre bloc : un peu d'air au-dessus. */
+  .acc-bl:not(:first-child) > .sep{margin-top:10px}
+  .acc-bl > .engage, .acc-bl > .avis-lien{margin-top:0}
+  /* Avant la répartition (page tout juste arrivée du serveur), les blocs qui
+     peuvent bouger attendent, invisibles ; au pire, ils se montrent au bout de
+     3 s même sans JavaScript. */
+  .acc-cols:not([data-pret]) .acc-bl{opacity:0; animation:accMontre .3s ease 3s forwards}
+  .acc-cols[data-pret] .acc-bl{animation:accMontre .32s ease both}
+  @keyframes accMontre{from{opacity:0} to{opacity:1}}
+  .acc-sous{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:26px; align-items:start; margin-top:var(--sous)}
+  .acc-p{display:flex; flex-direction:column; gap:var(--ecart); min-width:0}
   .bloc-h h2{font-size:21px}
-  .carrou{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; overflow:visible; margin:0; padding:0}
-  .cn{flex:none}
+  /* Six colonnes : une carte en prend trois (deux par ligne) ou deux (trois
+     par ligne, .cn-tiers). La rangée tombe toujours juste, de 1 à 6 biens. */
+  .carrou{display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:18px; overflow:visible; margin:0; padding:0}
+  .cn{flex:none; grid-column:span 3}
+  .cn.cn-tiers{grid-column:span 2}
+  .cn-tiers .cn-ph{height:176px}
+  .cn-tiers .cn-c{padding:12px 14px 14px}
+  .cn-tiers .cn-p{flex-wrap:wrap; row-gap:2px}
+  .cn-tiers .cn-p b{font-size:21px}
+  .cn-tiers .cn-t{font-size:15px}
+  .cn-tiers .cn-m{font-size:13px}
+  /* La jauge garde une longueur lisible ; faute de place, la phrase passe dessous. */
+  .cn-tiers .cn-j{flex-wrap:wrap; row-gap:4px}
+  .cn-tiers .cn-jb{min-width:56px}
+  /* Un seul bien : en grand, la photo à gauche, le reste à droite. */
+  .carrou[data-n="1"] > .cn{grid-column:1 / -1; flex-direction:row; min-height:300px}
+  .carrou[data-n="1"] .cn-ph{flex:0 0 55%; height:auto}
+  .carrou[data-n="1"] .cn-ph img{position:absolute; inset:0}
+  .carrou[data-n="1"] .cn-c{flex:1 1 auto; min-width:0; justify-content:center; gap:8px; padding:28px 30px}
+  .carrou[data-n="1"] .cn-p{flex-wrap:wrap; row-gap:2px}
+  .carrou[data-n="1"] .cn-p b{font-size:30px; letter-spacing:-.8px; white-space:nowrap}
+  .carrou[data-n="1"] .cn-t{font-size:18px; font-weight:700}
+  .carrou[data-n="1"] .cn-m{font-size:14px}
+  .carrou[data-n="1"] .cn-j{margin-top:8px}
+  .cn-go{display:inline-flex; align-self:flex-start; align-items:center; gap:8px; margin-top:16px; min-height:50px;
+    padding:0 22px; border-radius:16px; background:var(--or); color:#13243D; font-size:15.5px; font-weight:800;
+    box-shadow:0 12px 24px -14px rgba(169,130,47,.9)}
+  .bloc-n[data-n="1"] .cn-decouvrir{display:none}
   .cn:hover{transform:translateY(-3px); box-shadow:0 22px 40px -26px rgba(27,61,107,.55)}
   .cn-ph{height:220px}
   .cn-p b{font-size:24px}
