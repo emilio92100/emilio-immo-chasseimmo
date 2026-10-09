@@ -1498,6 +1498,31 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.144 — 9 octobre 2026 · Le mandat de recherche dit les deux cas d'honoraires
+
+Rien à passer dans Supabase. Texte seulement : les mandats déjà signés gardent leur PDF.
+
+- **Article « Honoraires »** (Alexandre : « deux méthodes : si on est en inter-cab, le client ne
+  doit rien ; s'il n'y a pas d'inter-cab, bien rare, bien d'un particulier, on applique les
+  2,5 % ») : une liste à deux puces, dans le mandat en ligne (`src/lib/mandat.ts`) et dans celui
+  de Documents (`src/lib/actes/mandat-recherche.ts`). 1) Bien en vente chez une autre agence qui
+  partage ses honoraires avec l'Agence : le mandant ne doit rien au titre du mandat, l'Agence est
+  payée par cette agence. 2) Tous les autres cas (propriétaire, agence qui ne partage pas, bien
+  hors annonces) : les honoraires s'ajoutent au prix. Puis, en encadré : l'Agence dit par écrit,
+  avant toute offre, dans quel cas est le bien. Si le client contourne l'Agence, il n'y a pas de
+  partage : on retombe dans le second cas.
+- **Article « Prix »** : en inter-cabinet, le prix d'achat peut atteindre le budget lui-même
+  (500 000 € et non 487 000 €).
+- **Page de garde et récapitulatif de l'espace** : la case Honoraires dit « rien si l'agence du
+  vendeur partage ses honoraires · sinon à l'acte » (`HONO_DETAIL`, partagé par les deux mandats).
+  Le Documents garde en plus, dans « Le prix du service », la ligne « Rien à payer si… ».
+- Le calcul ne change pas : `prixMaximum` divise le budget par 1,025 et arrondit au millier
+  inférieur (500 000 € → 487 000 € + 12 175 € = 499 175 €). `versionMandat` ne lit pas le texte :
+  un mandat prêt à signer n'a pas à être refait.
+- Un mandat à plusieurs dont un co-signataire n'a pas encore signé : son PDF final portera la
+  nouvelle clause (`cosignature.ts` réécrit le texte). Elle est en faveur du client.
+- **À faire relire par l'avocat.**
+
 ### V3.140 — 8 octobre 2026 · L'aperçu du lien d'un bien (WhatsApp, Messenger, iMessage)
 
 Rien à passer dans Supabase.
