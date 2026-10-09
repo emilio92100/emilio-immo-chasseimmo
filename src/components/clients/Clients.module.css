@@ -559,3 +559,17 @@
   .sitBtn { font-size: 13px; padding: 5px 12px; }
   .sitBadge { font-size: 11px; }
 }
+
+/* ═══ V3.152 — Le téléphone bord à bord ════════════════════════════════════
+   Alexandre : « sur le mobile tout est bridé, condensé ». La page n'a plus
+   de marge sur les côtés : l'en-tête et chaque carte de la liste vont d'un
+   bord à l'autre (ni arrondi ni cadre sur les côtés, le gris de la page les
+   sépare) ; ce qui est posé sur le fond (le bouton « Classer », les
+   filtres) garde 14 px de marge. */
+@media (max-width: 760px) {
+  .page { padding: 12px 0 24px; }
+  .entete { padding: 0 14px; }
+  .ligne { border-radius: 0; border-left: none; border-right: none; padding: 12px 14px 11px; }
+  .empty { padding: 44px 14px; }
+  .page > .errorBox { border-radius: 0; border-left: none; border-right: none; padding: 10px 14px; }
+}

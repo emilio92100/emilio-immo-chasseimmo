@@ -148,7 +148,7 @@ export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: 
 
   return (
     <div className={`${b.aff} ${s.saisieVive}`} style={{ margin: '-4px 0 0' }}>
-      <div className={`${b.affL} ${l.ligne}`} role="toolbar" aria-label="Affiner la liste des acheteurs">
+      <div className={`${b.affL} ${l.ligne}`} role="toolbar" aria-label="Affiner la liste des acheteurs" data-defile="fondu">
         <span className={b.affT}><Ic n="cible" t={15} />Affiner</span>
         {([['statut', 'Statut', 'drapeau', statut], ['logement', 'Logement', 'cle', logement]] as const).map(([p, l, ic, c]) => {
           const v = libDe(c);

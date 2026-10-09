@@ -10,6 +10,7 @@ import styles from './Clients.module.css';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { conjointDe, nomFoyer } from '@/lib/foyer';
 import EnteteRubrique, { PictoClients } from '@/components/shared/EnteteRubrique';
+import Cascade from '@/components/shared/Cascade';
 import {
   BasculeCriteres, classesCrit, colonnesCriteres, CorpsCriteres, CRIT_VIDE, ecrireModeCrit,
   etapesCriteres, FriseCriteres, lireModeCrit,
@@ -498,8 +499,11 @@ export default function Clients({ onNavigate, fenetre }: {
   onNavigate: (page: string, data?: unknown) => void;
   /* La fenêtre « Nouveau contact » seule, remplie avec une demande du site
      (V3.34) : ni liste, ni lecture des contacts. `onFin` reçoit l'identifiant
-     du contact créé, ou null si la fenêtre est fermée sans créer. */
-  fenetre?: { pre: PreRemplissage; onFin: (clientId: string | null) => void };
+     du contact créé, ou null si la fenêtre est fermée sans créer.
+     V3.152 : `pre: null`, c'est la fenêtre vide ouverte de n'importe quel
+     écran (NouveauContactPartout, plus bas) : elle cherche les doublons comme
+     la page Contacts, et le contact créé ouvre sa fiche. */
+  fenetre?: { pre: PreRemplissage | null; onFin: (clientId: string | null) => void };
 }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -595,7 +599,8 @@ export default function Clients({ onNavigate, fenetre }: {
   const [montres, setMontres] = useState<{ cle: string; n: number }>({ cle: '', n: PAQUET });
   const basculerChoix = useCallback((id: string) => setChoisis(l => { const n = new Set(l); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
   const viderChoix = useCallback(() => setChoisis(new Set()), []);
-  useEffect(() => { annoncerVue('clients', cats.join('+')); }, [cats]);
+  /* La fenêtre seule n'a pas de liste : elle n'annonce aucune vue. */
+  useEffect(() => { if (!fenetre) annoncerVue('clients', cats.join('+')); }, [cats]);
   /* Le menu de gauche change la catégorie alors qu'on est déjà ici : sur
      place, sans recharger (V3.25). */
   useEffect(() => {
@@ -681,7 +686,9 @@ export default function Clients({ onNavigate, fenetre }: {
        laisse l'intention « nouveau client » à la page Contacts. */
     if (fenetre) { ouvrirAvec(fenetre.pre); return; }
     if (prendreIntentionNouveauClient()) openModal();
-    const ouvrir = () => openModal();
+    /* V3.152 : la demande est prise ici (la page Contacts est à l'écran) ;
+       sans ça, elle rouvrirait la fenêtre au prochain passage sur Contacts. */
+    const ouvrir = () => { prendreIntentionNouveauClient(); openModal(); };
     window.addEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
     return () => window.removeEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
   }, []);
@@ -1000,7 +1007,7 @@ export default function Clients({ onNavigate, fenetre }: {
        déjà fait par la question « Créer la fiche contact ? ». Une lecture
        ratée ne bloque pas la création. */
     const tape: FormDoublon = { ...form, c2_email: form.couple ? form.c2_email : '', c2_tel: form.couple ? form.c2_tel : '' };
-    if (!fenetre && !forcer) {
+    if (!fenetre?.pre && !forcer) {
       const { data: tous, erreur: eTous } = await toutLire<Client>((de, a) => supabase.from('clients').select('*').order('id').range(de, a));
       if (eTous) console.error('[contacts] recherche d’un doublon', eTous);
       const d = eTous ? null : trouverDoublon(tape, tous);
@@ -1117,6 +1124,17 @@ export default function Clients({ onNavigate, fenetre }: {
            (sauf « Créer son bien » coché, qui mène à Biens). */
         cree.current = data?.id || null;
         signalerMaj();
+        /* V3.152 — ouverte de n'importe quel écran (`pre` vide) : elle se
+           referme elle-même (elle n'est pas dans la page qu'on quitte), puis
+           Biens pour un vendeur, comme depuis Contacts, sinon la fiche du
+           contact qu'on vient de créer. */
+        if (!fenetre.pre && data) {
+          setShowModal(false); setForm(initForm); setCrit(CRIT_VIDE);
+          setSaving(false);
+          if (versBien) { demanderNouveauBien(data.id); onNavigate('biens'); }
+          else onNavigate('fiche', data);
+          return;
+        }
         if (versBien && data) { demanderNouveauBien(data.id); onNavigate('biens'); return; }
         setShowModal(false); setForm(initForm); setCrit(CRIT_VIDE);
         setSaving(false);
@@ -1847,7 +1865,10 @@ export default function Clients({ onNavigate, fenetre }: {
                   {nbFiltresA(fa) > 0 && <button type="button" className={styles.btnSecondary} style={{ marginTop: 12 }} onClick={() => setFa(FILTRES_A_VIDES)}>Effacer « Ce qu’il cherche »</button>}
                 </div>
               ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            /* V3.152 : un autre statut, une autre catégorie — la liste change en
+               cascade (Cascade.tsx), comme les onglets. Pas la recherche tapée :
+               elle filtre sur place, lettre après lettre. */
+            <Cascade cle={`${cats.join('+')}:${filtre}:${filtreSit}`} style={{ display: 'flex', flexDirection: 'column' }}>
               {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
                   l'œil sans transformer la page en tableur. */}
               <div className={`${styles.entete} ligne-entre`}>
@@ -2014,7 +2035,7 @@ export default function Clients({ onNavigate, fenetre }: {
                 })}
               </div>
               {ordonne.length > nMontres && <SuiteListe reste={ordonne.length - nMontres} onSuite={voirSuite} />}
-            </div>
+            </Cascade>
               )}
             </div>
           )}
@@ -2035,8 +2056,9 @@ export default function Clients({ onNavigate, fenetre }: {
               <PageRelances onNavigate={onNavigate} seulTri cherche={search} onTri={majTri} onArchive={majArchive} onFini={() => setCats(['tous'])} />
             </div>
           ) : !avecAcheteurs && (autres.length ? (
-            /* Une autre catégorie : les lignes arrivent l'une après l'autre. */
-            <div className={`${cc.liste} cascade`} key={importes ? 'importes' : cats.join('+')}>
+            /* Une autre catégorie : les lignes arrivent l'une après l'autre
+               (V3.152 : en cascade, comme les onglets — Cascade.tsx). */
+            <Cascade cle={importes ? 'importes' : cats.join('+')} arrivee className={`${cc.liste} cascade`}>
               {importes && (
                 <div className={cc.cumul}>
                   <span>Importés d’ImmoFacile</span>
@@ -2087,7 +2109,7 @@ export default function Clients({ onNavigate, fenetre }: {
               {autres.slice(0, nMontres).map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
                 selection={{ on: choisis.has(c.id), mode: modeChoix, onBasculer: () => basculerChoix(c.id) }} />)}
               {autres.length > nMontres && <SuiteListe reste={autres.length - nMontres} onSuite={voirSuite} />}
-            </div>
+            </Cascade>
           ) : (
             importes ? (
               <div className={cc.vide}>
@@ -2255,4 +2277,33 @@ export default function Clients({ onNavigate, fenetre }: {
       )}
     </div>
   );
+}
+
+/* ── « Nouveau contact », de n'importe quel écran (V3.152) ──
+   Alexandre : « Nouveau contact arrive trop brusquement et ça m'amène sur
+   la fiche Contact… il faut que la page en cours reste la même. » Le bouton
+   de la barre du haut, le « + » du téléphone et celui du tableau de bord
+   n'emmènent plus sur Contacts : la fenêtre de Contacts (la même, en mode
+   `fenetre`) s'ouvre par-dessus l'écran en cours, comme « Nouveau
+   rendez-vous » (NouveauRdvPartout). Fermée sans rien créer, l'écran reste
+   tel quel. Montée une fois, dans AppLayout. Sur la page Contacts elle-même
+   (`actif` faux), c'est la page qui ouvre sa propre fenêtre, comme avant. */
+export function NouveauContactPartout({ actif, onNavigate }: { actif: boolean; onNavigate: (page: string, data?: unknown) => void }) {
+  const [n, setN] = useState(0);
+  const [ouvert, setOuvert] = useState(false);
+  const actifRef = useRef(actif);
+  useEffect(() => { actifRef.current = actif; }, [actif]);
+  useEffect(() => {
+    const ouvrir = () => {
+      if (!actifRef.current) return;
+      prendreIntentionNouveauClient();
+      setN(x => x + 1);
+      setOuvert(true);
+    };
+    window.addEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
+    return () => window.removeEventListener(EVT_NOUVEAU_CLIENT, ouvrir);
+  }, []);
+  const fenetre = useMemo(() => ({ pre: null, onFin: () => setOuvert(false) }), []);
+  if (!ouvert) return null;
+  return <Clients key={n} onNavigate={onNavigate} fenetre={fenetre} />;
 }
