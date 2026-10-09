@@ -32,6 +32,8 @@ export const maxDuration = 60;
  *
  *   POST { action: 'presenter', ids, destinataires, objet, corps }
  *                                            →  { ok, envoyes, avertissements }
+ *   POST { action: 'presenter', …, apercu: true }
+ *                                            →  { ok, apercu, objet, a, html }  (rien ne part, V3.148)
  *
  * « presenter » (V3.121) : un ou plusieurs biens envoyés par simple mail à
  * quelqu'un qui n'a pas d'espace — une personne hors du CRM (Alexandre :
@@ -268,9 +270,8 @@ export async function POST(req: NextRequest) {
       </div>`).join('');
       const texteBiens = fiches.map(f => [f.titre, [f.lieu, f.carac, f.prix ? eur(f.prix) : ''].filter(Boolean).join(' · '), f.lien].filter(Boolean).join('\n')).join('\n\n');
 
-      const envoyes: string[] = [];
-      const echecs: string[] = [];
-      for (const dst of dests) {
+      /* Le mail d'une personne : son prénom, les cartes, la signature. */
+      const mailPour = (dst: Dest) => {
         /* {{prénom}} : rien pour une adresse hors CRM — « Bonjour, ». */
         const texte = personnaliser(corps, { prenom: dst.prenom, nom: dst.nom }, conseiller).replace(/Bonjour\s+,/g, 'Bonjour,');
         /* Les cartes des biens avant la signature (« Cordialement… »), pas après. */
@@ -280,8 +281,20 @@ export async function POST(req: NextRequest) {
         const para = (t: string) => `<p style="margin:0 0 14px">${echappe(t).replace(/\n/g, '<br>')}</p>`;
         const avant = (sig > 0 ? blocs.slice(0, sig) : blocs).map(para).join('');
         const apres = sig > 0 ? `<div style="margin-top:22px">${blocs.slice(sig).map(para).join('')}</div>` : '';
-        const html = enveloppeMail({ corps: `${avant}${cartes}${apres}` });
-        const err = await envoyerMail({ a: dst.email, nomA: [dst.prenom, dst.nom].filter(Boolean).join(' ') || undefined, sujet: personnaliser(objet, { prenom: dst.prenom, nom: dst.nom }, conseiller), texte: `${texte}\n\n${texteBiens}`, html, pj: [] });
+        return { texte, sujet: personnaliser(objet, { prenom: dst.prenom, nom: dst.nom }, conseiller), html: enveloppeMail({ corps: `${avant}${cartes}${apres}` }) };
+      };
+      /* V3.148 — l'aperçu (Alexandre : « un aperçu de ce qui va être vraiment
+         envoyé ») : le mail de la première personne, rien ne part. */
+      if (body.apercu === true) {
+        const m = mailPour(dests[0]);
+        return NextResponse.json({ ok: true, apercu: true, objet: m.sujet, a: [dests[0].email], html: m.html });
+      }
+
+      const envoyes: string[] = [];
+      const echecs: string[] = [];
+      for (const dst of dests) {
+        const m = mailPour(dst);
+        const err = await envoyerMail({ a: dst.email, nomA: [dst.prenom, dst.nom].filter(Boolean).join(' ') || undefined, sujet: m.sujet, texte: `${m.texte}\n\n${texteBiens}`, html: m.html, pj: [] });
         if (err) echecs.push(`${dst.email} : ${err}`); else envoyes.push(dst.email);
       }
       if (!envoyes.length) return ko(`Le mail n’est pas parti. ${echecs.join(' · ')}`, 502);
