@@ -45,6 +45,9 @@ export type VisiteAPoser = {
   /* Les biens déjà visités (une 2e visite), relevés avant l'ajout. */
   revus: string[];
   date: string; heure: string; contact: string; notes: string;
+  /* V3.146 : la durée choisie dans « Organiser une visite » (page Visites),
+     en minutes ; sans elle, l'agenda compte une heure, comme avant. */
+  duree?: number;
 };
 
 /* Pose la visite (une ligne par bien, sur le même créneau) et ce qui va
@@ -59,6 +62,7 @@ export async function poserVisites(v: VisiteAPoser): Promise<boolean> {
     client_id: v.clientId, recherche_id: v.rechercheId || null, bien_id, statut: 'a_venir',
     date_visite: v.date || null, heure: v.heure || null,
     contact_agence: v.contact || null, commentaire: v.notes || null,
+    ...(v.duree ? { duree_min: v.duree } : {}),
   })));
   if (errVis) { alert("La visite n'a pas pu être enregistrée.\n\n" + errVis.message); return false; }
   /* V3.50 : un bien « Offre faite » le reste (même règle que le compte
