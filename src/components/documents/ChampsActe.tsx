@@ -342,7 +342,7 @@ function ChampGroupes({ c, d, v, onChange, off }: {
               <span className={s.ligneIc}><Ic n={c.ic || 'lots'} t={15} /></span>
               <b>{[c.nomCarte ? c.nomCarte(d, i) : `${c.un} ${i + 1}`, resume].filter(Boolean).join(' · ')}</b>
               {c.crm === 'biens' && (g.bienId || g.bienVenteId
-                ? <span className={s.abLie} title="Relié à sa fiche du CRM : vignette dans l’historique, et le bon sur la fiche du bien">{g.bienVenteId ? 'Mon mandat' : 'Son dossier'}</span>
+                ? <span className={s.abLie} title="Relié à sa fiche du CRM : vignette dans l’historique, et le bon sur la fiche du bien">{g.bienVenteId ? 'Mon mandat' : 'Ses biens'}</span>
                 : <span className={s.abLie} data-main="oui" title="Écrit à la main : il n’est relié à aucune fiche, pas de suivi possible">À la main</span>)}
               {!off && <button type="button" className={s.retirer} onClick={() => onChange(cartes.filter((_, j) => j !== i))}><Croix t={13} />Retirer</button>}
             </div>

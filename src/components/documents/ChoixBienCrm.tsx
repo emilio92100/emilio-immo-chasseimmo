@@ -16,8 +16,9 @@ import s from './Documents.module.css';
    Trois chemins :
      · « Un de mes mandats » : les biens en vente de l'agence (pas archivés),
        cherchés par référence, propriétaire, adresse ou ville ;
-     · « Un bien de son dossier » (un bon qui a son client) : les biens de
-       l'acheteur, ceux des autres agences compris ;
+     · « Depuis ses biens (Sélection et Présentés) » (un bon qui a son
+       client) : les biens de sa fiche, ceux des autres agences compris
+       (V3.158 : « son dossier » ne parlait pas à Alexandre) ;
      · « À la main » : une carte vide, sans lien — ni vignette dans
        l'historique, ni place sur une fiche de bien.
    Un bien choisi remplit sa carte (adresse, ville, description, prix de
@@ -76,7 +77,7 @@ export default function AjoutBien({ clientId, plein, onAjouter }: {
     supabase.from('biens').select(`${COLS_BIEN}, photos`).eq('client_id', clientId).order('created_at', { ascending: false }).limit(150)
       .then(({ data, error }) => {
         if (!vivant) return;
-        if (error) { setErreur('Les biens de son dossier n’ont pas pu être lus : ' + error.message); setCopies([]); return; }
+        if (error) { setErreur('Ses biens n’ont pas pu être lus : ' + error.message); setCopies([]); return; }
         setCopies((data || []) as unknown as Copie[]);
       });
     return () => { vivant = false; };
@@ -144,7 +145,7 @@ export default function AjoutBien({ clientId, plein, onAjouter }: {
             <Ic n="retour" t={14} />
           </button>
         )}
-        <b>{chemin === 'mandats' ? 'Un de mes mandats' : chemin === 'dossier' ? 'Un bien de son dossier' : 'Quel bien ajouter ?'}</b>
+        <b>{chemin === 'mandats' ? 'Un de mes mandats' : chemin === 'dossier' ? 'Un de ses biens' : 'Quel bien ajouter ?'}</b>
         <button type="button" className={s.abFermer} onClick={fermer}>Annuler</button>
       </div>
 
@@ -157,7 +158,7 @@ export default function AjoutBien({ clientId, plein, onAjouter }: {
           {clientId && (
             <button type="button" className={s.abTuile} onClick={() => setChemin('dossier')}>
               <span className={s.abTuileIc}><Ic n="dossier" t={18} /></span>
-              <span><b>Depuis son dossier</b><small>Les biens de l’acheteur, ceux des autres agences compris.</small></span>
+              <span><b>Depuis ses biens (Sélection et Présentés)</b><small>Les biens de sa fiche, ceux des autres agences compris.</small></span>
             </button>
           )}
           <button type="button" className={s.abTuile} onClick={() => { onAjouter({}); fermer(); }}>
@@ -204,7 +205,7 @@ export default function AjoutBien({ clientId, plein, onAjouter }: {
               })}
               {(chemin === 'mandats' ? trouvesV.length : trouvesC.length) === 0 && (
                 <div className={s.resultat} style={{ cursor: 'default', color: '#64748b' }}>
-                  {q.trim() ? 'Aucun bien ne correspond.' : chemin === 'mandats' ? 'Aucun bien en vente pour l’instant.' : 'Aucun bien dans son dossier pour l’instant.'}
+                  {q.trim() ? 'Aucun bien ne correspond.' : chemin === 'mandats' ? 'Aucun bien en vente pour l’instant.' : 'Aucun bien dans sa Sélection ni ses Présentés pour l’instant.'}
                 </div>
               )}
             </div>
