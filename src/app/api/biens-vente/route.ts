@@ -7,6 +7,7 @@ import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
 import { bienPourSite } from '@/lib/flux-site';
 import { lienBienPublic } from '@/lib/jeton';
 import { avantMandat, type BienVente } from '@/lib/biens-vente';
+import { avecRemises } from '@/lib/remise-mail';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -71,7 +72,11 @@ const nomPropre = (n: string) => String(n || '').normalize('NFD').replace(/[\u03
   .replace(/[^A-Za-z0-9._ -]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'document';
 const tailleFr = (o: number) => (o >= 1_000_000 ? `${String(Math.round(o / 100_000) / 10).replace('.', ',')} Mo` : `${Math.max(1, Math.round(o / 1000))} ko`);
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`), pour
+   vérifier qu'ils sont bien arrivés (src/lib/remise-mail.ts). */
+export async function POST(req: NextRequest) { return avecRemises(() => traiterPost(req)); }
+
+async function traiterPost(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !cle) return ko('Variables Supabase manquantes', 500);
