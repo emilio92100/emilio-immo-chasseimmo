@@ -16,6 +16,66 @@ import EnteteRubrique, { PictoVisites } from '@/components/shared/EnteteRubrique
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { ISSUES, issueDe, maintenantParis, visitePasseeParis, type Issue } from '@/lib/visites';
 import { annulerVisites } from '@/lib/annuler-visites';
+import { jourParis } from '@/lib/mandat';
+import type { SuiviVente } from '@/lib/biens-vente';
+import { annulerVisiteLibre, majSuivi } from '@/components/biens/outils';
+import { personneDe } from '@/components/contacts/AvatarContact';
+import OrganiserVisite from './OrganiserVisite';
+
+/* ═══ Les visites hors CRM (V3.146) ═══════════════════════════════════════
+   Alexandre : « j'ai planifié une visite depuis un bien, avec quelqu'un hors
+   CRM : elle est dans l'agenda, mais nulle part dans Visites ». Une visite
+   avec quelqu'un qui n'est pas dans le fichier (un appel sur une annonce)
+   vit dans le suivi du bien (`biens_vente_suivi`, type « visite » : sa date
+   et son heure dans `le`, son téléphone dans `donnees.tel`), pas dans
+   `visites`. Elle est lue ici et mise en forme comme les autres : la même
+   carte, les mêmes rubriques. Son id porte « s- » devant (jamais confondu
+   avec une visite d'acheteur), la ligne d'origine reste dans `libre`. Son
+   compte rendu et son annulation passent par les gestes de la fiche du bien
+   (majSuivi, annulerVisiteLibre) ; pas de mail de rappel, on n'a pas son
+   adresse : un bouton « Appeler » s'il a laissé son numéro. */
+const heureParis = (d: Date) => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+function versVisiteLibre(x: any): any {
+  const iso = new Date(x.le);
+  const ok = !isNaN(iso.getTime());
+  const d = (x.donnees || {}) as Record<string, unknown>;
+  const bv = x.biens_vente || null;
+  const qui = String(x.qui || '').trim() || 'Visiteur';
+  return {
+    id: `s-${x.id}`, libre: x as SuiviVente, horsCrm: true,
+    statut: x.statut === 'faite' ? 'effectuee' : x.statut === 'annulee' ? 'annulee' : 'a_venir',
+    date_visite: ok ? jourParis(iso) : String(x.le || '').slice(0, 10), heure: ok ? heureParis(iso) : null,
+    /* Un visiteur dont la fiche a été créée depuis le bien (« Créer sa
+       fiche ») : son contact ; sinon, le nom noté. */
+    client_id: x.client_id || null, recherche_id: null,
+    clients: x.clients || { ...personneDe(qui), id: null },
+    biens: bv ? { titre: bv.titre, ville: bv.ville, quartier: bv.quartier, photos: bv.photo ? [bv.photo] : [], bien_vente_id: bv.id } : null,
+    bien_id: null, tel: typeof d.tel === 'string' ? d.tel.trim() : '',
+    commentaire: x.commentaire || '', issue: x.avis || null,
+    motifs: Array.isArray(d.motifs) ? d.motifs : [], aime: Array.isArray(d.aime) ? d.aime : [],
+    note_etoiles: typeof d.etoiles === 'number' ? d.etoiles : 0,
+  };
+}
+const LIB_FILTRE: Record<string, string> = { a_venir: 'À venir', a_faire: 'Compte rendu à faire', effectuees: 'Effectuées', tout: 'Toutes', demandes: 'Demandes', annulees: 'Annulées' };
+/* La rubrique où la page s'ouvre (V3.146) : À venir, sinon Compte rendu à
+   faire, sinon Effectuées, sinon Toutes. */
+function rubriqueDArrivee(liste: any[]): 'a_venir' | 'a_faire' | 'effectuees' | 'tout' {
+  const m = maintenantParis(new Date());
+  const prevues = liste.filter(v => v.statut === 'a_venir');
+  if (prevues.some(v => !visitePasseeParis(v, m))) return 'a_venir';
+  if (prevues.length) return 'a_faire';
+  if (liste.some(v => v.statut === 'effectuee')) return 'effectuees';
+  return 'tout';
+}
+async function lireVisitesLibres(): Promise<any[]> {
+  const { data, erreur } = await toutLire<any>((de, a) => supabase.from('biens_vente_suivi')
+    .select('id, bien_id, type, le, qui, client_id, statut, avis, commentaire, donnees, clients(id, prenom, nom, civilite, couple, conjoint), biens_vente(id, titre, ville, quartier, photo)')
+    .eq('type', 'visite').order('le', { ascending: true }).order('id').range(de, a));
+  /* Sans la rubrique Biens (SQL pas passé), rien à lire : la page montre
+     les visites des acheteurs, comme avant. */
+  if (erreur) console.error('[visites] les visites hors CRM', erreur);
+  return (data || []).map(versVisiteLibre);
+}
 
 /* Petite enveloppe dessinée pour le bouton de rappel. */
 function Enveloppe() {
@@ -161,7 +221,10 @@ function parJournee(liste: any[], regrouper: boolean): any[][] {
   if (!regrouper) return liste.map(v => [v]);
   const paquets = new Map<string, any[]>();
   for (const v of liste) {
-    const cle = v.date_visite ? `${v.clients?.id || v.client_id}|${String(v.date_visite).slice(0, 10)}` : `seule|${v.id}`;
+    /* V3.146 : un visiteur hors CRM se reconnaît à son nom (il n'a pas
+       forcément de fiche), et ne se mêle jamais aux visites d'un acheteur. */
+    const qui = v.libre ? `libre:${v.client_id || String(v.libre.qui || '').trim().toLowerCase()}` : String(v.clients?.id || v.client_id);
+    const cle = v.date_visite ? `${qui}|${String(v.date_visite).slice(0, 10)}` : `seule|${v.id}`;
     const p = paquets.get(cle);
     if (p) p.push(v); else paquets.set(cle, [v]);
   }
@@ -197,6 +260,13 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
   const repondu = groupe === 'a_faire' && v.avis_client_le && v.issue && ISSUES[v.issue as Issue] ? ISSUES[v.issue as Issue] : null;
   const motifs: string[] = Array.isArray(v.motifs) ? v.motifs : [];
   const aime: string[] = Array.isArray(v.aime) ? v.aime : [];
+  /* V3.146 : hors CRM, sans fiche, « Voir le bien » à la place de « Voir sa
+     fiche » ; son téléphone à la place du rappel par mail. */
+  const sansFiche = !!v.libre && !v.client_id;
+  const voir = sansFiche
+    ? <button type="button" className={cv.btn} onClick={onBien}><Picto n="maison" t={15} /><span>Voir le bien</span></button>
+    : <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>;
+  const telLien = v.libre && v.tel ? `tel:${String(v.tel).replace(/[^\d+]/g, '')}` : '';
   return (
     <div className={cv.carte} style={{ animationDelay: `${Math.min(rang, 6) * 40}ms` }}>
       <div className={`${cv.date} ${ton.date}`}>
@@ -206,10 +276,11 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
 
       <div className={cv.milieu}>
         <div className={cv.qui}>
-          <button type="button" className={cv.nom} onClick={onClient} title={`Ouvrir la fiche de ${nom}`}>
+          <button type="button" className={cv.nom} onClick={onClient} title={sansFiche ? 'Ouvrir la fiche du bien' : `Ouvrir la fiche de ${nom}`}>
             {v.clients && <AvatarContact c={v.clients} teinte={{ bg: '#eef2f8', fg: '#34496e' }} taille={34} />}
             <b>{nom}</b>
           </button>
+          {v.libre && <span className={cv.hors} title="Noté sur la fiche du bien, sans fiche acheteur">Hors CRM</span>}
           {iso && <span className={`${cv.past} ${ton.past}`}><i />{quandRelatif(ecartJours(iso, auj))}</span>}
         </div>
 
@@ -226,6 +297,7 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
 
         <div className={cv.meta}>
           {v.contact_agence && <span className={cv.m}><Picto n="tel" t={14} />{v.contact_agence}</span>}
+          {telLien && <a className={`${cv.m} ${cv.lienTel}`} href={telLien}><Picto n="tel" t={14} />{v.tel}</a>}
           {groupe === 'a_venir' && v.rappel_envoye_le && <span className={`${cv.m} ${cv.vert}`}><Picto n="check" t={14} />{libelleRappel(v.rappel_envoye_le)}</span>}
         </div>
 
@@ -260,17 +332,17 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
       <div className={cv.actions}>
         {groupe === 'a_faire' && <>
           <button type="button" className={`${cv.btn} ${cv.btnOr}`} onClick={onCR}><Picto n="cr" t={15} /><span>Faire le compte rendu</span></button>
-          <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>
+          {voir}
           <button type="button" className={`${cv.btn} ${cv.btnDiscret}`} onClick={onAnnuler}><Picto n="croix" t={14} /><span>Annuler</span></button>
         </>}
         {groupe === 'a_venir' && <>
           <button type="button" className={`${cv.btn} ${cv.btnBleu}`} onClick={onCR}><Picto n="check" t={15} /><span>Effectuée</span></button>
-          <button type="button" className={`${cv.btn} ${v.rappel_envoye_le ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{v.rappel_envoye_le ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>
+          {v.libre
+            ? (telLien ? <a className={`${cv.btn} ${cv.btnRappel}`} href={telLien}><Picto n="tel" t={15} /><span>Appeler</span></a> : voir)
+            : <button type="button" className={`${cv.btn} ${v.rappel_envoye_le ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{v.rappel_envoye_le ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>}
           <button type="button" className={`${cv.btn} ${cv.btnDiscret}`} onClick={onAnnuler}><Picto n="croix" t={14} /><span>Annuler</span></button>
         </>}
-        {groupe === 'effectuee' && (
-          <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>
-        )}
+        {groupe === 'effectuee' && voir}
       </div>
     </div>
   );
@@ -294,6 +366,10 @@ function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAn
   const nom = `${v0.clients?.prenom || ''} ${v0.clients?.nom || ''}`.trim() || 'Client';
   const prenom = v0.clients?.prenom || 'Le client';
   const rappel = groupe === 'a_venir' ? visites.map(v => v.rappel_envoye_le).filter(Boolean).sort().pop() : null;
+  /* V3.146 : un visiteur hors CRM (le même nom, le même jour) : ni mail de
+     rappel, ni fiche s'il n'en a pas. */
+  const horsCrm = !!v0.libre;
+  const sansFiche = horsCrm && !v0.client_id;
   return (
     <div className={`${cv.carte} ${cv.journee}`} style={{ animationDelay: `${Math.min(rang, 6) * 40}ms` }}>
       <div className={`${cv.date} ${ton.date}`}>
@@ -305,10 +381,11 @@ function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAn
 
       <div className={cv.milieu}>
         <div className={cv.qui}>
-          <button type="button" className={cv.nom} onClick={onClient} title={`Ouvrir la fiche de ${nom}`}>
+          <button type="button" className={cv.nom} onClick={onClient} title={sansFiche ? 'Ouvrir la fiche du bien' : `Ouvrir la fiche de ${nom}`}>
             {v0.clients && <AvatarContact c={v0.clients} teinte={{ bg: '#eef2f8', fg: '#34496e' }} taille={34} />}
             <b>{nom}</b>
           </button>
+          {horsCrm && <span className={cv.hors} title="Noté sur la fiche du bien, sans fiche acheteur">Hors CRM</span>}
           <span className={`${cv.past} ${ton.past}`}><i />{quandRelatif(ecartJours(iso, auj))}</span>
         </div>
 
@@ -355,10 +432,10 @@ function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAn
       </div>
 
       <div className={cv.actions}>
-        {groupe === 'a_venir' && (
+        {groupe === 'a_venir' && !horsCrm && (
           <button type="button" className={`${cv.btn} ${rappel ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{rappel ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>
         )}
-        <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>
+        {!sansFiche && <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>}
       </div>
     </div>
   );
@@ -381,14 +458,28 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   /* V3.129 : la demande dont on planifie la visite (la fenêtre), et la phrase qui le confirme. */
   const [aPlanifier, setAPlanifier] = useState<DemandeVisite | null>(null);
   const [bravo, setBravo] = useState('');
+  /* V3.146 : la fenêtre « Organiser une visite ». */
+  const [organiser, setOrganiser] = useState(false);
+  const bravoMinuteur = useRef<number | null>(null);
+  const direBravo = (texte: string) => {
+    setBravo(texte);
+    if (bravoMinuteur.current) window.clearTimeout(bravoMinuteur.current);
+    bravoMinuteur.current = window.setTimeout(() => setBravo(''), 9000);
+  };
 
-  /* L'agenda envoie ici pour un compte rendu : la visite s'ouvre directement. */
+  /* L'agenda envoie ici pour un compte rendu : la visite s'ouvre directement.
+     Sinon, V3.146 (Alexandre : « que ça arrive directement sur À venir ; s'il
+     n'y en a aucune, sur Compte rendu à faire ; sinon Effectuées, et ensuite
+     Toutes ») : la page s'ouvre sur la première rubrique qui a quelque chose. */
   useEffect(() => {
     load().then((liste) => {
+      let id: string | null = null;
       try {
-        const id = window.sessionStorage.getItem('emi-cr');
-        if (id) { window.sessionStorage.removeItem('emi-cr'); setFiltre('a_faire'); openCR(id, liste); }
+        id = window.sessionStorage.getItem('emi-cr');
+        if (id) window.sessionStorage.removeItem('emi-cr');
       } catch { /* sans effet */ }
+      if (id) { setFiltre('a_faire'); openCR(id, liste); return; }
+      setFiltre(rubriqueDArrivee(liste));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -397,19 +488,22 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     setLoading(true);
     /* Par pages de 1 000 (V3.33) : au-delà, Supabase coupait sans rien dire,
        et comme la liste part de la plus ancienne, c'étaient les visites à
-       venir qui disparaissaient les premières. */
-    const [{ data }, dem] = await Promise.all([
+       venir qui disparaissaient les premières. V3.146 : et les visites hors
+       CRM, notées sur les biens de l'agence. */
+    const [{ data }, libres, dem] = await Promise.all([
       toutLire<any>((de, a) => supabase
         .from('visites')
         .select('*, clients(*), biens(titre, ville, quartier, photos, badge_retour, bien_vente_id)')
         .order('date_visite', { ascending: true }).order('id').range(de, a)),
+      lireVisitesLibres().catch(() => [] as any[]),
       chargerDemandesVisite().catch(() => [] as DemandeVisite[]),
     ]);
-    setVisites(data || []);
+    const toutes = [...(data || []), ...libres];
+    setVisites(toutes);
     setDemandes(dem);
     setLoading(false);
     signalerMaj();
-    return data || [];
+    return toutes;
   }
 
   function openCR(visiteId: string, liste?: any[]) {
@@ -420,6 +514,17 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   async function saveCR(x: ValeursCR): Promise<string | null> {
     const v = crVisite;
     if (!v) return 'visite non identifiée';
+    /* V3.146 : hors CRM, le compte rendu va sur la ligne du bien, comme
+       depuis sa fiche (FicheBien). */
+    if (v.libre) {
+      try {
+        const l = v.libre as SuiviVente;
+        await majSuivi(l.id, { statut: 'faite', avis: x.issue, commentaire: x.commentaire || null, donnees: { ...(l.donnees || {}), motifs: x.motifs, aime: x.aime, etoiles: x.etoiles } });
+      } catch (e) { return (e as Error).message; }
+      setCrVisite(null);
+      load();
+      return null;
+    }
     const clientId = v.clients?.id || v.client_id;
     const err = await enregistrerCompteRendu(v, x, {
       clientId, rechercheId: v.recherche_id || null,
@@ -437,7 +542,13 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
      Un échec s'affiche en rouge. */
   async function annuler(id: string) {
     if (!confirm('Annuler cette visite ?')) return;
-    await annulerVisites([id]);
+    /* V3.146 : hors CRM, la ligne du bien et son rendez-vous dans l'agenda. */
+    const v = visites.find(x => x.id === id);
+    if (v?.libre) {
+      try { await annulerVisiteLibre(v.libre as SuiviVente); } catch (e) { alert(`La visite n’a pas pu être annulée.\n\n${(e as Error).message}`); }
+    } else {
+      await annulerVisites([id]);
+    }
     load();
   }
 
@@ -450,7 +561,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   const sansAccent = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const q = sansAccent(cherche.trim());
   const trouvees = q
-    ? visites.filter(v => sansAccent(`${v.clients?.prenom || ''} ${v.clients?.nom || ''} ${v.biens?.titre || ''} ${v.biens?.ville || ''} ${v.contact_agence || ''}`).includes(q))
+    ? visites.filter(v => sansAccent(`${v.clients?.prenom || ''} ${v.clients?.nom || ''} ${v.biens?.titre || ''} ${v.biens?.ville || ''} ${v.contact_agence || ''} ${v.tel || ''}`).includes(q))
     : visites;
   const recentes = (l: any[]) => [...l].sort((a, b) => String(b.date_visite || '').localeCompare(String(a.date_visite || '')));
   const aFaire = recentes(trouvees.filter(v => v.statut === 'a_venir' && passee(v)));
@@ -462,6 +573,9 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   const demandesTrouvees = q
     ? demandes.filter(d => sansAccent(`${d.client?.prenom || ''} ${d.client?.nom || ''} ${d.bien.titre || ''} ${d.bien.ville || ''}`).includes(q))
     : demandes;
+  /* La rubrique choisie n'a rien à montrer (V3.146). */
+  const parFiltre: Record<string, number> = { a_venir: aVenir.length, a_faire: aFaire.length, effectuees: effectuees.length, annulees: annulees.length, demandes: demandesTrouvees.length };
+  const rienIci = filtre !== 'tout' && !parFiltre[filtre];
 
   /* Une demande ouvre la fiche du client sur ses biens présentés : le bien y
      est dans le groupe « Il veut visiter », avec de quoi caler la visite. */
@@ -481,8 +595,10 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   }
   function ouvrirClient(v: any) {
     const id = v.clients?.id || v.client_id;
-    if (!id) return;
-    demanderOuvertureFiche({ clientId: id, onglet: 'visites', rechercheId: v.recherche_id || null });
+    /* V3.146 : un visiteur hors CRM sans fiche : son nom ouvre le bien. */
+    if (!id) { if (v.libre) ouvrirBien(v); return; }
+    /* Hors CRM avec une fiche : la visite n'est pas dans ses visites d'acheteur. */
+    if (!v.libre) demanderOuvertureFiche({ clientId: id, onglet: 'visites', rechercheId: v.recherche_id || null });
     void allerFiche(id);
   }
   function ouvrirBien(v: any) {
@@ -544,13 +660,19 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       <EnteteRubrique titre="Visites" icone={PictoVisites}
         phrase={visites.length === 0 && demandes.length === 0 ? (loading ? undefined : 'Aucune visite pour l’instant') : phraseProchaine}
         recherche={visites.length > 0 || demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un bien ou un client…', label: 'Chercher une visite' } : undefined}
+        /* V3.146 (Alexandre) : « Organiser une visite », le joli bouton doré
+           dans la partie bleue, qui ouvre la fenêtre en douceur. */
+        bouton={{ lib: 'Organiser une visite', onClick: () => setOrganiser(true), vedette: true, ic: <Picto n="cal" t={15} /> }}
         label="Filtrer les visites" aCheval actif={filtre} onChoisir={(c: string) => setFiltre(c as typeof filtre)}
+        /* V3.146 (Alexandre) : « le premier, c'est À venir ; le deuxième,
+           Compte rendu à faire ; le troisième, Effectuées ; le quatrième,
+           Toutes ». Les demandes (quand il y en a) et les annulées suivent. */
         tuiles={visites.length === 0 && demandes.length === 0 ? [] : ([
+          { cle: 'a_venir', lib: 'À venir', n: aVenir.length, couleur: '#3b82f6' },
+          { cle: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, couleur: '#f59e0b', alerte: true },
+          { cle: 'effectuees', lib: 'Effectuées', n: effectuees.length, couleur: '#10b981' },
           { cle: 'tout', lib: 'Toutes', n: trouvees.length },
           { cle: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, couleur: '#ef4444', alerte: true },
-          { cle: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, couleur: '#f59e0b', alerte: true },
-          { cle: 'a_venir', lib: 'À venir', n: aVenir.length, couleur: '#3b82f6' },
-          { cle: 'effectuees', lib: 'Effectuées', n: effectuees.length, couleur: '#10b981' },
           { cle: 'annulees', lib: 'Annulées', n: annulees.length, couleur: '#94a3b8' },
         ]).filter(x => x.cle !== 'demandes' || demandes.length > 0)} />
 
@@ -558,7 +680,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
         <FenetreVisite d={aPlanifier}
           revu={visites.some(v => v.bien_id === aPlanifier.bien.id && (v.statut === 'effectuee' || v.statut === 'a_venir'))}
           onFermer={() => setAPlanifier(null)}
-          onFait={texte => { setAPlanifier(null); setBravo(texte); load(); window.setTimeout(() => setBravo(''), 9000); }} />
+          onFait={texte => { setAPlanifier(null); direBravo(texte); load(); }} />
+      )}
+      {organiser && (
+        <OrganiserVisite onFermer={() => setOrganiser(false)}
+          onFait={(texte, passee) => { setOrganiser(false); direBravo(`${texte} ${passee ? 'Elle attend son compte rendu.' : 'Elle est dans « À venir ».'}`); setCherche(''); setFiltre(passee ? 'a_faire' : 'a_venir'); load(); }} />
       )}
 
       {loading ? (
@@ -567,13 +693,23 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>📅</div>
           <div className={styles.emptyTitle}>Aucune visite planifiée</div>
-          <div className={styles.emptySub}>Les visites s'ajoutent depuis l'Agenda ou depuis la fiche client</div>
+          <div className={styles.emptySub}>{'« Organiser une visite », en haut, ou depuis l’agenda, la fiche d’un client ou d’un bien.'}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+          {bravo && <div className={dv.bravo} role="status"><Picto n="cal" t={16} /><span>{bravo}</span></div>}
+
           {trouvees.length === 0 && demandesTrouvees.length === 0 && (
             <div className={styles.empty}><div className={styles.emptySub}>{`Aucune visite ne correspond à « ${cherche} ».`}</div></div>
+          )}
+          {/* V3.146 : la page s'ouvre sur une rubrique ; une recherche qui ne
+              trouve rien ici, mais ailleurs, le dit — d'un clic, « Toutes ». */}
+          {filtre !== 'tout' && rienIci && (trouvees.length > 0 || demandesTrouvees.length > 0) && (
+            <div className={styles.empty}>
+              <div className={styles.emptySub}>{q ? `Rien dans « ${LIB_FILTRE[filtre]} » pour « ${cherche} ».` : `Rien dans « ${LIB_FILTRE[filtre]} » pour l’instant.`}</div>
+              <button type="button" className={cv.btn} style={{ marginTop: 10 }} onClick={() => setFiltre('tout')}>Voir toutes les visites</button>
+            </div>
           )}
 
           {/* DEMANDES DE VISITE — le client a appuyé sur « Je souhaite le visiter »
@@ -591,7 +727,6 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
               {/* V3.129 (Alexandre, maquette 1) : le client, puis le bien en petite
                   carte, ses disponibilités en bulle ; « Planifier la visite »
                   ouvre la fenêtre ici, « Voir sur sa fiche » descend jusqu'au bien. */}
-              {bravo && <div className={dv.bravo} role="status" style={{ marginBottom: 10 }}><Picto n="cal" t={16} /><span>{bravo}</span></div>}
               <div className={dv.liste}>
                 {demandesTrouvees.map((d, i) => {
                   const nom = `${d.client?.prenom || ''} ${d.client?.nom || ''}`.trim() || 'Le client';
@@ -605,7 +740,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                         <span className={`${dv.attente} ${att.vieux ? dv.attenteVieille : ''}`}><i />{att.texte}</span>
                       </div>
                       <div className={dv.actions}>
-                        <button type="button" className={`${dv.btn} ${dv.btnV}`} onClick={e => { e.stopPropagation(); setBravo(''); setAPlanifier(d); }}>
+                        <button type="button" className={`${dv.btn} ${dv.btnV}`} onClick={e => { e.stopPropagation(); setAPlanifier(d); }}>
                           <Picto n="cal" t={15} /><span>Planifier la visite</span>
                         </button>
                         <button type="button" className={dv.btn} onClick={e => { e.stopPropagation(); ouvrirDemande(d); }}>
@@ -621,10 +756,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
             </div>
           )}
 
-          {/* COMPTE RENDU À FAIRE, À VENIR, EFFECTUÉES — la même carte (V3.135, maquette A) */}
+          {/* À VENIR, COMPTE RENDU À FAIRE, EFFECTUÉES — la même carte (V3.135,
+              maquette A), dans l'ordre des tuiles (V3.146) */}
           {([
-            { id: 'a_faire' as const, groupe: 'a_faire' as Groupe, liste: aFaire, titre: 'Compte rendu à faire', c: '#b45309', point: '#f59e0b' },
             { id: 'a_venir' as const, groupe: 'a_venir' as Groupe, liste: aVenir, titre: 'À venir', c: '#2563eb', point: '#3b82f6' },
+            { id: 'a_faire' as const, groupe: 'a_faire' as Groupe, liste: aFaire, titre: 'Compte rendu à faire', c: '#b45309', point: '#f59e0b' },
             { id: 'effectuees' as const, groupe: 'effectuee' as Groupe, liste: effectuees, titre: 'Effectuées', c: '#0f9f6e', point: '#10b981' },
           ]).filter(g => g.liste.length > 0 && montrer(g.id)).map(g => (
             <div key={g.id}>
