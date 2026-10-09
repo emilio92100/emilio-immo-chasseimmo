@@ -26,7 +26,7 @@
 
 import {
   euros, BAREME, HONORAIRES_TAUX, tauxDe, forfaitDe, prixEtHonoraires, honorairesCourt, seuilForfait,
-  decrireRecherche, decrireCourt, rechercheDepuis, type Recherche, type Partie, type Bloc, type Fiche, type Resume,
+  decrireRecherche, decrireCourt, rechercheDepuis, HONO_DETAIL, type Recherche, type Partie, type Bloc, type Fiche, type Resume,
 } from '@/lib/mandat';
 import { lignesMandataire, phraseFonds, type IdentiteAgence } from '@/lib/agence';
 import {
@@ -343,7 +343,10 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   const prix: Bloc[] = a.prix
     ? [
       P(`Prix d’achat maximum, hors honoraires : ${eurosLettres(a.prix)}.`, true),
-      ...(a.total ? [P(`Honoraires de l’Agence compris, le budget du MANDANT est donc de ${euros(a.total)} au plus.`)] : []),
+      ...(a.total ? [
+        P(`Honoraires de l’Agence compris, le budget du MANDANT est donc de ${euros(a.total)} au plus.`),
+        P(`Lorsqu’aucun honoraire n’est dû au titre du présent mandat (bien en vente chez une autre agence qui partage ses honoraires avec l’Agence, voir « Honoraires »), le prix d’achat peut atteindre ce budget, soit ${euros(a.total)}.`),
+      ] : []),
     ]
     : [P('Prix d’achat maximum, hors honoraires : à compléter.', true)];
   if (d.financement === 'pret') prix.push(P('Le MANDANT prévoit de financer cette acquisition, en tout ou partie, au moyen d’un prêt.'));
@@ -353,12 +356,19 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   /* ── Les honoraires ── */
   const hono: Bloc[] = [];
   if (a.forfait) {
-    hono.push(P(`Honoraires de l’Agence : un forfait de ${eurosLettres(a.forfait)} TTC, à la charge du MANDANT, en plus du prix.`, true));
+    hono.push(P(`Honoraires de l’Agence : un forfait de ${eurosLettres(a.forfait)} TTC.`, true));
     hono.push(P(`Conformément au barème de l’Agence (${pourcent(BAREME)} TTC du prix au plus), ils ne peuvent dépasser ${pourcent(BAREME)} du prix d’acquisition : si ce prix est inférieur à ${euros(seuilForfait(a.forfait))}, ils sont ramenés à ${pourcent(BAREME)} de ce prix.`));
   } else {
-    hono.push(P(`Honoraires de l’Agence : ${a.taux !== null ? `${pourcent(a.taux)} TTC du prix d’acquisition, hors honoraires de l’Agence et de tout autre intermédiaire${a.prix && a.honoraires ? `, soit ${euros(a.honoraires)} TTC au prix maximum` : ''}` : 'à préciser'}, à la charge du MANDANT, en plus du prix.`, true));
+    hono.push(P(`Honoraires de l’Agence : ${a.taux !== null ? `${pourcent(a.taux)} TTC du prix d’acquisition, hors honoraires de l’Agence et de tout autre intermédiaire${a.prix && a.honoraires ? `, soit ${euros(a.honoraires)} TTC au prix maximum` : ''}` : 'à préciser'}.`, true));
   }
-  hono.push(P('Ils ne sont dus que si l’acquisition se réalise par l’entremise de l’Agence. L’acquisition s’entend aussi de celle réalisée par le MANDANT avec d’autres personnes, ou par une société qu’il constitue ou contrôle pour cet achat.'));
+  /* Les deux cas (V3.144), comme le mandat en ligne (src/lib/mandat.ts). */
+  hono.push(P('Ils ne sont dus que si l’acquisition se réalise par l’entremise de l’Agence, et selon l’un des deux cas suivants :'));
+  hono.push({ t: 'l', items: [
+    'Le bien est en vente chez une autre agence, qui partage avec l’Agence les honoraires prévus à son mandat de vente : le MANDANT ne doit alors aucun honoraire au titre du présent mandat. Il paie le prix convenu avec le vendeur, et l’Agence est rémunérée par cette autre agence.',
+    'Dans tous les autres cas (bien vendu par son propriétaire, agence qui ne partage pas ses honoraires, bien trouvé hors des annonces…) : les honoraires ci-dessus sont à la charge du MANDANT, en plus du prix.',
+  ] });
+  hono.push(P('L’Agence indique au MANDANT par écrit, avant toute offre d’achat, dans lequel de ces deux cas se trouve le bien.', true));
+  hono.push(P('L’acquisition s’entend aussi de celle réalisée par le MANDANT avec d’autres personnes, ou par une société qu’il constitue ou contrôle pour cet achat.'));
   hono.push(P('Aucune somme n’est due, ni ne peut être versée à l’Agence, avant la signature de l’acte authentique (l’article 6 de la loi du 2 janvier 1970 interdit tout versement avant que l’opération soit effectivement conclue) ; les honoraires sont alors réglés par l’intermédiaire du notaire.'));
   hono.push(P('En cas d’exercice d’un droit de préemption, le MANDANT, qui n’acquiert pas, ne doit aucun honoraire ; lorsque leur montant et leur charge figurent dans l’avant-contrat et la déclaration d’intention d’aliéner, ils sont dus par le titulaire du droit de préemption, substitué à l’acquéreur.'));
   hono.push(P('Si le bien fait l’objet d’un mandat de vente confié à l’Agence, elle en informe le MANDANT par écrit avant de le lui présenter ; elle ne perçoit alors qu’une seule rémunération pour cette acquisition, et le MANDANT ne paie au plus que les honoraires prévus au présent mandat.'));
@@ -511,6 +521,7 @@ function infoPrecontractuelle(d: Donnees, A: IdentiteAgence): Partie {
         ] },
         { ic: 'euro', titre: 'Le prix du service', lignes: [
           `${combien}, à votre charge, en plus du prix du bien.`,
+          'Rien à payer si le bien est en vente chez une autre agence qui partage ses honoraires avec l’Agence : elle est alors rémunérée par cette agence.',
           'Dus uniquement si vous achetez grâce à l’Agence, le jour de l’acte chez le notaire : rien n’est versé avant.',
           type === 'exclusif'
             ? 'Si vous achetez sans l’Agence un bien qu’elle vous a présenté, pendant le mandat et les mois qui suivent, ou par un autre intermédiaire chargé de votre recherche pendant le mandat, une indemnité égale à ces honoraires est due.'
@@ -546,7 +557,7 @@ function resume(d: Donnees): Resume {
   return [
     { titre: 'Le bien recherché', valeur: r.typeBien || r.piecesMin ? court.valeur : 'À compléter', detail: r.secteurs.length || r.surfaceMin ? court.detail : '—' },
     { titre: 'Prix maximum', valeur: a.prix ? `${euros(a.prix)} hors honoraires` : 'À compléter', detail: a.total ? `soit ${euros(a.total)} honoraires compris` : '—' },
-    { titre: 'Honoraires', valeur: a.forfait ? `${euros(a.forfait)} TTC, au forfait` : a.taux !== null ? `${pourcent(a.taux)} TTC du prix` : 'À compléter', detail: 'à la charge de l’acquéreur · dus à l’acte seulement' },
+    { titre: 'Honoraires', valeur: a.forfait ? `${euros(a.forfait)} TTC, au forfait` : a.taux !== null ? `${pourcent(a.taux)} TTC du prix` : 'À compléter', detail: HONO_DETAIL },
     { titre: 'Durée', valeur: `${duree} mois`, detail: d.dureeMode === 'prorogation' ? `puis par périodes, ${num(d, 'dureeMax') ?? 12} mois au plus` : typeDe(d) === 'exclusif' ? 'sans reconduction · fin possible après 3 mois' : 'sans reconduction · fin possible à tout moment' },
   ];
 }
