@@ -8,6 +8,7 @@ import { EN_COURS, ETAPES_VENTE, etapeDe, nomProprio, titreBien, villeAffichee, 
 const ARCHIVABLES: string[] = ['vendu', 'retire', 'annonce_type'];
 import { issueDe, visitePasseeParis } from '@/lib/visites';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
+import Cascade from '@/components/shared/Cascade';
 import { Ic } from '@/components/documents/ApercuActe';
 import CarteBien, { LigneBien, honorairesVente } from './CarteBien';
 import EditeurBien from './EditeurBien';
@@ -607,7 +608,8 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           </div>
         </div>
       ) : (
-        <div className={`${vue === 'lignes' ? b.lignesBiens : b.grille} cascade`} key={`${filtre}:${vue}`}>
+        /* V3.152 : une autre catégorie, ou l'autre vue, arrive en cascade. */
+        <Cascade cle={`${filtre}:${vue}`} arrivee className={`${vue === 'lignes' ? b.lignesBiens : b.grille} cascade`}>
           {visibles.map(x => {
             const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
             const on = choisis.has(x.id);
@@ -621,7 +623,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
               </div>
             );
           })}
-        </div>
+        </Cascade>
       ))}
       {/* La barre de la sélection ne cache pas les derniers biens. */}
       {modeChoix && <div style={{ height: 120 }} aria-hidden="true" />}

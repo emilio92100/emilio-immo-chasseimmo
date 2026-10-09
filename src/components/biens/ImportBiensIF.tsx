@@ -226,7 +226,7 @@ export default function ImportBiensIF({ onFermer, onImporte }: { onFermer: () =>
           </div>
         )}
         <div className={x.barreOutils}>
-          <div className={x.onglets} role="tablist" aria-label="Les biens par étape">
+          <div className={x.onglets} role="tablist" aria-label="Les biens par étape" data-defile="">
             {onglets.map(o => (
               <button key={o.k} type="button" aria-pressed={onglet === o.k} onClick={() => setOnglet(o.k)}>
                 {o.k !== 'tous' && o.k !== 'deja' && o.k !== 'sansVendeur' && <span className={x.point} style={{ background: etapeDe(o.k).c }} />}

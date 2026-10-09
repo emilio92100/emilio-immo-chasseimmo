@@ -628,3 +628,18 @@ i.aRenseigner { cursor: default; text-decoration: none; color: #94a3b8; }
   .famLarge .famC > .kv:not(.kvLong) { grid-column: auto; margin-top: 0; padding: 9px 0; border-bottom: 1px solid #f1f4f8; }
   .famLarge .famC > .ech { grid-column: auto; }
 }
+
+/* ══ V3.152 — Le téléphone bord à bord ══════════════════════════════════════
+   La fiche d'un bien n'a plus de marge sur les côtés (Biens.module.css) :
+   les cartes de ses onglets vont d'un bord à l'autre, sans arrondi ni cadre
+   sur les côtés (le gris de la page les sépare). L'historique, posé sur le
+   fond, garde 14 px de marge. Une offre change de cadre selon son état
+   (ouverte, acceptée) : d'où `!important`. */
+@media (max-width: 760px) {
+  .annonce, .pieces, .dossier, .fam, .sf, .carteA, .vis, .tuile {
+    border-radius: 0; border-left: none; border-right: none;
+  }
+  .annonce, .pieces, .dossier, .sf, .carteA, .vis, .tuile { padding-left: 14px; padding-right: 14px; }
+  .offre { border-radius: 0 !important; border-left: none !important; border-right: none !important; padding-left: 14px; padding-right: 14px; }
+  .histo > :first-child { padding: 0 14px; }
+}

@@ -229,3 +229,9 @@
 @media (prefers-reduced-motion: reduce) {
   .carte, .aide, .ping, .seanceC { animation: none; }
 }
+
+/* V3.152 — Le téléphone bord à bord : le bandeau et chaque séance vont d'un
+   bord à l'autre (ni arrondi ni cadre sur les côtés). */
+@media (max-width: 760px) {
+  .hero, .seance { border-radius: 0; border-left: none; border-right: none; }
+}

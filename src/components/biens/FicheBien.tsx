@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
 import { lienBienPublic } from '@/lib/jeton';
+import { vuesDe } from '@/lib/bien-suivi';
 import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/actes';
 import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
@@ -273,7 +274,7 @@ function Faits({ d, vide }: { d: Donnees; vide?: ReactNode }) {
   else if (n('taxeFonciere')) items.push({ ic: 'fiscal', ton: 'ardoise', v: euros(n('taxeFonciere') as number), l: 'Taxe foncière' });
   if (!items.length) return <div className={b.vide}>{vide || 'Les caractéristiques du bien s’afficheront ici.'}</div>;
   return (
-    <div className={b.faits}>
+    <div className={b.faits} data-defile="">
       {items.map((x, i) => (
         <div key={x.l + x.v} className={b.fait} data-ton={x.ton} style={{ animationDelay: `${Math.min(i, 10) * 0.035}s` }}>
           {x.dpe
@@ -1008,10 +1009,19 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       const projet = d.projet === true;
       /* V3.51 : une demande de documents (sans pièce jointe). */
       const demandes = Array.isArray(d.demandes) ? (d.demandes as unknown[]).map(String) : [];
-      /* V3.121 : le bien présenté par simple mail (hors du CRM, ou un contact sans recherche). */
+      /* V3.121 : le bien présenté par simple mail (hors du CRM, ou un contact sans recherche).
+         V3.152 : aussi un client qui n'est pas actif ; et chaque ouverture de
+         la page par son lien personnel (`donnees.vues`, src/lib/bien-suivi.ts). */
       if (d.presentation === true) {
+        const vues = vuesDe(d);
         l.push({ cle: x.id, le: x.le, ic: 'mail', ton: 'ic_or', genre: 'acheteurs', titre: `Présenté par mail à ${x.qui || 'un contact'}`,
-          detail: d.lien === true ? 'Avec le lien de sa page sur le site' : 'Avec sa photo et sa description', puce: { l: 'Mail simple', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' }, chez: chezLui(x.client_id) });
+          detail: d.lien === true ? 'Avec le lien de sa page sur le site' : 'Avec sa photo et sa description',
+          puce: vues.length ? { l: 'Fiche ouverte', c: '#0f766e', fond: '#f0fdfa', bord: '#99f6e4' } : { l: 'Mail simple', c: '#7a5d1c', fond: '#fbf6e9', bord: '#ecdcb0' }, chez: chezLui(x.client_id) });
+        for (const v of vues) {
+          const nom = v.dest.nom || v.dest.email;
+          v.le.forEach((le, i) => l.push({ cle: `${x.id}-v-${v.code}-${i}`, le, ic: 'oeil', ton: 'ic_gris', genre: 'acheteurs', discret: true,
+            titre: `${nom} a ouvert la fiche du bien`, detail: i === 0 ? 'Par le lien de son mail' : '', chez: chezLui(v.dest.client_id) }));
+        }
         continue;
       }
       if (d.demande === true) {
@@ -2151,8 +2161,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
         </Depliant>
       </div>
 
-      {message && <div className={message.ok ? s.note : s.erreur}>{message.t}</div>}
-      {erreur && <div className={s.erreur}>{erreur}</div>}
+      {message && <div className={`${message.ok ? s.note : s.erreur} ${b.messageFiche}`}>{message.t}</div>}
+      {erreur && <div className={`${s.erreur} ${b.messageFiche}`}>{erreur}</div>}
 
       <CorpsOnglet k={onglet} ordre={ONGLETS.map(o => o.k)}>
       {onglet === 'apercu' && (

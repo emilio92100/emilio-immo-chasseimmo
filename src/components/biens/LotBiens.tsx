@@ -42,6 +42,7 @@ import { visitePasseeParis } from '@/lib/visites';
 import { avantMandat, etapeDe, lirePhotos, titreBien, villeAffichee, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import { signalerEchec } from '@/lib/ecritures';
 import { REMISE_SUIVIE, attendreRemises, remisesDe, suivreRemises } from '@/lib/remise-client';
+import { recoitSonEspace } from '@/lib/bien-suivi';
 import { CaseLigne } from '@/components/shared/Selection';
 import AvatarContact from '@/components/contacts/AvatarContact';
 import { Illu, modeAcheteurs, teinte } from './AcheteursBien';
@@ -160,10 +161,13 @@ const chiffresTel = (t: string) => {
 };
 /* Une saisie faite seulement de chiffres (et d'espaces, points, tirets, « + ») : un téléphone. */
 const SAISIE_TEL = /^[\d\s.+()-]+$/;
-/* Quelqu'un qui reçoit le bien par simple mail : hors du CRM, ou un contact sans recherche ouverte. */
-type Libre = { email: string; prenom?: string; nom?: string; clientId?: string };
+/* Quelqu'un qui reçoit le bien par simple mail : hors du CRM, ou un contact sans recherche ouverte.
+   V3.152 : aussi un client qui n'est pas actif (`rechercheId` : de quelle recherche on parle). */
+type Libre = { email: string; prenom?: string; nom?: string; clientId?: string; rechercheId?: string };
 
-/* Le texte pour quelqu'un hors du CRM (pas de « votre projet de recherche »). */
+/* Le texte du simple mail : quelqu'un hors du CRM et, depuis la V3.152, tout
+   client qui n'est pas actif. Pas de « votre projet de recherche », pas un mot
+   de l'espace. */
 function mailLibre(p: Record<string, string>, plusieurs: boolean): { objet: string; corps: string } {
   return {
     objet: plusieurs ? 'Des biens qui pourraient vous intéresser' : 'Un bien qui pourrait vous intéresser',
@@ -197,9 +201,27 @@ ${signatureDe(p)}`,
 type Dest = { cle: string; genre: 'crm'; ligne: Ligne; source: 'manuel' | 'rappro' } | { cle: string; genre: 'libre'; libre: Libre };
 type Apercu = { html: string; objet: string; a: string[] };
 type EtatEnvoi = 'attente' | 'en' | 'ok' | 'ko';
-type Envoi = { quoi: Quoi; gens: { cle: string; nom: string; crm: boolean; etat: EtatEnvoi; erreur?: string; attente?: boolean }[]; fini: boolean; biens: number };
+/* `espace` : par mail, le bien est aussi parti dans son espace (un client actif). */
+type Envoi = { quoi: Quoi; gens: { cle: string; nom: string; crm: boolean; espace: boolean; etat: EtatEnvoi; erreur?: string; attente?: boolean }[]; fini: boolean; biens: number };
 const nomLibre = (x: Libre) => [x.prenom, x.nom].filter(Boolean).join(' ') || x.email;
 const nomDest = (d: Dest) => (d.genre === 'libre' ? nomLibre(d.libre) : nomClient(d.ligne.acheteur.client));
+type Texte = { objet: string; corps: string };
+/* ══ V3.152 — Qui reçoit quoi (Alexandre : seul un client actif a son espace).
+   Par mail, un client actif reçoit le mail de son espace et le bien y entre,
+   comme avant. Tous les autres — prospect, en pause, perdu, bien trouvé,
+   contact sans recherche, adresse hors du CRM — reçoivent un simple mail : la
+   photo, les infos et « Voir le bien », un lien à leur nom vers la page
+   publique du bien (src/lib/bien-suivi.ts). Rien n'entre dans leur dossier ;
+   l'envoi se note dans l'historique du bien et dans leur Suivi. Deux textes,
+   donc, quand les deux sortes de destinataires sont là. */
+type Sorte = 'espace' | 'simple';
+const sorteDe = (d: Dest): Sorte => (d.genre === 'crm' && recoitSonEspace(d.ligne.acheteur.client.statut) ? 'espace' : 'simple');
+/* Un client du CRM qui n'est pas actif, en simple mail : sa première adresse. */
+const versLibre = (x: Ligne): Libre => {
+  const c = x.acheteur.client;
+  return { email: mailDe(x.acheteur).trim().toLowerCase(), prenom: c.prenom || '', nom: c.nom || '', clientId: c.id, rechercheId: x.acheteur.recherche.id };
+};
+const texteOk = (t: Texte | null) => !!t && !!t.objet.trim() && !!t.corps.trim();
 /* Assez longtemps à l'écran pour que l'animation se voie, même quand tout part en un éclair. */
 const ENVOI_MIN_MS = 1100;
 
@@ -219,6 +241,26 @@ function CadreMail({ html }: { html: string }) {
         } catch { /* sans accès, la hauteur par défaut */ }
       }} />
   );
+}
+
+/* V3.152 — Après l'envoi par mail, ce qui suit pour chacun : la relance d'un
+   client actif (le bien est dans son espace), le lien suivi d'un simple mail. */
+function finMail(ok: Envoi['gens']): string {
+  const espace = ok.filter(g => g.espace);
+  const simple = ok.filter(g => !g.espace);
+  const noms = (l: Envoi['gens']) => l.map(g => g.nom).join(', ');
+  const l1 = espace.length > 1;
+  const l2 = simple.length > 1;
+  const phraseEspace = simple.length
+    ? `${noms(espace)} : le bien est aussi dans ${l1 ? 'leur' : 'son'} espace, avec une relance « sans réponse ».`
+    : 'Une relance « sans réponse » est posée pour chacun, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.';
+  /* Où il le verra : le Suivi d'un contact du CRM, l'historique du bien pour tous. */
+  const crm = simple.some(g => g.crm);
+  const ou = crm ? `${simple.every(g => g.crm) ? (l2 ? 'leur' : 'son') : 'le'} Suivi et l’historique du bien diront` : 'l’historique du bien dira';
+  const phraseSimple = espace.length
+    ? `${noms(simple)} : un simple mail, avec un lien à ${l2 ? 'leur' : 'son'} nom vers la page du bien ; ${ou} quand ${l2 ? 'ils l’ouvrent' : 'il l’ouvre'}.`
+    : `${l2 ? 'Chaque lien est au nom de son destinataire' : 'Le lien du mail est à son nom'} : ${ou} quand ${l2 ? 'ils ouvrent' : 'il ouvre'} la page du bien.`;
+  return [espace.length ? phraseEspace : '', simple.length ? phraseSimple : ''].filter(Boolean).join(' ');
 }
 
 /* La coche qui se dessine, dans son rond vert, et quelques éclats autour. */
@@ -350,7 +392,9 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   /* Rien de coché à l'ouverture (V3.121). */
   const [choisis, setChoisis] = useState<Set<string>>(() => new Set());
   const [etape, setEtape] = useState<'qui' | 'mail'>('qui');
-  const [mail, setMail] = useState<{ objet: string; corps: string } | null>(null);
+  /* Le mail des clients actifs (leur espace), et le simple mail des autres (V3.152). */
+  const [mail, setMail] = useState<Texte | null>(null);
+  const [mailSimple, setMailSimple] = useState<Texte | null>(null);
   const [envoi, setEnvoi] = useState<Envoi | null>(null);
   /* Sur téléphone : le mail du client, ou son texte (V3.148). */
   const [vue, setVue] = useState<'apercu' | 'texte'>('apercu');
@@ -389,6 +433,19 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const sansMail = pour('mail').filter(x => !mailDe(x.acheteur));
   const nbMails = mailables.length;
   const cible = mailables.find(d => d.cle === apercuPour) || mailables[0] || null;
+  /* V3.152 : combien de chaque sorte, et le texte qu'on modifie — celui de
+     la personne dont on voit le mail. */
+  const nbEspace = mailables.filter(d => sorteDe(d) === 'espace').length;
+  const nbSimple = nbMails - nbEspace;
+  const deuxTextes = nbEspace > 0 && nbSimple > 0;
+  const sorte: Sorte = cible ? sorteDe(cible) : nbEspace ? 'espace' : 'simple';
+  const texte = sorte === 'espace' ? mail : mailSimple;
+  const setTexte = sorte === 'espace' ? setMail : setMailSimple;
+  const voirSorte = (s: Sorte) => {
+    if (s === sorte) return;
+    const d = mailables.find(x => sorteDe(x) === s);
+    if (d) setApercuPour(d.cle);
+  };
 
   function prendre(id: string) {
     setManuels(m => [id, ...m.filter(x => x !== id)]);
@@ -413,35 +470,39 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     }, 190);
   }
 
-  /* Le texte du mail : les réglages des Paramètres, lus une fois. Personne
-     du CRM parmi les destinataires : le texte pour quelqu'un hors du CRM. */
-  const seulementLibres = !pour('mail').length && libres.length > 0;
+  /* Le texte du mail : les réglages des Paramètres, lus une fois. Le mail de
+     l'espace prend le modèle « Sélection de biens » ; le simple mail, le
+     texte pour quelqu'un hors du CRM (V3.152 : les deux, chacun pour les siens). */
   useEffect(() => {
     if (etape !== 'mail' || mail) return;
     let vivant = true;
     supabase.from('parametres').select('cle, valeur').in('cle', CLES_MAIL).then(({ data }) => {
       if (!vivant) return;
       const p = Object.fromEntries(((data || []) as { cle: string; valeur: string | null }[]).map(r => [r.cle, r.valeur || '']));
-      setMail(seulementLibres ? mailLibre(p, envoyables.length > 1) : mailParDefaut(p));
+      setMail(mailParDefaut(p));
+      setMailSimple(mailLibre(p, envoyables.length > 1));
     });
     return () => { vivant = false; };
-  }, [etape, mail, seulementLibres, envoyables.length]);
+  }, [etape, mail, envoyables.length]);
 
   /* L'aperçu : le mail de cette personne, construit par le serveur comme à
-     l'envoi (/api/send-mail pour un client du CRM, « presenter » pour un
+     l'envoi (/api/send-mail pour un client actif, « presenter » pour un
      simple mail), sans rien envoyer. */
-  async function lireApercu(d: Dest, m: { objet: string; corps: string }): Promise<Apercu | { erreur: string }> {
+  async function lireApercu(d: Dest, m: Texte): Promise<Apercu | { erreur: string }> {
     const objet = m.objet.trim() || 'Sans objet';
     try {
-      if (d.genre === 'libre') {
+      if (sorteDe(d) === 'simple') {
+        const dst = d.genre === 'libre' ? d.libre : versLibre(d.ligne);
+        const ids = d.genre === 'libre' ? envoyables.map(b => b.id) : aEnvoyer(d.ligne, 'mail', avisDe).map(i => i.bien.id);
         const res = await fetch('/api/biens-vente', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'presenter', apercu: true, ids: envoyables.map(b => b.id), destinataires: [d.libre], objet, corps: m.corps }),
+          body: JSON.stringify({ action: 'presenter', apercu: true, ids, destinataires: [dst], objet, corps: m.corps }),
         });
         const r = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; html?: string; objet?: string; a?: string[] };
         if (!res.ok || !r.ok || typeof r.html !== 'string') return { erreur: r.erreur || `erreur ${res.status}` };
-        return { html: r.html, objet: r.objet || objet, a: r.a || [d.libre.email] };
+        return { html: r.html, objet: r.objet || objet, a: r.a || [dst.email] };
       }
+      if (d.genre === 'libre') return { erreur: 'destinataire inconnu' };
       const a = d.ligne.acheteur;
       const res = await fetch('/api/send-mail', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -460,31 +521,36 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const derniereCible = useRef('');
   const cleCible = cible ? `${cible.cle}|${cible.genre === 'crm' ? aEnvoyer(cible.ligne, 'mail', avisDe).map(i => i.bien.id).join(',') : ''}` : '';
   useEffect(() => {
-    if (etape !== 'mail' || !mail || !cible || envoi) return;
+    if (etape !== 'mail' || !texte || !cible || envoi) return;
     const n = ++demande.current;
     const autre = derniereCible.current !== cleCible;
     derniereCible.current = cleCible;
     setApercuEn(true);
     const t = window.setTimeout(async () => {
-      const r = await lireApercu(cible, mail);
+      const r = await lireApercu(cible, texte);
       if (n !== demande.current) return;
       setApercu(r);
       setApercuEn(false);
     }, autre ? 0 : 650);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [etape, mail?.objet, mail?.corps, cleCible, !!envoi]);
+  }, [etape, texte?.objet, texte?.corps, cleCible, !!envoi]);
 
   async function lancer(quoi: Quoi) {
     const cibles = quoi === 'mail' ? pour('mail').filter(x => mailDe(x.acheteur)) : pour(quoi);
+    /* V3.152 : par mail, seul un client actif reçoit le mail de son espace (et
+       le bien y entre) ; un client qui ne l'est pas reçoit le simple mail, comme
+       une adresse hors du CRM. Mettre en sélection, dans leur espace : comme avant. */
+    const parEspace = quoi === 'mail' ? cibles.filter(x => recoitSonEspace(x.acheteur.client.statut)) : cibles;
+    const simplesCrm = quoi === 'mail' ? cibles.filter(x => !recoitSonEspace(x.acheteur.client.statut)) : [];
     const dehors = quoi === 'mail' ? libres : [];
     if (!cibles.length && !dehors.length) return;
     const debut = Date.now();
     let e: Envoi = {
       quoi, fini: false, biens: 0,
       gens: [
-        ...cibles.map(x => ({ cle: x.cle, nom: nomClient(x.acheteur.client), crm: true, etat: 'attente' as EtatEnvoi })),
-        ...dehors.map(x => ({ cle: `@${x.email}`, nom: nomLibre(x), crm: false, etat: 'attente' as EtatEnvoi })),
+        ...cibles.map(x => ({ cle: x.cle, nom: nomClient(x.acheteur.client), crm: true, espace: !simplesCrm.includes(x), etat: 'attente' as EtatEnvoi })),
+        ...dehors.map(x => ({ cle: `@${x.email}`, nom: nomLibre(x), crm: false, espace: false, etat: 'attente' as EtatEnvoi })),
       ],
     };
     setEnvoi(e);
@@ -493,7 +559,38 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
       setEnvoi(e);
     };
     let biensPartis = 0;
-    for (const x of cibles) {
+    /* Un simple mail à plusieurs personnes qui reçoivent les mêmes biens
+       (route biens-vente, « presenter ») : chacune a son mail, à son prénom,
+       avec son lien à elle. Puis, comme pour les autres : arrivé dans sa
+       boîte, ou refusé par sa messagerie (V3.151) ? */
+    const envoyerSimples = async (lot: { cle: string; dst: Libre; ids: string[] }[]) => {
+      for (const x of lot) maj(x.cle, 'en');
+      try {
+        const res = await fetch('/api/biens-vente', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...REMISE_SUIVIE },
+          body: JSON.stringify({ action: 'presenter', ids: lot[0].ids, destinataires: lot.map(x => x.dst), objet: mailSimple?.objet || '', corps: mailSimple?.corps || '' }),
+        });
+        const r = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; envoyes?: string[]; avertissements?: string[] };
+        if (!res.ok || !r.ok) throw new Error(r.erreur || `erreur ${res.status}`);
+        const partis = new Set(r.envoyes || []);
+        for (const x of lot) if (!partis.has(x.dst.email)) maj(x.cle, 'ko', 'le mail n’est pas parti');
+        if (r.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', r.avertissements.join(' ; '));
+        const remises = remisesDe(r);
+        const etats = remises.length ? await attendreRemises(remises, 20_000) : new Map();
+        const attente = remises.filter(m => (etats.get(m.id)?.etat || 'attente') === 'attente');
+        if (attente.length) suivreRemises(attente, true);
+        for (const x of lot) {
+          if (!partis.has(x.dst.email)) continue;
+          const siennes = remises.filter(m => m.email === x.dst.email);
+          const refus = siennes.find(m => etats.get(m.id)?.etat === 'refuse');
+          if (refus) maj(x.cle, 'ko', `mail non distribué, ${etats.get(refus.id)?.raison || 'refusé'}`);
+          else { maj(x.cle, 'ok', undefined, siennes.some(m => attente.includes(m))); biensPartis += x.ids.length; }
+        }
+      } catch (err) {
+        for (const x of lot) maj(x.cle, 'ko', (err as Error).message);
+      }
+    };
+    for (const x of parEspace) {
       const items = aEnvoyer(x, quoi, avisDe);
       const nom = nomClient(x.acheteur.client);
       maj(x.cle, 'en');
@@ -527,35 +624,21 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
         maj(x.cle, 'ko', (err as Error).message);
       }
     }
-    /* Les personnes hors du CRM (et les contacts sans recherche) : un simple
-       mail, la photo et le lien du site (route biens-vente, « presenter »). */
-    if (dehors.length) {
-      for (const x of dehors) maj(`@${x.email}`, 'en');
-      try {
-        const res = await fetch('/api/biens-vente', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...REMISE_SUIVIE },
-          body: JSON.stringify({ action: 'presenter', ids: envoyables.map(b => b.id), destinataires: dehors, objet: mail?.objet || '', corps: mail?.corps || '' }),
-        });
-        const r = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; envoyes?: string[]; avertissements?: string[] };
-        if (!res.ok || !r.ok) throw new Error(r.erreur || `erreur ${res.status}`);
-        const partis = new Set(r.envoyes || []);
-        for (const x of dehors) if (!partis.has(x.email)) maj(`@${x.email}`, 'ko', 'le mail n’est pas parti');
-        if (r.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', r.avertissements.join(' ; '));
-        /* V3.151 : arrivé dans sa boîte, ou refusé par sa messagerie ? */
-        const remises = remisesDe(r);
-        const etats = remises.length ? await attendreRemises(remises, 20_000) : new Map();
-        const attente = remises.filter(m => (etats.get(m.id)?.etat || 'attente') === 'attente');
-        if (attente.length) suivreRemises(attente, true);
-        for (const x of dehors) {
-          if (!partis.has(x.email)) continue;
-          const siennes = remises.filter(m => m.email === x.email);
-          const refus = siennes.find(m => etats.get(m.id)?.etat === 'refuse');
-          if (refus) maj(`@${x.email}`, 'ko', `mail non distribué, ${etats.get(refus.id)?.raison || 'refusé'}`);
-          else maj(`@${x.email}`, 'ok', undefined, siennes.some(m => attente.includes(m)));
-        }
-      } catch (err) {
-        for (const x of dehors) maj(`@${x.email}`, 'ko', (err as Error).message);
-      }
+    /* Les simples mails (route biens-vente, « presenter ») : les clients qui
+       ne sont pas actifs (V3.152), puis les personnes hors du CRM et les
+       contacts sans recherche. Ceux qui reçoivent les mêmes biens partent
+       ensemble, dix au plus par envoi (la limite de la route). */
+    const simples = [
+      ...simplesCrm.map(x => ({ cle: x.cle, dst: versLibre(x), ids: aEnvoyer(x, 'mail', avisDe).map(i => i.bien.id) })),
+      ...dehors.map(x => ({ cle: `@${x.email}`, dst: x, ids: envoyables.map(b => b.id) })),
+    ];
+    const lots = new Map<string, typeof simples>();
+    for (const x of simples) {
+      const k = x.ids.join(',');
+      lots.set(k, [...(lots.get(k) || []), x]);
+    }
+    for (const lot of lots.values()) {
+      for (let i = 0; i < lot.length; i += 10) await envoyerSimples(lot.slice(i, i + 10));
     }
     const reste = ENVOI_MIN_MS - (Date.now() - debut);
     if (reste > 0) await pause(reste);
@@ -567,7 +650,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   /* « Envoyer à quelqu'un d'autre » : la fenêtre repart de zéro (le
      rapprochement déjà fait reste). */
   function recommencer() {
-    setEnvoi(null); setEtape('qui'); setManuels([]); setLibres([]); setChoisis(new Set()); setMail(null); setApercu(null); setApercuPour(''); setVue('apercu');
+    setEnvoi(null); setEtape('qui'); setManuels([]); setLibres([]); setChoisis(new Set()); setMail(null); setMailSimple(null); setApercu(null); setApercuPour(''); setVue('apercu');
   }
 
   const titre = envoyables.length > 1 || (!envoyables.length && biens.length > 1) ? `Envoyer ${envoyables.length || biens.length} biens` : 'Envoyer ce bien';
@@ -636,6 +719,10 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
       </button>
     );
     const commun = { className: l.dLigne, 'data-sort': sortants.has(d.cle) ? 'oui' : undefined, style: { animationDelay: `${Math.min(rang, 6) * 0.03}s` } };
+    /* V3.152 : ce qu'il recevra par mail — son espace, ou un simple mail. */
+    const recoit = sorteDe(d) === 'espace'
+      ? <span className={l.recoit} data-sorte="espace" title="Client actif : le mail mène à son espace, où le bien arrive aussi."><Ic n="maison" t={12} e={2.2} />{'Son espace'}</span>
+      : <span className={l.recoit} data-sorte="simple" title="Un simple mail : la photo, les infos et un lien à son nom vers la page du bien. Rien n’entre dans un espace."><Ic n="mail" t={12} e={2.2} />{'Simple mail · page du bien'}</span>;
     if (d.genre === 'libre') {
       const x = d.libre;
       return (
@@ -648,7 +735,8 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                 : <b className={l.nomLibre}>{x.email}</b>}
               <span className={l.tag}>{x.clientId ? 'Sans recherche' : 'Hors du CRM'}</span>
             </span>
-            <small>{x.clientId ? `${x.email} · par simple mail, noté dans son Suivi` : 'Par simple mail, avec la photo et le lien du bien'}</small>
+            <small>{x.clientId ? `${x.email} · noté dans son Suivi` : 'Noté dans l’historique du bien'}</small>
+            {recoit}
           </div>
           <span className={l.dCombien}>{plusieursBiens ? `${envoyables.length} biens` : '1 bien'}</span>
           {croix}
@@ -675,6 +763,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
             {statut && <span className={l.tag}>{statut}</span>}
           </span>
           <small>{sous}</small>
+          {x.items.length > 0 && recoit}
           {plusieursBiens && x.items.length > 0 && (
             <span className={l.pastilles}>
               {x.items.map(i => {
@@ -739,7 +828,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                 e.quoi === 'mail' ? (ok.some(g => g.attente)
                   ? `Parti. ${ok.filter(g => g.attente).map(g => g.nom).join(', ')} : sa messagerie n’a pas encore répondu, un refus s’afficherait en bas de l’écran.`
                   : (ok.length > 1 ? 'Bien arrivé dans la boîte mail de chacun.' : 'Bien arrivé dans sa boîte mail.')) : '',
-                e.quoi === 'espace' || ok.some(g => g.crm) ? 'Une relance « sans réponse » est posée pour chacun, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.' : 'Noté dans l’historique du bien.',
+                e.quoi === 'espace' ? 'Une relance « sans réponse » est posée pour chacun, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.' : finMail(ok),
               ].filter(Boolean).join(' ')}
           </p>
         )}
@@ -778,14 +867,29 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
               </div>
 
               <section className={l.paneTexte}>
-                <div className={l.paneT}><b>{'Le message'}</b><span>{nbMails > 1 ? 'Le même pour tous, chacun à son prénom.' : 'Modifie-le : l’aperçu suit.'}</span></div>
+                {/* V3.152 : deux sortes de destinataires, deux textes — on modifie
+                    celui de la personne dont on voit le mail. */}
+                {deuxTextes && (
+                  <div className={l.sortes} role="tablist" aria-label="Quel mail modifier">
+                    <button type="button" role="tab" aria-selected={sorte === 'espace'} onClick={() => voirSorte('espace')}><Ic n="maison" t={14} />{'Son espace'}<b>{nbEspace}</b></button>
+                    <button type="button" role="tab" aria-selected={sorte === 'simple'} onClick={() => voirSorte('simple')}><Ic n="mail" t={14} />{'Simple mail'}<b>{nbSimple}</b></button>
+                  </div>
+                )}
+                <div className={l.paneT}>
+                  <b>{deuxTextes ? (sorte === 'espace' ? 'Le mail des clients actifs' : 'Le simple mail') : 'Le message'}</b>
+                  <span>{deuxTextes
+                    ? (sorte === 'espace' ? `${nbEspace > 1 ? 'Ils le reçoivent' : 'Il le reçoit'} aussi dans ${nbEspace > 1 ? 'leur' : 'son'} espace.` : 'Pour les autres : la page du bien, sans espace.')
+                    : nbMails > 1 ? 'Le même pour tous, chacun à son prénom.' : 'Modifie-le : l’aperçu suit.'}</span>
+                </div>
                 <label className={l.champ}><span>Objet</span>
-                  <input className={l.in} value={mail?.objet || ''} disabled={!mail} onChange={e => setMail(m => (m ? { ...m, objet: e.target.value } : m))} />
+                  <input className={l.in} value={texte?.objet || ''} disabled={!texte} onChange={e => setTexte(m => (m ? { ...m, objet: e.target.value } : m))} />
                 </label>
                 <label className={l.champ}><span>Le message</span>
-                  <textarea className={`${l.in} ${l.inMsg}`} rows={13} value={mail?.corps || ''} disabled={!mail} placeholder={mail ? '' : 'Chargement du modèle…'} onChange={e => setMail(m => (m ? { ...m, corps: e.target.value } : m))} />
+                  <textarea className={`${l.in} ${l.inMsg}`} rows={13} value={texte?.corps || ''} disabled={!texte} placeholder={texte ? '' : 'Chargement du modèle…'} onChange={e => setTexte(m => (m ? { ...m, corps: e.target.value } : m))} />
                 </label>
-                <p className={l.aide}><Ic n="info" t={14} /><span>{`{{prénom}} devient le prénom de chacun${libres.length ? ' (rien pour une adresse hors du CRM : « Bonjour, »)' : ''}. ${plusieursBiens ? 'Les biens s’ajoutent' : 'Le bien s’ajoute'} sous le texte, avec ${plusieursBiens ? 'leurs photos' : 'sa photo'} et un bouton vers ${plusieursBiens ? 'leur fiche' : 'sa fiche'}.`}</span></p>
+                <p className={l.aide}><Ic n="info" t={14} /><span>{sorte === 'espace'
+                  ? `{{prénom}} devient le prénom de chacun. ${plusieursBiens ? 'Les biens s’ajoutent' : 'Le bien s’ajoute'} sous le texte, avec ${plusieursBiens ? 'leurs photos' : 'sa photo'} et un bouton vers ${plusieursBiens ? 'leur fiche' : 'sa fiche'}.`
+                  : `{{prénom}} devient le prénom de chacun${libres.some(x => !x.clientId) ? ' (rien pour une adresse hors du CRM : « Bonjour, »)' : ''}. ${plusieursBiens ? 'Les biens s’ajoutent' : 'Le bien s’ajoute'} sous le texte, avec ${plusieursBiens ? 'leurs photos' : 'sa photo'} et le bouton « Voir le bien » : un lien à son nom, qui te dit quand il ouvre la page.`}</span></p>
                 {sansMail.length > 0 && (
                   <div className={l.ignores}>
                     <b>{sansMail.length > 1 ? `${sansMail.length} sans adresse e-mail` : '1 sans adresse e-mail'}</b>
@@ -803,7 +907,10 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                 {nbMails > 1 && (
                   <div className={l.pourQui}>
                     {mailables.map(d => (
-                      <button key={d.cle} type="button" className={l.pourPill} data-on={d.cle === cible?.cle ? 'oui' : undefined} onClick={() => setApercuPour(d.cle)}>{nomDest(d)}</button>
+                      <button key={d.cle} type="button" className={l.pourPill} data-on={d.cle === cible?.cle ? 'oui' : undefined} onClick={() => setApercuPour(d.cle)}
+                        title={sorteDe(d) === 'espace' ? 'Le mail de son espace' : 'Un simple mail, avec la page du bien'}>
+                        {deuxTextes && <Ic n={sorteDe(d) === 'espace' ? 'maison' : 'mail'} t={13} />}{nomDest(d)}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -816,7 +923,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                     </div>
                     {apercuEn && apercu ? <span className={l.envMaj}><i />{'Mise à jour'}</span> : <span className={l.envQuand}>{'maintenant'}</span>}
                   </div>
-                  <div className={l.envObjet}>{apercuOk ? apercuOk.objet : mail?.objet || ' '}</div>
+                  <div className={l.envObjet}>{apercuOk ? apercuOk.objet : texte?.objet || ' '}</div>
                   {!cible ? (
                     <div className={l.apercuErr}><Ic n="info" t={15} /><span>{'Personne à qui l’envoyer par mail : aucune adresse e-mail, ou rien de nouveau à recevoir.'}</span></div>
                   ) : !apercu ? (
@@ -852,7 +959,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                   <div className={l.choix}>
                     <label className={l.choixT} htmlFor="lot-client">
                       <b>{'À qui l’envoyer ?'}</b>
-                      <span>{'Un client du CRM, par son nom ou son téléphone : l’envoi se note dans son Suivi. Ou l’adresse e-mail de quelqu’un hors du CRM : il reçoit un simple mail, avec la photo et le lien du bien.'}</span>
+                      <span>{'Un client du CRM, par son nom ou son téléphone : l’envoi se note dans son Suivi. Ou l’adresse e-mail de quelqu’un hors du CRM. Par mail, un client actif le reçoit dans son espace ; les autres, un simple mail avec la photo et le lien du bien.'}</span>
                     </label>
                     <div className={l.cherche}>
                       <Ic n="loupe" t={16} />
@@ -1027,7 +1134,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
           ) : etape === 'mail' ? (
             <>
               <button type="button" className={l.btn} onClick={() => setEtape('qui')}><Ic n="gauche" t={14} e={2.3} />Retour</button>
-              <button type="button" className={`${l.btn} ${l.btnOr} ${l.btnEnvoi}`} disabled={!mail || !mail.objet.trim() || !mail.corps.trim() || !nbMails} onClick={() => { void lancer('mail'); }}>
+              <button type="button" className={`${l.btn} ${l.btnOr} ${l.btnEnvoi}`} disabled={!nbMails || (nbEspace > 0 && !texteOk(mail)) || (nbSimple > 0 && !texteOk(mailSimple))} onClick={() => { void lancer('mail'); }}>
                 <Ic n="envoyer" t={15} />{nbMails > 1 ? `Envoyer les ${nbMails} mails` : 'Envoyer le mail'}
               </button>
             </>

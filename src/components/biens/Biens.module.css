@@ -1881,3 +1881,41 @@ nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
 @keyframes expliEntre { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .expliAnnonce { animation: none; } }
 @media (max-width: 640px) { .expliAnnonce { font-size: 13px; padding: 10px 12px; } }
+
+/* ══ V3.152 — Le téléphone bord à bord : la liste des biens ═══════════════════
+   Alexandre : « sur le mobile tout est bridé, condensé ». La page n'a plus
+   de marge sur les côtés (Documents.module.css, `.page`) : les cartes et
+   les bandeaux vont d'un bord à l'autre, sans arrondi ni cadre sur les
+   côtés (le gris de la page les sépare) ; les filtres et les pastilles
+   posés sur le fond gardent 14 px de marge. */
+@media (max-width: 760px) {
+  .selBien { border-radius: 0; }
+  .carte, .ligneB, .annonceVente, .aerer, .ailleurs, .brouillons, .expliAnnonce, .affP {
+    border-radius: 0; border-left: none; border-right: none;
+  }
+  .carte { padding: 11px 14px; }
+  .ligneB { padding: 10px 14px; }
+  .annonceVente, .aerer, .ailleurs, .brouillons, .expliAnnonce { padding-left: 14px; padding-right: 14px; }
+  .sousDiff { padding: 0 14px; }
+  /* « Affiner » : la ligne défile de bord à bord, son premier bouton à 14 px. */
+  .affL { padding: 2px 14px 4px; }
+  .affNBas { padding: 0 14px; }
+}
+
+/* ══ V3.152 — Le téléphone bord à bord : la fiche d'un bien ═══════════════════
+   Comme la fiche d'un contact : le bandeau bleu et les blocs vont d'un bord
+   à l'autre (ni arrondi ni cadre sur les côtés, le gris de la page les
+   sépare) ; le retour, la pastille du propriétaire et les gestes gardent
+   14 px de marge. Les tuiles et les boutons gardent leurs arrondis. */
+@media (max-width: 760px) {
+  .fiche { padding: 12px 0 32px; }
+  .ficheBarre { padding: 0 14px; }
+  .chevalHaut { margin-left: 14px; margin-right: 14px; }
+  .hero { border-radius: 0; padding-left: 14px; padding-right: 14px; }
+  .bloc, .obsPart, .messageFiche, .bref, .docsVente, .versSurfaces { border-radius: 0; border-left: none; border-right: none; }
+  .bloc, .bref { padding: 14px; }
+  .docsVente, .versSurfaces { padding-left: 14px; padding-right: 14px; }
+  .obsPart { padding: 14px; }
+  .messageFiche { padding-left: 14px; padding-right: 14px; }
+  .pProprioPan { width: calc(100vw - 28px); }
+}

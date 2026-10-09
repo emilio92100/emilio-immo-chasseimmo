@@ -308,3 +308,8 @@
   .demGrille { grid-template-columns: 1fr; }
   .demAjout input { font-size: 16px; }
 }
+
+/* V3.152 — Le téléphone bord à bord : le dossier va d'un bord à l'autre. */
+@media (max-width: 760px) {
+  .dossier { border-radius: 0; border-left: none; border-right: none; }
+}

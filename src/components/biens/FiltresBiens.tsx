@@ -148,7 +148,7 @@ export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total, vue,
 
   return (
     <div className={`${b.aff} ${s.saisieVive}`}>
-      <div className={b.affL} role="toolbar" aria-label="Affiner la liste">
+      <div className={b.affL} role="toolbar" aria-label="Affiner la liste" data-defile="fondu">
         <span className={b.affT}><Ic n="cible" t={15} />Affiner</span>
         {boutons.map(x => (
           <button key={x.p} type="button" className={`${b.affB} ${x.v ? b.affOn : ''} ${ouvert === x.p ? b.affOuvert : ''}`}

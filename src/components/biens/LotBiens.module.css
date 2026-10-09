@@ -244,6 +244,10 @@
   display: inline-flex; align-items: center; justify-content: center; transition: color .15s, background-color .15s, border-color .15s;
 }
 .dX:hover { color: #b42318; background: #fef2f2; border-color: #fecaca; }
+/* V3.152 — Ce qu'il recevra par mail : son espace (client actif), ou un simple mail. */
+.recoit { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 22px; padding: 0 9px 0 7px; margin-top: 2px; border-radius: 99px; font: 700 11.5px 'DM Sans', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recoit[data-sorte='espace'] { background: #eaf2fb; color: #22497D; }
+.recoit[data-sorte='simple'] { background: #fbf6e9; color: #7a5d1c; }
 
 /* Un nom déjà pris, dans les résultats : coché vert ; un clic le retire. */
 .resL[data-pris='oui'] { background: #f4fbf7; }
@@ -280,7 +284,17 @@
 .pourPill {
   height: 32px; padding: 0 13px; border-radius: 99px; border: 1.5px solid #e3e8f0; background: #fff; color: #475569; cursor: pointer;
   font: 700 12.5px 'DM Sans', sans-serif; transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s;
+  display: inline-flex; align-items: center; gap: 6px;
 }
+/* V3.152 — Les deux textes : le mail des clients actifs, le simple mail des autres. */
+.sortes { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #eef1f6; }
+.sortes button {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 8px; border-radius: 9px; border: none; background: transparent;
+  color: #64748b; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; transition: background-color .15s, color .15s, box-shadow .15s;
+}
+.sortes button b { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #fff; color: #a07c28; font: 800 11px/18px 'Plus Jakarta Sans', sans-serif; box-sizing: border-box; }
+.sortes button[aria-selected='true'] { background: #fff; color: #1a2332; font-weight: 800; box-shadow: 0 1px 2px rgba(16, 24, 40, .08), 0 2px 8px -4px rgba(16, 24, 40, .18); }
+.sortes button[aria-selected='true'] b { background: #fbf6e9; }
 .pourPill:hover { border-color: #cfd7e3; }
 .pourPill[data-on='oui'] { background: #1a2332; border-color: #1a2332; color: #fff; box-shadow: 0 8px 16px -10px rgba(26, 35, 50, .8); }
 /* Comme dans une messagerie : l'expéditeur, le destinataire, l'objet, puis le mail. */
