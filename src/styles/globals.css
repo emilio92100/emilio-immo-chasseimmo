@@ -107,16 +107,19 @@ a { text-decoration: none; color: inherit; }
    LE MOUVEMENT
    Rien de spectaculaire : de courtes entrées qui disent d'où l'on vient.
    Aller vers une fiche pousse vers le haut, revenir glisse vers le bas.
+   V3.152 (style « C » choisi par Alexandre) : les fenêtres, menus et onglets
+   sont animés par src/lib/mouvement.ts ; un écran qui change arrive en
+   fondu, de 8 px seulement (avant : 38 px, ça tirait l'œil).
    ═══════════════════════════════════════════════════════════════════════ */
 
-@keyframes ecranAvant   { from { opacity: 0; transform: translateY(38px); } to { opacity: 1; transform: none; } }
-@keyframes ecranArriere { from { opacity: 0; transform: translateY(-22px); } to { opacity: 1; transform: none; } }
+@keyframes ecranAvant   { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ecranArriere { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
 /* Pas de fill-mode : une fois l'entrée jouée, plus aucune transformation ne
    reste sur l'écran. Un parent transformé devient sinon le repère de tout ce
    qui est « position: fixed » — fenêtres et bulles partent hors de l'écran. */
-.ecran-avant   { animation: ecranAvant   .42s cubic-bezier(.16,1,.3,1); }
-.ecran-arriere { animation: ecranArriere .34s cubic-bezier(.16,1,.3,1); }
+.ecran-avant   { animation: ecranAvant   .26s cubic-bezier(.16,1,.3,1); }
+.ecran-arriere { animation: ecranArriere .26s cubic-bezier(.16,1,.3,1); }
 
 /* Les lignes d'une liste arrivent l'une après l'autre, très vite. */
 @keyframes ligneEntre { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -124,17 +127,21 @@ a { text-decoration: none; color: inherit; }
 
 /* Une liste qui change de catégorie (« Mes vendeurs », « Mes estimations ») :
    ses éléments arrivent l'un après l'autre, en douceur (V3.25). Posé sur le
-   conteneur, avec une « key » qui change avec la catégorie. */
-.cascade > * { animation: ligneEntre .34s cubic-bezier(.16,1,.3,1) backwards; }
-.cascade > :nth-child(2) { animation-delay: 30ms; }
-.cascade > :nth-child(3) { animation-delay: 60ms; }
-.cascade > :nth-child(4) { animation-delay: 90ms; }
-.cascade > :nth-child(5) { animation-delay: 120ms; }
-.cascade > :nth-child(6) { animation-delay: 150ms; }
-.cascade > :nth-child(7) { animation-delay: 180ms; }
-.cascade > :nth-child(8) { animation-delay: 210ms; }
-.cascade > :nth-child(9) { animation-delay: 240ms; }
-.cascade > :nth-child(n+10) { animation-delay: 270ms; }
+   conteneur, avec une « key » qui change avec la catégorie.
+   V3.152 : c'est désormais <Cascade> (src/components/shared/Cascade.tsx)
+   qui fait tomber les blocs, comme les onglets ; ces règles ne servent plus
+   que de secours, quand le mouvement ne tourne pas (pas de classe `emi-mvt`
+   sur <html>). */
+html:not(.emi-mvt) .cascade > * { animation: ligneEntre .34s cubic-bezier(.16,1,.3,1) backwards; }
+html:not(.emi-mvt) .cascade > :nth-child(2) { animation-delay: 30ms; }
+html:not(.emi-mvt) .cascade > :nth-child(3) { animation-delay: 60ms; }
+html:not(.emi-mvt) .cascade > :nth-child(4) { animation-delay: 90ms; }
+html:not(.emi-mvt) .cascade > :nth-child(5) { animation-delay: 120ms; }
+html:not(.emi-mvt) .cascade > :nth-child(6) { animation-delay: 150ms; }
+html:not(.emi-mvt) .cascade > :nth-child(7) { animation-delay: 180ms; }
+html:not(.emi-mvt) .cascade > :nth-child(8) { animation-delay: 210ms; }
+html:not(.emi-mvt) .cascade > :nth-child(9) { animation-delay: 240ms; }
+html:not(.emi-mvt) .cascade > :nth-child(n+10) { animation-delay: 270ms; }
 
 /* Pendant qu'une liste se lit : sa silhouette, qui miroite doucement, au lieu
    d'un « Chargement… » qui laissait place d'un coup à tout le tableau. */

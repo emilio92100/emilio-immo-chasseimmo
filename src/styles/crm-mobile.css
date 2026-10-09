@@ -18,6 +18,32 @@
                l'espace · tx- transaction · crm- fenêtres génériques
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ═══ LES RANGÉES QUI DÉFILENT DE CÔTÉ (V3.152) ═══════════════════════════
+   Alexandre : « il faut mettre un peu de transparence sur chaque bord, pour
+   montrer qu'on peut défiler à droite et à gauche ». Chaque rangée d'onglets
+   ou de pastilles qui défile au doigt porte `data-defile` ; Defilement.tsx
+   lui pose `data-defile-g` / `data-defile-d` tant qu'il reste de quoi voir
+   à gauche / à droite. Le bord concerné s'efface alors en fondu sur 32 px,
+   et le fondu s'éteint en douceur quand on arrive au bout.
+   Le masque n'est posé que sur une rangée qui déborde vraiment ; il efface
+   aussi son fond, son cadre et son ombre : une rangée encadrée laisse son
+   cadre à son parent (voir FicheClient, FicheContact, EnteteRubrique).
+   Téléphone et tablette seulement : l'ordinateur ne change pas. */
+@property --defile-g { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --defile-d { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@media (max-width: 900px) {
+  html.crm [data-defile] { transition: --defile-g .22s ease, --defile-d .22s ease; }
+  html.crm [data-defile][data-defile-g], html.crm [data-defile][data-defile-d] {
+    -webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,0) 0, rgba(0,0,0,.45) calc(var(--defile-g) * .4), #000 var(--defile-g), #000 calc(100% - var(--defile-d)), rgba(0,0,0,.45) calc(100% - var(--defile-d) * .4), rgba(0,0,0,0) 100%);
+    mask-image: linear-gradient(90deg, rgba(0,0,0,0) 0, rgba(0,0,0,.45) calc(var(--defile-g) * .4), #000 var(--defile-g), #000 calc(100% - var(--defile-d)), rgba(0,0,0,.45) calc(100% - var(--defile-d) * .4), rgba(0,0,0,0) 100%);
+  }
+  html.crm [data-defile][data-defile-g] { --defile-g: 32px; }
+  html.crm [data-defile][data-defile-d] { --defile-d: 32px; }
+}
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) {
+  html.crm [data-defile] { transition: none; }
+}
+
 /* Le bouton qui déplie les critères n'existe que sur téléphone. */
 html.crm .fc-crit-bascule { display: none; }
 /* « Envoyer à Camille » (V3.87) : le choix survolé se dore (ordinateur et téléphone). */
@@ -178,7 +204,7 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
   html.crm .emi-onglets.sombre .emi-onglet[data-actif="true"]::after { display: none; }
 
   /* Onglet Suivi */
-  html.crm .fc-suivi-carte { padding: 14px 12px !important; }
+  html.crm .fc-suivi-carte { padding: 14px !important; }
   html.crm .fc-suivi-barre { flex-direction: column; flex-wrap: nowrap !important; align-items: stretch !important; margin-bottom: 16px !important; }
   html.crm .fc-suivi-filtres {
     flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
@@ -218,6 +244,9 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
   html.crm .le-lien { flex: 1 1 100%; max-width: none !important; padding: 8px 11px !important; font-size: 12px !important; white-space: normal !important; overflow-wrap: anywhere; }
   html.crm .le-btn { flex: 1 1 0; justify-content: center; padding: 10px 8px !important; font-size: 13px !important; border-radius: 11px !important; }
   html.crm .le-etat { flex: 1 1 100%; justify-content: center; margin-left: 0 !important; padding: 9px 11px !important; border-radius: 11px !important; }
+  /* V3.152 : le cadre du lien, d'un bord à l'autre de l'écran. */
+  html.crm .le-cadre { border-radius: 0 !important; border-left: none !important; border-right: none !important; }
+  html.crm .le-barre { padding: 12px 14px !important; }
 
   /* ═══ ONGLETS VEILLE · SÉLECTION · PRÉSENTÉS ═════════════════════════ */
 
@@ -310,6 +339,23 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
   html.crm .fc-types-action { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 
   /* PAGE VISITES : les cartes ont leurs propres règles téléphone (CartesVisites.module.css, V3.135). */
+
+  /* ═══ V3.152 — FICHE CLIENT, bord à bord ══════════════════════════════
+     Alexandre : « sur le mobile tout est bridé, condensé ». Le bandeau du
+     suivi (« Où en est la recherche ») et son panneau vont d'un bord à
+     l'autre ; les cartes des biens aussi, sans arrondi ni cadre sur les
+     côtés. Les titres et les textes du panneau gardent 14 px de marge. */
+  html.crm .fiche-suivi { margin-top: 14px; padding: 12px 0 0; border-radius: 0; }
+  html.crm .fiche-suivi-tete { padding: 0 14px 10px; }
+  html.crm .fiche-suivi-tete > .fiche-suivi-rappro, html.crm .fiche-suivi-tete > .fiche-suivi-reinit { margin-left: 0; }
+  html.crm .fiche-suivi .emi-onglets { padding: 0 12px !important; }
+  html.crm .fiche-tab { padding: 12px 14px; border-radius: 0; border-left: none; border-right: none; }
+  /* Les cartes sont posées « en ligne » (OngletBiens, OngletVeille) : d'où
+     `!important`. Les marges négatives les amènent au bord de l'écran. */
+  html.crm .fiche-tab .emi-carte, html.crm .fiche-tab .emi-ligne {
+    margin-left: -14px !important; margin-right: -14px !important;
+    border-radius: 0 !important; border-left: none !important; border-right: none !important;
+  }
 }
 
 @keyframes crmDeplie { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
