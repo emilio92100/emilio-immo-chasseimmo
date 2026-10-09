@@ -1499,6 +1499,35 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.151 — 9 octobre 2026 · Le mail est-il arrivé ? « \n » et signature en double ; Demandes d'abord
+
+Alexandre : « chaque mail que j'envoie, un spinner qui permet de voir si ça a bien été envoyé, et
+sinon un message rouge, et que ça reste sur la même page » ; « dans le mail, il y a des slash n…
+et Cordialement Alexandre Rogelet écrit en deux » ; « Demandes tout à gauche, et qu'on arrive
+dessus quand il y en a une ».
+
+- **La cause** : jusqu'ici, rien ne lisait la réponse de la messagerie du destinataire. Mailjet
+  accepte l'envoi, puis la boîte refuse (adresse inconnue, boîte pleine) : l'information restait
+  chez Mailjet.
+- **Côté serveur** (`src/lib/remise-mail.ts`) : chaque route d'envoi note les mails partis
+  (`noterRemises`, l'identifiant lu dans `MessageHref` — `MessageID` dépasse la précision de JS) et
+  sa réponse porte `remise` (`avecRemises`, AsyncLocalStorage : send-mail, mail, biens-vente,
+  documents, documents/signature, mandat/cosignataire, mandat/retrait, et les mails du mandat).
+  `/api/mail/remise` demande à Mailjet l'état de chaque mail (`/v3/REST/message/{id}` : `Status`,
+  `StatePermanent`, `StateID` traduit en français) et note un refus UNE fois dans le Suivi du contact
+  (« ❌ Mail non distribué — objet », `metadata.remise`).
+- **Côté écran** (`SuiviRemises`, dans AppLayout) : chaque réponse qui porte `remise` ouvre une carte
+  en bas, sur n'importe quelle page — « Vérification de la remise… », puis « Bien arrivé » (vert, qui
+  s'efface) ou « Non distribué » avec la raison (rouge, reste jusqu'à la croix, « Ouvrir sa fiche »).
+  Sans réponse en 20 s : « Parti, sa messagerie n'a pas encore répondu », et la vérification continue
+  toutes les 30 s pendant 10 minutes. « Envoyer ce bien » suit ses envois lui-même (en-tête
+  `x-remise-suivie`) : la personne refusée passe en rouge, le bien reste dans sa sélection.
+- **Modèle de mail** (`mail-variables.ts`) : `texteModele` remplace les « \n » écrits en toutes
+  lettres par de vrais retours à la ligne (modèle, objet, signature, aussi dans Paramètres) ;
+  `dejaSigne` reconnaît un texte déjà signé (formule de politesse + prénom du conseiller) : plus de
+  signature en double.
+- **Visites** : l'onglet Demandes est le premier, et la page s'ouvre dessus quand il y en a.
+
 ### V3.150 — 9 octobre 2026 · Le bien envoyé, cliquable ; l'acheteur, cliquable
 
 Alexandre : « dans Communications, 1 bien joint, maison 7 pièces : il faudrait pouvoir appuyer
