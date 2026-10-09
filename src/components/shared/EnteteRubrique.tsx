@@ -136,7 +136,10 @@ export default function EnteteRubrique({
      cachée au téléphone. */
   phraseOrdi?: boolean;
   recherche?: { valeur: string; onChange: (v: string) => void; placeholder: string; label: string };
-  bouton?: { lib: string; onClick: () => void };
+  /* V3.146 (Visites, « Organiser une visite » — Alexandre : « un joli bouton
+     qui flotte un peu ») : `vedette`, le geste principal de la page, doré,
+     qui flotte doucement ; `ic` remplace le « + ». */
+  bouton?: { lib: string; onClick: () => void; ic?: ReactNode; vedette?: boolean };
   /* Un second bouton, plus discret, avant le premier (V3.61 : « Importer
      depuis ImmoFacile »). `court` : son libellé sur téléphone. */
   bouton2?: { lib: string; court?: string; ic?: ReactNode; onClick: () => void };
@@ -236,8 +239,10 @@ export default function EnteteRubrique({
               </button>
             )}
             {bouton && (
-              <button type="button" className={styles.bouton} onClick={bouton.onClick}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              <button type="button" className={`${styles.bouton} ${bouton.vedette ? styles.vedette : ''}`} onClick={bouton.onClick}>
+                {bouton.ic
+                  ? <span className={styles.boutonIc} aria-hidden="true">{bouton.ic}</span>
+                  : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>}
                 <span>{bouton.lib}</span>
               </button>
             )}
