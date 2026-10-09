@@ -674,6 +674,13 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   const vuePosee = useRef(false);
   const choisirVue = (k: Vue) => { vuePosee.current = true; setVue(k); setSous('tout'); };
   const [cherche, setCherche] = useState('');
+  /* Une recherche porte sur tous les documents : l'onglet passe à « Tous »
+     (sinon un document signé cherché depuis « Signatures en cours » ne
+     se trouverait pas). Effacée, on reste où l'on est. */
+  const chercher = (v: string) => {
+    if (v.trim() && !cherche.trim()) { vuePosee.current = true; setVue('tout'); setSous('tout'); }
+    setCherche(v);
+  };
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState<{ modele?: string; clientId?: string; confrereId?: string } | null>(null);
   const [edition, setEdition] = useState<DocumentRow | null>(null);
@@ -977,7 +984,6 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
             aEnvoyer ? `${aEnvoyer} courrier${aEnvoyer > 1 ? 's' : ''} à envoyer` : '',
             aDeposer ? `${aDeposer} exemplaire${aDeposer > 1 ? 's' : ''} signé${aDeposer > 1 ? 's' : ''} à déposer` : ''].filter(Boolean).join(' · ')
           : 'Mandats, avenants, offres d’achat, bons de visite : prêts à imprimer et à signer.'}
-        recherche={items.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Chercher un nom, une adresse, un numéro…', label: 'Chercher un document' } : undefined}
         bouton={absente ? undefined : { lib: 'Nouveau document', onClick: () => setNouveau({}) }}
         label="Filtrer par état" actif="" onChoisir={() => {}} tuiles={[]} />
 
@@ -1019,8 +1025,20 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       {/* ── Les documents ── */}
       {!absente && (
         <div className={`${s.blocT} ${s.listeT} ${s.ancre}`} ref={refListe}>
-          <h2>Liste des documents</h2>
-          <span>{docs === null ? '' : items.length === 0 ? 'Aucun pour l’instant' : `${items.length} document${items.length > 1 ? 's' : ''}`}</span>
+          <div className={s.listeTitre}>
+            <h2>Liste des documents</h2>
+            <span>{docs === null ? '' : items.length === 0 ? 'Aucun pour l’instant' : `${items.length} document${items.length > 1 ? 's' : ''}`}</span>
+          </div>
+          {/* V3.153 (Alexandre : « la barre de recherche est en haut, au-dessus de
+              Créer un document ; on tape le nom et il faut descendre pour voir le
+              résultat ») : elle est ici, juste au-dessus de la liste. */}
+          {items.length > 0 && (
+            <label className={s.chercheListe}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7" /><path d="m20.5 20.5-4.7-4.7" /></svg>
+              <input value={cherche} onChange={e => chercher(e.target.value)} placeholder="Chercher un nom, une adresse, un numéro…" aria-label="Chercher un document" type="search" />
+              {cherche && <button type="button" onClick={() => chercher('')} aria-label="Effacer la recherche"><Croix t={14} /></button>}
+            </label>
+          )}
         </div>
       )}
       {items.length > 0 && (
