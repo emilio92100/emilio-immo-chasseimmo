@@ -1499,6 +1499,22 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.159 — 10 octobre 2026 · « Pour qui ? » : l'avatar du client, les photos et la recherche des biens
+
+Alexandre, sur la fenêtre « Bon de visite : pour qui ? » : « quand je choisis le nom, il n'y a pas
+la petite icône avec l'avatar, le nom un peu plus joli » ; « les biens : préciser d'où ils viennent,
+ajouter les photos, et une petite barre de recherche, par une surface ».
+
+- NouveauDocument.tsx (tous les documents qui demandent un client) : chaque client avec son avatar
+  (`AvatarContact`, la teinte de son type), son nom de foyer (`nomFoyer`) en gras, et dessous ses
+  types puis son adresse ; pareil pour le client choisi. Les clients sont lus avec `*` (les colonnes
+  de l'avatar — civilité, couple — n'existent pas forcément dans toutes les bases).
+- Le bien (bon de visite, offre d'achat) : « Le bien visité » (bon de visite), avec la phrase « Parmi
+  les biens de <prénom> : sa Sélection et les biens présentés dans son espace. » ; chaque bien avec
+  sa photo, son adresse (ou son quartier), « Mon mandat » ou l'agence, son prix et « Sélection » ou
+  « Présenté » ; au-delà de quatre biens, une recherche (une surface, un nombre de pièces, une rue, un
+  prix). « Aucun de ceux-là : je l'écrirai dans le document » reste en tête de liste.
+
 ### V3.158 — 10 octobre 2026 · « Son dossier » devient « Ses biens »
 
 Alexandre : « dans son dossier, ça veut dire quoi ? ». Dans « Ajouter un bien » d'un bon de visite
