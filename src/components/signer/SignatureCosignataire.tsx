@@ -23,6 +23,7 @@ import {
   redigerMandat, resumeMandat, validerMandant, titreMandat, dateLongue, heureParis, RETRACTATION_JOURS,
   type Mandant, type Recherche,
 } from '@/lib/mandat';
+import { BlocAdresse, BlocNaissance, manquesAdresse } from '@/components/espace/ChampsLieu';
 import type { IdentiteAgence } from '@/lib/agence';
 import {
   Ic, TexteMandat, Champ, ChampDate, PadSignature, couperAdresse, joindreAdresse, ERREURS, CSS_MANDAT, type Adresse,
@@ -102,19 +103,15 @@ export default function SignatureCosignataire({ d }: { d: DonneesSigner }) {
     recherche: d.recherche, executionImmediate: d.execution, signature: { le: d.premierLe, email: d.premier.email },
   }, d.identite), [d, m]);
 
-  const majAdr = (k: keyof Adresse) => (v: string) => {
-    const x = { ...adr, [k]: k === 'cp' ? v.replace(/[^0-9A-Za-z -]/g, '').slice(0, 10) : v };
+  const changeAdr = (x: Adresse) => {
     setAdr(x); setM(o => ({ ...o, adresse: joindreAdresse(x) }));
-    setChamps(c => ({ ...c, adresse: '', [k]: '' }));
+    setChamps(c => ({ ...c, adresse: '', rue: '', cp: '', ville: '', pays: '' }));
   };
   const maj = (k: keyof Mandant) => (v: string) => { setM(x => ({ ...x, [k]: v })); setChamps(c => ({ ...c, [k]: '' })); };
 
   const demanderCode = async () => {
     const v = validerMandant(m);
-    const manque: Record<string, string> = {};
-    if (adr.rue.trim().length < 3) manque.rue = 'Numéro et rue';
-    if (!/^[0-9A-Za-z -]{4,10}$/.test(adr.cp.trim())) manque.cp = 'Code postal';
-    if (adr.ville.trim().length < 2) manque.ville = 'Ville';
+    const manque: Record<string, string> = manquesAdresse(adr);
     if (!certifie) manque.certifie = 'Cochez cette case pour recevoir votre code.';
     if (!v.ok || Object.keys(manque).length) { setChamps({ ...(v.ok ? {} : v.champs), ...manque }); return; }
     setEnvoi(true); setErreur('');
@@ -345,15 +342,9 @@ export default function SignatureCosignataire({ d }: { d: DonneesSigner }) {
           <Champ lib="Prénom" val={m.prenom} onChange={maj('prenom')} err={champs.prenom} auto="given-name" />
           <Champ lib="Nom" val={m.nom} onChange={maj('nom')} err={champs.nom} auto="family-name" />
         </div>
-        <div className="mdt-deux">
-          <ChampDate lib="Date de naissance" val={m.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />
-          <Champ lib="Lieu de naissance" val={m.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu} placeholder="Ville (département)" />
-        </div>
-        <Champ lib="Adresse" val={adr.rue} onChange={majAdr('rue')} err={champs.rue || champs.adresse} auto="address-line1" placeholder="Numéro et rue" />
-        <div className="mdt-cpv">
-          <Champ lib="Code postal" val={adr.cp} onChange={majAdr('cp')} err={champs.cp} mode="numeric" auto="postal-code" />
-          <Champ lib="Ville" val={adr.ville} onChange={majAdr('ville')} err={champs.ville} auto="address-level2" />
-        </div>
+        <BlocNaissance civilite={m.civilite} val={m.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu}
+          date={<ChampDate lib="Date de naissance" val={m.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />} />
+        <BlocAdresse adr={adr} onAdr={changeAdr} champs={champs} />
         {/* V3.43 : le code part à l'adresse qui a reçu ce lien, pas à une
             adresse tapée ici. Une erreur d'adresse se corrige depuis
             l'espace du premier signataire (« Corriger son adresse »). */}
