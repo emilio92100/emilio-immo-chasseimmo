@@ -166,12 +166,19 @@ export async function documentsDuBien(b: BienVente): Promise<DocLie[]> {
   /* « * » (V3.32) : la colonne `signature` n'existe que si le SQL de la
      signature en ligne est passé ; la nommer ferait échouer la lecture. */
   const cols = '*';
-  const [a, m] = await Promise.all([
+  const [a, m, v] = await Promise.all([
     supabase.from('documents').select(cols).eq('donnees->>bienVenteId', b.id).order('created_at', { ascending: false }).limit(60),
     b.document_id ? supabase.from('documents').select(cols).eq('id', b.document_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    /* V3.154 : un bon de visite à plusieurs biens, où ce bien n'est pas le
+       premier : il est dans `autresBiens`, avec son identifiant. */
+    supabase.from('documents').select(cols).eq('modele', 'bon_visite').contains('donnees', { autresBiens: [{ bienVenteId: b.id }] })
+      .order('created_at', { ascending: false }).limit(60),
   ]);
   if (a.error) throw new Error('Les documents du bien n’ont pas pu être lus : ' + a.error.message);
+  /* Illisibles, ces bons-là seuls manquent : la fiche reste lisible. */
+  if (v.error) console.error('[biens] les bons de visite à plusieurs biens :', v.error.message);
   let l = (a.data || []) as DocLie[];
+  for (const x of (v.data || []) as DocLie[]) if (!l.some(y => y.id === x.id)) l.push(x);
   const lie = m.data as DocLie | null;
   if (lie && !l.some(x => x.id === lie.id)) l = [lie, ...l];
   /* Les avenants, courriers de reconduction et délégations faits à partir de
@@ -2231,9 +2238,10 @@ export async function creerDocument(b: BienVente, x: PourDocument): Promise<stri
       notaire: String(d.notaire || base.notaire || ''),
     };
   } else {
-    const docs = ['erp', 'dpe', 'fiche', ...(d.copro === 'oui' ? ['copro'] : [])];
+    /* V3.154 : plus de « documents remis » ; le prix est celui de l'annonce
+       (sans l'identifiant du bien en vente, `defaut` prenait le net vendeur). */
     donnees = {
-      ...base, bienVenteId: b.id, role: 'vendeur', reference: b.reference || '', agenceVendeur: '', docs,
+      ...base, bienVenteId: b.id, role: 'vendeur', reference: b.reference || '', agenceVendeur: '', prix: a.prix ?? base.prix ?? null,
       ...(x.personne ? { visiteurs: [x.personne] } : {}),
       ...(x.visite?.date ? { dateVisite: x.visite.date } : {}), ...(x.visite?.heure ? { heure: x.visite.heure } : {}),
     };

@@ -4,6 +4,7 @@ import { euros } from '@/lib/mandat';
 import { ISSUES, type Issue } from '@/lib/visites';
 import { ETATS_PIECE, LONGUEUR_ANNONCE, echangesDe, etapeDe, m2, montantActuel, nomExpo, pictoPiece, type BienVente, type Photo, type Piece, type Reponse, type SuiviVente } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
+import { LibelleBon, type EtatBon } from '@/components/documents/BonDeVisite';
 import Depliant from '@/components/shared/Depliant';
 import AvatarContact, { type Personne, type Teinte } from '@/components/contacts/AvatarContact';
 import { BoutonPli, PastillePli } from '@/components/shared/Pli';
@@ -656,10 +657,12 @@ function Pave({ ymd, sorte }: { ymd: string; sorte: 'prochaine' | 'avenir' | 'pa
     </div>
   );
 }
-export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche, onDeplacer, onCreerFiche }: {
+export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche, onDeplacer, onCreerFiche, bonEtat }: {
   v: VisiteCarte; prochaine?: boolean; onCR: () => void; onAnnuler: () => void; onDoc: () => void; onFiche?: () => void;
   /* V3.50 : déplacer une visite prévue ; la fiche d'un visiteur hors CRM. */
   onDeplacer?: () => void; onCreerFiche?: () => void;
+  /* V3.154 : où en est son bon — « Bon de visite (à signer) »… */
+  bonEtat?: EtatBon | null;
 }) {
   const iss = v.issue ? ISSUES[v.issue] : null;
   const annulee = v.statut === 'annulee';
@@ -686,7 +689,7 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche, on
         {!annulee && (
           <div className={o.acts}>
             {v.passee && <button type="button" className={`${o.act} ${aFaire ? o.actOr : ''}`} onClick={onCR}>{aFaire ? 'Faire le compte rendu' : 'Revoir le compte rendu'}</button>}
-            <button type="button" className={o.act} onClick={onDoc}><Ic n="plume" t={13} />Bon de visite</button>
+            <button type="button" className={o.act} onClick={onDoc}><Ic n="plume" t={13} /><LibelleBon etat={bonEtat} /></button>
             {onFiche && <button type="button" className={o.act} onClick={onFiche}><Ic n="personne" t={13} />Sa fiche</button>}
             {onCreerFiche && <button type="button" className={o.act} onClick={onCreerFiche}><Ic n="plus" t={13} />Créer sa fiche</button>}
             {onDeplacer && <button type="button" className={o.act} onClick={onDeplacer}><Ic n="calendrier" t={13} />Déplacer</button>}

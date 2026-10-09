@@ -32,6 +32,8 @@ import { exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@
 import FenetreSigne from '@/components/documents/FenetreSigne';
 import SuiviSignature, { lireSuivis, type Suivi } from '@/components/documents/SuiviSignature';
 import { DocsParEtat, depuisDoc } from '@/components/documents/DocumentsDuClient';
+import { useBonDeVisite, useEtatsBons, type DepartBon } from '@/components/documents/BonDeVisite';
+import { biensDuBon } from '@/lib/actes/bon-visite';
 import { mandatVenteEnCours } from '@/lib/coherence';
 import { etapeAvantMandat } from '@/lib/mandat-bien';
 import s from '@/components/documents/Documents.module.css';
@@ -1336,14 +1338,29 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
       await ouvrirClient(c.id);
     } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
   }
-  function bonDeVisite(v: VisiteU) {
+  /* V3.154 — Le bon de visite d'une visite (BonDeVisite.tsx) : celui qui la
+     porte déjà s'ouvre ; sinon il se prépare avec l'acheteur (et son
+     conjoint), ce bien et la visite. Ses autres visites du jour, sur
+     d'autres biens : on demande s'il faut les y mettre. */
+  const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id }), onErreur: t => setMessage({ t, ok: false }) });
+  const etatBon = useEtatsBons();
+  function departDe(v: VisiteU): DepartBon {
     const cl = v.clientId ? liste.clients[v.clientId] : null;
-    const [prenom, ...reste] = v.qui.split(' ');
-    faireDocument({
-      modele: 'bon_visite', clientId: v.clientId, rechercheId: v.rechercheId, visite: { date: v.ymd, heure: v.heure },
-      personne: cl ? { civilite: '', prenom: cl.prenom || '', nom: cl.nom || '', nomNaissance: '', naissanceDate: '', naissanceLieu: '', adresse: cl.adresse || '', email: cl.emails?.[0] || '', telephone: cl.telephones?.[0] || '' }
-        : { civilite: '', prenom: reste.length ? prenom : '', nom: reste.length ? reste.join(' ') : v.qui, nomNaissance: '', naissanceDate: '', naissanceLieu: '', adresse: '', email: '', telephone: String(v.libre?.donnees?.tel || '') },
-    });
+    const dd = bien.donnees || {};
+    return {
+      visite: {
+        cle: v.crm ? v.crm.id : v.libre ? `s-${v.libre.id}` : v.cle, ymd: v.ymd, heure: v.heure,
+        bienId: v.crm?.bien_id || null, bienVenteId: bien.id,
+        titre: titreBien(dd), lieu: [txt(dd, 'adresse'), txt(dd, 'ville') || bien.ville].filter(Boolean).join(', '),
+      },
+      clientId: v.clientId, rechercheId: v.rechercheId, qui: cl?.prenom || v.qui,
+      visiteur: cl ? null : { ...personneVide(v.qui), telephone: String(v.libre?.donnees?.tel || '') },
+      bienVente: bien,
+    };
+  }
+  function bonDeVisite(v: VisiteU) {
+    setMessage(null);
+    void bonVisite.lancer(departDe(v));
   }
   /* Le document d'une offre (V3.45) : celui déjà commencé s'ouvre, au lieu
      d'en créer un nouveau à chaque clic. */
@@ -1978,16 +1995,21 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
       detail: 'Prérempli avec le bien, le propriétaire, le prix et les honoraires. Signé ailleurs (papier, autre logiciel) : « Déjà signé ? ».',
       actions: <><BoutonAct or onClick={() => faireDocument({ modele: 'mandat_vente' })}><Ic n="plume" t={13} />Préparer le mandat</BoutonAct><BtnTuile onClick={dejaSigne}>Déjà signé ?</BtnTuile></>,
     },
-    avant ? { k: 'bons', ic: 'calendrier', titre: 'Les bons de visite', etat: 'plustard', statut: 'Après le mandat', detail: 'Un par visite, prérempli avec l’acheteur et le bien : il protège tes honoraires.' } : {
+    avant ? { k: 'bons', ic: 'calendrier', titre: 'Les bons de visite', etat: 'plustard', statut: 'Après le mandat', detail: 'Prérempli avec l’acheteur et le bien, et ses autres visites du jour s’il le faut : il protège tes honoraires.' } : {
       k: 'bons', ic: 'calendrier', titre: 'Les bons de visite', etat: bons.length ? (bonsSignes === bons.length ? 'fait' : 'encours') : 'libre',
       statut: bons.length ? (() => {
         const aSigner = bons.filter(x => x.statut === 'pret').length, prepa = bons.filter(x => x.statut === 'brouillon').length;
         return [bonsSignes ? `${bonsSignes} signé${bonsSignes > 1 ? 's' : ''}` : '', aSigner ? `${aSigner} à faire signer` : '', prepa ? `${prepa} en préparation` : ''].filter(Boolean).join(' · ');
       })() : 'Aucun pour l’instant',
-      detail: 'Un par visite, prérempli avec l’acheteur et le bien : il protège tes honoraires.',
+      detail: 'Prérempli avec l’acheteur et le bien, et ses autres visites du jour s’il le faut : il protège tes honoraires.',
       suite: bons.length ? <ChaineDocs items={[...bons].sort(parDate).map(x => {
-        const dv = txt((x.donnees || {}) as Donnees, 'dateVisite');
-        return maillon(x, sansPrefixe(x.titre, /^Bon de visite\s*·\s*/) || 'Bon de visite', { avant: dv ? `visite du ${dateCourte(dv)}` : '' });
+        /* V3.154 : un bon à plusieurs biens — la date de la visite de CE
+           bien (il peut être le 2e de la liste), et combien il en porte. */
+        const l = biensDuBon((x.donnees || {}) as Donnees);
+        const dv = (l.find(y => y.bienVenteId === bien.id) || l[0]).dateVisite;
+        return maillon(x, sansPrefixe(x.titre, /^Bon de visite\s*·\s*/).replace(/\s*·\s*\d+ biens$/, '') || 'Bon de visite', {
+          avant: [dv ? `visite du ${dateCourte(dv)}` : '', l.length > 1 ? `${l.length} biens sur ce bon` : ''].filter(Boolean).join(' · '),
+        });
       })} /> : undefined,
       actions: <>{bons.length > 0 && <BtnTuile onClick={() => ouvrirDoc(bons[0].id)}>Voir</BtnTuile>}<BtnTuile onClick={() => faireDocument({ modele: 'bon_visite' })}><Ic n="plus" t={12} e={2.6} />Nouveau bon</BtnTuile></>,
     },
@@ -2162,6 +2184,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
       </div>
 
       {message && <div className={`${message.ok ? s.note : s.erreur} ${b.messageFiche}`}>{message.t}</div>}
+      {bonVisite.enCours && !message && <div className={`${s.note} ${b.messageFiche}`}>Préparation du bon de visite…</div>}
+      {bonVisite.fenetre}
       {erreur && <div className={`${s.erreur} ${b.messageFiche}`}>{erreur}</div>}
 
       <CorpsOnglet k={onglet} ordre={ONGLETS.map(o => o.k)}>
@@ -2250,7 +2274,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
               if (!v) return null;
               const opt = v.clientId ? options.find(y => y.clientId === v.clientId && (!v.rechercheId || y.rechercheId === v.rechercheId)) : undefined;
               return {
-                onCR: () => setCr(v), onAnnuler: () => annulerVisite(v), onDoc: () => bonDeVisite(v),
+                onCR: () => setCr(v), onAnnuler: () => annulerVisite(v), onDoc: () => bonDeVisite(v), bonEtat: etatBon(departDe(v)),
                 onFiche: v.clientId ? () => ouvrirClient(v.clientId!) : undefined,
                 /* V3.50 : déplacer une visite encore prévue (pas sur un bien vendu, retiré ou archivé). */
                 onDeplacer: p.repondreOffre && v.statut === 'a_venir' && !v.issue ? () => setFen({ k: 'deplacer', v }) : undefined,

@@ -23,6 +23,7 @@ import { Ic } from '@/components/documents/ApercuActe';
 import Depliant from '@/components/shared/Depliant';
 import { PastillePli } from '@/components/shared/Pli';
 import { CarteOffreB, CarteVisiteB, dateAn, type ActionsOffre, type VisiteCarte } from './OngletsBien';
+import { LibelleBon, type EtatBon } from '@/components/documents/BonDeVisite';
 import x from './VisitesOffres.module.css';
 
 const NBSP = ' ';
@@ -35,6 +36,8 @@ const ouverte = (o: SuiviVente) => !o.statut || o.statut === 'en_attente' || o.s
 export type ActionsVisite = {
   onCR: () => void; onAnnuler: () => void; onDoc: () => void; onFiche?: () => void; onOffre?: () => void;
   onDeplacer?: () => void; onRevoir?: () => void; onCreerFiche?: () => void;
+  /* V3.154 : où en est son bon de visite. */
+  bonEtat?: EtatBon | null;
 };
 export type { ActionsOffre };
 
@@ -193,7 +196,7 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
                   <div className={x.grille}>
                     {aFaireV.map(v => {
                       const a = actVisite(v.cle);
-                      return a ? <CarteVisiteB key={v.cle} v={v} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} onDeplacer={a.onDeplacer} onCreerFiche={a.onCreerFiche} /> : null;
+                      return a ? <CarteVisiteB key={v.cle} v={v} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} onDeplacer={a.onDeplacer} onCreerFiche={a.onCreerFiche} bonEtat={a.bonEtat} /> : null;
                     })}
                   </div>
                 </div>
@@ -204,7 +207,7 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
                   <div className={x.grille}>
                     {avenir.map((v, i) => {
                       const a = actVisite(v.cle);
-                      return a ? <CarteVisiteB key={v.cle} v={v} prochaine={i === 0} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} onDeplacer={a.onDeplacer} onCreerFiche={a.onCreerFiche} /> : null;
+                      return a ? <CarteVisiteB key={v.cle} v={v} prochaine={i === 0} onCR={a.onCR} onAnnuler={a.onAnnuler} onDoc={a.onDoc} onFiche={a.onFiche} onDeplacer={a.onDeplacer} onCreerFiche={a.onCreerFiche} bonEtat={a.bonEtat} /> : null;
                     })}
                   </div>
                 </div>
@@ -281,7 +284,7 @@ function LigneVisite({ v, a }: { v: VisiteCarte; a: ActionsVisite | null }) {
             {v.issue === 'offre' && a.onOffre && <button type="button" className={x.actOr} onClick={a.onOffre}><Ic n="euro" t={13} />Enregistrer son offre</button>}
             {a.onRevoir && <button type="button" className={x.actOr} onClick={a.onRevoir}><Ic n="calendrier" t={13} />Planifier une 2e visite</button>}
             <button type="button" onClick={a.onCR}>Le compte rendu</button>
-            <button type="button" onClick={a.onDoc}><Ic n="plume" t={13} />Bon de visite</button>
+            <button type="button" onClick={a.onDoc}><Ic n="plume" t={13} /><LibelleBon etat={a.bonEtat} /></button>
             {a.onFiche && <button type="button" onClick={a.onFiche}><Ic n="personne" t={13} />Sa fiche</button>}
             {a.onCreerFiche && <button type="button" onClick={a.onCreerFiche}><Ic n="plus" t={13} />Créer sa fiche</button>}
           </div>
