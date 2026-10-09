@@ -19,7 +19,8 @@ import { ISSUES, issueDe, maintenantParis, visitePasseeParis, type Issue } from 
 import { annulerVisites } from '@/lib/annuler-visites';
 import { jourParis } from '@/lib/mandat';
 import type { SuiviVente } from '@/lib/biens-vente';
-import { annulerVisiteLibre, majSuivi } from '@/components/biens/outils';
+import { annulerVisiteLibre, majSuivi, personneVide } from '@/components/biens/outils';
+import { LibelleBon, useBonDeVisite, useEtatsBons, type DepartBon, type EtatBon } from '@/components/documents/BonDeVisite';
 import { personneDe } from '@/components/contacts/AvatarContact';
 import OrganiserVisite from './OrganiserVisite';
 
@@ -90,7 +91,7 @@ function Enveloppe() {
 }
 
 /* Les pictos dessinés de la page : demandes de visite (V3.129), cartes des visites (V3.135). */
-type NomPicto = 'cal' | 'fiche' | 'croix' | 'maison' | 'tel' | 'check' | 'cr' | 'pin' | 'fleche' | 'etoile';
+type NomPicto = 'cal' | 'fiche' | 'croix' | 'maison' | 'tel' | 'check' | 'cr' | 'pin' | 'fleche' | 'etoile' | 'bon';
 function Picto({ n, t = 16, plein }: { n: NomPicto; t?: number; plein?: boolean }) {
   return (
     <svg width={t} height={t} viewBox="0 0 24 24" fill={plein ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
@@ -104,6 +105,7 @@ function Picto({ n, t = 16, plein }: { n: NomPicto; t?: number; plein?: boolean 
       {n === 'pin' && <><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></>}
       {n === 'fleche' && <path d="m9 6 6 6-6 6" />}
       {n === 'etoile' && <path d="m12 3.5 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />}
+      {n === 'bon' && <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="m9 14.5 2.2 2.2L15.5 12" /></>}
     </svg>
   );
 }
@@ -235,6 +237,36 @@ function parJournee(liste: any[], regrouper: boolean): any[][] {
   return [...paquets.values()].map(p => p.sort((a, b) => h(a).localeCompare(h(b))));
 }
 
+/* V3.154 — Le bon de visite d'une visite (BonDeVisite.tsx) : la visite
+   telle que la page la connaît. Hors CRM, le bien est celui de l'agence
+   (`libre.bien_id`) et, sans fiche, le visiteur est le nom noté. */
+function departBon(v: any): DepartBon {
+  const lieu = [v.biens?.quartier, v.biens?.ville].filter(Boolean).join(', ');
+  const libre = v.libre as SuiviVente | undefined;
+  const clientId = v.clients?.id || v.client_id || null;
+  return {
+    visite: {
+      cle: String(v.id), ymd: v.date_visite ? String(v.date_visite).slice(0, 10) : '',
+      heure: /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '',
+      bienId: v.bien_id || null, bienVenteId: (libre ? libre.bien_id : v.biens?.bien_vente_id) || null,
+      titre: v.biens?.titre || lieu || 'Bien', lieu,
+    },
+    clientId, rechercheId: v.recherche_id || null,
+    qui: v.clients?.prenom || v.clients?.nom || '',
+    visiteur: libre && !clientId ? { ...personneVide(String(libre.qui || '')), telephone: String(v.tel || '') } : null,
+  };
+}
+
+/* Le bouton « Bon de visite » d'une carte, le même partout. */
+function BoutonBon({ onBon, enCours, etat }: { onBon: () => void; enCours: boolean; etat?: EtatBon | null }) {
+  return (
+    <button type="button" className={cv.btn} onClick={onBon} disabled={enCours}
+      title={etat ? 'Ouvrir le bon de visite' : 'Le bon de visite, prérempli avec le client et le bien'}>
+      <Picto n="bon" t={15} /><LibelleBon etat={etat} enCours={enCours} />
+    </button>
+  );
+}
+
 function Etoiles({ n }: { n: number }) {
   return (
     <span className={cv.etoiles} aria-label={`${n} sur 5`}>
@@ -244,9 +276,11 @@ function Etoiles({ n }: { n: number }) {
   );
 }
 
-function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, onRappel }: {
+function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, onRappel, onBon, bonEnCours, bonEtat }: {
   v: any; groupe: Groupe; auj: string; rang: number;
   onClient: () => void; onBien: () => void; onCR: () => void; onAnnuler: () => void; onRappel: () => void;
+  /* V3.154 : le bon de visite, prérempli (BonDeVisite.tsx). */
+  onBon: () => void; bonEnCours: boolean; bonEtat?: EtatBon | null;
 }) {
   const ton = groupe === 'a_faire' ? { date: cv.dateAfaire, past: cv.pastAfaire } : groupe === 'a_venir' ? { date: cv.dateAvenir, past: cv.pastAvenir } : { date: cv.dateFaite, past: cv.pastFaite };
   const iso = v.date_visite ? String(v.date_visite).slice(0, 10) : '';
@@ -335,6 +369,7 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
       <div className={cv.actions}>
         {groupe === 'a_faire' && <>
           <button type="button" className={`${cv.btn} ${cv.btnOr}`} onClick={onCR}><Picto n="cr" t={15} /><span>Faire le compte rendu</span></button>
+          <BoutonBon onBon={onBon} enCours={bonEnCours} etat={bonEtat} />
           {voir}
           <button type="button" className={`${cv.btn} ${cv.btnDiscret}`} onClick={onAnnuler}><Picto n="croix" t={14} /><span>Annuler</span></button>
         </>}
@@ -343,9 +378,13 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
           {v.libre
             ? (telLien ? <a className={`${cv.btn} ${cv.btnRappel}`} href={telLien}><Picto n="tel" t={15} /><span>Appeler</span></a> : voir)
             : <button type="button" className={`${cv.btn} ${v.rappel_envoye_le ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{v.rappel_envoye_le ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>}
+          <BoutonBon onBon={onBon} enCours={bonEnCours} etat={bonEtat} />
           <button type="button" className={`${cv.btn} ${cv.btnDiscret}`} onClick={onAnnuler}><Picto n="croix" t={14} /><span>Annuler</span></button>
         </>}
-        {groupe === 'effectuee' && voir}
+        {groupe === 'effectuee' && <>
+          <BoutonBon onBon={onBon} enCours={bonEnCours} etat={bonEtat} />
+          {voir}
+        </>}
       </div>
     </div>
   );
@@ -357,9 +396,11 @@ function CarteVisite({ v, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, 
    date et le nom une fois, une ligne par bien avec son heure, sa photo et ses
    propres boutons ; le rappel une fois (il regroupe déjà toutes les visites
    du jour, voir ModaleRappelVisite). Les jours différents restent séparés. */
-function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, onRappel }: {
+function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAnnuler, onRappel, onBon, bonEnCours, bonEtat }: {
   visites: any[]; groupe: 'a_faire' | 'a_venir'; auj: string; rang: number;
   onClient: () => void; onBien: (v: any) => void; onCR: (v: any) => void; onAnnuler: (v: any) => void; onRappel: () => void;
+  /* V3.154 : un seul bon pour la journée (BonDeVisite.tsx demande pour les autres biens). */
+  onBon: () => void; bonEnCours: boolean; bonEtat?: EtatBon | null;
 }) {
   const v0 = visites[0];
   const ton = groupe === 'a_faire' ? { date: cv.dateAfaire, past: cv.pastAfaire } : { date: cv.dateAvenir, past: cv.pastAvenir };
@@ -438,6 +479,7 @@ function CarteJournee({ visites, groupe, auj, rang, onClient, onBien, onCR, onAn
         {groupe === 'a_venir' && !horsCrm && (
           <button type="button" className={`${cv.btn} ${rappel ? '' : cv.btnRappel}`} onClick={onRappel}><Enveloppe /><span>{rappel ? 'Renvoyer le rappel' : 'Envoyer le rappel'}</span></button>
         )}
+        <BoutonBon onBon={onBon} enCours={bonEnCours} etat={bonEtat} />
         {!sansFiche && <button type="button" className={cv.btn} onClick={onClient}><Picto n="fiche" t={15} /><span>Voir sa fiche</span></button>}
       </div>
     </div>
@@ -464,6 +506,11 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
   /* V3.146 : la fenêtre « Organiser une visite ». */
   const [organiser, setOrganiser] = useState(false);
   const bravoMinuteur = useRef<number | null>(null);
+  /* V3.154 : « Bon de visite » sur chaque carte : le bon existant s'ouvre,
+     sinon il se prépare (les autres visites du jour : on demande). */
+  const bon = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id }) });
+  /* Et où en est le bon de chaque visite : « Bon de visite (à signer) »… */
+  const etatBon = useEtatsBons();
   const direBravo = (texte: string) => {
     setBravo(texte);
     if (bravoMinuteur.current) window.clearTimeout(bravoMinuteur.current);
@@ -778,11 +825,13 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
                 {parJournee(g.liste, g.groupe !== 'effectuee').map((l, k) => l.length > 1 && g.groupe !== 'effectuee' ? (
                   <CarteJournee key={l[0].id} visites={l} groupe={g.groupe} auj={aujParis} rang={k}
                     onClient={() => ouvrirClient(l[0])} onBien={v => ouvrirBien(v)}
-                    onCR={v => openCR(v.id)} onAnnuler={v => { void annuler(v.id); }} onRappel={() => setRappelDe(l[0].id)} />
+                    onCR={v => openCR(v.id)} onAnnuler={v => { void annuler(v.id); }} onRappel={() => setRappelDe(l[0].id)}
+                    onBon={() => { void bon.lancer(departBon(l[0])); }} bonEnCours={bon.enCours === String(l[0].id)} bonEtat={etatBon(departBon(l[0]))} />
                 ) : (
                   <CarteVisite key={l[0].id} v={l[0]} groupe={g.groupe} auj={aujParis} rang={k}
                     onClient={() => ouvrirClient(l[0])} onBien={() => ouvrirBien(l[0])}
-                    onCR={() => openCR(l[0].id)} onAnnuler={() => { void annuler(l[0].id); }} onRappel={() => setRappelDe(l[0].id)} />
+                    onCR={() => openCR(l[0].id)} onAnnuler={() => { void annuler(l[0].id); }} onRappel={() => setRappelDe(l[0].id)}
+                    onBon={() => { void bon.lancer(departBon(l[0])); }} bonEnCours={bon.enCours === String(l[0].id)} bonEtat={etatBon(departBon(l[0]))} />
                 ))}
               </div>
             </div>
@@ -813,6 +862,8 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
           )}
         </Cascade>
       )}
+
+      {bon.fenetre}
 
       {rappelDe && (
         <ModaleRappelVisite visiteId={rappelDe} onFerme={() => setRappelDe(null)} onEnvoye={() => { setRappelDe(null); load(); }} />
