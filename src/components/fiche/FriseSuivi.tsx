@@ -1,8 +1,12 @@
 'use client';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Depliant from '@/components/shared/Depliant';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { delaiRelance } from '@/lib/relances';
+import { supabase } from '@/lib/supabase';
+import { euros } from '@/lib/mandat';
+import { etapeDe } from '@/lib/biens-vente';
 import s from './FriseSuivi.module.css';
 
 /* ═══ Le suivi du dossier, en frise ═══════════════════════════════════════
@@ -128,6 +132,11 @@ const TRAITS: Record<string, string[]> = {
   bas: ['m6 9 6 6 6-6'],
   report: ['M21 11V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7', 'M16 2v4', 'M8 2v4', 'M3 10h18', 'M15 18h7', 'm19 15 3 3-3 3'],
   point: ['c:12,12,3'],
+  fleche: ['M5 12h14', 'm13 6 6 6-6 6'],
+  gauche: ['m15 18-6-6 6-6'],
+  droite: ['m9 18 6-6-6-6'],
+  croix: ['M18 6 6 18', 'm6 6 12 12'],
+  photo: ['M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z', 'c:12,13,4'],
   cle: ['m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4', 'm21 2-9.6 9.6', 'c:7.5,15.5,5.5'],
   signature: ['m21 17-2.2-1.9a.5.5 0 0 0-.8.4v.5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1c0-2.5-4-4-8.5-4a1 1 0 0 0 0 5c4.2 0 4.7-11.3 5.7-13.5a2.5 2.5 0 1 1 3.3 3.3', 'M3 21h18'],
   accord: ['m11 17 2 2a1 1 0 1 0 3-3', 'm14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a3 3 0 0 0-4.2 0l-.9.9a1 1 0 1 1-3-3l2.8-2.8a5.8 5.8 0 0 1 7.1-.9l.5.3a2 2 0 0 0 1.4.3L21 4', 'm21 3 1 11h-2', 'M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3', 'M3 4h8'],
@@ -177,12 +186,118 @@ function montrer(id: string) {
    bouton Voir le détail qui affiche ce qui a été envoyé à ce client ». Le
    texte du mail est gardé avec l'envoi (`envois.corps`) ou dans la ligne du
    Suivi (« À : … », puis le texte) : un bouton le déplie, comme un mail. */
-function MailPlie({ objet, a, corps, nbBiens = 0, biensJoints = [], ouvert, onBasculer }: {
+/* Le nom d'un bien du dossier, tel qu'on l'écrit partout dans la frise. */
+const titreBienDossier = (b: any) => String(b?.titre || `${b?.type_bien || 'Bien'} — ${b?.ville || ''}`);
+const photoBienDossier = (b: any): string => (Array.isArray(b?.photos) ? String(b.photos.find((x: unknown) => typeof x === 'string' && x) || '') : '');
+
+/* ── Le bien d'un envoi, en grand (V3.150) ──
+   Alexandre : « un bien joint, maison 7 pièces : il faudrait pouvoir appuyer
+   dessus pour savoir lequel c'est, il n'y a pas de photo… tant que la maison
+   est dans la base, même si un jour elle est vendue, qu'on puisse voir ce
+   qu'on lui avait envoyé ». La copie du bien dans son dossier (ce qu'il a
+   reçu, elle reste quand le bien est vendu) : ses photos, ses infos, où il en
+   est chez lui ; pour un bien de l'agence, son étape d'aujourd'hui. */
+function CarteBienEnvoye({ b, onFermer, onOuvrir }: { b: any; onFermer: () => void; onOuvrir?: (b: any) => void }) {
+  const photos: string[] = Array.isArray(b.photos) ? b.photos.filter((x: unknown) => typeof x === 'string' && x) : [];
+  const [i, setI] = useState(0);
+  const [agence, setAgence] = useState<{ etape: string; archive: boolean } | null>(null);
+  useEffect(() => {
+    if (!b.bien_vente_id) return;
+    let vivant = true;
+    supabase.from('biens_vente').select('etape, archive').eq('id', b.bien_vente_id).maybeSingle().then(({ data }) => {
+      if (vivant && data) setAgence({ etape: String((data as { etape?: string }).etape || ''), archive: !!(data as { archive?: boolean }).archive });
+    });
+    return () => { vivant = false; };
+  }, [b.bien_vente_id]);
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onFermer();
+      if (e.key === 'ArrowRight' && photos.length > 1) setI(k => (k + 1) % photos.length);
+      if (e.key === 'ArrowLeft' && photos.length > 1) setI(k => (k - 1 + photos.length) % photos.length);
+    };
+    window.addEventListener('keydown', touche);
+    return () => window.removeEventListener('keydown', touche);
+  }, [onFermer, photos.length]);
+  const lieu = [b.quartier, [b.code_postal, b.ville].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  const etage = b.etage === 0 ? 'RDC' : b.etage ? `${b.etage}e étage` : '';
+  const carac = [b.surface ? `${b.surface} m²` : '', b.nb_pieces ? `${b.nb_pieces} pièce${b.nb_pieces > 1 ? 's' : ''}` : '', b.nb_chambres ? `${b.nb_chambres} chambre${b.nb_chambres > 1 ? 's' : ''}` : '', etage].filter(Boolean);
+  const prix = Number(b.prix_acquereur || b.prix_vendeur || 0);
+  const jour = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const canal = b.canal_envoi === 'mail' ? ' par mail' : b.canal_envoi === 'whatsapp' ? ' par WhatsApp' : b.canal_envoi === 'lien' ? ' dans son espace' : '';
+  const chezLui = b.etape === 'presente' && b.envoye_le ? `Présenté le ${jour(b.envoye_le)}${canal}` : b.etape === 'selection' ? 'Dans sa sélection, pas encore envoyé' : '';
+  const et = agence ? etapeDe(agence.etape) : null;
+  const fin = !!agence && (agence.etape === 'vendu' || agence.etape === 'retire' || agence.archive);
+  const fen = (
+    <div className={s.bvVoile} onMouseDown={e => { if (e.target === e.currentTarget) onFermer(); }}>
+      <div className={s.bvFen} role="dialog" aria-modal="true" aria-label={titreBienDossier(b)}>
+        <div className={s.bvPhoto}>
+          {photos.length ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={photos[i]} src={photos[i]} alt="" />
+          ) : <span className={s.bvSans}><IcSuivi n="maison" t={34} e={1.6} /><small>Pas de photo</small></span>}
+          {photos.length > 1 && (
+            <>
+              <button type="button" className={s.bvNav} data-cote="g" aria-label="Photo précédente" onClick={() => setI(k => (k - 1 + photos.length) % photos.length)}><IcSuivi n="gauche" t={18} e={2.4} /></button>
+              <button type="button" className={s.bvNav} data-cote="d" aria-label="Photo suivante" onClick={() => setI(k => (k + 1) % photos.length)}><IcSuivi n="droite" t={18} e={2.4} /></button>
+              <span className={s.bvCompte}><IcSuivi n="photo" t={13} e={2} />{`${i + 1} / ${photos.length}`}</span>
+            </>
+          )}
+          {et && <span className={s.bvEtape} style={{ background: et.c }}>{agence?.archive ? 'Archivé' : et.court}</span>}
+          <button type="button" className={s.bvFermer} aria-label="Fermer" onClick={onFermer}><IcSuivi n="croix" t={16} e={2.4} /></button>
+        </div>
+        <div className={s.bvCorps}>
+          <div className={s.bvTitre}>
+            <b>{titreBienDossier(b)}</b>
+            {lieu && <span>{lieu}</span>}
+          </div>
+          {carac.length > 0 && <div className={s.bvCarac}>{carac.map(x => <span key={x}>{x}</span>)}</div>}
+          <div className={s.bvPrix}>
+            {prix ? <b>{euros(prix)}</b> : <b className={s.bvSansPrix}>Prix à venir</b>}
+            <small>{prix ? (b.bien_vente_id ? 'le prix qu’il a reçu, honoraires compris' : 'le prix de l’annonce') : 'envoyé avant le mandat, sans prix'}</small>
+          </div>
+          <div className={s.bvInfos}>
+            {chezLui && <div><IcSuivi n="mail" t={14} /><span>{chezLui}</span></div>}
+            {b.vu_le && <div><IcSuivi n="loupe" t={14} /><span>{`Fiche ouverte le ${jour(b.vu_le)}`}</span></div>}
+            {b.bien_vente_id
+              ? <div><IcSuivi n="maison" t={14} /><span>{et ? `Bien de l’agence · aujourd’hui « ${agence?.archive ? 'Archivé' : et.court} »${fin ? ' : sa fiche reste consultable' : ''}` : 'Bien de l’agence'}</span></div>
+              : (b.source_portail || b.agence_nom) && <div><IcSuivi n="maison" t={14} /><span>{['Annonce', b.source_portail, b.agence_nom && b.agence_nom !== b.source_portail ? b.agence_nom : ''].filter(Boolean).join(' · ')}</span></div>}
+          </div>
+          {b.retour_client && <p className={s.bvRetour}><span>Sa réponse</span>{b.retour_client}</p>}
+        </div>
+        <div className={s.bvPied}>
+          {!b.bien_vente_id && b.url && <a className={s.bvLien} href={String(b.url)} target="_blank" rel="noopener noreferrer">Voir l’annonce</a>}
+          <button type="button" className={s.bvBtn} onClick={onFermer}>Fermer</button>
+          {onOuvrir && <button type="button" className={`${s.bvBtn} ${s.bvBtnPrim}`} onClick={() => onOuvrir(b)}>{b.bien_vente_id ? 'Ouvrir la fiche du bien' : 'Voir le bien en détail'}<IcSuivi n="fleche" t={15} e={2.3} /></button>}
+        </div>
+      </div>
+    </div>
+  );
+  return typeof document === 'undefined' ? null : createPortal(fen, document.body);
+}
+
+/* Un bien joint, en pastille : sa photo et son nom ; un clic l'ouvre en grand. */
+function PastilleBien({ b, onVoir, petite }: { b: any; onVoir: (b: any) => void; petite?: boolean }) {
+  const ph = photoBienDossier(b);
+  return (
+    <button type="button" className={s.pBien} data-petite={petite ? 'oui' : undefined} onClick={() => onVoir(b)} title="Voir le bien">
+      {ph
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={ph} alt="" />
+        : <span className={s.pBienIc}><IcSuivi n="maison" t={petite ? 12 : 13} /></span>}
+      <span className={s.pBienT}>{titreBienDossier(b)}</span>
+      <IcSuivi n="droite" t={12} e={2.4} />
+    </button>
+  );
+}
+
+function MailPlie({ objet, a, corps, nbBiens = 0, biensJoints = [], onVoirBien, ouvert, onBasculer }: {
   objet: string; a: string; corps: string;
-  /* Les biens joints : leur nombre, et les titres de ceux qu'on connaît ici. */
-  nbBiens?: number; biensJoints?: string[];
+  /* Les biens joints : leur nombre, et ceux qu'on retrouve dans son dossier
+     (V3.150 : en pastilles, avec leur photo ; un clic les ouvre). */
+  nbBiens?: number; biensJoints?: any[]; onVoirBien?: (b: any) => void;
   ouvert: boolean; onBasculer: () => void;
 }) {
+  const absents = Math.max(0, nbBiens - biensJoints.length);
   return (
     <>
       <button type="button" className={s.voirMail} data-on={ouvert ? 'oui' : 'non'} aria-expanded={ouvert} onClick={onBasculer}>
@@ -198,7 +313,10 @@ function MailPlie({ objet, a, corps, nbBiens = 0, biensJoints = [], ouvert, onBa
           {nbBiens > 0 && (
             <div className={s.mailBiens}>
               <span>{nbBiens > 1 ? `${nbBiens} biens joints` : '1 bien joint'}</span>
-              {biensJoints.map((t, i) => <em key={`${t}-${i}`}><IcSuivi n="maison" t={12} />{t}</em>)}
+              {biensJoints.map((b, i) => (onVoirBien
+                ? <PastilleBien key={`${b.id}-${i}`} b={b} onVoir={onVoirBien} />
+                : <em key={`${b.id}-${i}`}><IcSuivi n="maison" t={12} />{titreBienDossier(b)}</em>))}
+              {absents > 0 && <i className={s.mailBienAbsent}>{absents > 1 ? `${absents} autres, retirés de son dossier` : biensJoints.length ? '1 autre, retiré de son dossier' : 'Retiré de son dossier depuis'}</i>}
             </div>
           )}
         </div>
@@ -236,13 +354,17 @@ type Props = {
      « on peut reporter depuis Relances, mais pas depuis le suivi de la
      fiche »). Rend `true` si c'est enregistré ; la fiche relit ses relances. */
   onReporter?: (id: string, jour: string) => Promise<boolean>;
+  /* V3.150 — « Ouvrir la fiche du bien », depuis la carte d'un bien envoyé. */
+  onBien?: (b: any) => void;
   /* La fiche d'un contact qui n'est pas acheteur (V3.23) : « Historique »,
      et seulement les filtres qui ont un sens pour lui. */
   titre?: string;
   filtresVisibles?: string[];
 };
 
-export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, onReporter, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
+export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, onReporter, onBien, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
+  /* Le bien ouvert en grand (V3.150). */
+  const [bienOuvert, setBienOuvert] = useState<any | null>(null);
   /* L'action d'où vient chaque relance : pour « Voir l'action ». */
   const actionDe = new Map<string, string>();
   for (const it of items) { const rid = it.kind === 'event' ? it.data?.metadata?.relance_id : null; if (rid) actionDe.set(rid, it.data.id); }
@@ -437,7 +559,8 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                     {!cr && String(e.corps || '').trim() && (
                       <MailPlie objet={e.objet || ''} a={(e.destinataires || []).join(', ')} corps={String(e.corps).trim()}
                         nbBiens={(e.biens_ids || []).length}
-                        biensJoints={((e.biens_ids || []) as string[]).map(id => biens.find(y => y.id === id)).filter(Boolean).map(x => x.titre || `${x.type_bien || 'Bien'} — ${x.ville || ''}`)}
+                        biensJoints={((e.biens_ids || []) as string[]).map(id => biens.find(y => y.id === id)).filter(Boolean)}
+                        onVoirBien={setBienOuvert}
                         ouvert={!!mailsOuverts[cle]} onBasculer={() => basculerMail(cle)} />
                     )}
                   </div>
@@ -467,7 +590,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
             const bienVu = b && !(famK === 'systeme');
             const etiquettes = (autre || rel || bienVu) ? (
               <div className={s.etiquettes}>
-                {bienVu && <span className={s.etBien}><IcSuivi n="maison" t={13} />{b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}</span>}
+                {bienVu && <PastilleBien b={b} onVoir={setBienOuvert} petite />}
                 {rel && (() => {
                   const n = joursJusquA(rel.date_echeance);
                   return <span className={s.etRelance} data-retard={n < 0 ? 'oui' : 'non'}><IcSuivi n="cloche" t={13} />{`Relance le ${midi(rel.date_echeance).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · ${delai(n)}`}</span>;
@@ -519,6 +642,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
           })}
         </ol>
       )}
+      {bienOuvert && <CarteBienEnvoye b={bienOuvert} onFermer={() => setBienOuvert(null)} onOuvrir={onBien ? x => { setBienOuvert(null); onBien(x); } : undefined} />}
     </div>
   );
 }
