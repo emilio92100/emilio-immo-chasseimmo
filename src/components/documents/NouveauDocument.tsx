@@ -160,7 +160,7 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
     setBien(null); setBiens(null);
     if (!client || lien !== 'bien' || pourVendre) return;
     supabase.from('biens')
-      .select('id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id')
+      .select('id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id, commission_type, commission_val, bien_vente_id, est_particulier')
       .eq('client_id', client.id).order('created_at', { ascending: false }).limit(60)
       .then(({ data, error }) => {
         if (error) { setErreur('Ses biens n’ont pas pu être lus : ' + error.message); setBiens([]); return; }
@@ -223,10 +223,19 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
         if (error) throw new Error('La visite n’a pas pu être lue : ' + error.message);
         visite = data?.[0] || null;
       }
+      /* V3.145 : une offre d'achat reprend ses honoraires du bien, plafonnés
+         par son mandat de recherche : on relit celui de la recherche du bien. */
+      let rech: Contexte['recherche'] = recherche;
+      if (!rech && bien?.recherche_id && m.id === 'offre_achat') {
+        const { data, error } = await supabase.from('recherches')
+          .select('id, sans_mandat, mandat_honoraires, mandat_date_signature, mandat_date_expiration').eq('id', bien.recherche_id).maybeSingle();
+        if (error) throw new Error('Sa recherche n’a pas pu être lue : ' + error.message);
+        rech = (data as Record<string, unknown> | null) || null;
+      }
       const avecMandat = lien === 'mandat' && !!mandat;
       let donnees = avecMandat
         ? await preparerDepuis(m, mandat!, identite)
-        : m.defaut({ identite, client, bien, visite, recherche });
+        : m.defaut({ identite, client, bien, visite, recherche: rech });
       if (pourDeleguer && confrere) donnees = { ...donnees, ...depuisConfrere(confrere) };
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
