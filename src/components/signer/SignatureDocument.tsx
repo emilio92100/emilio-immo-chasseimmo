@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import { dateLongue, heureParis, type Partie, type Resume } from '@/lib/mandat';
 import type { IdentiteAgence } from '@/lib/agence';
-import { Ic, TexteMandat, PadSignature, ERREURS, CSS_MANDAT } from '@/components/espace/SignatureMandat';
+import { Ic, TexteMandat, PadSignature, ERREURS, CSS_MANDAT, RappelSignataire } from '@/components/espace/SignatureMandat';
 import { CSS_SIGNER } from './SignatureCosignataire';
 
 export type DonneesSignerDoc = {
@@ -57,6 +57,8 @@ export type DonneesSignerDoc = {
   espace?: string | null;
   /* La fin de validité d'une offre d'achat passée (V3.50). */
   finValidite?: string | null;
+  /* V3.145 : un rappel pour lui seul, sous « L'essentiel » (Modele.rappel). */
+  rappel?: { titre: string; valeur: string; detail: string } | null;
   /* V3.57, « termine » : signé par lui, puis le document a pris fin — le
      jour où il a pris fin (renonciation, annulation), et si c'est un mandat. */
   finLe?: string | null;
@@ -292,6 +294,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
             <div className="d">{`carte professionnelle ${d.identite.carte}`}</div>
           </div>
         </div>
+        <RappelSignataire r={d.rappel} />
         <button type="button" className="btn fant mdt-plein" onClick={() => { setRetour('recap'); setEtape('lecture'); }}><Ic n="doc" t={16} /><span>Lire le document en entier</span></button>
         <button type="button" className="btn or mdt-plein" onClick={() => setEtape('signer')}>Continuer</button>
       </div>
@@ -315,6 +318,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
           </>
         ) : (
           <>
+            {d.rappel && <p className="mdt-p petit">{`${d.rappel.titre} : ${d.rappel.valeur}${d.rappel.detail ? ` (${d.rappel.detail})` : ''}.`}</p>}
             <button type="button" className="mdt-coche" data-on={lu ? '1' : undefined} onClick={() => setLu(x => !x)}>
               <span className="bx">{lu && <Ic n="check" t={14} />}</span>
               <span>{d.accepter}</span>
