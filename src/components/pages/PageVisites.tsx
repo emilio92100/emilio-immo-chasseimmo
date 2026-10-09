@@ -684,7 +684,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
       )}
       {organiser && (
         <OrganiserVisite onFermer={() => setOrganiser(false)}
-          onFait={(texte, passee) => { setOrganiser(false); direBravo(`${texte} ${passee ? 'Elle attend son compte rendu.' : 'Elle est dans « À venir ».'}`); setCherche(''); setFiltre(passee ? 'a_faire' : 'a_venir'); load(); }} />
+          onFait={(texte, passee, n) => { setOrganiser(false); direBravo(`${texte} ${n > 1 ? (passee ? 'Elles attendent leur compte rendu.' : 'Elles sont dans « À venir ».') : (passee ? 'Elle attend son compte rendu.' : 'Elle est dans « À venir ».')}`); setCherche(''); setFiltre(passee ? 'a_faire' : 'a_venir'); load(); }} />
       )}
 
       {loading ? (
