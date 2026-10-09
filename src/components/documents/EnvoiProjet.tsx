@@ -67,7 +67,8 @@ function lesNoms(a: { email: string; nom: string }[], max = 2) {
 
 /* Le plus récent des envois d'un document. */
 function leDernier(row: Pick<DocumentRow, 'envois'>): EnvoiProjet | null {
-  const l = Array.isArray(row.envois) ? row.envois : [];
+  /* V3.145 : une offre envoyée à l'agence n'est pas un projet. */
+  const l = (Array.isArray(row.envois) ? row.envois : []).filter(e => !e.offre);
   return l.reduce<EnvoiProjet | null>((m, e) => (!m || Date.parse(e.le) > Date.parse(m.le) ? e : m), null);
 }
 /* Le brouillon a changé après cet envoi (l'enregistrement qui le précède
@@ -94,7 +95,7 @@ export function evenementsDocument(d?: DocumentRow | null, x?: MandatRecherche |
     l.push({ cle: 'cree', le: d.created_at, ic: 'plus', ton: 'gris', t: 'Créé' });
     (Array.isArray(d.envois) ? d.envois : []).forEach((e: EnvoiProjet, i) => {
       l.push({
-        cle: `p${i}`, le: e.le, ic: 'envoyer', ton: 'or', t: `Projet envoyé à ${e.a.length > 1 ? `${e.a.length} personnes` : e.a[0]?.nom || e.a[0]?.email || 'un contact'}`,
+        cle: `p${i}`, le: e.le, ic: 'envoyer', ton: 'or', t: `${e.offre ? 'Offre envoyée' : 'Projet envoyé'} à ${e.a.length > 1 ? `${e.a.length} personnes` : e.a[0]?.nom || e.a[0]?.email || 'un contact'}`,
         detail: e.a.length > 1 ? lesNoms(e.a, 6) : e.a[0]?.nom ? e.a[0].email : undefined,
         ko: e.echecs?.length ? `Pas parti à ${e.echecs.join(', ')}` : undefined,
       });
