@@ -143,6 +143,8 @@ export type Contexte = {
     id: string; titre?: string | null; adresse?: string | null; code_postal?: string | null; ville?: string | null; quartier?: string | null;
     type_bien?: string | null; surface?: number | null; nb_pieces?: number | null; etage?: number | null;
     prix_acquereur?: number | null; prix_vendeur?: number | null; agence_nom?: string | null; description?: string | null;
+    /* V3.145 : ses honoraires et son vendeur (l'offre d'achat les reprend). */
+    commission_type?: string | null; commission_val?: number | null; bien_vente_id?: string | null; est_particulier?: boolean | null;
   } | null;
   visite?: { date_visite?: string | null; heure?: string | null } | null;
   /* La recherche choisie (une ligne de `recherches`), pour un mandat de
@@ -235,6 +237,15 @@ export type Modele = {
      `cle` : son cadre (le conjoint ne coche pas la même chose que le
      mandant). */
   accepter?: (d: Donnees, cle?: string) => string;
+  /* V3.145 : un rappel pour celui qui signe (pas l'agence), à l'écran avant
+     de signer et dans son mail de confirmation — jamais dans le document.
+     L'offre d'achat y met son total, frais d'agence compris. */
+  rappel?: (d: Donnees) => { titre: string; valeur: string; detail: string } | null;
+  /* V3.145 : ce qui se déduit des réponses, recalculé par l'éditeur à chaque
+     changement (`cle` : le champ qui vient de bouger ; '' à l'ouverture).
+     L'offre d'achat en tire le prix proposé au vendeur, depuis le total que
+     le client veut mettre, frais d'agence compris. */
+  deduire?: (d: Donnees, cle: string) => Donnees;
 };
 
 /* ── Comment le document est signé ──────────────────────────────────────
