@@ -200,7 +200,7 @@ function duJour(evs: Ev[], k: string): Ev[] {
   return out.sort((a, b) => a.debut.getTime() - b.debut.getTime());
 }
 
-function construire(visites: any[], rdvs: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date, ventes: Record<string, any> = {}) {
+function construire(visites: any[], rdvs: any[], transactions: any[], recherches: any[], clientsParId: Record<string, any>, maintenant: Date, ventes: Record<string, any> = {}, libres: Record<string, any> = {}) {
   const evs: Ev[] = [];
   const taches: Tache[] = [];
 
@@ -252,13 +252,29 @@ function construire(visites: any[], rdvs: any[], transactions: any[], recherches
     const debut = new Date(r.debut), fin = new Date(r.fin);
     if (isNaN(debut.getTime())) continue;
     const type = (ORDRE.includes(r.type) ? r.type : 'client') as TypeRdv;
+    const finOk = isNaN(fin.getTime()) ? new Date(debut.getTime() + 3600000) : fin;
+    /* V3.146 — Une visite hors CRM, posée depuis la fiche d'un bien de
+       l'agence (Alexandre : « quand je clique dessus, l'affichage est
+       différent : pas la photo du bien, pas les consignes »). Elle prend la
+       carte du bien, ses indications de visite, et son compte rendu à faire,
+       lu sur la ligne du suivi du bien qui la porte (`libres`, par rendez-vous). */
+    const venteId = type === 'visite' && typeof r.details?.bien_vente_id === 'string' ? r.details.bien_vente_id as string : '';
+    const ligne = venteId ? libres[r.id] : null;
+    if (ligne?.statut === 'annulee') continue;
+    const vt = venteId ? ventes[venteId] : null;
+    const pv = vt ? visitePourCarte(vt.donnees || {}) : null;
+    const biens = venteId ? [{
+      id: venteId, titre: vt?.titre || String(r.titre || '').replace(/^Visite · /, '') || 'Bien', photo: vt?.photo || undefined,
+      venteId, adresse: (vt && adresseVente(vt)) || r.lieu || '', visite: pv && !pourVisiteVide(pv) ? pv : null,
+    }] : [];
     evs.push({
       cle: 'r-' + r.id, source: 'rdv', ids: [r.id], type, titre: r.titre || TYPES[type].nom,
-      debut, fin: isNaN(fin.getTime()) ? new Date(debut.getTime() + 3600000) : fin, jour: cleDe(debut),
+      debut, fin: finOk, jour: cleDe(debut),
       qui: nomDe(r.clients) || nomDe(clientsParId[r.client_id]) || r.details?.proprietaire || '',
-      lieu: r.lieu || '', contact: r.details?.telephone || '', notes: r.notes || '', biens: [],
+      lieu: r.lieu || '', contact: r.details?.telephone || '', notes: r.notes || '', biens,
       clientId: r.client_id || null, rechercheId: r.recherche_id || null,
-      fait: fin <= maintenant, crAFaire: false, details: r.details || {}, relanceId: r.relance_id || null,
+      fait: finOk <= maintenant || ligne?.statut === 'faite', crAFaire: finOk <= maintenant && ligne?.statut === 'a_venir',
+      details: { ...(r.details || {}), ...(ligne ? { suiviId: ligne.id } : {}) }, relanceId: r.relance_id || null,
     });
   }
 
@@ -355,16 +371,30 @@ const lireAgenda = () => Promise.all([
   lire('transactions', '*'),
   lire('recherches', '*'),
   lireClients(),
+  /* V3.146 : les visites hors CRM (suivi des biens de l'agence) — leur
+     statut dit si le compte rendu est fait. Sans la table, rien. */
+  lire('biens_vente_suivi', 'id, statut, donnees', q => q.eq('type', 'visite')),
 ]);
+/* Par rendez-vous de l'agenda : la ligne de suivi qui le porte. */
+const libresParRdv = (l: any[]): Record<string, any> => {
+  const out: Record<string, any> = {};
+  for (const x of l || []) { const id = x?.donnees?.rdv_id; if (typeof id === 'string' && id) out[id] = x; }
+  return out;
+};
 
 /* V3.134 — les biens de l'agence visités : leur adresse et leurs indications
    de visite. Une lecture ratée n'empêche pas l'agenda de s'afficher : la
    visite garde alors la ville du bien, comme avant. */
-async function lireVentes(visites: any[]): Promise<Record<string, any>> {
-  const ids = [...new Set(visites.map(v => v.biens?.bien_vente_id).filter(Boolean))] as string[];
+async function lireVentes(visites: any[], rdvs: any[] = []): Promise<Record<string, any>> {
+  /* V3.146 : aussi les biens des visites hors CRM (rendez-vous qui portent
+     `details.bien_vente_id`), avec leur titre et leur photo. */
+  const ids = [...new Set([
+    ...visites.map(v => v.biens?.bien_vente_id),
+    ...rdvs.filter(r => r.type === 'visite' && r.statut !== 'annule').map(r => r.details?.bien_vente_id),
+  ].filter(x => typeof x === 'string' && x))] as string[];
   const out: Record<string, any> = {};
   for (let i = 0; i < ids.length; i += 100) {
-    const { data, error } = await supabase.from('biens_vente').select('id, adresse, code_postal, ville, donnees').in('id', ids.slice(i, i + 100));
+    const { data, error } = await supabase.from('biens_vente').select('id, titre, photo, adresse, code_postal, ville, donnees').in('id', ids.slice(i, i + 100));
     if (error) { console.error('[agenda] les biens visités', error.message); return out; }
     for (const b of data || []) out[b.id] = b;
   }
@@ -404,19 +434,19 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
   const [rappelDe, setRappelDe] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
   const [tableAbsente, setTableAbsente] = useState(false);
-  const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[]; ventes: Record<string, any> }>({ visites: [], rdvs: [], relances: [], transactions: [], recherches: [], clients: [], ventes: {} });
+  const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[]; ventes: Record<string, any>; libres: Record<string, any> }>({ visites: [], rdvs: [], relances: [], transactions: [], recherches: [], clients: [], ventes: {}, libres: {} });
 
   /* La ligne rouge avance toute seule. */
   useEffect(() => { const t = setInterval(() => setMaintenant(new Date()), 60000); return () => clearInterval(t); }, []);
   useEffect(() => { if (etroit) setVue(v => (v === 'semaine' ? 'jour' : v)); }, [etroit]);
 
   const charger = useCallback(async () => {
-    const [v, r, rel, tx, rech, cl] = await lireAgenda();
-    const ventes = await lireVentes(v.data || []);
+    const [v, r, rel, tx, rech, cl, lib] = await lireAgenda();
+    const ventes = await lireVentes(v.data || [], r.data || []);
     /* Tant que le SQL de l'agenda n'a pas été lancé, la table n'existe pas :
        les visites s'affichent quand même, on prévient pour le reste. */
     setTableAbsente(!!r.erreur);
-    setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data, ventes });
+    setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data, ventes, libres: libresParRdv(lib.data) });
     setChargement(false);
   }, []);
   useEffect(() => { charger(); }, [charger]);
@@ -439,7 +469,7 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   const clientsParId = useMemo(() => Object.fromEntries(brut.clients.map(c => [c.id, c])), [brut.clients]);
   const { evs, taches } = useMemo(
-    () => construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, maintenant, brut.ventes),
+    () => construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, maintenant, brut.ventes, brut.libres),
     [brut, clientsParId, maintenant],
   );
   const dossiers: Dossier[] = useMemo(() => dossiersDe(brut.recherches, clientsParId), [brut.recherches, clientsParId]);
@@ -488,7 +518,9 @@ export default function PageAgenda({ onNavigate }: { onNavigate: (page: string, 
 
   /* Le compte rendu se fait dans la page Visites : on y va, visite ouverte. */
   const compteRendu = (ev: Ev) => {
-    try { window.sessionStorage.setItem('emi-cr', ev.ids[0]); } catch { /* sans effet */ }
+    /* V3.146 : une visite hors CRM s'y retrouve par sa ligne de suivi (« s-… »). */
+    const id = ev.source === 'rdv' && ev.details?.suiviId ? `s-${ev.details.suiviId}` : ev.ids[0];
+    try { window.sessionStorage.setItem('emi-cr', id); } catch { /* sans effet */ }
     onNavigate('visites');
   };
   /* V3.138 : avant d'ouvrir une fiche, l'adresse de l'agenda dit ce qui
@@ -1384,7 +1416,7 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
           {ficheDuNom
             ? ligneLien('personne', ev.qui, libFiche, onDossier, `Ouvrir la fiche de ${ev.qui}`)
-            : ev.qui && ligne('personne', ev.qui, ev.type === 'estimation' ? 'Propriétaire' : 'Client')}
+            : ev.qui && ligne('personne', ev.qui, ev.type === 'estimation' ? 'Propriétaire' : ev.type === 'visite' && ev.source === 'rdv' ? 'Visiteur · hors CRM' : 'Client')}
           {ev.lieu && ligne('lieu', ev.lieu, 'Lieu')}
           {ev.contact && ligne('tel', ev.contact, ev.source === 'visite' ? 'Contact sur place' : 'Téléphone')}
           {ev.details?.mode && ligne(ev.details.mode === 'visio' ? 'visio' : 'tel', ev.details.mode === 'visio' ? 'Visio' : 'Téléphone', 'Comment')}
@@ -1442,7 +1474,7 @@ function Detail({ ev, etroit, onFerme, onModifier, onAnnuler, onCR, onDossier, o
           )}
           {itineraire && <a className="ag-appui" href={itineraire} target="_blank" rel="noopener noreferrer" style={bouton}><Ic n="route" t={15} />Itinéraire</a>}
           {ev.clientId && !ficheDuNom && <button type="button" className="ag-appui" onClick={onDossier} style={bouton}><Ic n="dossier" t={15} />Sa fiche</button>}
-          {ev.source === 'rdv' && bienDuRdv(ev) && <button type="button" className="ag-appui" onClick={onBien} style={bouton}><Ic n="maison" t={15} />Ouvrir le bien</button>}
+          {ev.source === 'rdv' && bienDuRdv(ev) && !ev.biens.length && <button type="button" className="ag-appui" onClick={onBien} style={bouton}><Ic n="maison" t={15} />Ouvrir le bien</button>}
           {!ev.fait && <button type="button" className="ag-appui" onClick={onModifier} style={bouton}><Ic n="crayon" t={15} />Modifier</button>}
           {!ev.fait && <button type="button" className="ag-appui" onClick={onAnnuler} style={{ ...bouton, color: '#b42318' }}><Ic n="corbeille" t={15} />Annuler</button>}
         </div>
@@ -2115,7 +2147,9 @@ type BienAgence = {
 async function lireBiensAgence(): Promise<BienAgence[]> {
   const { data, error } = await supabase.from('biens_vente')
     .select('id, titre, adresse, code_postal, ville, prix, reference, etape, archive, photo, client_id')
-    .in('etape', ['mandat', 'offre', 'compromis']);
+    /* V3.146 (Alexandre : « si un bien est en estimation ou à suivre,
+       laisser le choix de planifier la visite ») : aussi avant le mandat. */
+    .in('etape', ['a_suivre', 'estimation', 'mandat', 'offre', 'compromis']);
   if (error) { console.error('[agenda] les biens en vente', error.message); return []; }
   const l = ((data || []) as any[]).filter(b => !b.archive);
   const ids = Array.from(new Set(l.map(b => b.client_id).filter(Boolean))) as string[];
