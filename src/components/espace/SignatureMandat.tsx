@@ -206,6 +206,8 @@ export function TexteMandat({ parties, identite, moi = 0, signes = [], bandeau, 
                             {le ? <span className="mdt-ns ok">{`Signé le ${dateCourte(le)}`}</span> : <span className="mdt-ns">Non signé</span>}
                             <div className="s">{c.agence
                               ? le ? 'L’agence a signé en adressant le document.' : 'L’agence signe en adressant le document.'
+                              /* V3.154 : le bon de visite sur place, sans code. */
+                              : b.sansCode ? (vous ? 'Vous signez dans ce cadre.' : le ? 'Signé sur place, dans son cadre.' : 'Signe sur place, dans son cadre.')
                               : vous ? 'Vous signez avec le code reçu sur votre e-mail.' : le ? 'Signé avec son code personnel.' : 'Signe avec son propre code.'}</div>
                           </div>
                         );
