@@ -182,3 +182,87 @@ export function numeroDe(corps: unknown): string {
   if (!d) return '';
   return String((d.direction === 'outbound' ? d.to_number : d.from_number) ?? '');
 }
+
+/* ═══ V3.143 · « Contact search » : chercher un contact du CRM depuis Ringover ═══
+   Alexandre veut appeler un contact du CRM depuis Ringover sans l'y avoir
+   enregistré. Quand il tape dans la recherche de Ringover, Ringover nous
+   envoie ce qu'il a tapé (`data.query_search`, signé avec la clé de la
+   partie « Contact search », RINGOVER_CLE_RECHERCHE) ; on rend les contacts
+   qui correspondent, avec leurs numéros (/api/ringover/recherche).
+
+   Un nom (« martin », « paul mar », « étude durand ») : tous les mots doivent
+   se trouver dans le prénom, le nom ou la ligne qui dit qui c'est
+   (`ligneContact`), sans tenir compte des accents. Des chiffres (« 06 62 »,
+   « +33 6 62 ») : un bout de numéro, quelle que soit son écriture. La
+   personne 2 d'un couple sort à son nom, avec son numéro. Seulement les
+   contacts qui ont un numéro (sans, Ringover ne peut rien en faire) ; les
+   fiches en cours d'abord, puis les archivées ; vingt au plus. */
+const plat = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/* Un numéro en France commence par 0 : « +33 6 62… », « 0033 6… », « 33662… » → « 0662… ». */
+export function numeroNational(t: string): string {
+  const brut = String(t || '').trim();
+  const d = brut.replace(/\D/g, '');
+  if (d.startsWith('0033')) return '0' + d.slice(4);
+  if (/^\+33/.test(brut) || (d.startsWith('33') && d.length === 11)) return '0' + d.slice(2);
+  return d;
+}
+/* Le numéro comme Ringover l'écrit : un nombre, l'indicatif devant (33662863206). */
+export function numeroRingover(t: string): number | null {
+  const brut = String(t || '').trim();
+  let d = brut.replace(/\D/g, '');
+  if (!d) return null;
+  if (!brut.startsWith('+')) {
+    if (d.startsWith('00')) d = d.slice(2);
+    else if (d.length === 10 && d.startsWith('0')) d = '33' + d.slice(1);
+    else if (d.length === 9) d = '33' + d;
+  }
+  if (d.length < 8 || d.length > 15) return null;
+  const n = Number(d);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+export type ContactRecherche = {
+  firstname: string; lastname: string; company: string; url: string;
+  numbers: { number: number; type: string }[];
+};
+
+export async function rechercheRingover(q: string, sb: SupabaseClient = baseServeur()): Promise<ContactRecherche[]> {
+  const saisie = String(q || '').trim();
+  if (!saisie) return [];
+  const tel = /^[\d\s.+()-]+$/.test(saisie) ? numeroNational(saisie) : '';
+  if (tel && tel.length < 3) return [];
+  const mots = tel ? [] : plat(saisie).split(/\s+/).filter(Boolean);
+  if (!tel && !mots.length) return [];
+  const trouve = (foin: string) => mots.every(m => foin.includes(m));
+  /* « mobile » pour un 06 ou un 07, « fixe » sinon (un texte libre pour Ringover). */
+  const numeros = (l: string[]) => l.map(t => ({ t, n: numeroRingover(t) })).filter((x): x is { t: string; n: number } => x.n !== null)
+    .filter((x, i, a) => a.findIndex(y => y.n === x.n) === i)
+    .map(x => ({ number: x.n, type: /^0[67]/.test(numeroNational(x.t)) ? 'mobile' : 'fixe' }));
+
+  const out: (ContactRecherche & { archive: boolean })[] = [];
+  for (const c of await lireContacts(sb)) {
+    const types = typesDe(c);
+    const ligne = ligneContact(c) || types.map(t => typeDe(t).lib).join(' · ');
+    const company = [c.archive === true ? 'Archivé' : '', ligne].filter(Boolean).join(' · ');
+    const url = `${crmUrl()}/?page=fiche&client=${encodeURIComponent(c.id)}`;
+    const tels = (c.telephones || []).filter(Boolean).map(String);
+    const ok1 = tel ? tels.some(t => numeroNational(t).includes(tel)) : trouve(plat(`${c.prenom || ''} ${c.nom || ''} ${ligne}`));
+    const nums = numeros(tels);
+    if (ok1 && nums.length) {
+      out.push({ firstname: c.prenom || '', lastname: c.nom || (c.prenom ? '' : 'Contact sans nom'), company, url, numbers: nums, archive: c.archive === true });
+    }
+    const j = c.couple ? conjointDe(c.conjoint) : null;
+    if (j?.telephone) {
+      const ok2 = tel ? numeroNational(j.telephone).includes(tel) : trouve(plat(`${j.prenom || ''} ${j.nom || ''} ${c.nom || ''} ${ligne}`));
+      const n2 = numeros([j.telephone]);
+      if (ok2 && n2.length && !(ok1 && nums.some(x => x.number === n2[0].number))) {
+        out.push({ firstname: j.prenom || '', lastname: j.nom || '', company, url, numbers: n2, archive: c.archive === true });
+      }
+    }
+  }
+  const nomTri = (x: ContactRecherche) => plat(`${x.lastname} ${x.firstname}`);
+  return out
+    .sort((a, b) => Number(a.archive) - Number(b.archive) || nomTri(a).localeCompare(nomTri(b), 'fr'))
+    .slice(0, 20)
+    .map(({ archive: _archive, ...x }) => x);
+}
