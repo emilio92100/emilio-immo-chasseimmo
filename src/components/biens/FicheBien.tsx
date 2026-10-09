@@ -1513,6 +1513,15 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
       return g('Ce bien n’est pas encore sous mandat', 'Tu peux déjà le présenter à un acheteur : il le verra sans prix (le prix conseillé de l’estimation reste entre toi et le vendeur). Le prix arrivera chez lui à la signature du mandat.',
         [{ ...ch.continuer, l: 'Le présenter quand même', s: 'Dans sa sélection, son espace ou par mail' }, ch.mandat]);
     }
+    /* V3.146 (Alexandre : « si c'est en estimation ou à suivre, laisser la
+       possibilité de quand même planifier la visite ») : avant le mandat, une
+       visite se planifie au choix, comme une présentation (V3.112). Elle va
+       dans l'agenda, la page Visites, l'historique du bien, et le Suivi de
+       l'acheteur s'il est dans le CRM. */
+    if (avant && quoi === 'visite') {
+      return g('Ce bien n’est pas encore sous mandat', 'Tu peux quand même organiser la visite : elle va dans l’agenda, la page Visites et l’historique du bien. Avec un acheteur suivi, le bien entre dans son dossier, sans prix tant que le mandat n’est pas signé.',
+        [{ ...ch.continuer, l: 'Planifier la visite quand même', s: 'Un acheteur suivi, ou quelqu’un hors du CRM' }, ch.mandat]);
+    }
     if (avant) {
       return quoi === 'prix'
         ? g('Ce bien n’est pas encore en vente', 'Avant le mandat, c’est l’estimation qui donne le prix conseillé. Le prix affiché se fixe à la signature du mandat.', [ch.estim, ch.mandat])
@@ -1619,7 +1628,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
      « Résumé », Surfaces passe dans le tiroir de « Le bien ». */
   const ONGLETS: { k: Onglet; l: string; n?: number; ic: string }[] = [
     { k: 'apercu', l: 'Résumé', ic: 'oeil' }, { k: 'photos', l: 'Photos', n: nbPhotos, ic: 'photo' }, { k: 'bien', l: 'Le bien', ic: 'maison' },
-    ...(avant || e === 'annonce_type' ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
+    /* V3.146 : avant le mandat, l'onglet vient dès qu'une visite a été planifiée. */
+    ...((avant && !visites.length) || e === 'annonce_type' ? [] : [{ k: 'visites' as Onglet, l: 'Visites et offres', n: nbVisites + offres.length, ic: 'cle' }]),
     /* V3.126 : sans chiffre — le compte en chiffres (avant toute relecture)
        contredisait le résultat du rapprochement (Alexandre : « rien affiché »). */
     { k: 'acheteurs', l: 'Rapprochement', ic: 'cible' },
@@ -2173,7 +2183,7 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
               liste entière est dans l'onglet Acheteurs. */}
           {/* Les observations juste sous les cartes (V3.31), et non plus en bas de page. */}
           {blocNotes}
-          {avant || e === 'annonce_type' ? <BlocDernierement items={recents} onTout={() => setOnglet('historique')} /> : (
+          {e === 'annonce_type' || (avant && !prochaines.length) ? <BlocDernierement items={recents} onTout={() => setOnglet('historique')} /> : (
             <div className={b.deuxEgal}>
               <div className={b.col}>
                 <BlocProchaines items={prochaines} onVoir={() => setOnglet('visites')} onAjouter={ouvrirVisite} onFiche={ouvrirClient} />
