@@ -16,6 +16,7 @@
 
 import { euros, type Partie, type Bloc, type Resume } from '@/lib/mandat';
 import { lignesMandataire, type IdentiteAgence } from '@/lib/agence';
+import { prixDuBien } from '@/lib/honoraires-bien';
 import {
   P, nbLettres, jourLong, aujourdhui, txt, num, liste,
   lirePersonnes, nomComplet, nomsCourts, fichePersonne, blocDonnees, ficheAgence,
@@ -181,7 +182,7 @@ function defaut(c: Contexte): Donnees {
   return {
     role: cl ? 'acquereur' : 'vendeur',
     visiteurs: [p],
-    adresse: b?.adresse || '', ville: b?.ville || '', description: desc, prix: b?.prix_acquereur || null, reference: '',
+    adresse: b?.adresse || '', ville: b?.ville || '', description: desc, prix: prixDuBien(b).demande, reference: '',   // V3.145 : le prix de l'annonce
     agenceVendeur: b?.agence_nom || '',
     dateVisite: c.visite?.date_visite ? String(c.visite.date_visite).slice(0, 10) : aujourdhui(),
     heure: c.visite?.heure ? String(c.visite.heure).slice(0, 5) : '',
