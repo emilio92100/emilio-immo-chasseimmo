@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
 import { rechercheRingover, signatureValide } from '@/lib/ringover-serveur';
@@ -25,11 +25,22 @@ export const runtime = 'nodejs';
    clé de « Contact Call » est acceptée aussi : c'est une clé de Ringover. */
 const empreinte = (k?: string) => (k ? createHash('sha256').update(k.trim()).digest('hex').slice(0, 6) : null);
 let dernierRefus: Record<string, unknown> | null = null;
+/* V3.143c — la signature des recherches n'est pas celle des appels (toujours
+   401 avec les bonnes clés, empreintes vérifiées). La serrure qui ne dépend
+   pas de Ringover : la clé dans l'adresse qu'on lui donne
+   (`…/api/ringover/recherche?cle=<la clé de Contact search>`), comme pour
+   SeLoger. Elle n'est visible que dans le tableau de bord de Ringover, où la
+   clé est déjà affichée. */
+function cleDansAdresse(donnee: string | null, cle: string | undefined): boolean {
+  const d = String(donnee || '').trim(), k = String(cle || '').trim();
+  if (!d || !k || d.length !== k.length) return false;
+  return timingSafeEqual(Buffer.from(d), Buffer.from(k));
+}
 
 export async function POST(req: NextRequest) {
   const cle = process.env.RINGOVER_CLE_RECHERCHE;
   const jeton = req.headers.get('x-ringover-webhook-signature') || req.headers.get('authorization');
-  if (!signatureValide(jeton, cle) && !signatureValide(jeton, process.env.RINGOVER_CLE_CONTACT)) {
+  if (!cleDansAdresse(req.nextUrl.searchParams.get('cle'), cle) && !signatureValide(jeton, cle) && !signatureValide(jeton, process.env.RINGOVER_CLE_CONTACT)) {
     let alg: unknown = null;
     try { alg = (JSON.parse(Buffer.from(String(jeton || '').replace(/^Bearer\s+/i, '').split('.')[0], 'base64url').toString('utf8')) as { alg?: unknown }).alg; } catch { /* pas un JWT */ }
     dernierRefus = { le: new Date().toISOString(), jeton: !!jeton, enTetes: [...req.headers.keys()].filter(k => /ringover|signature|authorization/i.test(k)), alg };
