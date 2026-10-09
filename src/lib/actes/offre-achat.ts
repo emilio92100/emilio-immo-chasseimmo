@@ -14,9 +14,17 @@
    La dernière partie laisse au vendeur la place de répondre : il accepte,
    refuse, ou fait une contre-proposition, et signe.
 
+   V3.145 — les honoraires d'Alexandre (son mandat de recherche) ne sont
+   plus écrits dans l'offre : elle part à l'agence ou au vendeur, qui n'ont
+   pas à les voir. Le client, lui, les voit au moment de signer (« Pour vous,
+   frais d'agence compris », voir `rappel`) et dans le mail de confirmation.
+   Ils viennent du bien (avec inter : aucun ; sans inter ou particulier : son
+   taux ou son forfait), et ne peuvent pas dépasser le mandat signé.
+
    ⚠️ Texte écrit pour Emilio, à faire relire par l'avocat d'Alexandre. */
 
 import { euros, type Partie, type Bloc, type Resume } from '@/lib/mandat';
+import { prixDuBien, honorairesDuMandat, plafondMandat, type HonoMandat } from '@/lib/honoraires-bien';
 import { lignesMandataire, type IdentiteAgence } from '@/lib/agence';
 import {
   P, Pp, eurosLettres, nbLettres, pourcent, jourLong, aujourdhui, txt, num, liste, vrai, couper,
@@ -46,14 +54,35 @@ const ETAPES: Etape[] = [
     ],
   },
   {
-    id: 'prix', titre: 'Le prix et le financement', court: 'Prix et financement', sous: 'Ce qu’il propose, et comment il paie.', vers: 'Le prix offert', reperesApres: 'honoRecherche', ic: 'euro',
+    id: 'prix', titre: 'Le prix et le financement', court: 'Prix et financement', sous: 'Ce qu’il propose, et comment il paie.', vers: 'Le prix offert', reperesApres: 'g-hono', ic: 'euro',
     champs: [
-      { t: 'euros', cle: 'prix', lib: 'Prix offert', ic: 'euro', requis: true },
+      { t: 'euros', cle: 'total', lib: 'Son offre, frais d’agence compris', ic: 'euro', requis: true,
+        aide: 'Ce qu’il veut mettre en tout, hors frais de notaire. Le prix proposé au vendeur s’en déduit, juste en dessous.' },
       { t: 'choix', cle: 'forme', lib: 'Ce prix s’entend…', ic: 'etiquette', options: [
         { v: 'fai', l: 'Honoraires de l’agence du vendeur compris', ic: 'agence' }, { v: 'net', l: 'Net vendeur (sans agence côté vendeur)', ic: 'maison' },
       ] },
       { t: 'euros', cle: 'honoVendeur', lib: 'Dont honoraires de l’agence du vendeur', ic: 'agence', si: d => d.forme === 'fai' },
-      { t: 'euros', cle: 'honoRecherche', lib: 'Tes honoraires, en plus du prix', ic: 'loupe', aide: 'Ceux de son mandat de recherche, s’il y en a un. Laisse vide sinon.' },
+      { t: 'titre', cle: 't-hono', lib: 'Tes honoraires', ic: 'loupe' },
+      { t: 'choix', cle: 'honoMode', lib: 'Sur ce bien', ic: 'loupe', options: [
+        { v: 'aucun', l: 'Aucun : inter-cabinet', ic: 'accord' }, { v: 'taux', l: 'Un pourcentage', ic: 'pourcent' }, { v: 'forfait', l: 'Un forfait', ic: 'euro' },
+      ] },
+      { t: 'nombre', cle: 'honoTaux', lib: 'Taux', ic: 'pourcent', unite: '% TTC du prix proposé', si: d => d.honoMode === 'taux' },
+      { t: 'euros', cle: 'honoForfait', lib: 'Forfait', ic: 'euro', si: d => d.honoMode === 'forfait' },
+      { t: 'guide', cle: 'g-hono', titre: d => {
+        const prix = num(d, 'prix');
+        return prix ? `Proposé au vendeur : ${euros(prix)}` : 'Le prix proposé au vendeur';
+      }, points: d => {
+        const prix = num(d, 'prix'), h = honorairesOffre(d);
+        return [
+          prix
+            ? h > 0
+              ? { ic: 'euro', x: `Tes honoraires : ${euros(h)}, le reste de son total. Le prix est arrondi à la centaine au-dessus : un chiffre normal pour l’agence, et tu restes sous ton mandat.` }
+              : { ic: 'euro', x: 'Aucun honoraire pour toi sur ce bien : tout son total va au vendeur.' }
+            : { ic: 'euro', x: 'Tape son offre, frais d’agence compris : le prix proposé au vendeur s’affiche ici.' },
+          { ic: 'cadenas', x: 'Tes honoraires ne sont pas écrits dans l’offre : l’agence et le vendeur ne les voient pas.' },
+          { ic: 'plume', x: 'Ton client les voit au moment de signer, avec son total, et les retrouve dans le mail de confirmation.' },
+        ];
+      } },
       { t: 'titre', cle: 't-fin', lib: 'Le financement', ic: 'banque' },
       { t: 'euros', cle: 'apport', lib: 'Apport personnel', ic: 'euro' },
       { t: 'choix', cle: 'pret', lib: 'Un prêt ?', ic: 'banque', options: [{ v: 'oui', l: 'Oui', ic: 'banque' }, { v: 'non', l: 'Non, sans prêt', ic: 'euro' }] },
@@ -98,6 +127,86 @@ function acquereursDe(d: Donnees): Personne[] {
   return l.length ? l : [{ ...PERSONNE_VIDE }];
 }
 
+/* ── Ses honoraires sur ce bien (V3.145) ──
+   Au prix offert : aucun (inter-cabinet), un pourcentage, ou un forfait.
+   Une offre d'avant gardait un montant tout fait (`honoRecherche`). */
+export function honorairesOffre(d: Donnees): number {
+  const prix = num(d, 'prix') || 0, total = num(d, 'total');
+  if (d.honoMode === 'aucun') return 0;
+  /* Depuis son total : le reste, une fois le prix arrondi (voir decomposer). */
+  if ((d.honoMode === 'taux' || d.honoMode === 'forfait') && total && prix) return Math.max(0, total - prix);
+  if (d.honoMode === 'taux') { const t = num(d, 'honoTaux'); return t && prix ? Math.round((prix * t) / 100) : 0; }
+  if (d.honoMode === 'forfait') return num(d, 'honoForfait') || 0;
+  return num(d, 'honoRecherche') || 0;
+}
+
+/* Son total, frais d'agence compris → le prix proposé au vendeur.
+   Alexandre (9 octobre) : « s'il dit 450, ça s'affiche 450 ». Le prix est
+   arrondi à la CENTAINE AU-DESSUS (450 000 € à 2,5 % → 439 100 €, et non
+   439 024 €, un chiffre qui trahirait le calcul), et ses honoraires prennent
+   le reste (10 900 €) : un peu moins que le taux, jamais plus — on reste
+   sous le mandat. Le total affiché est toujours celui qu'il a dit. */
+export function decomposer(d: Donnees): { prix: number | null; hono: number } {
+  const total = num(d, 'total');
+  if (!total || total <= 0) return { prix: null, hono: 0 };
+  /* À l'euro d'abord : 512 500 / 1,025 vaut 499 999,999… en machine, et ne
+     doit pas monter à 500 100. */
+  const cent = (x: number) => Math.min(total, Math.ceil(Math.round(x) / 100) * 100);
+  if (d.honoMode === 'taux') {
+    const t = num(d, 'honoTaux') || 0;
+    if (t > 0) { const prix = cent(total / (1 + t / 100)); return { prix, hono: total - prix }; }
+  }
+  if (d.honoMode === 'forfait') {
+    const f = num(d, 'honoForfait') || 0;
+    if (f > 0 && f < total) { const prix = cent(total - f); return { prix, hono: total - prix }; }
+  }
+  return { prix: total, hono: 0 };
+}
+
+/* L'éditeur recalcule le prix à chaque réponse. Une offre d'avant n'avait
+   que son prix : son total s'en déduit à l'ouverture. Vider le total vide
+   le prix (sinon le champ se remplirait tout seul pendant qu'on tape). */
+function deduire(d0: Donnees, cle: string): Donnees {
+  /* Une offre d'avant la V3.145 : ses honoraires étaient un montant
+     (`honoRecherche`) ; ils deviennent un forfait, ou rien. */
+  const d: Donnees = d0.honoMode ? d0 : { ...d0, honoMode: num(d0, 'honoRecherche') ? 'forfait' : 'aucun', honoForfait: num(d0, 'honoRecherche') || null };
+  const total = num(d, 'total');
+  if (!total) {
+    if (cle === 'total') return { ...d, prix: null };
+    const prix = num(d, 'prix');
+    if (!prix || cle) return d;
+    const h = d.honoMode === 'taux' ? Math.round((prix * (num(d, 'honoTaux') || 0)) / 100)
+      : d.honoMode === 'forfait' ? num(d, 'honoForfait') || 0
+        : d.honoMode === 'aucun' ? 0 : num(d, 'honoRecherche') || 0;
+    return { ...d, total: prix + h };
+  }
+  const { prix } = decomposer(d);
+  return prix === num(d, 'prix') ? d : { ...d, prix };
+}
+/* Le mandat de recherche relu à la création de l'offre (texte « 2,5 % TTC »). */
+function mandatDe(d: Donnees): HonoMandat | null {
+  const m = d.honoMandat as HonoMandat | null | undefined;
+  return m && (m.type === 'pourcentage' || m.type === 'fixe') && Number(m.val) > 0 ? m : null;
+}
+/* Au-dessus du mandat ? La phrase qui le dit, ou null. */
+function depasseMandat(d: Donnees): string | null {
+  const m = mandatDe(d), prix = num(d, 'prix') || 0, h = honorairesOffre(d);
+  const plafond = plafondMandat(m, prix);
+  if (!m || plafond === null || h <= plafond + 1) return null;
+  return `${euros(h)}, au-dessus de son mandat (${m.texte}, soit ${euros(plafond)} à ce prix) : tu ne peux pas prendre plus que ce qu’il a signé.`;
+}
+
+/* Le rappel montré à l'acquéreur au moment de signer, et repris dans son
+   mail de confirmation : jamais dans l'offre elle-même. */
+function rappel(d: Donnees): { titre: string; valeur: string; detail: string } | null {
+  const prix = num(d, 'prix');
+  if (!prix) return null;
+  const h = honorairesOffre(d);
+  return h > 0
+    ? { titre: 'Pour vous, frais d’agence compris', valeur: euros(prix + h), detail: `dont ${euros(prix)} proposés au vendeur et ${euros(h)} de nos honoraires · hors frais de notaire` }
+    : { titre: 'Pour vous, frais d’agence compris', valeur: euros(prix), detail: 'rien de plus à payer, hors frais de notaire' };
+}
+
 function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   const as = acquereursDe(d);
   const pl = as.length > 1;
@@ -106,7 +215,6 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
   const adresse = [txt(d, 'adresse'), txt(d, 'ville')].filter(Boolean).join(', ');
   const prix = num(d, 'prix');
   const hv = num(d, 'honoVendeur');
-  const hr = num(d, 'honoRecherche');
   const conds = liste(d, 'conditions');
   const delai = num(d, 'delai') ?? 30;
   const jusquau = `${txt(d, 'validite') ? jourLong(txt(d, 'validite')) : '……………'}${txt(d, 'validiteHeure') ? ` à ${txt(d, 'validiteHeure').replace(':', ' h ')}` : ''}`;
@@ -129,7 +237,6 @@ function rediger(d: Donnees, A: IdentiteAgence): Partie[] {
     P(`${Acq} ${pl ? 'offrent' : 'offre'} d’acheter ce bien au prix de ${prix ? eurosLettres(prix) : '……………'}${d.forme === 'fai' ? ', honoraires de l’agence du vendeur compris' : ', net vendeur'}.`, true),
   ];
   if (d.forme === 'fai' && prix && hv) prixB.push(P(`Soit un prix net revenant au VENDEUR de ${euros(prix - hv)} et des honoraires de ${euros(hv)} TTC, à la charge de ${ACQ}.`));
-  if (hr) prixB.push(P(`En plus de ce prix, ${ACQ} ${pl ? 'règlent' : 'règle'} à l’Agence les honoraires prévus par ${pl ? 'leur' : 'son'} mandat de recherche : ${euros(hr)} TTC, le jour de l’acte authentique, par l’intermédiaire du notaire.`));
   prixB.push(P('Les frais de l’acte (droits de mutation et émoluments du notaire) sont en sus, à la charge de l’acquéreur, comme l’usage le veut.'));
 
   const fin: Bloc[] = [];
@@ -224,7 +331,8 @@ function manques(d: Donnees): string[] {
     else if (!p.adresse) out.push(`L’adresse de ${nomComplet(p)}`);
   });
   if (!txt(d, 'adresse') || !txt(d, 'ville')) out.push('L’adresse du bien');
-  if (!num(d, 'prix')) out.push('Le prix offert');
+  if (!num(d, 'prix')) out.push('Son offre, frais d’agence compris');
+  if (depasseMandat(d)) out.push('Tes honoraires : au-dessus de son mandat de recherche');
   if (!d.pret) out.push('Le financement (avec ou sans prêt)');
   if (!txt(d, 'validite')) out.push('La date de validité de l’offre');
   if (!txt(d, 'faitA') || !txt(d, 'date')) out.push('Le lieu et la date');
@@ -238,14 +346,22 @@ function reperes(d: Donnees, etape: string): Repere[] {
   const out: Repere[] = [];
   if (etape !== 'prix') return out;
   const prix = num(d, 'prix'), affiche = num(d, 'prixAffiche');
+  const recherche = honorairesOffre(d);
+  /* L'écart se lit en « frais d'agence compris », comme le client pense :
+     son total face au prix demandé, ses honoraires au même taux compris. */
   if (prix && affiche) {
-    const ecart = ((prix - affiche) / affiche) * 100;
-    out.push({ l: 'Par rapport au prix annoncé', v: `${ecart > 0 ? '+' : ''}${pourcent(ecart)} (${ecart < 0 ? '−' : '+'}${euros(Math.abs(prix - affiche))})` });
+    const total = prix + recherche;
+    const hDemande = d.honoMode === 'taux' ? Math.round((affiche * (num(d, 'honoTaux') || 0)) / 100) : d.honoMode === 'forfait' ? num(d, 'honoForfait') || 0 : 0;
+    const demande = affiche + hDemande;
+    const ecart = ((total - demande) / demande) * 100;
+    out.push({ l: hDemande ? 'Prix demandé, frais d’agence compris' : 'Prix demandé', v: euros(demande) });
+    out.push({ l: 'Son offre par rapport au prix demandé', v: total === demande ? 'au prix demandé' : `${ecart > 0 ? '+' : ''}${pourcent(ecart)} (${ecart < 0 ? '−' : '+'}${euros(Math.abs(total - demande))})` });
   }
-  const recherche = num(d, 'honoRecherche') || 0;
   if (prix) {
     const total = prix + recherche;
-    out.push({ l: 'Budget, hors frais de notaire', v: euros(total) });
+    const trop = depasseMandat(d);
+    if (trop) out.push({ l: 'Tes honoraires', v: trop, ton: 'alerte' });
+    else if (recherche && !mandatDe(d)) out.push({ l: 'Tes honoraires', v: 'Vérifie qu’il a un mandat de recherche signé : sans mandat, tu ne peux pas lui demander d’honoraires.', ton: 'alerte' });
     const apport = num(d, 'apport') || 0, pret = d.pret === 'oui' ? num(d, 'pretMontant') || 0 : 0;
     if (apport || pret) {
       const reste = total - apport - pret;
@@ -260,13 +376,23 @@ function reperes(d: Donnees, etape: string): Repere[] {
 
 function defaut(c: Contexte): Donnees {
   const cl = c.client, b = c.bien;
+  /* V3.145 : le prix de l'annonce, et ses honoraires tels que fixés sur le
+     bien (avec inter : aucun) ; à défaut de taux sur le bien, celui du mandat. */
+  const pb = prixDuBien(b);
+  const mandat = honorairesDuMandat(c.recherche || null);
+  const surBien = b && !pb.agence && pb.hono > 0 && Number(b.commission_val) > 0
+    ? { mode: b.commission_type === 'fixe' ? 'forfait' : 'taux', val: Number(b.commission_val) } : null;
   const p: Personne = { ...PERSONNE_VIDE, prenom: cl?.prenom || '', nom: cl?.nom || '', adresse: cl?.adresse || '', email: cl?.emails?.[0] || '', telephone: cl?.telephones?.[0] || '' };
   const desc = b ? [b.type_bien, b.nb_pieces ? `${b.nb_pieces} pièces` : '', b.surface ? `${b.surface} m²` : '', b.etage != null ? (b.etage === 0 ? 'rez-de-chaussée' : `${b.etage}e étage`) : ''].filter(Boolean).join(', ').toLowerCase() : '';
   const dans = (j: number) => new Date(Date.now() + j * 86_400_000).toISOString().slice(0, 10);
   return {
     acquereurs: [p],
     adresse: b?.adresse || '', ville: b?.ville || '', description: desc, vendeurNom: '', agenceVendeur: b?.agence_nom || '',
-    prixAffiche: b?.prix_acquereur || null, prix: null, forme: 'fai', honoVendeur: null, honoRecherche: null,
+    prixAffiche: pb.demande, total: null, prix: null, forme: b?.est_particulier ? 'net' : 'fai', honoVendeur: null,
+    honoMode: surBien ? surBien.mode : 'aucun',
+    honoTaux: surBien?.mode === 'taux' ? surBien.val : mandat?.type === 'pourcentage' ? mandat.val : null,
+    honoForfait: surBien?.mode === 'forfait' ? surBien.val : mandat?.type === 'fixe' ? mandat.val : null,
+    honoMandat: mandat,
     apport: null, pret: 'oui', pretMontant: null, pretDuree: 25, pretTaux: null, conditions: [],
     validite: dans(5), validiteHeure: '18:00', delai: 30, notaire: '', note: '', signature: 'en_ligne', faitA: c.identite.ville, date: aujourdhui(),
   };
@@ -297,6 +423,8 @@ export const OFFRE_ACHAT: Modele = {
   manques,
   reperes,
   cases: casesOffre,
+  rappel,
+  deduire,
   accepter: d => {
     const prix = num(d, 'prix');
     const jusquau = `${txt(d, 'validite') ? jourLong(txt(d, 'validite')) : '……………'}${txt(d, 'validiteHeure') ? ` à ${txt(d, 'validiteHeure').replace(':', ' h ')}` : ''}`;
