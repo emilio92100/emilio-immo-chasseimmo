@@ -271,8 +271,11 @@
   }
   .statDark { border-color: var(--emilio); }
 
-  .mainRow { padding: 12px 0 20px; }
-  .card, .mandatAlert { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.161 — « Relances, Visites à venir, Activité récente : un peu en
+     arrondi aussi » : les cartes du dessous arrondies, à 10 px des bords,
+     comme le bandeau et les chiffres. */
+  .mainRow { padding: 12px 10px 20px; }
+  .card, .mandatAlert { border-radius: 18px; }
   .cardHeader { padding: 14px; }
   .listRow { padding: 13px 14px; }
   .groupeLabel { padding: 8px 14px 5px; }
