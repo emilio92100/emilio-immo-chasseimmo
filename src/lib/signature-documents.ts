@@ -45,6 +45,7 @@ import { envoyerMail, gabarit, echappe, ALERTES, CRM } from './mandat-serveur';
 import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { noterSignature } from './registre';
+import { noteOffre } from './actes/offre-achat';
 import { mandatSigneSurBien } from './mandat-bien';
 import { avenantSigneSurBien } from './documents-avenant-bien';
 import { solderRelancesSignature } from './documents-relances';
@@ -640,6 +641,8 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
       client_id: doc.client_id, type: 'mandat',
       titre: `✍️ ${m?.titre || 'Document'} signé ${sd.mode === 'sur_place' ? 'sur place' : 'en ligne'}`,
       description: [doc.numero ? `n° ${doc.numero}` : '', doc.titre || '', `signé par tous le ${dateCourte(le)} à ${heureParis(le)}`].filter(Boolean).join(' · ')
+        /* V3.145 : une offre d'achat — son total et ses honoraires, pour lui seul. */
+        + (doc.modele === 'offre_achat' && noteOffre(doc.donnees) ? `\n💶 ${noteOffre(doc.donnees)}` : '')
         + ([...(o.echecs || []), ...pbs].length ? `\n⚠️ ${[...(o.echecs || []), ...pbs].join(' ; ')}` : ''),
       metadata: { document_id: doc.id },
     });
