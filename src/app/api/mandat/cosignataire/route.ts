@@ -5,6 +5,7 @@ import { lireCos, inviter, sceller, envoyerExemplaire, finRetractationDe, nomDe,
 import { envoyerMail, gabarit, echappe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import { solderRelancesSignature } from '@/lib/documents-relances';
+import { avecRemises } from '@/lib/remise-mail';
 
 /**
  * Les gestes d'Alexandre sur un co-signataire, depuis la fiche du CRM
@@ -28,7 +29,11 @@ export const maxDuration = 60;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ko = (erreur: string, status = 400) => NextResponse.json({ ok: false, erreur }, { status });
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`), pour
+   vérifier qu'ils sont bien arrivés (src/lib/remise-mail.ts). */
+export async function POST(req: NextRequest) { return avecRemises(() => traiterPost(req)); }
+
+async function traiterPost(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !cle) return ko('Variables Supabase manquantes', 500);
   const sb = createClient(url, cle, { auth: { persistSession: false } });
