@@ -410,7 +410,7 @@ export default function PageDemandesSite({ onNavigate }: { onNavigate: (page: st
 
   return (
     <div className={p.page}>
-      <EnteteRubrique titre="Demandes Internet" icone={<PictoBoite />} phrase={phrase}
+      <EnteteRubrique titre="Demandes Internet" icone={<PictoBoite />} phrase={phrase} arrondi
         recherche={demandes.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Nom, téléphone, ville, bien…', label: 'Chercher une demande' } : undefined}
         label="Les demandes" actif="" onChoisir={() => {}} tuiles={[]} />
 

@@ -883,6 +883,8 @@
    (Page.module.css) ; le panneau des demandes va d'un bord à l'autre, sans
    arrondi ni cadre sur les côtés. */
 @media (max-width: 760px) {
-  .panneau { border-radius: 0; border-left: none; border-right: none; }
+  /* V3.162 — « Demandes Internet aussi, un peu arrondi, au plus large
+     possible » : le panneau arrondi, à 10 px des bords. */
+  .panneau { border-radius: 18px; margin-left: 10px; margin-right: 10px; }
   .cats { margin: -2px -14px 0; padding: 2px 14px 4px; }
 }
