@@ -196,6 +196,18 @@ function depasseMandat(d: Donnees): string | null {
   return `${euros(h)}, au-dessus de son mandat (${m.texte}, soit ${euros(plafond)} à ce prix) : tu ne peux pas prendre plus que ce qu’il a signé.`;
 }
 
+/* Pour Alexandre seul (le Suivi du client, la fiche de l'offre) : son
+   total, ce qui part au vendeur, et ce qu'il touchera. Le client ne lit
+   jamais le Suivi. */
+export function noteOffre(d: Donnees): string | null {
+  const prix = num(d, 'prix');
+  if (!prix) return null;
+  const h = honorairesOffre(d);
+  return h > 0
+    ? `Son offre : ${euros(prix + h)} frais d’agence compris · proposé au vendeur : ${euros(prix)} · tes honoraires : ${euros(h)}`
+    : `Son offre : ${euros(prix)} · sans honoraires de recherche`;
+}
+
 /* Le rappel montré à l'acquéreur au moment de signer, et repris dans son
    mail de confirmation : jamais dans l'offre elle-même. */
 function rappel(d: Donnees): { titre: string; valeur: string; detail: string } | null {
