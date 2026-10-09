@@ -11,6 +11,7 @@ import {
   type DocSigne, type SigDoc, type SignatureDoc, type PersonneSig,
 } from '@/lib/signature-documents';
 import { solderRelancesSignature } from '@/lib/documents-relances';
+import { avecRemises } from '@/lib/remise-mail';
 
 /**
  * La signature en ligne ou sur place d'un document (Documents juridiques).
@@ -77,7 +78,11 @@ function personneDe(c: CaseSignature, saisi: Record<string, unknown> | undefined
   };
 }
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`), pour
+   vérifier qu'ils sont bien arrivés (src/lib/remise-mail.ts). */
+export async function POST(req: NextRequest) { return avecRemises(() => traiterPost(req)); }
+
+async function traiterPost(req: NextRequest) {
   try {
     const body = await req.json();
     const action = String(body?.action || '');
