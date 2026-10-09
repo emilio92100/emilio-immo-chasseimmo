@@ -774,21 +774,18 @@ a.coLien:hover { color: #1a2332; }
 }
 @media (max-width: 760px) {
   .pageHeader, .pageHeader:not(.pageHeaderPlie) { padding: 9px 14px 0; }
-  .archiveBandeau { margin: 10px 0 0; border-radius: 0; border-left: none; border-right: none; padding: 11px 14px; }
+  /* V3.163 — Alexandre : « sur la fiche d'un contact, finalement en arrondi,
+     c'est mieux » : 10 px de chaque côté, le bandeau bleu et les cartes
+     reprennent leurs coins arrondis. */
+  .archiveBandeau { margin: 10px 10px 0; padding: 11px 14px; }
 
-  /* Le bandeau bleu, d'un bord à l'autre ; la pastille et les gestes restent
-     posés dessus, à 14 px du bord. */
-  .teteZone { padding: 10px 0 0; }
+  .teteZone { padding: 10px 10px 0; }
   .teteZone:has(> .chevalHaut) { padding-top: 2px; }
   .chevalHaut { margin: 0 14px -71px; }
-  .tete { border-radius: 0; border-left: none; border-right: none; padding-left: 14px; padding-right: 14px; }
+  .tete { border-radius: 20px; padding-left: 14px; padding-right: 14px; }
   .ongletsTete { margin: -24px 10px 0; }
 
-  /* Le contenu : plus de marge sur les côtés, les cartes vont au bord. */
-  .contentWrap { padding: 12px 0 28px; }
-  .infoCard, .carteEns, .aVenir, .rappro, .emptyTab, .card {
-    border-radius: 0; border-left: none; border-right: none;
-  }
+  .contentWrap { padding: 12px 10px 28px; }
   .carteEns { padding: 14px; }
   .aVenir { padding: 8px 10px; }
   .rappro { padding: 14px; }
