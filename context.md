@@ -1499,6 +1499,19 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.160 — 10 octobre 2026 · Au téléphone : Mon activité et Contacts, de nouveau arrondis
+
+Alexandre : « sur téléphone, Mon activité fait trop carré : remets un peu en arrondi, comme le
+dashboard ; dans Contacts aussi, légèrement — mais que ça prenne toute la place de l'écran ».
+
+- **Mon activité** (Page.module.css, bloc V3.152) : les six chiffres en tuiles arrondies, deux par
+  ligne, à 10 px des bords — comme l'accueil (V3.155). `statsGrid`/`statCard` ne servent qu'à
+  PageActivite.
+- **Contacts** : l'en-tête « Mes contacts » garde sa carte arrondie à 10 px des bords (nouvelle
+  option `arrondi` d'EnteteRubrique ; les autres pages restent bord à bord) ; chaque contact de la
+  liste (`.lLigne`, Contacts.module.css, et `.ligne`, Clients.module.css) est une carte arrondie à
+  10 px des bords.
+
 ### V3.159 — 10 octobre 2026 · « Pour qui ? » : l'avatar du client, les photos et la recherche des biens
 
 Alexandre, sur la fenêtre « Bon de visite : pour qui ? » : « quand je choisis le nom, il n'y a pas
