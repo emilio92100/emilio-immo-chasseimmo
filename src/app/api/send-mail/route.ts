@@ -9,6 +9,7 @@ import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
 import { adresseVente } from '@/lib/adresse-vente';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
+import { avecRemises, noterRemises } from '@/lib/remise-mail';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -942,7 +943,11 @@ function texteVisites(corps: string, lignes: LigneVisite[], token?: string | nul
 }
 
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`), pour
+   vérifier qu'ils sont bien arrivés (src/lib/remise-mail.ts). */
+export async function POST(req: NextRequest) { return avecRemises(() => envoyer(req)); }
+
+async function envoyer(req: NextRequest) {
   /* V3.50 : une erreur imprévue après la réservation de la date du mail de
      bienvenue la rend aussi (sinon le bouton resterait « Déjà envoyé »). */
   let rendreSiErreur: (() => Promise<void>) | null = null;
@@ -1217,6 +1222,7 @@ export async function POST(req: NextRequest) {
             resultats.push({ client_id: client.id, success: false, error: mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200) });
             continue;
           }
+          noterRemises(mjJson, { clientId: client.id, rechercheId: dossierDe(client.id), nom: `${client.prenom || ''} ${client.nom || ''}`.trim(), objet: sujetV });
           /* Après l'envoi, jamais avant : un échec Mailjet ne doit pas afficher
              « Rappel envoyé ». Si la colonne manque (SQL pas encore lancé), le
              mail est parti quand même : on le dit au CRM. */
@@ -1279,6 +1285,7 @@ export async function POST(req: NextRequest) {
             resultats.push({ client_id: client.id, success: false, error: mjJson?.Messages?.[0]?.Errors?.[0]?.ErrorMessage || JSON.stringify(mjJson).slice(0, 200) });
             continue;
           }
+          noterRemises(mjJson, { clientId: client.id, rechercheId: dossierDe(client.id), nom: `${client.prenom || ''} ${client.nom || ''}`.trim(), objet: sujet });
           await ecritServeur('L’envoi (communications)', supabase.from('envois').insert({
             client_id: client.id, recherche_id: recherche_id || null, type: 'mail_libre',
             objet: sujet, corps: `Mandat de recherche prêt à signer · honoraires ${honorairesCourt(hono)}`, destinataires: emails, biens_ids: [], sms_envoye: false,
@@ -1408,6 +1415,7 @@ export async function POST(req: NextRequest) {
         const ok = mjRes.ok && mjJson?.Messages?.[0]?.Status === 'success';
 
         if (ok) {
+          noterRemises(mjJson, { clientId: client.id, rechercheId: dossierDe(client.id), nom: `${client.prenom || ''} ${client.nom || ''}`.trim(), objet: objetFinal });
           /* Parti : plus question de rendre la date, quoi qu'il arrive ensuite. */
           if (bienvenue) rendreSiErreur = null;
           /* Le mail de bienvenue ne part qu'une fois : on horodate la recherche,
