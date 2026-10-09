@@ -1518,6 +1518,18 @@ née à l'étranger, une petite coche : un nouveau champ s'active, la ville et l
   exigé.
 - Rien n'est imposé (sans réseau, ou pour un lieu inconnu, on tape librement) ; le mandat garde ses
   deux lignes `naissanceLieu` et `adresse` : rien ne change côté serveur ni dans le PDF.
+- **La phrase des honoraires** (Alexandre : « ça veut dire quoi cette phrase, j'ai pas compris ») :
+  « Dans l'espace personnel du MANDANT, le prix affiché pour chaque bien est celui de son annonce. Si
+  des honoraires de l'Agence s'y ajoutent (second cas ci-dessus), l'espace le précise sur le bien
+  concerné, avec leur montant. » — dans le mandat de l'espace (src/lib/mandat.ts) et celui de
+  Documents (src/lib/actes/mandat-recherche.ts). Les mandats déjà signés gardent leur PDF.
+- **Documents juridiques : la recherche au-dessus de la liste** (« elle est en haut, au-dessus de
+  Créer un document : on tape le nom et il faut descendre pour voir le résultat ») : elle quitte
+  l'en-tête et se pose à droite de « Liste des documents » (en dessous au téléphone) ; taper une
+  recherche passe sur l'onglet « Tous ».
+- **Un avenant ne prend pas de numéro** (question d'Alexandre : « le brouillon affiche 997, pas
+  998 ») : voulu (src/lib/registre.ts) — l'avenant reprend le numéro du mandat qu'il modifie et
+  s'inscrit, une fois signé, en observation sur la ligne de ce mandat au registre.
 
 ### V3.152 — 9 octobre 2026 · Le mouvement « depuis le bouton » ; le téléphone bord à bord ; l'espace qui s'équilibre ; l'espace réservé aux clients actifs
 
