@@ -518,8 +518,10 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
   .suiviCorps { margin: 0; padding: 14px; border-radius: 0; border-left: none; border-right: none; }
   .refPied { padding: 0 14px; }
 
-  /* La liste des contacts : une carte par ligne, au bord de l'écran. */
-  .lLigne { border-radius: 0; border-left: none; border-right: none; }
+  /* La liste des contacts : une carte par ligne.
+     V3.160 — Alexandre : « remets légèrement en arrondi, mais que ça prenne
+     toute la place de l'écran » : arrondie, à 10 px des bords. */
+  .lLigne { border-radius: 16px; margin: 0 10px; padding: 12px 12px; }
 
   /* « À savoir sur… » : le crayon passe à côté du titre et la note prend
      toute la largeur. Avant, sa colonne et les marges repoussaient le texte
