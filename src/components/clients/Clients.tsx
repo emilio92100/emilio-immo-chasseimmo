@@ -1369,10 +1369,21 @@ export default function Clients({ onNavigate, fenetre }: {
               /* Une personne ou un couple */
               .nc-qui { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 460px; }
               .nc-qui-b { justify-content: center; align-items: center; padding: 10px 12px; }
-              .nc-couple { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-              @media (max-width: 720px) { .nc-couple { grid-template-columns: 1fr; } }
-              .nc-pers { border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-              .nc-pers-t { font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #a9822f; }
+              /* V3.149 (Alexandre : « le prénom et le nom, c'est des petites
+                 cases, ça dépasse… le mail, il faut appuyer dedans et défiler »)
+                 : les deux personnes l'une sous l'autre, chacune sur toute la
+                 largeur. Le prénom et le nom sur une ligne ; le téléphone et
+                 l'e-mail sur la suivante, l'e-mail avec la plus grande case. */
+              .nc-couple { display: flex; flex-direction: column; gap: 10px; }
+              .nc-pers { border: 1px solid #e3e8f0; border-radius: 14px; padding: 13px 16px 16px; background: #fff; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+              .nc-pers-h { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+              .nc-pers-t { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #a9822f; }
+              .nc-pers-n { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #fbf6e9; border: 1px solid #efdfb4; color: #8a6a1f; font: 800 11.5px 'Plus Jakarta Sans', sans-serif; letter-spacing: 0; }
+              .nc-id { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+              .nc-co { display: grid; grid-template-columns: minmax(150px, 190px) minmax(0, 1fr); gap: 12px; }
+              /* Un libellé sur deux lignes ne décale plus sa case : elles restent alignées en bas. */
+              .nc-id > div, .nc-co > div { justify-content: flex-end; }
+              @media (max-width: 760px) { .nc-id, .nc-co { grid-template-columns: 1fr; } .nc-pers { padding: 12px 13px 14px; } }
               .nc-civ { display: flex; gap: 6px; }
               .nc-civ button { padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; border: 1.5px solid #e3e8f0; background: #fff; color: #8593a8; cursor: pointer; font-family: inherit; }
               .nc-civ button[data-on="true"] { border-color: var(--emilio); background: #f8fafc; color: var(--emilio); }
@@ -1510,27 +1521,31 @@ export default function Clients({ onNavigate, fenetre }: {
                           <>
                             <div className="nc-couple">
                               <div className="nc-pers">
-                                <div className="nc-pers-t">Personne 1 · contact principal</div>
-                                <Civilite v={form.civilite} onV={c => setForm({ ...form, civilite: c })} />
-                                <div className={styles.formRow}>
+                                <div className="nc-pers-h">
+                                  <span className="nc-pers-t"><span className="nc-pers-n">1</span>{'Personne 1 · contact principal'}</span>
+                                  <Civilite v={form.civilite} onV={c => setForm({ ...form, civilite: c })} />
+                                </div>
+                                <div className="nc-id">
                                   <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} autoFocus /></div>
                                   <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} /></div>
                                 </div>
                                 {/* Ses coordonnées ici, comme pour la personne 2 : elles
                                     étaient plus bas, dans « Contact », et on les cherchait. */}
-                                <div className={styles.formRow}>
+                                <div className="nc-co">
                                   <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
                                   <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
                                 </div>
                               </div>
                               <div className="nc-pers">
-                                <div className="nc-pers-t">Personne 2</div>
-                                <Civilite v={form.c2_civilite} onV={c => setForm({ ...form, c2_civilite: c })} />
-                                <div className={styles.formRow}>
+                                <div className="nc-pers-h">
+                                  <span className="nc-pers-t"><span className="nc-pers-n">2</span>{'Personne 2'}</span>
+                                  <Civilite v={form.c2_civilite} onV={c => setForm({ ...form, c2_civilite: c })} />
+                                </div>
+                                <div className="nc-id">
                                   <div className={styles.formGroup}><label className={styles.label}>Prénom</label><input className={styles.input} value={form.c2_prenom} onChange={e => setForm({ ...form, c2_prenom: e.target.value })} /></div>
                                   <div className={styles.formGroup}><label className={styles.label}>Nom</label><input className={styles.input} value={form.c2_nom} onChange={e => setForm({ ...form, c2_nom: e.target.value })} /></div>
                                 </div>
-                                <div className={styles.formRow}>
+                                <div className="nc-co">
                                   <div className={styles.formGroup}><label className={styles.label}>{'Téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.c2_tel} onChange={e => setForm({ ...form, c2_tel: e.target.value })} /></div>
                                   <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.c2_email} onChange={e => setForm({ ...form, c2_email: e.target.value })} /></div>
                                 </div>
@@ -1546,13 +1561,13 @@ export default function Clients({ onNavigate, fenetre }: {
                           e-mail, à la demande. */}
                       <Bloc ic="telephone" titre="Le joindre" teinte={teinte}>
                         {!(form.couple && !pro) && (
-                          <div className={styles.formRow}>
+                          <div className="nc-co">
                             <div className={styles.formGroup}><label className={styles.label}>Téléphone</label><input className={styles.input} type="tel" value={form.tel1} onChange={e => setForm({ ...form, tel1: e.target.value })} /></div>
                             <div className={styles.formGroup}><label className={styles.label}>E-mail</label><input className={styles.input} type="email" value={form.email1} onChange={e => setForm({ ...form, email1: e.target.value })} /></div>
                           </div>
                         )}
                         {autresCoord || form.tel2 || form.email2 ? (
-                          <div className={styles.formRow}>
+                          <div className="nc-co">
                             <div className={styles.formGroup}><label className={styles.label}>{'Autre téléphone · facultatif'}</label><input className={styles.input} type="tel" value={form.tel2} onChange={e => setForm({ ...form, tel2: e.target.value })} /></div>
                             <div className={styles.formGroup}><label className={styles.label}>{'Autre e-mail · facultatif'}</label><input className={styles.input} type="email" value={form.email2} onChange={e => setForm({ ...form, email2: e.target.value })} /></div>
                           </div>
