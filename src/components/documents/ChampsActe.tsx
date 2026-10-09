@@ -1,9 +1,10 @@
 'use client';
 import { lireMontant } from '@/lib/montant';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { enLettres } from '@/lib/mandat';
 import { PERSONNE_VIDE, type Champ, type ChampSimple, type Donnees, type Personne } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
+import AjoutBien from './ChoixBienCrm';
 import s from './Documents.module.css';
 
 /* ═══ Les champs de l'éditeur ═════════════════════════════════════════════
@@ -311,6 +312,10 @@ function SaisieSimple({ c, id, v, manque, off, onChange }: {
   );
 }
 
+/* V3.157 — Ce que l'éditeur sait du document, pour les questions qui en
+   ont besoin (« Ajouter un bien » propose les biens de son client). */
+export const ContexteActe = createContext<{ clientId: string | null }>({ clientId: null });
+
 /* ── Des cartes qui se répètent (V3.154 : les autres biens d'un bon de visite) ──
    Comme les personnes : une carte par réponse, son nom (« Bien 2 · 4 rue
    des Lilas »), « Retirer », puis ses questions simples. Une carte toute
@@ -322,6 +327,7 @@ function ChampGroupes({ c, d, v, onChange, off }: {
   c: Extract<Champ, { t: 'groupes' }>; d: Donnees; v: unknown; onChange: (x: Record<string, unknown>[]) => void; off: boolean;
 }) {
   const cartes = groupesDe(v).slice(0, c.max);
+  const ctx = useContext(ContexteActe);
   const maj = (i: number, k: string, x: unknown) => onChange(cartes.map((g, j) => (j === i ? { ...g, [k]: x } : g)));
   const vues = c.champs.filter(q => !q.si || q.si(d));
   /* La première réponse écrite suit le nom de la carte (son adresse). */
@@ -335,6 +341,9 @@ function ChampGroupes({ c, d, v, onChange, off }: {
             <div className={s.persoT}>
               <span className={s.ligneIc}><Ic n={c.ic || 'lots'} t={15} /></span>
               <b>{[c.nomCarte ? c.nomCarte(d, i) : `${c.un} ${i + 1}`, resume].filter(Boolean).join(' · ')}</b>
+              {c.crm === 'biens' && (g.bienId || g.bienVenteId
+                ? <span className={s.abLie} title="Relié à sa fiche du CRM : vignette dans l’historique, et le bon sur la fiche du bien">{g.bienVenteId ? 'Mon mandat' : 'Son dossier'}</span>
+                : <span className={s.abLie} data-main="oui" title="Écrit à la main : il n’est relié à aucune fiche, pas de suivi possible">À la main</span>)}
               {!off && <button type="button" className={s.retirer} onClick={() => onChange(cartes.filter((_, j) => j !== i))}><Croix t={13} />Retirer</button>}
             </div>
             <div className={s.persoCorps}>
@@ -354,7 +363,12 @@ function ChampGroupes({ c, d, v, onChange, off }: {
       })}
       {/* Figé, sans carte : on le dit, plutôt qu'un bloc vide. */}
       {off && !cartes.length && <div className={s.chAide}>{`Aucun autre ${c.un.toLowerCase()}.`}</div>}
-      {!off && cartes.length < c.max && (
+      {/* V3.157 : un bien vient de mes mandats, de son dossier, ou de ma main. */}
+      {!off && c.crm === 'biens' && (
+        <AjoutBien clientId={ctx.clientId} plein={cartes.length >= c.max}
+          onAjouter={x => onChange([...cartes, { ...(c.nouveau ? c.nouveau(d) : {}), ...x }])} />
+      )}
+      {!off && !c.crm && cartes.length < c.max && (
         <button type="button" className={s.ajouter} onClick={() => onChange([...cartes, { ...(c.nouveau ? c.nouveau(d) : {}) }])}>
           <Ic n="plus" t={15} e={2.4} />{c.ajouter ? c.ajouter(d) : `Ajouter un ${c.un.toLowerCase()}`}
         </button>

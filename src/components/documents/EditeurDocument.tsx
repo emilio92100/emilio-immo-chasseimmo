@@ -5,14 +5,14 @@ import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
 import { STATUTS, modele, pdfDocument, electronique, modeSignature, surPlaceSansCode, versEtape, type Champ, type Donnees, type Etape, type Repere } from '@/lib/actes';
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import FenetreConfirmer from './FenetreConfirmer';
-import { ChampActe, manquesEtape } from './ChampsActe';
+import { ChampActe, ContexteActe, manquesEtape } from './ChampsActe';
 import FilEtapes from './FilEtapes';
 import { chercherQuestion, type Cible } from './versQuestion';
 import { FenetreProjet, dernierEnvoi } from './EnvoiProjet';
 import { lireDepart, prochainNumero, type Depart } from '@/lib/registre';
 import {
-  SIGNATURE_OUVERTE, appelSignature, colonnesListe, finaliser, identiteDuJour, lienFichier, montrerPdf, nomFichier, quand, signatureOuverte,
-  tableSignaturesAbsente, type DocumentRow,
+  SIGNATURE_OUVERTE, appelSignature, colonnesListe, finaliser, identiteDuJour, lienFichier, ligneRegistreDe, montrerPdf, nomFichier, quand, signatureOuverte,
+  supprimerBrouillon, tableSignaturesAbsente, type DocumentRow,
 } from './outils';
 import s from './Documents.module.css';
 import b from '@/components/biens/Biens.module.css';
@@ -133,13 +133,18 @@ function Reperes({ l }: { l: Repere[] }) {
   );
 }
 
-export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
+export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, retourLib, onSupprime }: {
   doc: DocumentRow;
   onFermer: () => void;
   onMaj: (d: DocumentRow) => void;
   /* Finalisé pour une signature en ligne ou sur place : la fiche du
      document prend le relais (envoyer les liens, signer sur place). */
   onFinalise?: (d: DocumentRow) => void;
+  /* V3.157 : le bouton retour dit d'où l'on vient (« Visites ») ;
+     « Documents » sinon. */
+  retourLib?: string;
+  /* V3.157 : le brouillon supprimé depuis l'éditeur — il se ferme. */
+  onSupprime?: (id: string) => void | Promise<void>;
 }) {
   const m = modele(doc.modele);
   const [row, setRow] = useState<DocumentRow>(doc);
@@ -175,10 +180,16 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
   /* V3.61 : avant de le repasser en brouillon, la fenêtre qui dit ce qui va
      se passer (FenetreConfirmer). */
   const [fenModif, setFenModif] = useState(false);
+  /* V3.157 — Alexandre : « directement depuis le document, le bouton
+     Supprimer le brouillon : ça supprime, et ça se ferme ». La même
+     fenêtre que depuis sa fiche (le n° du registre lu avant de l'ouvrir). */
+  const [fenSuppr, setFenSuppr] = useState<{ ligne: number | null } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const apercuRef = useRef<HTMLDivElement>(null);
   const corpsRef = useRef<HTMLDivElement>(null);
   const off = row.statut !== 'brouillon';
+  /* V3.157 : ce que les questions peuvent savoir du document (son client). */
+  const contexteActe = useMemo(() => ({ clientId: row.client_id || null }), [row.client_id]);
 
   /* ── La largeur des deux colonnes, et l'aperçu masqué (V3.46) ── */
   const [part, setPart] = useState<number>(() => {
@@ -306,6 +317,26 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     onFermer();
   }
 
+  /* V3.157 : supprimer le brouillon depuis l'éditeur (outils.ts, comme sa fiche). */
+  async function demanderSuppression() {
+    try { setFenSuppr({ ligne: await ligneRegistreDe(row) }); }
+    catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
+  }
+  async function supprimer(ligne: number | null) {
+    setFenSuppr(null);
+    /* Plus rien à enregistrer : il part. */
+    if (minuterie.current) clearTimeout(minuterie.current);
+    aEnregistrer.current = false;
+    setTravail('supprimer');
+    try {
+      await supprimerBrouillon(row, ligne);
+      await onSupprime?.(row.id);
+    } catch (e) {
+      setMessage({ t: 'La suppression a échoué : ' + (e as Error).message, ok: false });
+      setTravail('');
+    }
+  }
+
   /* ── Le texte, recalculé à chaque réponse (sans ralentir la frappe) ── */
   const dd = useDeferredValue(d);
   const rendu = useMemo(() => {
@@ -363,7 +394,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
     return (
       <div className={s.ed}>
         <div className={s.edBarre}>
-          <button type="button" className={s.edRetour} onClick={onFermer}><Ic n="retour" t={16} /><span>Documents</span></button>
+          <button type="button" className={s.edRetour} onClick={onFermer}><Ic n="retour" t={16} /><span>{retourLib || 'Documents'}</span></button>
         </div>
         <div className={s.edForm}><div className={s.erreur}>{`Modèle inconnu : « ${doc.modele} ». Ce document ne peut pas être ouvert ici.`}</div></div>
       </div>
@@ -631,10 +662,11 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           : `Non enregistré : ${enreg.erreur}`;
 
   return (
+    <ContexteActe.Provider value={contexteActe}>
     <div className={s.ed} role="dialog" aria-modal="true" aria-label={row.titre || m.titre}>
       {/* ── La barre du haut ── */}
       <div className={s.edBarre}>
-        <button type="button" className={s.edRetour} onClick={fermer}><Ic n="retour" t={16} /><span>Documents</span></button>
+        <button type="button" className={s.edRetour} onClick={fermer}><Ic n="retour" t={16} /><span>{retourLib || 'Documents'}</span></button>
         <div className={s.edTitre}>
           <b>{m.titreDoc(d)}</b>
           <div className={s.edEtat}>
@@ -666,6 +698,12 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           )}
           {row.statut === 'brouillon' && (
             <button type="button" className={`${s.btn} ${s.btnOr}`} onClick={() => setFin(true)}><Ic n="check" t={15} e={2.4} />Finaliser</button>
+          )}
+          {row.statut === 'brouillon' && onSupprime && (
+            <button type="button" className={`${s.btn} ${s.btnDanger} ${s.btnCourt}`} disabled={travail === 'supprimer'} onClick={() => { void demanderSuppression(); }}
+              title="Supprimer ce brouillon" aria-label="Supprimer le brouillon">
+              <Ic n="corbeille" t={15} /><span>{travail === 'supprimer' ? 'Suppression…' : 'Supprimer'}</span>
+            </button>
           )}
         </div>
       </div>
@@ -845,6 +883,17 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           </div>
         </div>
       )}
+      {fenSuppr && (
+        <FenetreConfirmer ic="corbeille" ton="danger" titre="Supprimer ce brouillon ?" bouton="Supprimer le brouillon"
+          intro={row.titre || m.titre}
+          points={[
+            { ic: 'croix', ton: 'alerte', t: 'Le brouillon disparaît pour de bon, avec toutes ses réponses. Ça ne se rattrape pas.' },
+            ...(fenSuppr.ligne ? [{ ic: 'liste', t: `Il a déjà le n° ${fenSuppr.ligne} au registre des mandats : cette ligne reste, notée « sans suite ».` }] : []),
+            ...(row.modele === 'mandat_vente' ? [{ ic: 'maison', t: 'Si la fiche du bien était passée « En vente » avec lui, on te demandera juste après ce qu’elle devient.' }] : []),
+          ]}
+          conseil="Tu hésites ? Garde-le : un brouillon n’engage à rien et ne compte nulle part tant qu’il n’est pas finalisé."
+          onFermer={() => setFenSuppr(null)} onConfirmer={() => { void supprimer(fenSuppr.ligne); }} />
+      )}
       {fenModif && (
         <FenetreConfirmer ic="crayon" titre="Repasser en brouillon pour le modifier ?" bouton="Repasser en brouillon"
           intro={`${row.titre || m.titre}${row.numero ? ` · n° ${row.numero}` : ''}`}
@@ -860,5 +909,6 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise }: {
           onFermer={() => setFenModif(false)} onConfirmer={() => repasserBrouillon(true)} />
       )}
     </div>
+    </ContexteActe.Provider>
   );
 }

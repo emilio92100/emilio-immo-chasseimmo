@@ -18,7 +18,7 @@
 import { supabase } from '@/lib/supabase';
 import { CLE_IDENTITE, lireIdentite, type IdentiteAgence } from '@/lib/agence';
 import { STATUTS, modele, pdfDocument, type Categorie, type Donnees, type Modele, type Statut } from '@/lib/actes';
-import { inscrire, noterAnnulation, noterCorrection, noterSignature, type LigneRegistre, type RaisonFin } from '@/lib/registre';
+import { inscrire, noterAnnulation, noterCorrection, noterSignature, registreAbsent, type LigneRegistre, type RaisonFin } from '@/lib/registre';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { lirePro } from '@/lib/contacts';
 import { juridiqueDepuis } from '@/lib/actes/delegation';
@@ -260,6 +260,42 @@ export async function envoyerProjet(o: { id: string; destinataires: DestProjet[]
 
 export async function retirerFichiers(id: string): Promise<void> {
   await api<{ n: number }>({ action: 'retirer', id });
+}
+
+/* ── Supprimer un brouillon (V3.43, V3.61) ──
+   Partagé depuis la V3.157 par la fiche d'un document (PageDocuments) et
+   l'éditeur lui-même (Alexandre : « directement depuis le document, le
+   bouton Supprimer le brouillon : ça supprime, et ça se ferme »).
+   D'abord le n° déjà pris au registre (un mandat finalisé puis repassé en
+   brouillon : sa ligne reste, notée « sans suite ») — à lire avant de
+   demander confirmation, la fenêtre le dit. Lève en cas d'échec. */
+export async function ligneRegistreDe(d: Pick<DocumentRow, 'id' | 'modele'>): Promise<number | null> {
+  if (!modele(d.modele)?.registre) return null;
+  const { data, error } = await supabase.from('registre_mandats').select('numero').eq('document_id', d.id).order('numero').limit(1).maybeSingle();
+  if (error && !registreAbsent(error)) throw new Error('Le registre des mandats n’a pas pu être lu : ' + error.message);
+  return data ? Number((data as { numero: number }).numero) : null;
+}
+/* La suppression elle-même : relu d'abord (finalisé ailleurs entre-temps,
+   on ne touche à rien) ; la ligne du registre notée ; la ligne du document,
+   puis ses fichiers. Rend `false` s'il avait déjà disparu (un autre onglet). */
+export async function supprimerBrouillon(d: Pick<DocumentRow, 'id' | 'modele' | 'titre'>, ligne: number | null): Promise<boolean> {
+  const { data: frais, error: eF } = await supabase.from('documents').select('statut').eq('id', d.id).maybeSingle();
+  if (eF) throw new Error(eF.message);
+  if (!frais) return false;
+  if ((frais as { statut?: string }).statut !== 'brouillon') throw new Error('ce document n’est plus un brouillon (il a été finalisé entre-temps). Recharge la page.');
+  if (ligne) {
+    const pb = await noterAnnulation(supabase, {
+      modele: d.modele, document_id: d.id, titre: d.titre || modele(d.modele)?.titre || 'Mandat', etaitSigne: false,
+      quand: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()),
+    });
+    if (pb) throw new Error(pb);
+  }
+  /* La ligne d'abord, les fichiers ensuite (V3.43). */
+  const { data: parti, error } = await supabase.from('documents').delete().eq('id', d.id).eq('statut', 'brouillon').select('id');
+  if (error) throw new Error(error.message);
+  if (!parti?.length) throw new Error('rien n’a été supprimé (la session a peut-être expiré). Recharge la page, puis recommence.');
+  try { await retirerFichiers(d.id); } catch (e2) { console.error('[documents] fichiers du brouillon', (e2 as Error).message); }
+  return true;
 }
 
 /* Le nom d'un fichier téléchargé : « Mandat-exclusif-M-et-Mme-Martin.pdf ». */

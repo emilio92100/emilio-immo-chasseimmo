@@ -1016,3 +1016,43 @@ textarea.ztTexte { resize: none; overflow-y: auto; }
   .mjLigne { padding: 9px 10px; gap: 9px; }
   .mjHeure { min-width: 44px; font-size: 12.5px; }
 }
+
+/* ═══ V3.157 — « Ajouter un bien » à un bon de visite (ChoixBienCrm.tsx) ═══
+   Trois chemins : mes mandats, son dossier, à la main. Une carte reliée le
+   dit dans son titre (« Mon mandat », « Son dossier »), une carte écrite à
+   la main aussi (« À la main », sans suivi). */
+.abCadre { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1.5px dashed #d8c38a; border-radius: 16px; background: #fdfaf2; }
+.abTete { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.abTete b { flex: 1 1 auto; min-width: 0; font: 700 14px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.abRetour {
+  width: 30px; height: 30px; border-radius: 9px; border: 1.5px solid #e3e8f0; background: white; color: var(--emilio);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; flex: 0 0 auto;
+}
+.abFermer { border: none; background: none; color: #64748b; font: 600 13px 'DM Sans', sans-serif; cursor: pointer; padding: 6px 4px; }
+.abFermer:hover { color: var(--emilio); }
+.abChoix { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.abTuile {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 13px; border: 1.5px solid #e3e8f0;
+  background: white; text-align: left; cursor: pointer; font-family: inherit; color: var(--emilio);
+}
+.abTuile:hover { border-color: #c9a84c; }
+.abTuile > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.abTuile b { font: 700 13.5px 'Plus Jakarta Sans', sans-serif; }
+.abTuile small { font: 12px/1.4 'DM Sans', sans-serif; color: #64748b; }
+.abTuileIc {
+  flex: 0 0 auto; width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+  background: #fbf6e9; color: #a07c28;
+}
+.abTuileIc[data-gris="oui"] { background: #f1f5f9; color: #64748b; }
+.abListe { max-height: 320px; background: white; }
+.abListe .resultat:disabled { opacity: .6; cursor: wait; }
+.abPhoto {
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: 10px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; color: #94a3b8;
+  background: #eef2f7 center / cover no-repeat;
+}
+.abLie {
+  flex: 0 0 auto; padding: 3px 8px; border-radius: 7px; font: 700 11px 'DM Sans', sans-serif; white-space: nowrap;
+  color: #0f7a4f; background: #ecfdf5;
+}
+.abLie[data-main="oui"] { color: #64748b; background: #f1f5f9; }

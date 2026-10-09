@@ -15,7 +15,7 @@ import { CarteHistorique, FenetreProjet, evenementsDocument } from './EnvoiProje
 import { FenetreOffre } from './EnvoiOffre';
 import { noteOffre } from '@/lib/actes/offre-achat';
 import { Pastille } from './DocumentsDuClient';
-import { RAISONS_FIN, noterAnnulation, quandRegistre, registreAbsent, type RaisonFin } from '@/lib/registre';
+import { RAISONS_FIN, quandRegistre, type RaisonFin } from '@/lib/registre';
 import { retracteEnLigne } from '@/lib/documents-espace';
 import { jourParis } from '@/lib/mandat';
 import { bienConcerne, bienDuMandat } from '@/lib/mandat-bien';
@@ -27,10 +27,11 @@ import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants'
 import FenetreSigne from './FenetreSigne';
 import {
   CHANGE_ENTRE_TEMPS, apresAnnulation, appelSignature, avenantsDuMandat, avenantSuivant, colonnesListe, etatMandatEnLigne, exemplaireManquant, identiteDuJour, libStatut, lienFichier, lireSignataires, nomSignataire,
-  mandatDepuis, nomFichier, preparerDepuis, quand, rappelExemplaire, retirerFichiers, tableAbsente,
+  ligneRegistreDe, mandatDepuis, nomFichier, preparerDepuis, quand, rappelExemplaire, supprimerBrouillon, tableAbsente,
   type DocumentRow, type MandatRecherche, type SignataireRow,
 } from './outils';
 import s from './Documents.module.css';
+import { retenirPlace } from '@/lib/place-fiche';
 
 /* ═══ Documents juridiques ════════════════════════════════════════════════
    La rubrique : les modèles pour en créer un, puis tous les documents,
@@ -354,38 +355,16 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
     if (!d) return;
     /* Un mandat qui a déjà son numéro au registre (finalisé, puis repassé en
        brouillon) : la ligne reste, le registre la note « sans suite ». */
-    let ligne: number | null = null;
-    if (m?.registre) {
-      const { data, error } = await supabase.from('registre_mandats').select('numero').eq('document_id', d.id).order('numero').limit(1).maybeSingle();
-      if (error && !registreAbsent(error)) { setErreur('Le registre des mandats n’a pas pu être lu : ' + error.message); return; }
-      ligne = data ? Number((data as { numero: number }).numero) : null;
-    }
-    setFenSuppr({ ligne });
+    try { setFenSuppr({ ligne: await ligneRegistreDe(d) }); } catch (e) { setErreur((e as Error).message); }
   }
   async function supprimer(ligne: number | null) {
     if (!d) return;
     setFenSuppr(null);
     setTravail('supprimer'); setErreur('');
     try {
-      /* V3.43 : relu d'abord. Finalisé ailleurs entre-temps, il n'est plus un
-         brouillon : on ne touche à rien (ni registre, ni fichiers). */
-      const { data: frais, error: eF } = await supabase.from('documents').select('statut').eq('id', d.id).maybeSingle();
-      if (eF) throw new Error(eF.message);
-      /* Déjà supprimé ailleurs (un autre onglet) : il quitte la liste, c'est tout. */
-      if (!frais) { onSupprime(d.id); return; }
-      if ((frais as { statut?: string }).statut !== 'brouillon') throw new Error('ce document n’est plus un brouillon (il a été finalisé entre-temps). Recharge la page.');
-      if (ligne) {
-        const pb = await noterAnnulation(supabase, {
-          modele: d.modele, document_id: d.id, titre: d.titre || m?.titre || 'Mandat', etaitSigne: false,
-          quand: new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris' }).format(new Date()),
-        });
-        if (pb) throw new Error(pb);
-      }
-      /* La ligne d'abord, les fichiers ensuite (V3.43). */
-      const { data: parti, error } = await supabase.from('documents').delete().eq('id', d.id).eq('statut', 'brouillon').select('id');
-      if (error) throw new Error(error.message);
-      if (!parti?.length) throw new Error('rien n’a été supprimé (la session a peut-être expiré). Recharge la page, puis recommence.');
-      try { await retirerFichiers(d.id); } catch (e2) { console.error('[documents] fichiers du brouillon', (e2 as Error).message); }
+      /* V3.157 : la suppression est partagée avec l'éditeur (outils.ts). Déjà
+         supprimé ailleurs (un autre onglet) : il quitte la liste, c'est tout. */
+      if (!(await supprimerBrouillon(d, ligne))) { onSupprime(d.id); return; }
       /* Un mandat de vente (V3.42) : son bien était-il passé « En vente » avec lui ? */
       const suite = await suiteBienDe(d, false, true);
       onSupprime(d.id);
@@ -654,7 +633,12 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
    un mandat signé en ligne), en créer un pour un client (sa fiche), ou
    descendre à un endroit de la page (le sous-menu Documents, V3.18), ou
    déléguer un mandat à un confrère (sa fiche de contact, V3.19). */
-export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste'; delegation?: string };
+/* V3.157 — D'où l'on vient, quand un document s'ouvre depuis un autre écran
+   (le bouton « Bon de visite » d'une visite) : le bouton retour de
+   l'éditeur dit « Visites » et y ramène, comme si on n'était jamais parti.
+   `place` : la clé de lib/place-fiche.ts que l'écran relit en revenant. */
+export type RetourDocuments = { page: string; data?: unknown; lib: string; place?: string };
+export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste'; delegation?: string; retour?: RetourDocuments };
 
 export default function PageDocuments({ onNavigate, intention, onIntention }: {
   onNavigate: (page: string, data?: unknown) => void;
@@ -888,12 +872,20 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
   /* Venu d'ailleurs (la fiche client : « Préparer un avenant ») : le mandat
      signé de cette recherche, en ligne d'abord, sinon sur papier. */
   const faite = useRef('');
+  /* V3.157 : ouvert depuis une visite — fermer le document y ramène. */
+  const [retour, setRetour] = useState<RetourDocuments | null>(null);
+  const revenir = useCallback((r: RetourDocuments) => {
+    setRetour(null);
+    if (r.place) retenirPlace(r.place, { retour: true });
+    onNavigate(r.page, r.data);
+  }, [onNavigate]);
   /* Un document précis (créé depuis la fiche d'un bien en vente) : on
      l'ouvre, dans l'éditeur s'il est encore en brouillon. */
   useEffect(() => {
     const id = intention?.ouvrir;
     if (!id || faite.current === 'o-' + id) return;
     faite.current = 'o-' + id;
+    setRetour(intention?.retour || null);
     /* Un mandat de recherche signé en ligne : sa fiche, dans la liste. */
     if (id.startsWith('r-')) { onIntention?.(); setOuvert(id); return; }
     (async () => {
@@ -1132,10 +1124,16 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
           (transform), et un élément fixe s'y retrouverait prisonnier. */}
       {typeof document !== 'undefined' && createPortal(<>
       {itOuvert && (
-        <Panneau it={itOuvert} noms={noms} docs={docs || []} onDeriver={deriver} onFermer={() => setOuvert(null)}
+        <Panneau it={itOuvert} noms={noms} docs={docs || []} onDeriver={deriver}
+          onFermer={() => { setOuvert(null); if (retour) revenir(retour); }}
           onEditer={d => { setOuvert(null); setEdition(d); }}
           onMaj={majDoc}
-          onSupprime={id => { setDocs(l => (l || []).filter(x => x.id !== id)); setOuvert(null); }}
+          onSupprime={id => {
+            const parti = (docs || []).find(x => x.id === id);
+            setDocs(l => (l || []).filter(x => x.id !== id)); setOuvert(null);
+            /* Un mandat de vente attend encore la question sur son bien : on reste. */
+            if (retour && parti?.modele !== 'mandat_vente') revenir(retour);
+          }}
           onDupliquer={dupliquer}
           onFiche={ficheClient} onSuiteBien={setSuiteBien} />
       )}
@@ -1164,8 +1162,18 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
             if (d && d.statut === 'brouillon') setEdition(d); else setOuvert(id);
           }} />
       )}
-      {edition && <EditeurDocument doc={edition} onMaj={majDoc} onFermer={() => { setEdition(null); charger(); }}
-        onFinalise={r => { majDoc(r); setEdition(null); setOuvert(r.id); }} />}
+      {edition && <EditeurDocument doc={edition} onMaj={majDoc} retourLib={retour?.lib}
+        onFermer={() => { setEdition(null); if (retour) revenir(retour); else charger(); }}
+        onFinalise={r => { majDoc(r); setEdition(null); setOuvert(r.id); }}
+        onSupprime={async id => {
+          /* V3.157 : supprimé depuis l'éditeur — il se ferme, et l'on revient
+             là d'où l'on venait. Un mandat de vente : on demande ce que
+             devient son bien (comme depuis sa fiche). */
+          const suite = await suiteBienDe(edition, false, true);
+          setDocs(l => (l || []).filter(x => x.id !== id));
+          setEdition(null);
+          if (suite) { setSuiteBien(suite); setRetour(null); } else if (retour) revenir(retour);
+        }} />}
       </>, document.body)}
     </div>
   );

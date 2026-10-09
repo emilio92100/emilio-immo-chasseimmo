@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { signalerEchec } from '@/lib/ecritures';
+import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { conjointDe } from '@/lib/foyer';
 import { contexteDocument, personneDepuisClient, type BienVente } from '@/lib/biens-vente';
 import { modele, PERSONNE_VIDE, type Contexte, type Donnees, type Personne } from '@/lib/actes';
@@ -58,12 +59,12 @@ export type DepartBon = {
 export type AutreVisite = VisiteBon & { surUnBon: boolean };
 
 type DocBon = { id: string; statut: string; bien_id: string | null; client_id: string | null; created_at: string; donnees: Donnees | null };
-type CopieBien = NonNullable<Contexte['bien']> & { bien_vente_id?: string | null };
+export type CopieBien = NonNullable<Contexte['bien']> & { bien_vente_id?: string | null };
 type ClientBon = { id: string; prenom?: string | null; nom?: string | null; civilite?: string | null; couple?: boolean | null; conjoint?: unknown; adresse?: string | null; emails?: string[] | null; telephones?: string[] | null };
 
 const COLS_DOC = 'id, statut, bien_id, client_id, created_at, donnees';
 /* Les colonnes du bien d'un acheteur, celles que « Nouveau document » lit déjà. */
-const COLS_BIEN = 'id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id, commission_type, commission_val, bien_vente_id, est_particulier';
+export const COLS_BIEN = 'id, titre, adresse, code_postal, ville, quartier, type_bien, surface, nb_pieces, etage, prix_acquereur, prix_vendeur, agence_nom, recherche_id, commission_type, commission_val, bien_vente_id, est_particulier';
 const sansAccent = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 /* Ce bon porte-t-il cette visite ? Par son identifiant de visite ; un bien
@@ -192,6 +193,25 @@ async function lireBiens(vs: VisiteBon[], deja?: BienVente | null) {
     for (const b of (data || []) as BienVente[]) ventes[b.id] = b;
   }
   return { copies, ventes };
+}
+
+/* V3.157 — Un bien choisi à la main dans le CRM (« Ajouter un bien »,
+   ChoixBienCrm.tsx) : ce que sa carte reçoit, comme les biens d'un bon
+   préparé depuis une visite (le bien de l'agence d'abord, sinon la copie
+   de l'acheteur), et son lien. La date et l'heure de la carte ne bougent pas. */
+export function valeursBien(copie: CopieBien | null, bv: BienVente | null): Record<string, unknown> {
+  const m = modele('bon_visite');
+  const bien: Contexte['bien'] = bv ? { ...contexteDocument(bv), id: copie?.id || '', bien_vente_id: bv.id } : copie;
+  const x: Donnees = m ? m.defaut({ identite: IDENTITE_DEFAUT, client: null, bien, visite: null }) : {};
+  /* Un bien dont les réponses n'ont pas tout (une fiche ancienne) : ses colonnes. */
+  const desc = String(x.description || '');
+  return {
+    adresse: x.adresse || bv?.adresse || '', ville: x.ville || bv?.ville || '',
+    description: desc && desc !== 'autre' ? desc : (bv?.titre || copie?.titre || '').toLowerCase(),
+    prix: x.prix ?? bv?.prix ?? null,
+    reference: bv?.reference || '', agenceVendeur: bv ? '' : x.agenceVendeur || '',
+    bienId: copie?.id || '', bienVenteId: bv?.id || copie?.bien_vente_id || '',
+  };
 }
 
 /* Créer le brouillon : la visite d'où l'on part, puis celles retenues. */
