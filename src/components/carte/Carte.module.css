@@ -398,49 +398,53 @@
   /* Un glissement = une fiche (V3.28), comme dans l'espace acheteur.
      V3.74 : `min-width: 0`, sinon une étiquette longue élargit la fiche
      au-delà de l'écran (la largeur minimale d'un élément flex est celle
-     de son texte). Deux lignes : le nom et son étiquette ; la rue et les
-     boutons. */
+     de son texte).
+     V3.156 — Alexandre : « qu'on le voie tout d'un coup ». Trois lignes :
+     le nom (et le prix d'un bien, à droite) ; l'adresse et son code
+     postal ; les vignettes (l'étape du bien, les types du contact). Les
+     boutons à droite des deux dernières. */
   flex: 0 0 min(360px, calc(100vw - 40px)); min-width: 0; scroll-snap-align: center; scroll-snap-stop: always;
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto;
-  column-gap: 10px; row-gap: 4px; align-items: center; padding: 8px 8px 8px 10px; box-sizing: border-box;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto auto;
+  column-gap: 10px; row-gap: 3px; align-items: center; padding: 9px 8px 9px 10px; box-sizing: border-box;
   background: white; border-radius: 16px; border: 2px solid transparent;
   box-shadow: 0 12px 26px -16px rgba(15, 23, 42, .6);
   transition: border-color .2s, transform .2s;
   -webkit-tap-highlight-color: transparent;
 }
-.carteTel > :first-child { grid-row: 1 / span 2; align-self: center; }
+.carteTel > :first-child { grid-row: 1 / span 3; align-self: center; }
 .carteTel:active { transform: scale(.985); }
 .carteTelSel { border-color: #c9a84c; }
 .telVign {
-  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 11px; overflow: hidden;
+  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 12px; overflow: hidden;
   display: flex; align-items: center; justify-content: center; color: white;
   background: var(--c) center / cover no-repeat;
 }
 .telVignCle { border-radius: 50%; }
-.telL1 { grid-column: 2 / 4; grid-row: 1; display: flex; align-items: center; gap: 7px; min-width: 0; padding-right: 2px; }
-.telL1 b { flex: 0 1 auto; min-width: 48px; font: 700 14px 'Plus Jakarta Sans', sans-serif; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* L'étiquette cède sa place la première, le nom ensuite. */
-.telL1 i {
-  flex: 0 4 auto; min-width: 0; font-style: normal; font: 700 11px 'DM Sans', sans-serif; letter-spacing: .1px;
-  color: color-mix(in srgb, var(--c) 82%, black); background: color-mix(in srgb, var(--c) 11%, white);
-  padding: 3px 8px; border-radius: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.telL1 { grid-column: 2 / 4; grid-row: 1; display: block; min-width: 0; padding-right: 2px; }
+.telL1 b { display: block; font: 700 14px 'Plus Jakarta Sans', sans-serif; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* V3.155 — Un bien à prix : le prix a sa colonne à droite, jamais rogné ;
    le nom (type, pièces, surface) passe sur deux lignes plutôt que d'être
-   coupé ; l'adresse dessous. */
-.carteTelPrix .telL1 { grid-column: 2; display: block; padding-right: 0; }
+   coupé. */
+.carteTelPrix .telL1 { grid-column: 2; padding-right: 0; }
 .carteTelPrix .telL1 b {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
-  white-space: normal; overflow: hidden; line-height: 1.25; font-size: 13.5px;
+  white-space: normal; line-height: 1.25; font-size: 13.5px;
 }
 .telPrix {
   grid-column: 3; grid-row: 1; justify-self: end; align-self: center; white-space: nowrap;
-  font: 800 13px 'Plus Jakarta Sans', sans-serif; letter-spacing: -.1px;
-  color: color-mix(in srgb, var(--c) 78%, black); background: color-mix(in srgb, var(--c) 11%, white);
-  padding: 4px 8px; border-radius: 8px;
+  font: 800 14px 'Plus Jakarta Sans', sans-serif; letter-spacing: -.1px; color: var(--navy);
 }
 .telAdr { grid-column: 2; grid-row: 2; min-width: 0; font-size: 12.5px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.telAct { grid-column: 3; grid-row: 2; flex: 0 0 auto; display: flex; gap: 6px; justify-self: end; }
+/* Les vignettes : sur une ligne, entières ; seule la dernière se raccourcit
+   si elles sont trop nombreuses. */
+.telPast { grid-column: 2; grid-row: 3; display: flex; gap: 4px; min-width: 0; overflow: hidden; }
+.telPast i:last-child { flex: 0 1 auto; min-width: 0; }
+.telPast i {
+  flex: 0 0 auto; font-style: normal; font: 700 10.5px 'DM Sans', sans-serif; letter-spacing: .1px;
+  color: color-mix(in srgb, var(--c) 82%, black); background: color-mix(in srgb, var(--c) 12%, white);
+  padding: 2px 7px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.telAct { grid-column: 3; grid-row: 2 / span 2; align-self: center; flex: 0 0 auto; display: flex; gap: 6px; justify-self: end; }
 .telAct a, .telAct button {
   width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
   border: 1.5px solid #e3e8f0; background: white; color: var(--emilio); text-decoration: none; cursor: pointer; padding: 0;

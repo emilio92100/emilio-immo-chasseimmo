@@ -59,6 +59,9 @@ type Point = {
   tel?: string | null;
   client?: Record<string, unknown>;
   proprio?: string;
+  /* V3.156 : les vignettes du bas des fiches au téléphone — ses types pour
+     un contact (Acheteur, Propriétaire…), son étape pour un bien. */
+  pastilles?: { lib: string; c: string }[];
 };
 type Place = Point & { lat: number; lng: number };
 
@@ -111,6 +114,16 @@ const rue = (a: string) => a.replace(/,?\s*\d{5}\b.*$/, '').trim() || a;
    un nom ne tient toujours pas, il ne se coupe qu'entre ses morceaux
    (jamais « 36,8 » d'un côté et « m² » de l'autre). */
 const nomCourt = (t: string) => t.replace(/\b(\d+) pièces?\b/, '$1 p.').split(' · ').map(x => x.replace(/ /g, '\u00a0')).join(' · ');
+/* V3.156 — « l'adresse et le code postal ; la ville, ça ferait long » :
+   « 27 avenue Jean Jaurès, 92140 ». Sans code postal, l'adresse telle quelle. */
+const adresseCp = (a: string) => {
+  const m = /^(.*?)[,\s]*\b(\d{5})\b/.exec(a);
+  if (!m) return a;
+  const r = m[1].replace(/[,\s]+$/, '').trim();
+  return r ? `${r}, ${m[2]}` : m[2];
+};
+/* Les vignettes d'un contact : ses catégories sur la carte, au singulier. */
+const pastilleCat = (k: string) => (k === 'vente_possible' ? { lib: 'Revente possible', c: '#a07c28' } : { lib: typeDe(k).lib, c: typeDe(k).c });
 /* Où tombe le repère choisi : un peu plus bas que le milieu sur ordinateur
    (sa carte de visite s'ouvre au-dessus), un peu plus haut sur téléphone
    (les fiches du bas le cacheraient). */
@@ -162,6 +175,7 @@ function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[
         couleur: revente ? '#a07c28' : typeDe('proprietaire').c, fond: revente ? '#fbf6e9' : typeDe('proprietaire').fond,
         titre: nom, sous: `${revente ? 'Son bien, à revendre' : 'Son bien'} · ${rue(bienAilleurs)}`,
         etiquette: revente ? 'Revente possible' : 'Son bien', adresse: bienAilleurs, cle: cleAdresse(bienAilleurs), tel, client: c,
+        pastilles: [{ lib: 'Son bien', c: typeDe('proprietaire').c }, ...(revente ? [pastilleCat('vente_possible')] : [])],
       });
       catsPrincipal = cats.filter(k => k !== 'vente_possible' && (k !== 'proprietaire' || t.includes('proprietaire')));
       if (!catsPrincipal.length) catsPrincipal = ['proprietaire'];
@@ -172,6 +186,7 @@ function pointsDesContacts(clients: Record<string, unknown>[]): { points: Point[
       couleur: principal.c, fond: principal.fond, teinte, titre: nom,
       sous: `${t.map(k => typeDe(k).lib).join(', ')} · ${rue(adresse)}`,
       etiquette: t.map(k => typeDe(k).lib).join(' · '), adresse, cle: cleAdresse(adresse), tel, client: c,
+      pastilles: catsPrincipal.map(pastilleCat),
     });
   }
   return { points, sansAdresse };
@@ -199,6 +214,7 @@ function pointsDesBiens(biens: LigneBien[], clients: Map<string, Record<string, 
       titre: b.titre || 'Bien', sous: `${e.court}${b.adresse ? ` · ${rue(b.adresse)}` : ''}`, etiquette: e.lib,
       adresse, cle: cleAdresse(adresse), exact, photo: b.photo, prix: b.prix, proprio,
       tel: cl && Array.isArray(cl.telephones) ? String(cl.telephones.find(Boolean) || '') || null : null,
+      pastilles: [{ lib: e.lib, c: e.c }],
     });
   }
   return { points, sansAdresse };
@@ -1041,10 +1057,13 @@ export default function PageCarte({ onNavigate, onMenu }: {
                 {liste.slice(0, 60).map(p => {
                   /* V3.155 — Alexandre : « le prix est caché et le nom prend
                      trop de place : l'appartement, ses pièces et sa surface,
-                     l'adresse en bas, et le prix à droite, toujours ». Un bien
-                     à prix : le prix a sa colonne, jamais rogné ; le nom passe
-                     sur deux lignes plutôt que d'être coupé. */
+                     l'adresse en bas, et le prix à droite, toujours ».
+                     V3.156 — « qu'on le voie tout d'un coup » : trois lignes.
+                     Le nom (« Appartement 2 p. · 36,8 m² », ou le contact) et
+                     le prix à droite ; l'adresse et son code postal ; ses
+                     vignettes (l'étape du bien, les types du contact). */
                   const prix = p.genre === 'bien' && p.prix ? EUR(p.prix) : '';
+                  const vignettes = p.pastilles?.length ? p.pastilles : p.etiquette ? [{ lib: p.etiquette, c: p.couleur }] : [];
                   return (
                   <div key={p.id} data-id={p.id} className={`${s.carteTel} ${prix ? s.carteTelPrix : ''} ${sel === p.id ? s.carteTelSel : ''}`}
                     style={{ '--c': p.couleur } as React.CSSProperties}
@@ -1054,18 +1073,12 @@ export default function PageCarte({ onNavigate, onMenu }: {
                       : p.perso
                         ? <span className={`${s.telVign} ${s.telVignCle}`}><Ic n="cle" t={16} e={2.1} /></span>
                         : <AvatarContact c={(p.client || {}) as never} teinte={p.teinte || { bg: p.fond, fg: p.couleur }} taille={40} />}
-                    {prix ? (
-                      <>
-                        <span className={s.telL1}><b>{nomCourt(p.titre)}</b></span>
-                        <span className={s.telPrix}>{prix}</span>
-                      </>
-                    ) : (
-                      <span className={s.telL1}>
-                        <b>{p.genre === 'bien' ? nomCourt(p.titre) : p.titre}</b>
-                        {p.etiquette && <i>{p.etiquette}</i>}
-                      </span>
-                    )}
-                    <span className={s.telAdr}>{rue(p.adresse)}</span>
+                    <span className={s.telL1}><b>{p.genre === 'bien' ? nomCourt(p.titre) : p.titre}</b></span>
+                    {prix && <span className={s.telPrix}>{prix}</span>}
+                    <span className={s.telAdr}>{adresseCp(p.adresse)}</span>
+                    <span className={s.telPast}>
+                      {vignettes.map(v => <i key={v.lib} style={{ '--c': v.c } as React.CSSProperties}>{v.lib}</i>)}
+                    </span>
                     <span className={s.telAct}>
                       {p.tel
                         ? <a href={`tel:${p.tel.replace(/\s/g, '')}`} aria-label={`Appeler ${p.titre}`} onClick={e => e.stopPropagation()}><Icone nom="tel" taille={16} epaisseur={1.9} /></a>
