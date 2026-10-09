@@ -295,3 +295,51 @@
 /* V3.136 : « Ctrl + clic… » n'a pas de sens au doigt. */
 @media (max-width: 760px) { .phraseOrdi { display: none; } }
 @media (prefers-reduced-motion: reduce) { .glisseAnime { transition: none; } }
+
+/* ── V3.146 : le geste principal de la page, « vedette » (Visites :
+   « Organiser une visite ») ──
+   Alexandre : « un joli bouton qui flotte un peu ». Doré en dégradé, une
+   ombre portée, il monte et redescend très doucement ; au survol il se
+   soulève et un reflet le traverse. Le mouvement passe par `translate` (et
+   non `transform`) : le petit enfoncement du clic, lui, reste sur
+   `transform` (globals.css), les deux ne se marchent pas dessus. */
+.boutonIc { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.vedette {
+  position: relative; overflow: hidden; isolation: isolate;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
+  transition: transform .15s, filter .15s, box-shadow .25s, translate .25s cubic-bezier(.2, .9, .3, 1.2);
+  animation: flotte 3.6s ease-in-out infinite;
+}
+.vedette::after {
+  content: ''; position: absolute; z-index: -1; top: 0; bottom: 0; left: -60%; width: 45%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: skewX(-18deg); opacity: 0;
+}
+.vedette:hover { animation-play-state: paused; translate: 0 -2px; filter: brightness(1.04); }
+.vedette:hover::after { animation: reflet .75s ease; }
+@keyframes flotte { 0%, 100% { translate: 0 0; } 50% { translate: 0 -2.5px; } }
+@keyframes reflet { 0% { left: -60%; opacity: 0; } 20% { opacity: 1; } 100% { left: 120%; opacity: 0; } }
+
+@media (min-width: 761px) {
+  .vedette {
+    height: 40px; padding: 0 17px 0 8px; gap: 9px; border-radius: 13px; font-size: 13.5px; color: #1f2a3c;
+    background: linear-gradient(135deg, #ecd07a 0%, #c9a84c 55%, #b48f36 100%);
+    box-shadow: 0 12px 24px -10px rgba(201, 168, 76, 0.75), 0 2px 0 rgba(255, 255, 255, 0.35) inset;
+  }
+  .vedette:hover { box-shadow: 0 18px 30px -12px rgba(201, 168, 76, 0.95), 0 2px 0 rgba(255, 255, 255, 0.35) inset; }
+  .vedette .boutonIc { width: 26px; height: 26px; border-radius: 9px; background: rgba(31, 42, 60, 0.12); }
+}
+@media (max-width: 760px) {
+  .vedette {
+    /* Au téléphone, toute la largeur sous le titre : le geste de la page. */
+    flex: 1 1 100%; justify-content: center;
+    height: 42px; padding: 0 14px 0 8px; gap: 8px; border-radius: 12px; font-size: 13.5px; color: #fff;
+    background: linear-gradient(135deg, #3a5178 0%, #27395a 100%);
+    box-shadow: 0 10px 20px -10px rgba(39, 57, 90, 0.85);
+  }
+  .vedette .boutonIc { width: 23px; height: 23px; border-radius: 8px; background: rgba(232, 201, 106, 0.18); color: #e8c96a; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vedette { animation: none; }
+  .vedette:hover::after { animation: none; }
+}
