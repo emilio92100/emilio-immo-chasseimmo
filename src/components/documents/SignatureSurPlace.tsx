@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { modele, demandeExpresse } from '@/lib/actes';
 import { IDENTITE_DEFAUT } from '@/lib/agence';
 import { heureParis, masquerEmail } from '@/lib/mandat';
-import { TexteMandat, PadSignature, CSS_MANDAT } from '@/components/espace/SignatureMandat';
+import { TexteMandat, PadSignature, CSS_MANDAT, RappelSignataire } from '@/components/espace/SignatureMandat';
 import { Croix, Ic } from './ApercuActe';
 import { appelSignature, lireSignataires, nomSignataire, type DocumentRow, type SignataireRow } from './outils';
 
@@ -43,6 +43,8 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
   const identite = doc.identite || IDENTITE_DEFAUT;
   const parties = useMemo(() => m.rediger(d, identite), [m, d, identite]);
   const resume = useMemo(() => m.resume(d), [m, d]);
+  /* V3.145 : le rappel pour celui qui signe (pas l'agence) : une offre, son total frais d'agence compris. */
+  const rappel = useMemo(() => (m.rappel ? m.rappel(d) : null), [m, d]);
   const accepterDe = (cle: string) => (m.accepter ? m.accepter(d, cle) : 'J’ai lu le document en entier et je l’accepte.');
   const [sigs, setSigs] = useState<SignataireRow[] | null>(null);
   const [ecran, setEcran] = useState<Ecran>(finaliser ? 'finalisation' : 'accueil');
@@ -240,6 +242,7 @@ export default function SignatureSurPlace({ doc, onFermer, finaliser = false }: 
           <div key={r.titre} className="mdt-ligne"><div className="t">{r.titre}</div><div className="v">{r.valeur}</div>{r.detail && r.detail !== '—' && <div className="d">{r.detail}</div>}</div>
         ))}
       </div>
+      {s.cle !== 'agence' && <RappelSignataire r={rappel} />}
       <button type="button" className="btn fant mdt-plein" onClick={() => setEcran('lecture')}><Ic n="doc" t={16} /><span>Lire le document en entier</span></button>
       <button type="button" className="btn or mdt-plein" onClick={() => setEcran('email')}>Continuer</button>
       <button type="button" className="mdt-relire" onClick={() => setEcran('accueil')}>Ce n’est pas moi</button>
