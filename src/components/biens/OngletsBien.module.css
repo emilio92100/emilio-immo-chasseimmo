@@ -396,6 +396,11 @@ i.aRenseigner { cursor: default; text-decoration: none; color: #94a3b8; }
   border: 1px solid #dbeafe; background: #eff6ff; color: #1d4ed8; font: 700 12px/1.3 'DM Sans', sans-serif; text-align: left; cursor: pointer;
 }
 .chez:hover { border-color: #93c5fd; background: #e0edff; }
+/* V3.150 — avec l'avatar du contact : une pastille ronde, et « Sa fiche ». */
+.chez[data-av='oui'] { gap: 7px; min-height: 32px; padding: 3px 11px 3px 3px; border-radius: 99px; font-size: 12.5px; transition: border-color .15s, background-color .15s, box-shadow .15s; }
+.chez[data-av='oui']:hover { box-shadow: 0 6px 14px -10px rgba(29, 78, 216, .6); }
+.chezAv { width: 26px; height: 26px; border-radius: 50%; }
+.chezVoir { display: inline-flex; align-items: center; gap: 3px; margin-left: 3px; padding-left: 8px; border-left: 1px solid #c7dbfb; font-weight: 600; color: #3b6fd1; }
 .erreur { padding: 9px 12px; border-radius: 12px; background: #fef2f2; color: #b91c1c; font-size: 12.5px; font-weight: 700; }
 
 /* ══ Plus étroit ════════════════════════════════════════════════════════ */
