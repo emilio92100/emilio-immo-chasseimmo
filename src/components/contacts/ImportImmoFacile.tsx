@@ -806,7 +806,7 @@ export default function ImportImmoFacile({ onFermer, onVoir, onImporte }: {
           {[...erreurs, ...(ignorees > 0 ? [`${pluriel(ignorees, 'ligne laissée', 'lignes laissées')} de côté : l’historique des actions d’ImmoFacile, ou des lignes sans nom ni moyen de contact.`] : [])].join(' ')}
         </div>
       )}
-      <div className={st.onglets} role="group" aria-label="Filtrer l’aperçu">
+      <div className={st.onglets} role="group" aria-label="Filtrer l’aperçu" data-defile="">
         {ONGLETS.filter(o => o.toujours || o.n > 0 || onglet === o.k).map(o => (
           <button key={o.k} type="button" aria-pressed={onglet === o.k} className={o.cls} onClick={() => setOnglet(o.k)}>{o.l}<i>{o.n}</i></button>
         ))}

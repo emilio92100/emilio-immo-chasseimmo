@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { mouvementActif } from '@/lib/mouvement';
 import { supabase } from '@/lib/supabase';
 import { signalerEchec, verifie, verifieTout } from '@/lib/ecritures';
 import { delaiRelance } from '@/lib/relances';
@@ -51,6 +52,10 @@ const jourPlus = (j: number) => { const d = new Date(); d.setHours(12, 0, 0, 0);
 const jourDe = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 /* Le téléphone ou l'ordinateur réglé sur « réduire les animations ». */
 const sansMouvement = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/* V3.152 : quand le mouvement global tourne (src/lib/mouvement.ts), la
+   fenêtre se ferme tout de suite et c'est lui qui la fait rentrer dans le
+   bouton qui l'a ouverte ; la sortie d'ici ne reste que de secours. */
+const sortieGlobale = () => sansMouvement() || mouvementActif();
 
 /* Supprimer une ligne du suivi d'un contact, et sa relance si elle attend encore. */
 export async function supprimerActionContact(j: { id: string; titre: string; metadata?: { relance_id?: string } | null }, clientId: string): Promise<boolean> {
@@ -111,20 +116,23 @@ export default function FenetreAction({ clientId, prenom, edition, typeInitial =
      doit partir quoi qu'il arrive (la page Relances y clôt la relance). */
   const fermer = () => {
     if (bloque) return;
-    if (sansMouvement()) { onFermer(); return; }
+    if (sortieGlobale()) { onFermer(); return; }
     setSortie(true);
     setTimeout(onFermer, 230);
   };
   const finir = (info?: { archiver: boolean }) => {
     if (sansMouvement()) { onFait(info); return; }
     setReussi(true);
+    /* « Valider » passe au vert, puis la fenêtre part (ici, ou par le
+       mouvement global). */
+    if (mouvementActif()) { setTimeout(() => onFait(info), 620); return; }
     setTimeout(() => { setSortie(true); setTimeout(() => onFait(info), 240); }, 620);
   };
   /* Échap ferme, comme un clic à côté. */
   useEffect(() => {
     const touche = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || bloque) return;
-      if (sansMouvement()) { onFermer(); return; }
+      if (sortieGlobale()) { onFermer(); return; }
       setSortie(true);
       setTimeout(onFermer, 230);
     };
