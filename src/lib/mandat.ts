@@ -15,7 +15,10 @@
      · honoraires proportionnels, 2,5 % TTC (le barème de l'agence), à la
        charge de l'acquéreur, payés le jour de l'acte. Alexandre peut proposer
        moins depuis la fiche (colonne recherches.mandat_taux), jamais plus :
-       le barème affiché est un maximum ;
+       le barème affiché est un maximum. Depuis la V3.144, le mandat dit les
+       deux cas : bien chez une autre agence qui partage ses honoraires
+       (inter-cabinet) → le client ne doit rien ; sinon → les honoraires
+       s'ajoutent au prix ;
      · pas de clause pénale : dans un mandat de recherche, elle n'est valable
        que si le bien est identifié précisément (adresse) — Modelo le signale
        lui-même. Le mandat protège Alexandre autrement : 12 mois sans pouvoir
@@ -405,6 +408,9 @@ export function decrireCourt(r: Recherche): { valeur: string; detail: string } {
 /* L'essentiel du mandat en quatre cases : la page de garde du PDF et le
    récapitulatif de l'espace disent exactement la même chose. */
 export type Resume = { titre: string; valeur: string; detail: string }[];
+/* Les deux cas de l'article « Honoraires », en une ligne (V3.144). Le
+   mandat de Documents dit la même chose. */
+export const HONO_DETAIL = 'rien si l’agence du vendeur partage ses honoraires · sinon à l’acte';
 export function resumeMandat(r: Recherche): Resume {
   const c = figerContenu(r);
   return [
@@ -413,8 +419,8 @@ export function resumeMandat(r: Recherche): Resume {
       ? { titre: 'Prix maximum', valeur: `${euros(c.prixMax)} hors honoraires`, detail: `soit ${euros(r.budget || 0)} honoraires compris` }
       : { titre: 'Prix maximum', valeur: 'Votre budget', detail: 'tel qu’indiqué dans votre espace' },
     c.forfait
-      ? { titre: 'Honoraires', valeur: `${euros(c.forfait)} TTC, au forfait`, detail: 'réglés le jour de l’acte, chez le notaire' }
-      : { titre: 'Honoraires', valeur: `${tauxTexte(c.taux)} du prix`, detail: 'réglés le jour de l’acte, chez le notaire' },
+      ? { titre: 'Honoraires', valeur: `${euros(c.forfait)} TTC, au forfait`, detail: HONO_DETAIL }
+      : { titre: 'Honoraires', valeur: `${tauxTexte(c.taux)} du prix`, detail: HONO_DETAIL },
     { titre: 'Durée', valeur: `${DUREE.mois} mois au plus`, detail: `vous l’arrêtez quand vous voulez · ${DUREE.preavis} jours de préavis` },
   ];
 }
@@ -580,11 +586,23 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
         ? [
           P(`Prix d’achat maximum, hors honoraires : ${euros(prix)} (${enLettres(prix)} euros).`, true),
           P(`Honoraires compris, il correspond au budget de ${euros(d.recherche.budget || 0)} indiqué par le MANDANT, qui peut le modifier depuis son espace personnel.`),
+          P(`Lorsqu’aucun honoraire n’est dû au titre du présent mandat (bien en vente chez une autre agence qui partage ses honoraires avec l’Agence, voir « Honoraires »), le prix d’achat peut atteindre ce budget, soit ${euros(d.recherche.budget || 0)}.`),
         ]
         : [P('Le prix d’achat, hors honoraires, correspond au budget indiqué par le MANDANT dans son espace personnel, qu’il peut modifier à tout moment.')] },
       { titre: 'Honoraires', ic: 'euro', blocs: [
         ...honoraires,
-        P('Ils sont à la charge du MANDANT, en plus du prix, et ne sont dus que si l’achat se réalise grâce à l’Agence. Ils sont payés le jour de la signature de l’acte authentique, par l’intermédiaire du notaire : aucune somme n’est due avant. En cas de préemption, le titulaire du droit de préemption les doit à la place de l’acquéreur.'),
+        /* Les deux cas (V3.144, à la demande d'Alexandre) : en inter-cabinet,
+           l'agence du vendeur le rémunère et le client ne lui doit rien ;
+           sinon, ses honoraires de recherche s'ajoutent au prix. Si le client
+           contourne l'Agence, il n'y a pas de partage : on retombe dans le
+           second cas. */
+        P('Ils ne sont dus que si l’achat se réalise grâce à l’Agence, et selon l’un des deux cas suivants :'),
+        { t: 'l', items: [
+          'Le bien est en vente chez une autre agence, qui partage avec l’Agence les honoraires prévus à son mandat de vente : le MANDANT ne doit alors aucun honoraire au titre du présent mandat. Il paie le prix convenu avec le vendeur, et l’Agence est rémunérée par cette autre agence.',
+          'Dans tous les autres cas (bien vendu par son propriétaire, agence qui ne partage pas ses honoraires, bien trouvé hors des annonces…) : les honoraires ci-dessus sont à la charge du MANDANT, en plus du prix.',
+        ] },
+        P('L’Agence indique au MANDANT par écrit, avant toute offre d’achat, dans lequel de ces deux cas se trouve le bien.', true),
+        P('Lorsqu’ils sont dus, les honoraires sont payés le jour de la signature de l’acte authentique, par l’intermédiaire du notaire : aucune somme n’est due avant. En cas de préemption, le titulaire du droit de préemption les doit à la place de l’acquéreur.'),
       ] },
       { titre: 'Durée', ic: 'calendrier', blocs: plusieurs
         ? [
