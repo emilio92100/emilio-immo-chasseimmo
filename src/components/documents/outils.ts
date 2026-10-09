@@ -63,6 +63,8 @@ export type DocumentRow = {
 /* Un projet envoyé (V3.40) : le PDF « projet non signé », à qui, quand. */
 export type EnvoiProjet = {
   le: string; a: { email: string; nom: string }[]; sujet: string; message?: string; fichier: string; echecs?: string[];
+  /* V3.145 : l'offre d'achat signée, envoyée à l'agence du vendeur (pas un projet). */
+  offre?: boolean;
 };
 export type DestProjet = { email: string; nom: string; prenom: string; famille: string };
 
@@ -240,6 +242,11 @@ export async function deposer(id: string, genre: 'pdf' | 'signe', fichier: Blob,
 export async function lienFichier(chemin: string, nom?: string): Promise<string> {
   const { url } = await api<{ url: string }>({ action: 'lien', chemin, nom });
   return url;
+}
+
+/* V3.145 : l'offre d'achat signée part à l'agence du vendeur (ou au vendeur). */
+export async function envoyerOffre(o: { id: string; destinataires: string[]; sujet: string; message: string }) {
+  return api<{ envoyes: string[]; avertissements: string[]; envoi: EnvoiProjet; row: DocumentRow | null }>({ action: 'offre', ...o });
 }
 
 /* Le projet d'un brouillon, en relecture (V3.40) : le serveur fabrique le
