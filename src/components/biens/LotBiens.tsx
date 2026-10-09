@@ -41,9 +41,9 @@ import { CLES_MAIL, signatureDe } from '@/lib/mail-variables';
 import { visitePasseeParis } from '@/lib/visites';
 import { avantMandat, etapeDe, lirePhotos, titreBien, villeAffichee, type BienVente, type EtapeVente } from '@/lib/biens-vente';
 import { signalerEchec } from '@/lib/ecritures';
-import { CaseLigne, type Avancement } from '@/components/shared/Selection';
+import { CaseLigne } from '@/components/shared/Selection';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { Avatar, Illu, modeAcheteurs, teinte } from './AcheteursBien';
+import { Illu, modeAcheteurs, teinte } from './AcheteursBien';
 import { AvecScore, AvisDetail, IconeAvis, MOT_IA, Progression, analyserIA, compareIA, type AvisIA, type AvisParBien } from './RapprochementIA';
 import { RAISONS_ETAPE, avantRdv } from './FenetresBien';
 import {
@@ -174,6 +174,64 @@ ${signatureDe(p)}`,
   };
 }
 
+/* ══ V3.148 — la fenêtre revue (Alexandre : « quand je sélectionne quelqu'un,
+   je ne peux pas le désélectionner… que ça rajoute une ligne, qu'on puisse
+   en ajouter, et un bouton croix… un aperçu de ce qui va être vraiment
+   envoyé au client… dès qu'on appuie envoyer, un spinner avec une belle
+   animation, et fiche envoyée à… avec les noms »).
+     · Ceux qui reçoivent sont en lignes sous la recherche, chacun avec sa
+       croix : un client choisi par son nom, une adresse par simple mail, un
+       acheteur coché dans le rapprochement. Un nom déjà pris se retire aussi
+       d'un clic dans les résultats. (Un prospect choisi n'apparaissait nulle
+       part : sa recherche était cherchée dans `liste.recherches`, qui n'a pas
+       les recherches en attente ; il restait « Ajouté », grisé.)
+     · « Envoyer par mail » mène au mail tel que le client le recevra (le même
+       HTML que l'envoi, rendu par le serveur sans rien envoyer), à côté du
+       texte qu'on peut toujours modifier : l'aperçu suit la frappe. Sur
+       téléphone, deux onglets.
+     · Pendant l'envoi : l'avion dans son anneau, chaque nom avec son état ;
+       puis la coche et « Fiche envoyée à » avec les noms. */
+type Dest = { cle: string; genre: 'crm'; ligne: Ligne; source: 'manuel' | 'rappro' } | { cle: string; genre: 'libre'; libre: Libre };
+type Apercu = { html: string; objet: string; a: string[] };
+type EtatEnvoi = 'attente' | 'en' | 'ok' | 'ko';
+type Envoi = { quoi: Quoi; gens: { cle: string; nom: string; crm: boolean; etat: EtatEnvoi; erreur?: string }[]; fini: boolean; biens: number };
+const nomLibre = (x: Libre) => [x.prenom, x.nom].filter(Boolean).join(' ') || x.email;
+const nomDest = (d: Dest) => (d.genre === 'libre' ? nomLibre(d.libre) : nomClient(d.ligne.acheteur.client));
+/* Assez longtemps à l'écran pour que l'animation se voie, même quand tout part en un éclair. */
+const ENVOI_MIN_MS = 1100;
+
+/* Le mail dans un cadre inerte (ni script ni lien qui s'ouvre), à sa hauteur
+   réelle : on le fait défiler avec la fenêtre. Comme le rappel de visite. */
+function CadreMail({ html }: { html: string }) {
+  const [haut, setHaut] = useState(520);
+  /* Les liens retirés : « Consulter le bien » ouvrirait son espace avec son
+     lien à lui, et le CRM noterait qu'il l'a ouvert. */
+  const inerte = useMemo(() => html.replace(/\shref="[^"]*"/g, ''), [html]);
+  return (
+    <iframe title="Le mail reçu par le client" srcDoc={inerte} sandbox="allow-same-origin" className={l.cadreMail} style={{ height: haut }}
+      onLoad={e => {
+        try {
+          const d = (e.currentTarget as HTMLIFrameElement).contentDocument;
+          if (d?.body) setHaut(Math.max(320, d.body.scrollHeight + 2));
+        } catch { /* sans accès, la hauteur par défaut */ }
+      }} />
+  );
+}
+
+/* La coche qui se dessine, dans son rond vert, et quelques éclats autour. */
+function Bravo() {
+  return (
+    <span className={l.bravo}>
+      {Array.from({ length: 12 }, (_, i) => (
+        <i key={i} className={l.eclat} style={{ ['--a' as string]: `${i * 30}deg`, ['--d' as string]: `${(i % 3) * 0.05}s` } as React.CSSProperties} />
+      ))}
+      <span className={l.bravoRond}>
+        <svg viewBox="0 0 52 52" width="40" height="40" aria-hidden="true"><path className={l.bravoTrait} d="M14 27.5l8.2 8.2L38.5 19" /></svg>
+      </span>
+    </span>
+  );
+}
+
 export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }: {
   biens: BienVente[]; liste: ListeBiens; nomBien: (b: BienVente) => string;
   onFermer: () => void;
@@ -188,7 +246,6 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const ecartes = biens.filter(b => !envoyables.includes(b)).map(b => ({
     nom: nomBien(b), pourquoi: modeAcheteurs(b.etape) === 'pause' ? 'Vente en pause : l’envoi reprend avec elle.' : 'Il n’est plus en vente.',
   }));
-  /* Ceux qui ne sont pas sur le site : par simple mail, ils partent sans lien. */
   /* Les clients choisis par leur nom (des recherches), le dernier en tête. */
   const [manuels, setManuels] = useState<string[]>([]);
   const [libres, setLibres] = useState<Libre[]>([]);
@@ -238,9 +295,11 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     setRappro('ouvert');
   }
 
-  /* Ceux qu'Alexandre a choisis : tous les biens, sauf le sien s'il en est le propriétaire. */
+  /* Ceux qu'Alexandre a choisis : tous les biens, sauf le sien s'il en est le
+     propriétaire. V3.148 : parmi TOUTES les recherches que la recherche par
+     nom propose, prospects compris (recherchesRappro). */
   const choisisMain = useMemo(() => manuels.map(id => {
-    const r = liste.recherches.find(x => x.id === id);
+    const r = recherchesRappro(liste).find(x => x.id === id);
     const c = r ? liste.clients[r.client_id] : undefined;
     if (!r || !c || !envoyables.length) return null;
     const items = envoyables.filter(b => b.client_id !== c.id).map(b => ({ bien: b, acheteur: acheteurChoisi(b, r, c, liste.copies.filter(y => y.bien_vente_id === b.id)) }));
@@ -289,9 +348,14 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
   const [choisis, setChoisis] = useState<Set<string>>(() => new Set());
   const [etape, setEtape] = useState<'qui' | 'mail'>('qui');
   const [mail, setMail] = useState<{ objet: string; corps: string } | null>(null);
-  const [en, setEn] = useState<Quoi | null>(null);
-  const [avance, setAvance] = useState<Avancement | null>(null);
-  const [bilan, setBilan] = useState('');
+  const [envoi, setEnvoi] = useState<Envoi | null>(null);
+  /* Sur téléphone : le mail du client, ou son texte (V3.148). */
+  const [vue, setVue] = useState<'apercu' | 'texte'>('apercu');
+  const [apercuPour, setApercuPour] = useState('');
+  const [apercu, setApercu] = useState<Apercu | { erreur: string } | null>(null);
+  const [apercuEn, setApercuEn] = useState(false);
+  /* Les lignes qui s'en vont (un instant, le temps de leur sortie). */
+  const [sortants, setSortants] = useState<Set<string>>(() => new Set());
 
   /* Rangés par avis (V3.125) : Oui, À voir (et les pas relus), Non ; dans
      chaque groupe, la meilleure note de potentiel d'abord. */
@@ -300,29 +364,50 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     : [];
   const groupeDe = (a: AvisIA | null): AvisIA['v'] => (a ? a.v : 'a_voir');
   const [voirNon, setVoirNon] = useState(false);
-  const vues = [...choisisMain, ...auto.map(y => y.x)];
-  const coches = vues.filter(x => choisis.has(x.cle));
+  /* Un client choisi par son nom l'est tant qu'il est dans la liste ; un
+     acheteur du rapprochement, tant qu'il est coché. */
+  const coches = [...choisisMain, ...auto.map(y => y.x).filter(x => choisis.has(x.cle))];
   const pour = (quoi: Quoi) => coches.filter(x => aEnvoyer(x, quoi, avisDe).length);
   const total = (quoi: Quoi) => pour(quoi).reduce((t, x) => t + aEnvoyer(x, quoi, avisDe).length, 0);
   const basculer = (k: string) => setChoisis(c => { const n = new Set(c); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const envoyable = (x: Ligne) => aEnvoyer(x, 'selection', avisDe).length > 0 || aEnvoyer(x, 'mail', avisDe).length > 0;
   const ouiPossibles = auto.filter(y => groupeDe(y.a) === 'oui' && envoyable(y.x)).map(y => y.x.cle);
   const tousOui = ouiPossibles.length > 0 && ouiPossibles.every(k => choisis.has(k));
-  const fini = !!avance && avance.fait + avance.erreurs.length >= avance.total;
-  const occupe = !!en && !fini;
+  const occupe = !!envoi && !envoi.fini;
+
+  /* Tous ceux qui recevront : choisis par leur nom, par simple mail, cochés dans le rapprochement. */
+  const dests: Dest[] = [
+    ...choisisMain.map(x => ({ cle: x.cle, genre: 'crm' as const, ligne: x, source: 'manuel' as const })),
+    ...libres.map(x => ({ cle: `@${x.email}`, genre: 'libre' as const, libre: x })),
+    ...auto.filter(y => choisis.has(y.x.cle) && envoyable(y.x)).map(y => ({ cle: y.x.cle, genre: 'crm' as const, ligne: y.x, source: 'rappro' as const })),
+  ];
+  /* Ceux qui recevront le mail : une adresse, et au moins un bien à recevoir. */
+  const mailables = dests.filter(d => d.genre === 'libre' || (aEnvoyer(d.ligne, 'mail', avisDe).length > 0 && !!mailDe(d.ligne.acheteur)));
+  const sansMail = pour('mail').filter(x => !mailDe(x.acheteur));
+  const nbMails = mailables.length;
+  const cible = mailables.find(d => d.cle === apercuPour) || mailables[0] || null;
 
   function prendre(id: string) {
     setManuels(m => [id, ...m.filter(x => x !== id)]);
-    setChoisis(c => new Set(c).add(id));
     setQ('');
   }
   function lacher(id: string) {
     setManuels(m => m.filter(x => x !== id));
-    setChoisis(c => { const n = new Set(c); n.delete(id); return n; });
   }
   function prendreLibre(x: Libre) {
     setLibres(l => [x, ...l.filter(y => y.email !== x.email)]);
     setQ('');
+  }
+  const lacherLibre = (email: string) => setLibres(m => m.filter(y => y.email !== email));
+  /* La croix : la ligne glisse dehors, puis s'en va pour de bon. */
+  function retirer(d: Dest) {
+    setSortants(s => new Set(s).add(d.cle));
+    window.setTimeout(() => {
+      if (d.genre === 'libre') lacherLibre(d.libre.email);
+      else if (d.source === 'manuel') lacher(d.cle);
+      else setChoisis(c => { const n = new Set(c); n.delete(d.cle); return n; });
+      setSortants(s => { const n = new Set(s); n.delete(d.cle); return n; });
+    }, 190);
   }
 
   /* Le texte du mail : les réglages des Paramètres, lus une fois. Personne
@@ -339,17 +424,76 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     return () => { vivant = false; };
   }, [etape, mail, seulementLibres, envoyables.length]);
 
+  /* L'aperçu : le mail de cette personne, construit par le serveur comme à
+     l'envoi (/api/send-mail pour un client du CRM, « presenter » pour un
+     simple mail), sans rien envoyer. */
+  async function lireApercu(d: Dest, m: { objet: string; corps: string }): Promise<Apercu | { erreur: string }> {
+    const objet = m.objet.trim() || 'Sans objet';
+    try {
+      if (d.genre === 'libre') {
+        const res = await fetch('/api/biens-vente', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'presenter', apercu: true, ids: envoyables.map(b => b.id), destinataires: [d.libre], objet, corps: m.corps }),
+        });
+        const r = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; html?: string; objet?: string; a?: string[] };
+        if (!res.ok || !r.ok || typeof r.html !== 'string') return { erreur: r.erreur || `erreur ${res.status}` };
+        return { html: r.html, objet: r.objet || objet, a: r.a || [d.libre.email] };
+      }
+      const a = d.ligne.acheteur;
+      const res = await fetch('/api/send-mail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_ids: [a.client.id], recherche_id: a.recherche.id, mode: 'biens', apercu: true, ventes_ids: aEnvoyer(d.ligne, 'mail', avisDe).map(i => i.bien.id), objet, corps: m.corps }),
+      });
+      const r = await res.json().catch(() => ({})) as { apercu?: boolean; error?: string; html?: string; objet?: string; destinataires?: string[] };
+      if (!res.ok || !r.apercu || typeof r.html !== 'string') return { erreur: r.error || `erreur ${res.status}` };
+      return { html: r.html, objet: r.objet || objet, a: Array.isArray(r.destinataires) ? r.destinataires : [] };
+    } catch (e) {
+      return { erreur: (e as Error).message };
+    }
+  }
+  /* L'aperçu suit la frappe (un court temps après la dernière lettre) ; une
+     autre personne choisie, tout de suite. Seule la dernière demande s'affiche. */
+  const demande = useRef(0);
+  const derniereCible = useRef('');
+  const cleCible = cible ? `${cible.cle}|${cible.genre === 'crm' ? aEnvoyer(cible.ligne, 'mail', avisDe).map(i => i.bien.id).join(',') : ''}` : '';
+  useEffect(() => {
+    if (etape !== 'mail' || !mail || !cible || envoi) return;
+    const n = ++demande.current;
+    const autre = derniereCible.current !== cleCible;
+    derniereCible.current = cleCible;
+    setApercuEn(true);
+    const t = window.setTimeout(async () => {
+      const r = await lireApercu(cible, mail);
+      if (n !== demande.current) return;
+      setApercu(r);
+      setApercuEn(false);
+    }, autre ? 0 : 650);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etape, mail?.objet, mail?.corps, cleCible, !!envoi]);
+
   async function lancer(quoi: Quoi) {
     const cibles = quoi === 'mail' ? pour('mail').filter(x => mailDe(x.acheteur)) : pour(quoi);
     const dehors = quoi === 'mail' ? libres : [];
     if (!cibles.length && !dehors.length) return;
-    setEn(quoi); setBilan('');
-    const av: Avancement = { fait: 0, total: cibles.length + dehors.length, erreurs: [] };
-    setAvance({ ...av });
+    const debut = Date.now();
+    let e: Envoi = {
+      quoi, fini: false, biens: 0,
+      gens: [
+        ...cibles.map(x => ({ cle: x.cle, nom: nomClient(x.acheteur.client), crm: true, etat: 'attente' as EtatEnvoi })),
+        ...dehors.map(x => ({ cle: `@${x.email}`, nom: nomLibre(x), crm: false, etat: 'attente' as EtatEnvoi })),
+      ],
+    };
+    setEnvoi(e);
+    const maj = (cle: string, etat: EtatEnvoi, erreur?: string) => {
+      e = { ...e, gens: e.gens.map(g => (g.cle === cle ? { ...g, etat, erreur } : g)) };
+      setEnvoi(e);
+    };
     let biensPartis = 0;
     for (const x of cibles) {
       const items = aEnvoyer(x, quoi, avisDe);
       const nom = nomClient(x.acheteur.client);
+      maj(x.cle, 'en');
       try {
         if (quoi === 'selection') {
           let n = 0;
@@ -371,15 +515,15 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
         } else {
           biensPartis += await envoyerParMail(items, mail || { objet: '', corps: '' });
         }
-        av.fait += 1;
-      } catch (e) {
-        av.erreurs.push(`${nom} : ${(e as Error).message}`);
+        maj(x.cle, 'ok');
+      } catch (err) {
+        maj(x.cle, 'ko', (err as Error).message);
       }
-      setAvance({ ...av, erreurs: [...av.erreurs] });
     }
     /* Les personnes hors du CRM (et les contacts sans recherche) : un simple
        mail, la photo et le lien du site (route biens-vente, « presenter »). */
     if (dehors.length) {
+      for (const x of dehors) maj(`@${x.email}`, 'en');
       try {
         const res = await fetch('/api/biens-vente', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -388,31 +532,30 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
         const r = await res.json().catch(() => ({})) as { ok?: boolean; erreur?: string; envoyes?: string[]; avertissements?: string[] };
         if (!res.ok || !r.ok) throw new Error(r.erreur || `erreur ${res.status}`);
         const partis = new Set(r.envoyes || []);
-        for (const x of dehors) {
-          if (partis.has(x.email)) av.fait += 1;
-          else av.erreurs.push(`${x.email} : le mail n’est pas parti`);
-        }
+        for (const x of dehors) maj(`@${x.email}`, partis.has(x.email) ? 'ok' : 'ko', partis.has(x.email) ? undefined : 'le mail n’est pas parti');
         if (r.avertissements?.length) signalerEchec('Le mail est parti, mais son suivi', r.avertissements.join(' ; '));
-      } catch (e) {
-        for (const x of dehors) av.erreurs.push(`${x.email} : ${(e as Error).message}`);
+      } catch (err) {
+        for (const x of dehors) maj(`@${x.email}`, 'ko', (err as Error).message);
       }
-      setAvance({ ...av, erreurs: [...av.erreurs] });
     }
-    const qui = av.fait > 1 ? `${av.fait} acheteurs` : av.fait ? '1 acheteur' : 'personne';
-    setBilan(quoi === 'selection' ? `Dans la sélection de ${qui}. Rien n’est parti : ils ne le voient pas encore.`
-      : quoi === 'espace' ? `${biensPartis > 1 ? `${biensPartis} biens envoyés` : '1 bien envoyé'} dans l’espace de ${qui}.`
-        : `${av.fait > 1 ? `${av.fait} mails partis` : av.fait ? '1 mail parti' : 'Aucun mail parti'}.`);
-    if (av.fait) onFait();
+    const reste = ENVOI_MIN_MS - (Date.now() - debut);
+    if (reste > 0) await pause(reste);
+    e = { ...e, fini: true, biens: biensPartis };
+    setEnvoi(e);
+    if (e.gens.some(g => g.etat === 'ok')) onFait();
+  }
+
+  /* « Envoyer à quelqu'un d'autre » : la fenêtre repart de zéro (le
+     rapprochement déjà fait reste). */
+  function recommencer() {
+    setEnvoi(null); setEtape('qui'); setManuels([]); setLibres([]); setChoisis(new Set()); setMail(null); setApercu(null); setApercuPour(''); setVue('apercu');
   }
 
   const titre = envoyables.length > 1 || (!envoyables.length && biens.length > 1) ? `Envoyer ${envoyables.length || biens.length} biens` : 'Envoyer ce bien';
-  const sansMail = pour('mail').filter(x => !mailDe(x.acheteur));
-  const avecMail = pour('mail').filter(x => mailDe(x.acheteur));
-  const nbMails = avecMail.length + libres.length;
-  const nbChoisis = coches.length + libres.length;
   const photo = envoyables.length === 1 ? (envoyables[0].photo || lirePhotos((envoyables[0].donnees || {}).photos)[0]?.url || '') : '';
+  const plusieursBiens = envoyables.length > 1;
 
-  /* Une ligne d'acheteur : proposée par le rapprochement, ou choisie par son nom. */
+  /* Une ligne du rapprochement : sa case, son avis, ses biens. */
   const ligneDe = (x: Ligne, rang: number) => {
     const partent = new Set([...aEnvoyer(x, 'mail', avisDe), ...aEnvoyer(x, 'selection', avisDe)].map(i => i.bien.id));
     const n = aEnvoyer(x, 'mail', avisDe).length;
@@ -421,43 +564,25 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
     const on = choisis.has(x.cle) && !rien;
     const a = x.acheteur;
     const statut = STATUT_COURT[String(a.client.statut || '')];
-    const meilleur = x.manuel ? null : meilleurAvis(x, avisDe);
+    const meilleur = meilleurAvis(x, avisDe);
     /* Un seul bien : l'avis en grand, avec ses plus et ses moins. */
-    const seul = !x.manuel && x.items.length === 1;
+    const seul = x.items.length === 1;
     const avisSeul = seul ? avisDe(x.items[0].bien.id, x.cle) : null;
     return (
-      <div key={x.cle} className={`${l.ligne} ${x.manuel ? '' : l.ligneRappro}`} data-on={on ? 'oui' : 'non'} data-rien={rien ? 'oui' : undefined} style={{ animationDelay: `${Math.min(rang, 8) * 0.035}s` }}>
-        {rien ? <span className={l.caseVide} title={x.items.length ? 'Il a déjà tous ces biens' : 'C’est son bien'} /> : <CaseLigne on={on} onBasculer={() => basculer(x.cle)} titre={on ? `Décocher ${nomClient(a.client)}` : `Cocher ${nomClient(a.client)}`} />}
-        {x.manuel
-          ? <Avatar acheteur={a} />
-          : (
-            <AvecScore s={meilleur && typeof meilleur.s === 'number' ? meilleur.s : Math.max(...x.items.map(i => i.acheteur.corr.note))} v={meilleur?.v || null} legende={meilleur && typeof meilleur.s === 'number' ? 'potentiel' : 'critères'}>
-              <AvatarContact c={a.client} teinte={{ bg: teinte(a.client.id).f, fg: teinte(a.client.id).t }} libre />
-            </AvecScore>
-          )}
+      <div key={x.cle} className={`${l.ligne} ${l.ligneRappro}`} data-on={on ? 'oui' : 'non'} data-rien={rien ? 'oui' : undefined} style={{ animationDelay: `${Math.min(rang, 8) * 0.035}s` }}>
+        {rien ? <span className={l.caseVide} title="Il a déjà tous ces biens" /> : <CaseLigne on={on} onBasculer={() => basculer(x.cle)} titre={on ? `Décocher ${nomClient(a.client)}` : `Cocher ${nomClient(a.client)}`} />}
+        <AvecScore s={meilleur && typeof meilleur.s === 'number' ? meilleur.s : Math.max(...x.items.map(i => i.acheteur.corr.note))} v={meilleur?.v || null} legende={meilleur && typeof meilleur.s === 'number' ? 'potentiel' : 'critères'}>
+          <AvatarContact c={a.client} teinte={{ bg: teinte(a.client.id).f, fg: teinte(a.client.id).t }} libre />
+        </AvecScore>
         <div className={l.qui}>
           <div className={l.quiL1}>
             <button type="button" className={l.nom} onClick={() => onFiche(a.client.id)}>{nomClient(a.client)}</button>
             {statut && <span className={l.tag}>{statut}</span>}
             {a.recherche.budget_max ? <span className={l.budget}>{`jusqu’à ${euros(a.recherche.budget_max)}`}</span> : null}
-            {x.manuel && <button type="button" className={l.retirer} onClick={() => lacher(x.cle)} title="Le retirer de la liste">Retirer</button>}
           </div>
-          {x.manuel ? (
-            <div className={l.pastilles}>
-              {x.items.length ? x.items.map(i => {
-                const note = i.acheteur.corr.note;
-                const deja = presente(i.acheteur.copie);
-                return (
-                  <span key={i.bien.id} className={l.pastille} data-ton={deja ? 'deja' : note >= SEUIL_CORRESPOND ? 'bon' : note >= SEUIL_LISTE ? 'partiel' : 'libre'}
-                    title={deja ? 'Il l’a déjà reçu' : i.acheteur.copie ? 'Déjà dans sa sélection, pas encore envoyé' : note >= 0 ? `Correspond à ${note} % de sa recherche` : 'Pas de note : sa recherche ne se compare pas à ce bien'}>
-                    {pct(note) ? <b>{pct(note)}</b> : null}{bienCourt(i.bien)}{deja ? ' · déjà reçu' : i.acheteur.copie ? ' · en sélection' : ''}
-                  </span>
-                );
-              }) : <span className={l.pastilleVide}>{'C’est le propriétaire : rien à lui envoyer.'}</span>}
-            </div>
-          ) : seul ? (
+          {seul ? (
             <>
-              {envoyables.length > 1 && <span className={l.itemSeul}>{bienCourt(x.items[0].bien)}</span>}
+              {plusieursBiens && <span className={l.itemSeul}>{bienCourt(x.items[0].bien)}</span>}
               {avisSeul ? <AvisDetail avis={avisSeul} sansMot /> : <span className={l.pasRelu}>{'Pas relu : relance le rapprochement pour le relire.'}</span>}
             </>
           ) : (
@@ -479,67 +604,207 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
             </div>
           )}
         </div>
-        <span className={l.combien}>{rien ? (x.items.length ? 'Déjà reçu' : '—') : n ? (n > 1 ? `${n} biens` : '1 bien') : 'En sélection'}</span>
+        <span className={l.combien}>{rien ? 'Déjà reçu' : n ? (n > 1 ? `${n} biens` : '1 bien') : 'En sélection'}</span>
       </div>
     );
   };
 
+  /* V3.148 — Une personne qui recevra : sa ligne, et sa croix. */
+  const ligneDest = (d: Dest, rang: number) => {
+    const croix = (
+      <button type="button" className={l.dX} onClick={() => retirer(d)} aria-label={`Retirer ${nomDest(d)}`} title="Le retirer">
+        <Ic n="croix" t={13} e={2.5} />
+      </button>
+    );
+    const commun = { className: l.dLigne, 'data-sort': sortants.has(d.cle) ? 'oui' : undefined, style: { animationDelay: `${Math.min(rang, 6) * 0.03}s` } };
+    if (d.genre === 'libre') {
+      const x = d.libre;
+      return (
+        <div key={d.cle} {...commun}>
+          <span className={l.dMail}><Ic n="mail" t={16} /></span>
+          <div className={l.dTx}>
+            <span className={l.dL1}>
+              {x.clientId
+                ? <button type="button" className={l.nom} onClick={() => onFiche(x.clientId!)}>{nomLibre(x)}</button>
+                : <b className={l.nomLibre}>{x.email}</b>}
+              <span className={l.tag}>{x.clientId ? 'Sans recherche' : 'Hors du CRM'}</span>
+            </span>
+            <small>{x.clientId ? `${x.email} · par simple mail, noté dans son Suivi` : 'Par simple mail, avec la photo et le lien du bien'}</small>
+          </div>
+          <span className={l.dCombien}>{plusieursBiens ? `${envoyables.length} biens` : '1 bien'}</span>
+          {croix}
+        </div>
+      );
+    }
+    const x = d.ligne;
+    const a = x.acheteur;
+    const n = aEnvoyer(x, 'mail', avisDe).length;
+    const nSel = aEnvoyer(x, 'selection', avisDe).length;
+    const rien = !n && !nSel;
+    const statut = STATUT_COURT[String(a.client.statut || '')];
+    const plusieurs = (parClient.get(a.client.id) || []).length > 1;
+    const note = x.items.length === 1 ? x.items[0].acheteur.corr.note : -1;
+    const sous = !x.items.length ? 'C’est le propriétaire : rien à lui envoyer.'
+      : [d.source === 'rappro' ? 'Rapprochement' : '', recherchePhrase(a.recherche, plusieurs), note >= 0 ? `${note} % de sa recherche` : ''].filter(Boolean).join(' · ');
+    const tt = teinte(a.client.id);
+    return (
+      <div key={d.cle} {...commun} data-rien={rien ? 'oui' : undefined}>
+        <AvatarContact c={a.client} teinte={{ bg: tt.f, fg: tt.t }} className={l.dAv} libre />
+        <div className={l.dTx}>
+          <span className={l.dL1}>
+            <button type="button" className={l.nom} onClick={() => onFiche(a.client.id)}>{nomClient(a.client)}</button>
+            {statut && <span className={l.tag}>{statut}</span>}
+          </span>
+          <small>{sous}</small>
+          {plusieursBiens && x.items.length > 0 && (
+            <span className={l.pastilles}>
+              {x.items.map(i => {
+                const nt = i.acheteur.corr.note;
+                const deja = presente(i.acheteur.copie);
+                return (
+                  <span key={i.bien.id} className={l.pastille} data-ton={deja ? 'deja' : nt >= SEUIL_CORRESPOND ? 'bon' : nt >= SEUIL_LISTE ? 'partiel' : 'libre'}
+                    title={deja ? 'Il l’a déjà reçu' : i.acheteur.copie ? 'Déjà dans sa sélection, pas encore envoyé' : nt >= 0 ? `Correspond à ${nt} % de sa recherche` : 'Pas de note : sa recherche ne se compare pas à ce bien'}>
+                    {pct(nt) ? <b>{pct(nt)}</b> : null}{bienCourt(i.bien)}{deja ? ' · déjà reçu' : i.acheteur.copie ? ' · en sélection' : ''}
+                  </span>
+                );
+              })}
+            </span>
+          )}
+        </div>
+        <span className={l.dCombien} data-rien={rien ? 'oui' : undefined}>{rien ? (x.items.length ? 'Déjà reçu' : 'Son bien') : n ? (n > 1 ? `${n} biens` : '1 bien') : 'En sélection'}</span>
+        {croix}
+      </div>
+    );
+  };
+
+  /* L'envoi, puis sa réussite (V3.148). */
+  const vueEnvoi = (e: Envoi) => {
+    const ok = e.gens.filter(g => g.etat === 'ok');
+    const ko = e.gens.filter(g => g.etat === 'ko');
+    const faits = ok.length + ko.length;
+    /* Une fiche par bien : le pluriel suit le nombre de biens, pas de personnes. */
+    const pl = plusieursBiens;
+    const reussi = e.fini && ok.length > 0;
+    const titreFin = !e.fini ? '' : !ok.length ? 'Rien n’est parti'
+      : e.quoi === 'mail' ? (pl ? 'Fiches envoyées à' : 'Fiche envoyée à')
+        : e.quoi === 'espace' ? (pl ? 'Biens envoyés dans l’espace de' : 'Bien envoyé dans l’espace de')
+          : (pl ? 'Biens mis en sélection pour' : 'Bien mis en sélection pour');
+    const titreEn = e.quoi === 'mail' ? (e.gens.length > 1 ? 'Envoi des mails…' : 'Envoi du mail…') : e.quoi === 'espace' ? 'Envoi dans leur espace…' : 'Mise en sélection…';
+    const montres = e.fini ? ok : e.gens;
+    return (
+      <div className={l.envoi} role="status" aria-live="polite" data-fini={e.fini ? 'oui' : undefined}>
+        <div className={l.envoiRond}>
+          {!e.fini ? (
+            <>
+              <span className={l.anneau} />
+              <span className={l.avion}><Ic n="envoyer" t={30} e={1.8} /></span>
+            </>
+          ) : reussi ? <Bravo /> : <span className={l.rateRond}><Ic n="croix" t={30} e={2.6} /></span>}
+        </div>
+        <h3 className={l.envoiT}>{e.fini ? titreFin : titreEn}</h3>
+        {!e.fini && <p className={l.envoiSous}>{`${Math.min(faits + 1, e.gens.length)} sur ${e.gens.length}`}</p>}
+        {montres.length > 0 && (
+          <ul className={l.gens}>
+            {montres.map((g, i) => (
+              <li key={g.cle} className={l.gen} data-etat={g.etat} style={{ animationDelay: `${e.fini ? 0.35 + i * 0.07 : i * 0.05}s` }}>
+                <span className={l.genPuce}>{g.etat === 'ok' ? <Ic n="check" t={11} e={3.4} /> : g.etat === 'ko' ? <Ic n="croix" t={10} e={3.2} /> : null}</span>
+                <b>{g.nom}</b>
+              </li>
+            ))}
+          </ul>
+        )}
+        {e.fini && reussi && (
+          <p className={l.envoiSous}>
+            {e.quoi === 'selection' ? 'Rien n’est parti : ils ne le voient pas encore.'
+              : e.quoi === 'espace' || ok.some(g => g.crm) ? 'Une relance « sans réponse » est posée pour chacun, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.'
+                : 'Noté dans l’historique du bien.'}
+          </p>
+        )}
+        {e.fini && ko.length > 0 && (
+          <div className={l.envoiKo}>
+            <b>{ok.length ? (ko.length > 1 ? `${ko.length} n’ont pas reçu` : '1 n’a pas reçu') : 'Ce qui a bloqué'}</b>
+            <ul>{ko.map(g => <li key={g.cle}><span>{g.nom}</span><small>{g.erreur || 'erreur inconnue'}</small></li>)}</ul>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const apercuOk = apercu && !('erreur' in apercu) ? apercu : null;
   const fen = (
-    <div className={l.voile} onMouseDown={e => { if (e.target === e.currentTarget && !occupe) onFermer(); }}>
-      <div className={l.fen} role="dialog" aria-modal="true" aria-label={titre}>
+    <div className={l.voile} onMouseDown={e => { if (e.target === e.currentTarget && !occupe && etape === 'qui') onFermer(); }}>
+      <div className={l.fen} role="dialog" aria-modal="true" aria-label={titre} data-large={etape === 'mail' && !envoi ? 'oui' : undefined}>
         <div className={l.tete}>
-          {photo && etape === 'qui' && !avance
+          {photo && etape === 'qui' && !envoi
             // eslint-disable-next-line @next/next/no-img-element
             ? <span className={l.tetePhoto}><img src={photo} alt="" /></span>
             : <span className={l.teteIc}><Ic n={etape === 'mail' ? 'mail' : 'envoyer'} t={20} /></span>}
           <div className={l.teteTx}>
-            <h2>{etape === 'mail' && !avance ? (nbMails > 1 ? `${nbMails} mails, un par personne` : 'Le mail') : titre}</h2>
+            <h2>{etape === 'mail' && !envoi ? (nbMails > 1 ? `${nbMails} mails, un par personne` : 'Le mail du client') : titre}</h2>
             <p>{envoyables.map(bienCourt).join(' · ') || 'Aucun bien à envoyer dans la sélection.'}</p>
           </div>
           <button type="button" className={l.fermer} aria-label="Fermer" disabled={occupe} onClick={onFermer}><Ic n="croix" t={15} e={2.3} /></button>
         </div>
 
         <div className={l.corps}>
-          {avance ? (
-            <div className={l.avance} role="status">
-              <span className={l.avanceBarre}><i style={{ width: `${avance.total ? ((avance.fait + avance.erreurs.length) / avance.total) * 100 : 100}%` }} /></span>
-              <b>{fini ? bilan : `${en === 'mail' ? 'Envoi des mails' : en === 'espace' ? 'Envoi dans les espaces' : 'Mise en sélection'}… ${avance.fait + avance.erreurs.length} sur ${avance.total}`}</b>
-              {fini && en !== 'selection' && avance.fait > 0 && (en === 'espace' || avecMail.length > 0) && <span>{'Une relance « sans réponse » est posée pour chaque acheteur, et ils sont prévenus sur leur téléphone s’ils l’ont accepté.'}</span>}
-              {avance.erreurs.length > 0 && <ul className={l.erreurs}>{avance.erreurs.map((x, i) => <li key={i}>{x}</li>)}</ul>}
-            </div>
-          ) : etape === 'mail' ? (
-            <>
-              <label className={l.champ}><span>Objet</span>
-                <input className={l.in} value={mail?.objet || ''} disabled={!mail} onChange={e => setMail(m => (m ? { ...m, objet: e.target.value } : m))} />
-              </label>
-              <label className={l.champ}><span>Le message</span>
-                <textarea className={l.in} rows={11} value={mail?.corps || ''} disabled={!mail} placeholder={mail ? '' : 'Chargement du modèle…'} onChange={e => setMail(m => (m ? { ...m, corps: e.target.value } : m))} />
-              </label>
-              <p className={l.aide}><Ic n="info" t={14} /><span>{`{{prénom}} devient le prénom de chacun${libres.length ? ' (rien pour une adresse hors du CRM : « Bonjour, »)' : ''}. ${envoyables.length > 1 ? 'Les biens s’ajoutent' : 'Le bien s’ajoute'} sous le texte, avec ${envoyables.length > 1 ? 'leurs photos' : 'sa photo'} et un bouton vers ${envoyables.length > 1 ? 'leur fiche' : 'sa fiche'}.`}</span></p>
-              {/* V3.131 : hors du CRM, « Voir le bien » mène à la fiche publique du
-                  bien, sur le site ou pas : plus d'avertissement « sans lien ». */}
-              {libres.length > 0 && (
-                <p className={l.aide}><Ic n="info" t={14} /><span>{`Pour ${libres.length > 1 ? 'les adresses' : 'l’adresse'} hors du CRM : « Voir le bien » ouvre la fiche publique ${envoyables.length > 1 ? 'de chaque bien' : 'du bien'}, comme le « Partager » d’un acheteur.`}</span></p>
-              )}
-              <div className={l.dest}>
-                <b>{nbMails > 1 ? `${nbMails} destinataires` : '1 destinataire'}</b>
-                <ul>
-                  {avecMail.map(x => {
-                    const n = aEnvoyer(x, 'mail', avisDe).length;
-                    return <li key={x.cle}><span>{nomClient(x.acheteur.client)}</span><small>{`${mailDe(x.acheteur)} · ${n > 1 ? `${n} biens` : '1 bien'}`}</small></li>;
-                  })}
-                  {libres.map(x => (
-                    <li key={x.email}><span>{[x.prenom, x.nom].filter(Boolean).join(' ') || x.email}</span><small>{x.clientId ? `${x.email} · mail simple, noté dans son Suivi` : 'hors du CRM · mail simple'}</small></li>
-                  ))}
-                </ul>
+          {envoi ? vueEnvoi(envoi) : etape === 'mail' ? (
+            <div className={l.mailZone} data-vue={vue}>
+              <div className={l.onglets} role="tablist" aria-label="Vue">
+                <button type="button" role="tab" aria-selected={vue === 'apercu'} onClick={() => setVue('apercu')}><Ic n="oeil" t={15} />{'Le mail du client'}</button>
+                <button type="button" role="tab" aria-selected={vue === 'texte'} onClick={() => setVue('texte')}><Ic n="crayon" t={14} />{'Modifier le texte'}</button>
               </div>
-              {sansMail.length > 0 && (
-                <div className={l.ignores}>
-                  <b>{sansMail.length > 1 ? `${sansMail.length} sans adresse e-mail` : '1 sans adresse e-mail'}</b>
-                  <span>{`${sansMail.map(x => nomClient(x.acheteur.client)).join(', ')} : pas d’adresse sur ${sansMail.length > 1 ? 'leur' : 'sa'} fiche. « Dans leur espace » envoie les biens sans mail.`}</span>
+
+              <section className={l.paneTexte}>
+                <div className={l.paneT}><b>{'Le message'}</b><span>{nbMails > 1 ? 'Le même pour tous, chacun à son prénom.' : 'Modifie-le : l’aperçu suit.'}</span></div>
+                <label className={l.champ}><span>Objet</span>
+                  <input className={l.in} value={mail?.objet || ''} disabled={!mail} onChange={e => setMail(m => (m ? { ...m, objet: e.target.value } : m))} />
+                </label>
+                <label className={l.champ}><span>Le message</span>
+                  <textarea className={`${l.in} ${l.inMsg}`} rows={13} value={mail?.corps || ''} disabled={!mail} placeholder={mail ? '' : 'Chargement du modèle…'} onChange={e => setMail(m => (m ? { ...m, corps: e.target.value } : m))} />
+                </label>
+                <p className={l.aide}><Ic n="info" t={14} /><span>{`{{prénom}} devient le prénom de chacun${libres.length ? ' (rien pour une adresse hors du CRM : « Bonjour, »)' : ''}. ${plusieursBiens ? 'Les biens s’ajoutent' : 'Le bien s’ajoute'} sous le texte, avec ${plusieursBiens ? 'leurs photos' : 'sa photo'} et un bouton vers ${plusieursBiens ? 'leur fiche' : 'sa fiche'}.`}</span></p>
+                {sansMail.length > 0 && (
+                  <div className={l.ignores}>
+                    <b>{sansMail.length > 1 ? `${sansMail.length} sans adresse e-mail` : '1 sans adresse e-mail'}</b>
+                    <span>{`${sansMail.map(x => nomClient(x.acheteur.client)).join(', ')} : pas d’adresse sur ${sansMail.length > 1 ? 'leur' : 'sa'} fiche. « Dans leur espace » envoie les biens sans mail.`}</span>
+                  </div>
+                )}
+                <button type="button" className={`${l.btn} ${l.voirMail}`} onClick={() => setVue('apercu')}><Ic n="oeil" t={15} />{'Voir le mail du client'}</button>
+              </section>
+
+              <section className={l.paneApercu}>
+                <div className={l.paneT}>
+                  <b>{nbMails > 1 ? 'Aperçu pour' : `Ce que reçoit ${cible ? nomDest(cible) : 'le client'}`}</b>
+                  {nbMails > 1 && <span>{'Chacun reçoit son mail, à son prénom, avec ses biens.'}</span>}
                 </div>
-              )}
-            </>
+                {nbMails > 1 && (
+                  <div className={l.pourQui}>
+                    {mailables.map(d => (
+                      <button key={d.cle} type="button" className={l.pourPill} data-on={d.cle === cible?.cle ? 'oui' : undefined} onClick={() => setApercuPour(d.cle)}>{nomDest(d)}</button>
+                    ))}
+                  </div>
+                )}
+                <div className={l.enveloppe} data-maj={apercuEn && apercu ? 'oui' : undefined}>
+                  <div className={l.envTete}>
+                    <span className={l.envAv}>AR</span>
+                    <div className={l.envTx}>
+                      <b>{'Alexandre Rogelet · Emilio Immobilier'}</b>
+                      <small>{`À : ${apercuOk ? apercuOk.a.join(', ') || '—' : cible ? (cible.genre === 'libre' ? cible.libre.email : mailDe(cible.ligne.acheteur)) : '—'}`}</small>
+                    </div>
+                    {apercuEn && apercu ? <span className={l.envMaj}><i />{'Mise à jour'}</span> : <span className={l.envQuand}>{'maintenant'}</span>}
+                  </div>
+                  <div className={l.envObjet}>{apercuOk ? apercuOk.objet : mail?.objet || ' '}</div>
+                  {!cible ? (
+                    <div className={l.apercuErr}><Ic n="info" t={15} /><span>{'Personne à qui l’envoyer par mail : aucune adresse e-mail, ou rien de nouveau à recevoir.'}</span></div>
+                  ) : !apercu ? (
+                    <div className={l.squelette} aria-label="Préparation de l’aperçu"><i className={l.sqBande} /><i /><i /><i className={l.sqCourt} /><i className={l.sqPhoto} /><i /><i className={l.sqCourt} /></div>
+                  ) : 'erreur' in apercu ? (
+                    <div className={l.apercuErr}><Ic n="info" t={15} /><span>{`L’aperçu n’a pas pu être préparé : ${apercu.erreur}`}</span></div>
+                  ) : <CadreMail html={apercu.html} />}
+                </div>
+                <p className={l.aide}><Ic n="check" t={14} e={2.6} /><span>{`Exactement ce que reçoit ${cible ? nomDest(cible) : 'le client'}. Rien n’est parti : le mail part avec « ${nbMails > 1 ? `Envoyer les ${nbMails} mails` : 'Envoyer le mail'} ».`}</span></p>
+              </section>
+            </div>
           ) : (
             <>
               {ecartes.length > 0 && (
@@ -571,7 +836,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                       <input id="lot-client" className={l.chercheIn} value={q} placeholder="Un nom, un téléphone ou une adresse e-mail" autoComplete="off" spellCheck={false} inputMode="email"
                         onChange={e => setQ(e.target.value)} onKeyDown={e => {
                           if (e.key === 'Escape' && q) { e.stopPropagation(); setQ(''); }
-                          if (e.key === 'Enter' && trouves?.adresse && !trouves.avec.length && !trouves.sans.length) { e.preventDefault(); prendreLibre({ email: trouves.adresse }); }
+                          if (e.key === 'Enter' && trouves?.adresse && !trouves.avec.length && !trouves.sans.length && !libres.some(x => x.email === trouves.adresse)) { e.preventDefault(); prendreLibre({ email: trouves.adresse }); }
                         }} />
                       {q && <button type="button" className={l.chercheX} aria-label="Effacer" onClick={() => setQ('')}><Ic n="croix" t={12} e={2.4} /></button>}
                     </div>
@@ -583,86 +848,77 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                           const statut = STATUT_COURT[String(c.statut || '')];
                           const tt = teinte(c.id);
                           return (
-                            <button key={r.id} type="button" className={l.resL} disabled={pris || proprio} onClick={() => prendre(r.id)}>
+                            <button key={r.id} type="button" className={l.resL} data-pris={pris ? 'oui' : undefined} disabled={proprio} onClick={() => (pris ? lacher(r.id) : prendre(r.id))}
+                              title={pris ? 'Déjà dans la liste : un clic le retire' : undefined}>
                               <AvatarContact c={c} teinte={{ bg: tt.f, fg: tt.t }} className={l.resAv} libre />
                               <span className={l.resTx}>
                                 <b>{nomClient(c)}{statut ? <i className={l.tag}>{statut}</i> : null}</b>
                                 <small>{proprio ? 'C’est le propriétaire de ce bien.' : recherchePhrase(r, n > 1)}</small>
                               </span>
-                              <span className={l.resAct}>{pris ? 'Ajouté' : proprio ? '' : <><Ic n="plus" t={14} e={2.4} />{'Ajouter'}</>}</span>
+                              {proprio ? null : pris ? (
+                                <span className={l.resAct}><span className={l.resPris}><Ic n="check" t={13} e={2.8} />{'Ajouté'}</span><span className={l.resOter}><Ic n="croix" t={12} e={2.6} />{'Retirer'}</span></span>
+                              ) : <span className={l.resAct}><Ic n="plus" t={14} e={2.4} />{'Ajouter'}</span>}
                             </button>
                           );
                         })}
                         {trouves.deplus > 0 && <span className={l.resPlus}>{`Et ${trouves.deplus} de plus : précise ${trouves.tel ? 'le numéro' : 'le nom'}.`}</span>}
                         {trouves.sans.map(c => {
-                          const adr = (c.emails || []).find(e => ADRESSE.test(String(e).trim())) || '';
-                          const pris = !!adr && libres.some(x => x.email === adr.trim().toLowerCase());
+                          const adr = ((c.emails || []).find(e => ADRESSE.test(String(e).trim())) || '').trim().toLowerCase();
+                          const pris = !!adr && libres.some(x => x.email === adr);
                           return (
                             <div key={c.id} className={l.resSans}>
                               <span className={l.resTx}>
                                 <b>{nomClient(c)}</b>
                                 <small>{adr ? 'Pas de recherche ouverte : par simple mail, noté dans son Suivi.' : 'Pas de recherche ouverte, et pas d’adresse e-mail sur sa fiche.'}</small>
                               </span>
-                              {adr && <button type="button" className={l.resFiche} disabled={pris} onClick={() => prendreLibre({ email: adr.trim().toLowerCase(), prenom: c.prenom || '', nom: c.nom || '', clientId: c.id })}>{pris ? 'Ajouté' : 'Par simple mail'}</button>}
+                              {adr && (
+                                <button type="button" className={l.resFiche} data-pris={pris ? 'oui' : undefined} onClick={() => (pris ? lacherLibre(adr) : prendreLibre({ email: adr, prenom: c.prenom || '', nom: c.nom || '', clientId: c.id }))}>
+                                  {pris ? <><Ic n="croix" t={11} e={2.6} />{'Retirer'}</> : 'Par simple mail'}
+                                </button>
+                              )}
                               <button type="button" className={l.resFiche} onClick={() => onFiche(c.id)}>Sa fiche</button>
                             </div>
                           );
                         })}
-                        {trouves.adresse && (
-                          <button type="button" className={`${l.resL} ${l.resLibre}`} disabled={libres.some(x => x.email === trouves.adresse)} onClick={() => prendreLibre({ email: trouves.adresse })}>
-                            <span className={l.resMail}><Ic n="mail" t={16} /></span>
-                            <span className={l.resTx}>
-                              <b>{trouves.adresse}</b>
-                              <small>{'Hors du CRM : un simple mail, avec la photo et le lien du bien.'}</small>
-                            </span>
-                            <span className={l.resAct}>{libres.some(x => x.email === trouves.adresse) ? 'Ajouté' : <><Ic n="plus" t={14} e={2.4} />{'Ajouter'}</>}</span>
-                          </button>
-                        )}
+                        {trouves.adresse && (() => {
+                          const pris = libres.some(x => x.email === trouves.adresse);
+                          return (
+                            <button type="button" className={`${l.resL} ${l.resLibre}`} data-pris={pris ? 'oui' : undefined} onClick={() => (pris ? lacherLibre(trouves.adresse) : prendreLibre({ email: trouves.adresse }))}>
+                              <span className={l.resMail}><Ic n="mail" t={16} /></span>
+                              <span className={l.resTx}>
+                                <b>{trouves.adresse}</b>
+                                <small>{'Hors du CRM : un simple mail, avec la photo et le lien du bien.'}</small>
+                              </span>
+                              {pris
+                                ? <span className={l.resAct}><span className={l.resPris}><Ic n="check" t={13} e={2.8} />{'Ajouté'}</span><span className={l.resOter}><Ic n="croix" t={12} e={2.6} />{'Retirer'}</span></span>
+                                : <span className={l.resAct}><Ic n="plus" t={14} e={2.4} />{'Ajouter'}</span>}
+                            </button>
+                          );
+                        })()}
                         {!trouves.avec.length && !trouves.sans.length && !trouves.adresse && (
                           <span className={l.resPlus}>{trouves.arobase ? 'Tape l’adresse e-mail en entier.' : trouves.tel ? 'Personne avec ce numéro. Pour quelqu’un hors du CRM, tape son adresse e-mail.' : 'Personne à ce nom. Pour quelqu’un hors du CRM, tape son adresse e-mail.'}</span>
                         )}
                       </div>
                     )}
-                  </div>
 
-                  {choisisMain.length > 0 && (
-                    <>
-                      <div className={l.sousT}><b>{choisisMain.length > 1 ? 'Choisis par toi' : 'Choisi par toi'}</b><span>{'Tous les biens lui partent, sans regarder la note.'}</span></div>
-                      <div className={l.lignes}>{choisisMain.map((x, i) => ligneDe(x, i))}</div>
-                    </>
-                  )}
-
-                  {libres.length > 0 && (
-                    <>
-                      <div className={l.sousT}><b>{'Par simple mail'}</b><span>{'La photo, les infos, et le lien de sa page sur ton site.'}</span></div>
-                      <div className={l.lignes}>
-                        {libres.map((x, i) => (
-                          <div key={x.email} className={l.ligne} data-on="oui" style={{ animationDelay: `${Math.min(i, 8) * 0.035}s` }}>
-                            <span className={l.caseMail} title="Choisi"><Ic n="check" t={12} e={3.2} /></span>
-                            <span className={l.resMail}><Ic n="mail" t={16} /></span>
-                            <div className={l.qui}>
-                              <div className={l.quiL1}>
-                                {x.clientId
-                                  ? <button type="button" className={l.nom} onClick={() => onFiche(x.clientId!)}>{[x.prenom, x.nom].filter(Boolean).join(' ') || x.email}</button>
-                                  : <b className={l.nomLibre}>{x.email}</b>}
-                                <span className={l.tag}>{x.clientId ? 'Sans recherche' : 'Hors du CRM'}</span>
-                                <button type="button" className={l.retirer} onClick={() => setLibres(m => m.filter(y => y.email !== x.email))} title="Le retirer de la liste">Retirer</button>
-                              </div>
-                              <span className={l.libreSous}>{x.clientId ? `${x.email} · noté dans son Suivi` : 'Il n’a pas d’espace : l’envoi est noté dans l’historique du bien.'}</span>
-                            </div>
-                            <span className={l.combien}>{envoyables.length > 1 ? `${envoyables.length} biens` : '1 bien'}</span>
-                          </div>
-                        ))}
+                    {/* V3.148 : chacun sur sa ligne, avec sa croix. */}
+                    {dests.length > 0 && (
+                      <div className={l.dests}>
+                        <div className={l.destsT}>
+                          <b>{dests.length > 1 ? `${dests.length} destinataires` : '1 destinataire'}</b>
+                          <span>{'Cherche un autre nom pour en ajouter.'}</span>
+                        </div>
+                        <div className={l.destsL}>{dests.map((d, i) => ligneDest(d, i))}</div>
                       </div>
-                    </>
-                  )}
+                    )}
+                  </div>
 
                   {/* Le rapprochement, seulement si on le demande (V3.121) ;
                       le premier tri puis la relecture (V3.125). */}
                   {rappro === 'tri' || rappro === 'relecture' ? (
                     <Progression etapes={[
                       { t: 'Le premier tri', etat: rappro === 'tri' ? 'en' : 'fait',
-                        d: rappro === 'tri' ? `Budget, secteur, type, surface : je compare ${envoyables.length > 1 ? 'ces biens' : 'ce bien'} à tes ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} ouverte${nbRecherches > 1 ? 's' : ''}.` : `${lignes.length} acheteur${lignes.length > 1 ? 's passent' : ' passe'} le premier tri, sur ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} ouverte${nbRecherches > 1 ? 's' : ''}.` },
+                        d: rappro === 'tri' ? `Budget, secteur, type, surface : je compare ${plusieursBiens ? 'ces biens' : 'ce bien'} à tes ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} ouverte${nbRecherches > 1 ? 's' : ''}.` : `${lignes.length} acheteur${lignes.length > 1 ? 's passent' : ' passe'} le premier tri, sur ${nbRecherches} recherche${nbRecherches > 1 ? 's' : ''} ouverte${nbRecherches > 1 ? 's' : ''}.` },
                       { t: 'La relecture de chaque dossier', etat: rappro === 'tri' ? 'attente' : 'en', fait: iaEtat.fait, total: iaEtat.total,
                         d: rappro === 'tri' ? 'Indispensables, parcours, comptes rendus de visite, face à la fiche du bien.' : `${Math.min(iaEtat.fait, iaEtat.total)} sur ${iaEtat.total} relu${iaEtat.total > 1 ? 's' : ''}…` },
                       { t: 'Le classement', etat: 'attente', d: 'Oui, à voir, non : les meilleures chances d’abord.' },
@@ -681,7 +937,7 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                   ) : lignes.length === 0 ? (
                     <div className={l.vide}>
                       <span className={l.videIc}><Ic n="groupe" t={24} /></span>
-                      <b>{`Personne ne passe le premier tri pour ${envoyables.length > 1 ? 'ces biens' : 'ce bien'}.`}</b>
+                      <b>{`Personne ne passe le premier tri pour ${plusieursBiens ? 'ces biens' : 'ce bien'}.`}</b>
                       <span>{'Aucune recherche ouverte ne va avec : trop cher pour eux, autre secteur, autre type… Pour l’envoyer à quelqu’un d’autre, cherche-le juste au-dessus.'}</span>
                     </div>
                   ) : (
@@ -738,20 +994,23 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
         </div>
 
         <div className={l.pied}>
-          {avance ? (
-            fini
-              ? <button type="button" className={`${l.btn} ${l.btnPrim}`} onClick={onFermer}>Fermer</button>
-              : <button type="button" className={l.btn} disabled>En cours…</button>
+          {envoi ? (
+            envoi.fini ? (
+              <>
+                <button type="button" className={l.btn} onClick={recommencer}><Ic n="envoyer" t={14} />{'Envoyer à quelqu’un d’autre'}</button>
+                <button type="button" className={`${l.btn} ${l.btnPrim}`} onClick={onFermer}>Fermer</button>
+              </>
+            ) : <button type="button" className={l.btn} disabled><span className={l.miniRoue} />{'En cours…'}</button>
           ) : etape === 'mail' ? (
             <>
               <button type="button" className={l.btn} onClick={() => setEtape('qui')}><Ic n="gauche" t={14} e={2.3} />Retour</button>
-              <button type="button" className={`${l.btn} ${l.btnOr}`} disabled={!mail || !mail.objet.trim() || !mail.corps.trim() || !nbMails} onClick={() => { void lancer('mail'); }}>
+              <button type="button" className={`${l.btn} ${l.btnOr} ${l.btnEnvoi}`} disabled={!mail || !mail.objet.trim() || !mail.corps.trim() || !nbMails} onClick={() => { void lancer('mail'); }}>
                 <Ic n="envoyer" t={15} />{nbMails > 1 ? `Envoyer les ${nbMails} mails` : 'Envoyer le mail'}
               </button>
             </>
           ) : (
             <>
-              <span className={l.piedTx}>{!envoyables.length ? '' : nbChoisis ? (nbChoisis > 1 ? `${nbChoisis} destinataires choisis` : '1 destinataire choisi') : 'Personne pour l’instant'}</span>
+              <span className={l.piedTx}>{!envoyables.length ? '' : dests.length ? (dests.length > 1 ? `${dests.length} destinataires choisis` : '1 destinataire choisi') : 'Personne pour l’instant'}</span>
               <button type="button" className={l.btn} disabled={!total('selection')} onClick={() => { void lancer('selection'); }}
                 title="Pour les clients du CRM : les biens entrent dans leur dossier, à l’étape Sélection. Rien ne part : ils ne les voient pas encore.">
                 <Ic n="liste" t={15} />Mettre en sélection
@@ -760,9 +1019,9 @@ export function FenEnvoiLot({ biens, liste, nomBien, onFermer, onFait, onFiche }
                 title="Pour les clients du CRM : ils arrivent tout de suite dans leur espace, avec la note de correspondance. Prévenus sur leur téléphone s’ils l’ont accepté.">
                 <Ic n="envoyer" t={15} />Dans leur espace
               </button>
-              <button type="button" className={`${l.btn} ${l.btnOr}`} disabled={!total('mail') && !libres.length} onClick={() => setEtape('mail')}
-                title="Un mail par personne, à son prénom, avec les biens. Tu relis le texte avant qu’il parte.">
-                <Ic n="mail" t={15} />Par mail…
+              <button type="button" className={`${l.btn} ${l.btnOr}`} disabled={!total('mail') && !libres.length} onClick={() => { setVue('apercu'); setEtape('mail'); }}
+                title="Un mail par personne, à son prénom, avec les biens. Tu vois le mail tel qu’il le recevra avant qu’il parte.">
+                <Ic n="mail" t={15} />Envoyer par mail
               </button>
             </>
           )}
