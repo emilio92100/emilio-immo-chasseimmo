@@ -601,7 +601,10 @@ export function redigerMandat(d: DonneesMandat, A: IdentiteAgence = IDENTITE_DEF
           'Le bien est en vente chez une autre agence, qui partage avec l’Agence les honoraires prévus à son mandat de vente : le MANDANT ne doit alors aucun honoraire au titre du présent mandat. Il paie le prix convenu avec le vendeur, et l’Agence est rémunérée par cette autre agence.',
           'Dans tous les autres cas (bien vendu par son propriétaire, agence qui ne partage pas ses honoraires, bien trouvé hors des annonces…) : les honoraires ci-dessus sont à la charge du MANDANT, en plus du prix.',
         ] },
-        P('L’Agence indique au MANDANT par écrit, avant toute offre d’achat, dans lequel de ces deux cas se trouve le bien.', true),
+        P('L’Agence indique au MANDANT par écrit, avant toute offre d’achat, dans lequel de ces deux cas se trouve le bien, notamment dans son espace personnel.', true),
+        /* V3.145 : les prix de l'espace sont ceux des annonces ; ses honoraires y
+           sont dits sur le bien, quand ils s'ajoutent (src/lib/honoraires-bien.ts). */
+        P('Les prix des biens présentés dans l’espace personnel du MANDANT sont ceux de leurs annonces. Lorsque des honoraires sont dus au titre du présent mandat, l’espace l’indique sur le bien concerné, avec leur montant.'),
         P('Lorsqu’ils sont dus, les honoraires sont payés le jour de la signature de l’acte authentique, par l’intermédiaire du notaire : aucune somme n’est due avant. En cas de préemption, le titulaire du droit de préemption les doit à la place de l’acquéreur.'),
       ] },
       { titre: 'Durée', ic: 'calendrier', blocs: plusieurs
