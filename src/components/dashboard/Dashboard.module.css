@@ -255,18 +255,21 @@
 
 /* ═══ V3.152 — Le téléphone bord à bord ════════════════════════════════════
    Alexandre : « sur le mobile tout est bridé, condensé ». L'accueil prend
-   toute la largeur : le bandeau bleu et les cartes vont d'un bord à
-   l'autre (ni arrondi ni cadre sur les côtés, le gris de la page les
-   sépare). Les quatre chiffres forment un seul tableau blanc, deux par
-   ligne, séparés d'un filet. */
+   toute la largeur : les cartes vont d'un bord à l'autre (ni arrondi ni
+   cadre sur les côtés, le gris de la page les sépare).
+   V3.155 — Alexandre : « la date, Bonjour, et la vue d'ensemble, un peu
+   plus en arrondi, moins carré : ça fait trop bloc ; juste sur cette
+   page-là ». Le bandeau bleu redevient une carte arrondie, à 10 px des
+   bords, et les quatre chiffres quatre tuiles arrondies, deux par ligne. */
 @media (max-width: 760px) {
-  .welcomeBanner { margin: 12px 0 0; padding: 20px 14px 18px; border-radius: 0; }
+  .welcomeBanner { margin: 12px 10px 0; padding: 20px 16px 18px; border-radius: 22px; }
 
-  .statsGrid {
-    gap: 1px; padding: 0; margin-top: 12px;
-    background: #e3e8f0; border-top: 1px solid #e3e8f0; border-bottom: 1px solid #e3e8f0;
+  .statsGrid { gap: 10px; padding: 0 10px; margin-top: 12px; background: none; border: none; }
+  .statCard {
+    border: 1px solid #e6ebf2; border-radius: 18px; padding: 14px;
+    box-shadow: 0 8px 20px -16px rgba(15, 23, 42, .45);
   }
-  .statCard { border: none; border-radius: 0; box-shadow: none; padding: 14px; }
+  .statDark { border-color: var(--emilio); }
 
   .mainRow { padding: 12px 0 20px; }
   .card, .mandatAlert { border-radius: 0; border-left: none; border-right: none; }
