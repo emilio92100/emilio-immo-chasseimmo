@@ -1889,13 +1889,14 @@ nav.sousOnglets > span[aria-hidden="true"] { border-radius: 13px; }
    côtés (le gris de la page les sépare) ; les filtres et les pastilles
    posés sur le fond gardent 14 px de marge. */
 @media (max-width: 760px) {
-  .selBien { border-radius: 0; }
-  .carte, .ligneB, .annonceVente, .aerer, .ailleurs, .brouillons, .expliAnnonce, .affP {
-    border-radius: 0; border-left: none; border-right: none;
-  }
-  .carte { padding: 11px 14px; }
-  .ligneB { padding: 10px 14px; }
-  .annonceVente, .aerer, .ailleurs, .brouillons, .expliAnnonce { padding-left: 14px; padding-right: 14px; }
+  /* V3.161 — Alexandre : « remets les coins arrondis, mais en gardant le
+     maximum de largeur » : chaque carte et chaque bandeau arrondis, à 10 px
+     des bords (comme Contacts, V3.160). */
+  .selBien { border-radius: 16px; margin: 0 10px; }
+  .annonceVente, .aerer, .ailleurs, .brouillons, .expliAnnonce, .affP { border-radius: 16px; margin-left: 10px; margin-right: 10px; }
+  .carte { padding: 11px 12px; }
+  .ligneB { padding: 10px 12px; }
+  .annonceVente, .aerer, .ailleurs, .brouillons, .expliAnnonce { padding-left: 12px; padding-right: 12px; }
   .sousDiff { padding: 0 14px; }
   /* « Affiner » : la ligne défile de bord à bord, son premier bouton à 14 px. */
   .affL { padding: 2px 14px 4px; }

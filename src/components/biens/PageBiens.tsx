@@ -440,9 +440,14 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
 
   const exclus = actifs.filter(x => EN_COURS.includes(x.etape) && x.mandat_type === 'exclusif').length;
   const honoCompromis = actifs.filter(x => x.etape === 'compromis').reduce((t, x) => t + (honorairesVente(x, (liste?.suivi || []).filter(s2 => s2.bien_id === x.id)) || 0), 0);
+  /* V3.161 — Alexandre : « 10 exclusivités, 80 000 € d'honoraires TTC sous
+     compromis : ça veut dire quoi ? ». Le bilan de la rubrique, dit en
+     clair : les mandats exclusifs en cours (en vente, sous offre ou sous
+     compromis), et les honoraires TTC des biens sous compromis, qui
+     tomberont à l'acte. */
   const phrase = [
-    exclus ? `${exclus} exclusivité${exclus > 1 ? 's' : ''}` : '',
-    honoCompromis ? `${euros(honoCompromis)} d’honoraires TTC sous compromis` : '',
+    exclus ? `${exclus} mandat${exclus > 1 ? 's' : ''} exclusif${exclus > 1 ? 's' : ''} en cours` : '',
+    honoCompromis ? `${euros(honoCompromis)} TTC d’honoraires à toucher à l’acte (biens sous compromis)` : '',
   ].filter(Boolean).join(' · ') || 'Tes biens, du premier contact avec le propriétaire à la signature chez le notaire.';
 
   const bienOuvert = ouvert && liste ? tousBiens.find(x => x.id === ouvert) || null : null;
@@ -486,7 +491,7 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
   const installer = erreur === MESSAGE_SQL;
   return (
     <div className={`${s.page} ${retour ? 'ecran-arriere' : ''}`}>
-      <EnteteRubrique titre="Biens" icone={<Ic n="maison" t={22} />} phrase={phrase}
+      <EnteteRubrique titre="Biens" icone={<Ic n="maison" t={22} />} phrase={phrase} arrondi
         recherche={biens.length > 0 ? { valeur: cherche, onChange: setCherche, placeholder: 'Adresse, ville, propriétaire, n° de mandat…', label: 'Chercher un bien' } : undefined}
         bouton={installer ? undefined : { lib: 'Nouveau bien', onClick: () => { setErreurDepart(''); setPour(null); setChoixDepart(true); } }}
         bouton2={installer ? undefined : { lib: 'Importer depuis ImmoFacile', court: 'Importer', ic: <Ic n="telecharger" t={15} />, onClick: () => setImportIF(true) }}
