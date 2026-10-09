@@ -97,9 +97,13 @@ export function fichePersonne(p: Personne, ic: Icone = 'personne', pied?: string
    et ICONES) ; il ne s'imprime jamais. */
 export type Option = { v: string; l: string; aide?: string; ic?: string };
 type Base = { cle: string; lib: string; aide?: string; exemple?: string; large?: boolean; requis?: boolean; si?: (d: Donnees) => boolean; ic?: string };
-export type Champ =
+/* Une question simple, à une seule saisie : elle peut aussi vivre dans une
+   carte d'un champ « groupes » (V3.154). */
+export type ChampSimple =
   | (Base & { t: 'texte' | 'zone' | 'date' | 'heure' })
-  | (Base & { t: 'nombre' | 'euros'; unite?: string })
+  | (Base & { t: 'nombre' | 'euros'; unite?: string });
+export type Champ =
+  | ChampSimple
   | (Base & { t: 'choix'; options: Option[]; tuiles?: boolean })
   | (Base & { t: 'cases'; options: Option[] })
   /* `complet` : naissance et adresse demandées (un vendeur, un acquéreur ;
@@ -116,14 +120,30 @@ export type Champ =
       colonnes: { cle: string; lib: string; exemple?: string; nombre?: boolean; suffixe?: (d: Donnees) => string }[];
       /* Le pictogramme d'une ligne, d'après ce qu'on y a écrit (une cave, un parking…). */
       icone?: (ligne: Record<string, string>) => string })
+  /* Des cartes qui se répètent, chacune avec ses questions simples, avec
+     « + Ajouter » et « Retirer » (V3.154 : les autres biens d'un bon de
+     visite). La valeur : un tableau d'objets { clé de la question: réponse }.
+     Le `si` d'une question de la carte lit les réponses du document entier
+     (le rôle de l'agence), pas celles de la carte. Chaque saisie porte
+     l'identifiant « <cle>-<n° de carte>-<question> » : un clic dans l'aperçu
+     la retrouve (versQuestion.ts). */
+  | (Base & { t: 'groupes'; un: string; max: number; champs: ChampSimple[];
+      ajouter?: (d: Donnees) => string;
+      /* Le nom d'une carte (« Bien 2 ») ; la première réponse de la carte le suit. */
+      nomCarte?: (d: Donnees, i: number) => string;
+      /* Ce qu'une carte toute neuve reçoit d'avance (la date du premier bien). */
+      nouveau?: (d: Donnees) => Record<string, unknown> })
   | { t: 'titre'; cle: string; lib: string; aide?: string; si?: (d: Donnees) => boolean; ic?: string }
   /* Un encadré « Ce qu'il te faut » qui change avec les réponses : ce qu'il
      faut remplir, les pièces à demander. Jamais imprimé. */
   | { t: 'guide'; cle: string; si?: (d: Donnees) => boolean; titre: (d: Donnees) => string; points: (d: Donnees) => { ic?: string; x: string }[] };
 /* `vers` : la rubrique du document que l'aperçu montre pendant l'étape ;
    `reperesApres` : le champ après lequel l'éditeur place les repères. */
-/* `court` : le libellé du fil des étapes, quand le titre est long (V3.18). */
-export type Etape = { id: string; titre: string; court?: string; sous: string; champs: Champ[]; vers?: string; reperesApres?: string; ic?: string };
+/* `court` : le libellé du fil des étapes, quand le titre est long (V3.18).
+   V3.154 : `vers` peut dépendre des réponses (« Le bien visité », « Les
+   biens visités ») ; versEtape le lit. */
+export type Etape = { id: string; titre: string; court?: string; sous: string; champs: Champ[]; vers?: string | ((d: Donnees) => string); reperesApres?: string; ic?: string };
+export const versEtape = (e: Etape | undefined, d: Donnees): string => (!e?.vers ? '' : typeof e.vers === 'function' ? e.vers(d) : e.vers);
 
 /* Les réponses qui reviennent partout, avec leur dessin (V3.18). */
 export const ouiNon = (oui = 'Oui', non = 'Non'): Option[] => [{ v: 'oui', l: oui, ic: 'check' }, { v: 'non', l: non, ic: 'croix' }];
@@ -269,6 +289,24 @@ export const CHAMP_SIGNATURE: Champ = {
   ],
 };
 
+/* ── Le bon de visite signé sur place, sans code (V3.154) ──
+   Alexandre : « sur place, pas besoin de code reçu par e-mail : chacun a
+   son cadre et signe avec le stylet que je lui donne ». Pour le bon de
+   visite SEULEMENT : chaque visiteur coche « J'ai lu… » et signe dans son
+   cadre, sur l'écran d'Alexandre et devant lui. Pas de code, donc pas
+   besoin d'adresse e-mail ; ceux qui en ont une reçoivent leur exemplaire.
+   Les mandats et l'offre d'achat gardent leur code, sur place comme en
+   ligne. Côté serveur, la règle complète (session du CRM comprise) est dans
+   src/lib/signature-sans-code.ts. */
+export const surPlaceSansCode = (modeleId: string, d: Donnees): boolean => modeleId === 'bon_visite' && modeSignature(d) === 'sur_place';
+export const CHAMP_SIGNATURE_VISITE: Champ = {
+  t: 'choix', cle: 'signature', lib: 'Comment sera-t-il signé ?', ic: 'plume', tuiles: true, options: [
+    { v: 'papier', l: 'À la main', aide: 'Imprimé, signé sur papier, puis scanné.', ic: 'plume' },
+    { v: 'en_ligne', l: 'En ligne', aide: 'Chacun reçoit son lien par e-mail et signe avec un code.', ic: 'mail' },
+    { v: 'sur_place', l: 'Sur place', aide: 'Sur ton écran : chacun signe dans son cadre, au stylet, sans code.', ic: 'tablette' },
+  ],
+};
+
 /* Un cadre de signature. `cle` le retrouve d'une version à l'autre (v0,
    v1 : les vendeurs ; conjoint ; a0 : un acquéreur…) ; `personne` : qui
    signe (son nom, son e-mail, pour lui envoyer son lien ou son code) ;
@@ -280,7 +318,10 @@ export type CaseSignature = { cle: string; qui: string; nom: string; lignes: str
    exemplaires », les mots rayés et les cadres à remplir ; en ligne ou sur
    place, la façon dont chacun signe et des cadres qui se remplissent au
    fil des signatures. */
-export function blocsSignature(d: Donnees, o: { papier: string; mention?: string; cases: CaseSignature[] }): Bloc[] {
+/* `sansCode` (V3.154, le bon de visite) : signé sur place, chacun signe dans
+   son cadre sans code à usage unique (voir surPlaceSansCode). Sans effet en
+   ligne ou à la main. */
+export function blocsSignature(d: Donnees, o: { papier: string; mention?: string; cases: CaseSignature[]; sansCode?: boolean }): Bloc[] {
   if (!electronique(d)) return [
     P(o.papier),
     Pp('Mots rayés nuls : ______   ·   Lignes rayées nulles : ______'),
@@ -288,14 +329,22 @@ export function blocsSignature(d: Donnees, o: { papier: string; mention?: string
   ];
   const date = txt(d, 'date') ? jourLong(txt(d, 'date')) : '……………';
   const agence = o.cases.some(c => c.agence);
+  const sansCode = !!o.sansCode && modeSignature(d) === 'sur_place';
   const ou = modeSignature(d) === 'en_ligne'
     ? `Établi le ${date} et signé électroniquement à distance, chaque signataire depuis son lien personnel.`
     : `Établi à ${txt(d, 'faitA') || '……………'} le ${date} et signé électroniquement sur place, chaque signataire à son tour sur l’écran de l’Agence.`;
+  const cases = o.cases.map(c => ({ cle: c.cle, qui: c.qui, nom: c.nom, lignes: c.lignes, ...(c.agence ? { agence: true } : {}) }));
+  if (sansCode) return [
+    P(`${ou} La date et l’heure de chaque signature figurent dans son cadre et dans le certificat de signature joint. Chaque signataire qui a donné son adresse e-mail en reçoit un exemplaire électronique, avec ce certificat ; l’Agence conserve l’original.`),
+    { t: 'sigs', electronique: true, sansCode: true,
+      mention: `Chaque signataire${agence ? ', l’Agence exceptée,' : ''} déclare avoir lu le document en cochant la case prévue, puis le signe sur place, en présence de l’Agence et sur son appareil, d’une signature tracée à l’écran dans son propre cadre, sans code à usage unique. Celui qui signe plus tard, avec son lien personnel, le fait avec un code à usage unique reçu sur sa propre adresse e-mail.${agence ? ' L’Agence signe par son représentant, au lancement de la signature.' : ''} Articles 1366 et 1367 du Code civil. Le document signé est scellé, et le certificat joint en atteste.`,
+      cases },
+  ];
   return [
     P(`${ou} La date et l’heure de chaque signature figurent dans son cadre et dans le certificat de signature joint. Chaque partie en reçoit un exemplaire électronique, avec ce certificat.`),
     { t: 'sigs', electronique: true,
       mention: `Chaque signataire${agence ? ', l’Agence exceptée,' : ''} déclare avoir lu le document en cochant la case prévue, puis le signe avec un code à usage unique reçu sur sa propre adresse e-mail et une signature tracée à l’écran.${agence ? ' L’Agence signe par son représentant, au lancement de la signature.' : ''} Articles 1366 et 1367 du Code civil. Le document signé est scellé, et le certificat joint en atteste.`,
-      cases: o.cases.map(c => ({ cle: c.cle, qui: c.qui, nom: c.nom, lignes: c.lignes, ...(c.agence ? { agence: true } : {}) })) },
+      cases },
   ];
 }
 

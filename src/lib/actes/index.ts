@@ -5,7 +5,7 @@
 
 import type { IdentiteAgence } from '@/lib/agence';
 import type { CadreSigne } from '@/lib/mandat-pdf';
-import { electronique, type Categorie, type Donnees, type Modele } from './commun';
+import { electronique, surPlaceSansCode, type Categorie, type Donnees, type Modele } from './commun';
 import { MANDAT_VENTE } from './mandat-vente';
 import { BON_VISITE } from './bon-visite';
 import { OFFRE_ACHAT } from './offre-achat';
@@ -63,7 +63,10 @@ export async function pdfDocument(m: Modele, d: Donnees, identite: IdentiteAgenc
     sig: sg?.dernier ? { mandantNom: m.pour(d), le: sg.dernier, email: '', agenceLe: sg.agenceLe || null } : null,
     projet: !!o.projet,
     identite,
-    garde: { ...g, mention: o.projet ? undefined : sg?.mention || (electronique(d)
+    garde: { ...g, mention: o.projet ? undefined : sg?.mention || (surPlaceSansCode(m.id, d)
+      /* V3.154 : le bon de visite sur place, sans code. */
+      ? 'À signer sur place : chaque signataire dans son cadre, sur l’écran de l’Agence'
+      : electronique(d)
       ? 'À signer électroniquement : chaque signataire avec son code, reçu sur son adresse e-mail'
       : 'À signer par les parties, en autant d’exemplaires que de signataires') },
     entete: m.entete(d),
