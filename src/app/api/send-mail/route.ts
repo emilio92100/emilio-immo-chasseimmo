@@ -8,6 +8,7 @@ import { personnaliser, conseillerDe } from '@/lib/mail-variables';
 import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
 import { adresseVente } from '@/lib/adresse-vente';
 import { prixDuBien } from '@/lib/honoraires-bien';
+import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -956,7 +957,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode, visites_ids, apercu } = body as {
+    const { client_ids, recherche_id, objet, corps, biens_ids, destinataires_override, mode, visites_ids, apercu, ventes_ids } = body as {
       client_ids: string[];
       recherche_id?: string;
       objet: string;
@@ -965,11 +966,13 @@ export async function POST(req: NextRequest) {
       destinataires_override?: string[]; // Optionnel : override des emails par défaut du client
       mode?: 'libre' | 'biens' | 'bienvenue' | 'lien' | 'visites' | 'mandat'; // 'libre' = mail texte, 'bienvenue' = mise en route, 'lien' = le lien de l'espace renvoyé (V3.110), 'visites' = rappel de visites, 'mandat' = mandat prêt à signer, 'biens' = défaut
       visites_ids?: string[];         // mode 'visites' : les visites à annoncer
-      apercu?: boolean;               // mode 'visites' (V3.134) : rend le mail tel que le client le recevra, sans rien envoyer ni noter
+      apercu?: boolean;               // modes 'visites' (V3.134) et 'biens' (V3.148) : rend le mail tel que le client le recevra, sans rien envoyer ni noter
+      ventes_ids?: string[];          // aperçu 'biens' (V3.148) : les biens en vente qui partiront
     };
-    /* L'aperçu n'existe que pour le rappel de visite (V3.134) : ailleurs, il
-       ne doit jamais être pris pour un envoi. */
-    if (apercu && mode !== 'visites') return NextResponse.json({ error: 'Aperçu possible seulement pour un rappel de visite' }, { status: 400 });
+    /* L'aperçu n'existe que pour le rappel de visite (V3.134) et l'envoi de
+       biens de l'agence (V3.148) : ailleurs, il ne doit jamais être pris pour
+       un envoi. */
+    if (apercu && mode !== 'visites' && mode !== 'biens') return NextResponse.json({ error: 'Aperçu possible seulement pour un rappel de visite ou un envoi de biens' }, { status: 400 });
     /* Le mail de bienvenue s'écrit tout seul : ni objet ni corps à saisir,
        et surtout aucun bien. On le traite donc avant les contrôles. */
     const bienvenue = mode === 'bienvenue';
@@ -1095,6 +1098,41 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? nommerRecherche(recherche as any, 2)
       : 'Votre nouvelle recherche';
+
+    /* V3.148 — l'aperçu d'un envoi de biens de l'agence (Alexandre : « un
+       aperçu de ce qui va être vraiment envoyé au client »). Avant l'envoi,
+       les biens ne sont pas encore dans son dossier : chacun est pris tel
+       qu'il y entrera — sa copie si elle existe déjà (mettreEnSelection la
+       réutilise), sinon la copie que versBienAcheteur écrira. Puis le même
+       buildHtml que l'envoi. Rien ne part, rien n'est noté. */
+    if (apercu && mode === 'biens') {
+      const client = clients[0];
+      const ids = [...new Set((Array.isArray(ventes_ids) ? ventes_ids : []).map(String).filter(Boolean))].slice(0, 30);
+      if (!ids.length) return NextResponse.json({ error: 'Aucun bien à montrer' }, { status: 400 });
+      const [{ data: vs, error: eV }, { data: cs, error: eC }] = await Promise.all([
+        supabase.from('biens_vente').select('*').in('id', ids),
+        recherche_id
+          ? supabase.from('biens')
+            .select('id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, bien_vente_id, photos, score')
+            .eq('recherche_id', recherche_id).in('bien_vente_id', ids)
+          : Promise.resolve({ data: [] as BienLite[], error: null }),
+      ]);
+      if (eV || eC) return NextResponse.json({ error: (eV || eC)?.message || 'Les biens n’ont pas pu être lus' }, { status: 500 });
+      const montres = ids.map(id => {
+        const copie = ((cs || []) as BienLite[]).find(c => c.bien_vente_id === id);
+        if (copie) return copie;
+        const v = ((vs || []) as BienVente[]).find(x => x.id === id);
+        return v ? ({ id: v.id, ...versBienAcheteur(v, { clientId: client.id, rechercheId: recherche_id || '', quand: '' }) } as BienLite) : null;
+      }).filter((b): b is BienLite => !!b);
+      if (!montres.length) return NextResponse.json({ error: 'Bien introuvable' }, { status: 404 });
+      const emails = (client.emails || []).filter((e: string) => e && e.includes('@'));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const jeton = ((client as any).token_espace as string) || tokenEspace;
+      return NextResponse.json({
+        success: true, apercu: true, objet: personnaliser(objet, client, conseiller), destinataires: emails,
+        html: buildHtml({ prenom: client.prenom, corps: personnaliser(corps || '', client, conseiller), biens: ordonner(montres), token: jeton, recherche: recherche_id || null }),
+      });
+    }
 
     /* Le mail « vos visites » : les visites demandées, leurs biens, un envoi
        par client. Chaque visite du mail garde la date d'envoi
