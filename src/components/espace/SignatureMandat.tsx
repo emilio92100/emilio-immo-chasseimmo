@@ -37,6 +37,8 @@ import { IDENTITE_DEFAUT, lireIdentite, type IdentiteAgence } from '@/lib/agence
 import { chercherSocietes, qualiteDe, type SocieteTrouvee } from '@/lib/entreprises';
 /* Des types seulement : rien de ce fichier serveur ne part dans le navigateur. */
 import type { DocEspace, MandatDocEspace, SignataireEspace } from '@/lib/documents-espace';
+/* V3.153 : le lieu de naissance et l'adresse, avec leurs suggestions. */
+import { BlocAdresse, BlocNaissance, CSS_LIEU, couperAdresseSaisie, joindreAdresseSaisie, manquesAdresse, type AdresseSaisie } from './ChampsLieu';
 
 export type MandatEspace = {
   etat: 'valide' | 'a_signer' | 'sans_numero';
@@ -314,14 +316,12 @@ export function ChampDate({ lib, val, onChange, err }: { lib: string; val: strin
 /* ── L'adresse en trois cases ──
    Rue, code postal, ville : plus simple à remplir, et rien ne manque sur
    le mandat. Le mandat garde une seule ligne, « 18 avenue Victor Hugo,
-   92100 Boulogne-Billancourt » ; une adresse déjà connue est redécoupée. */
-export type Adresse = { rue: string; cp: string; ville: string };
-export function couperAdresse(a: string): Adresse {
-  const t = (a || '').trim();
-  const d = /^(.*?)[,\s]+(\d{5})\s+(.+)$/.exec(t);
-  return d ? { rue: d[1].trim(), cp: d[2], ville: d[3].trim() } : { rue: t, cp: '', ville: '' };
-}
-export const joindreAdresse = (x: Adresse) => [x.rue.trim(), [x.cp.trim(), x.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+   92100 Boulogne-Billancourt » ; une adresse déjà connue est redécoupée.
+   V3.153 : une adresse à l'étranger garde son pays en dernier
+   (« 12 rue Royale, 1000 Bruxelles, Belgique ») — voir ChampsLieu.tsx. */
+export type Adresse = AdresseSaisie;
+export const couperAdresse = couperAdresseSaisie;
+export const joindreAdresse = joindreAdresseSaisie;
 
 /* ── La signature à la main ──
    Le dernier geste : le client a tapé son code, il appuie sur « Signer mon
@@ -476,7 +476,7 @@ function FormPersonne({ p, meme, champs, nouveau, onP, onMeme, onEnregistrer, on
 }) {
   const [adr, setAdr] = useState<Adresse>(() => couperAdresse(p.adresse));
   const maj = (k: keyof Mandant) => (v: string) => onP({ ...p, [k]: v });
-  const majAdr = (k: keyof Adresse) => (v: string) => { const x = { ...adr, [k]: v }; setAdr(x); onP({ ...p, adresse: joindreAdresse(x) }); };
+  const changeAdr = (x: Adresse) => { setAdr(x); onP({ ...p, adresse: joindreAdresse(x) }); };
   const qui = p.prenom.trim() || (p.civilite === 'Madame' ? 'elle' : p.civilite === 'Monsieur' ? 'lui' : 'cette personne');
   return (
     <div className="mdt-perso">
@@ -494,25 +494,15 @@ function FormPersonne({ p, meme, champs, nouveau, onP, onMeme, onEnregistrer, on
         <Champ lib="Prénom" val={p.prenom} onChange={maj('prenom')} err={champs.prenom} auto="off" />
         <Champ lib="Nom" val={p.nom} onChange={maj('nom')} err={champs.nom} auto="off" />
       </div>
-      <div className="mdt-deux">
-        <ChampDate lib="Date de naissance" val={p.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />
-        <Champ lib="Lieu de naissance" val={p.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu} placeholder="Ville (département)" />
-      </div>
+      <BlocNaissance civilite={p.civilite} val={p.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu}
+        date={<ChampDate lib="Date de naissance" val={p.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />} />
       <Champ lib="Son e-mail — son lien de signature arrive ici" val={p.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="off" />
       <Champ lib="Son téléphone (facultatif)" val={p.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="off" />
       <button type="button" className="mdt-coche mdt-leger" data-on={meme ? '1' : undefined} onClick={() => onMeme(!meme)}>
         <span className="bx">{meme && <Ic n="check" t={14} />}</span><span>Même adresse que moi</span>
       </button>
       {champs.meme && <div className="mdt-err-l">{champs.meme}</div>}
-      {!meme && (
-        <>
-          <Champ lib="Son adresse" val={adr.rue} onChange={majAdr('rue')} err={champs.adresse} placeholder="Numéro et rue" auto="off" />
-          <div className="mdt-cpv">
-            <Champ lib="Code postal" val={adr.cp} onChange={majAdr('cp')} mode="numeric" auto="off" />
-            <Champ lib="Ville" val={adr.ville} onChange={majAdr('ville')} auto="off" />
-          </div>
-        </>
-      )}
+      {!meme && <BlocAdresse adr={adr} onAdr={changeAdr} champs={{ adresse: champs.adresse }} tiers libRue="Son adresse" />}
       <div className="mdt-info"><Ic n="mail" t={16} /><span>{`${qui.charAt(0).toUpperCase() + qui.slice(1)} recevra son propre lien dès que vous aurez signé : relire le mandat, vérifier ses informations, signer avec son propre code.`}</span></div>
       <div className="mdt-perso-b">
         <button type="button" className="btn fant" onClick={onAnnuler}>Annuler</button>
@@ -650,10 +640,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
   const [m, setM] = useState<Mandant>(mandat.mandant);
   const [champs, setChamps] = useState<Record<string, string>>({});
   const [adr, setAdr] = useState<Adresse>(() => couperAdresse(mandat.mandant.adresse));
-  const majAdr = (k: keyof Adresse) => (v: string) => {
-    const x = { ...adr, [k]: k === 'cp' ? v.replace(/[^0-9A-Za-z -]/g, '').slice(0, 10) : v };
+  const changeAdr = (x: Adresse) => {
     setAdr(x); setM(o => ({ ...o, adresse: joindreAdresse(x) }));
-    setChamps(c => ({ ...c, adresse: '', [k]: '' }));
+    setChamps(c => ({ ...c, adresse: '', rue: '', cp: '', ville: '', pays: '' }));
   };
   const [numero, setNumero] = useState<string | null>(mandat.numero);
   const [emailMasque, setEmailMasque] = useState(mandat.code?.email || '');
@@ -811,11 +800,8 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
 
   const demanderCode = async () => {
     const v = validerMandant(m);
-    /* Les trois cases de l'adresse, chacune la sienne. */
-    const manque: Record<string, string> = {};
-    if (adr.rue.trim().length < 3) manque.rue = 'Numéro et rue';
-    if (!/^[0-9A-Za-z -]{4,10}$/.test(adr.cp.trim())) manque.cp = 'Code postal';
-    if (adr.ville.trim().length < 2) manque.ville = 'Ville';
+    /* Les cases de l'adresse, chacune la sienne (le pays à l'étranger). */
+    const manque: Record<string, string> = manquesAdresse(adr);
     if (!certifie) manque.certifie = 'Cochez cette case pour recevoir votre code.';
     if (!v.ok || Object.keys(manque).length) { setChamps({ ...(v.ok ? {} : v.champs), ...manque, ...(Object.keys(manque).length ? { adresse: '' } : {}) }); return; }
     if (edite !== null) { setErreur(`Enregistrez d’abord les informations de ${brouillon.prenom.trim() || 'votre co-acquéreur'} (ou annulez).`); return; }
@@ -1039,15 +1025,9 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             <Champ lib="Prénom" val={m.prenom} onChange={maj('prenom')} err={champs.prenom} auto="given-name" />
             <Champ lib="Nom" val={m.nom} onChange={maj('nom')} err={champs.nom} auto="family-name" />
           </div>
-          <div className="mdt-deux">
-            <ChampDate lib="Date de naissance" val={m.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />
-            <Champ lib="Lieu de naissance" val={m.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu} placeholder="Ville (département)" />
-          </div>
-          <Champ lib="Adresse" val={adr.rue} onChange={majAdr('rue')} err={champs.rue || champs.adresse} auto="address-line1" placeholder="Numéro et rue" />
-          <div className="mdt-cpv">
-            <Champ lib="Code postal" val={adr.cp} onChange={majAdr('cp')} err={champs.cp} mode="numeric" auto="postal-code" />
-            <Champ lib="Ville" val={adr.ville} onChange={majAdr('ville')} err={champs.ville} auto="address-level2" />
-          </div>
+          <BlocNaissance civilite={m.civilite} val={m.naissanceLieu} onChange={maj('naissanceLieu')} err={champs.naissanceLieu}
+            date={<ChampDate lib="Date de naissance" val={m.naissanceDate} onChange={maj('naissanceDate')} err={champs.naissanceDate} />} />
+          <BlocAdresse adr={adr} onAdr={changeAdr} champs={champs} />
           <Champ lib="E-mail — votre code arrive ici" val={m.email} onChange={maj('email')} err={champs.email} type="email" mode="email" auto="email" />
           <Champ lib="Téléphone" val={m.telephone} onChange={maj('telephone')} err={champs.telephone} type="tel" mode="tel" auto="tel" />
 
@@ -1834,7 +1814,7 @@ export function Renonciation({ mandat, envoyer, onFermer, onFait }: {
 
 /* ══ Les styles ═════════════════════════════════════════════════════════
    Posés sur les variables de l'espace (--encre, --or, --trait…). */
-export const CSS_MANDAT = `
+export const CSS_MANDAT = `${CSS_LIEU}
 .mdt{min-height:100%; display:flex; flex-direction:column}
 .mdt-tete{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px 6px;
   position:sticky; top:0; background:var(--carte); z-index:2}
