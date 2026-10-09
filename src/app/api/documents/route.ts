@@ -7,6 +7,7 @@ import { envoyerMail, echappe, type PieceJointe } from '@/lib/mandat-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
 import { enveloppeMail } from '@/lib/mail-charte';
+import { avecRemises } from '@/lib/remise-mail';
 
 /**
  * Les fichiers des documents juridiques (Documents juridiques, dans le CRM).
@@ -69,7 +70,11 @@ const nomSigne = (titre: string, ext: string) => `${(titre || 'Document').normal
 const TYPE_EXT: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic' };
 type DestProjet = { email: string; nom: string; prenom: string; famille: string };
 
-export async function POST(req: NextRequest) {
+/* V3.151 : les mails partis sont rendus avec la réponse (`remise`), pour
+   vérifier qu'ils sont bien arrivés (src/lib/remise-mail.ts). */
+export async function POST(req: NextRequest) { return avecRemises(() => traiterPost(req)); }
+
+async function traiterPost(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !cle) return ko('Variables Supabase manquantes', 500);
