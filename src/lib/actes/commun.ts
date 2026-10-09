@@ -132,7 +132,10 @@ export type Champ =
       /* Le nom d'une carte (« Bien 2 ») ; la première réponse de la carte le suit. */
       nomCarte?: (d: Donnees, i: number) => string;
       /* Ce qu'une carte toute neuve reçoit d'avance (la date du premier bien). */
-      nouveau?: (d: Donnees) => Record<string, unknown> })
+      nouveau?: (d: Donnees) => Record<string, unknown>;
+      /* V3.157 : « Ajouter un bien » propose le CRM (mes mandats, son
+         dossier) ou la saisie à la main (ChoixBienCrm.tsx). */
+      crm?: 'biens' })
   | { t: 'titre'; cle: string; lib: string; aide?: string; si?: (d: Donnees) => boolean; ic?: string }
   /* Un encadré « Ce qu'il te faut » qui change avec les réponses : ce qu'il
      faut remplir, les pièces à demander. Jamais imprimé. */

@@ -124,7 +124,7 @@ const ETAPES: Etape[] = [
       { t: 'date', cle: 'dateVisite', lib: 'Date de la visite', ic: 'calendrier', requis: true },
       { t: 'heure', cle: 'heure', lib: 'Heure', ic: 'horloge' },
       { t: 'titre', cle: 't-autres', lib: 'Les autres biens visités', ic: 'lots', aide: 'Les mêmes visiteurs ont vu d’autres biens ? Ajoute-les : ils vont tous sur ce bon, jusqu’à six.' },
-      { t: 'groupes', cle: 'autresBiens', lib: 'Les autres biens visités', ic: 'maison', un: 'Bien', max: MAX_AUTRES_BIENS, champs: CHAMPS_AUTRE_BIEN,
+      { t: 'groupes', cle: 'autresBiens', lib: 'Les autres biens visités', ic: 'maison', un: 'Bien', max: MAX_AUTRES_BIENS, champs: CHAMPS_AUTRE_BIEN, crm: 'biens',
         nomCarte: (_d, i) => `Bien ${i + 2}`, ajouter: () => 'Ajouter un bien',
         /* Le même jour que le premier, le plus souvent. */
         nouveau: d => ({ dateVisite: txt(d, 'dateVisite') }) },
