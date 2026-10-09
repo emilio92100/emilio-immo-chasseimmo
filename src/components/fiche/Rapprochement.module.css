@@ -356,3 +356,8 @@ div.rfBien { cursor: default; }
 .rfTx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .rfTx > b { font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
 .rfTx > small { font-size: 12px; color: #64748b; }
+
+/* V3.152 — Le téléphone bord à bord : le guide va d'un bord à l'autre. */
+@media (max-width: 760px) {
+  .guide { border-radius: 0; border-left: none; border-right: none; }
+}

@@ -370,7 +370,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                     <b>Biens de veille trouvés depuis</b>
                     <p>Plus c’est ancien, plus l’annonce risque d’être vendue : vérifiez son lien avant de l’envoyer.</p>
                   </div>
-                  <div className={s.seg} role="group" aria-label="Période">
+                  <div className={s.seg} role="group" aria-label="Période" data-defile="">
                     {PERIODES.map(p => (
                       <button key={p.k} type="button" className={periode === p.k ? s.segOn : ''} aria-pressed={periode === p.k} onClick={() => setPeriode(p.k)}>{p.l}</button>
                     ))}
@@ -408,7 +408,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
         {etape === 'resultats' && res && (
           <>
             {nouveaux.length > 0 && (
-              <div className={s.filtres}>
+              <div className={s.filtres} data-defile="">
                 <button type="button" className={filtre === 'tout' ? s.puceOn : s.puce} onClick={() => setFiltre('tout')}>Tous <b>{nouveaux.length}</b></button>
                 {source !== 'veilles' && <button type="button" className={filtre === 'mandat' ? s.puceOn : s.puce} onClick={() => setFiltre('mandat')}><Icone nom="etiquette" taille={13} epaisseur={2.2} />Mes mandats <b>{nbM}</b></button>}
                 {source !== 'mandats' && <button type="button" className={filtre === 'veille' ? s.puceOn : s.puce} onClick={() => setFiltre('veille')}><Icone nom="loupe" taille={13} epaisseur={2.2} />Veilles <b>{nbV}</b></button>}

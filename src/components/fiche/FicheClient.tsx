@@ -302,7 +302,7 @@ import PointAuto from './PointAuto';
 import OngletVisites from './OngletVisites';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
-import FriseSuivi, { ISSUES_APPEL } from './FriseSuivi';
+import FriseSuivi, { ISSUES_APPEL, estMailSimple } from './FriseSuivi';
 import CarteASavoir from '@/components/contacts/CarteASavoir';
 import BlocSociete from '@/components/contacts/BlocSociete';
 import Depliant from '@/components/shared/Depliant';
@@ -311,6 +311,7 @@ import ChoixSource from '@/components/contacts/ChoixSource';
 import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/sources';
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
+import Cascade from '@/components/shared/Cascade';
 import Rapprochement, { GuideRapprochement, RapprochementsFaits, rapproAReprendre, type DepartRappro } from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
@@ -3486,9 +3487,12 @@ ${signatureMail()}`,
   /* « Toutes les recherches » vaut pour la recherche où on l'a demandé :
      changer de recherche revient à la vue simple. */
   const suiviToutes = !!rechercheId && suiviToutesPour === rechercheId;
-  const nbAutresRecherches = journal.filter(j => !COMM_JOURNAL_TYPES.includes(j.type) && autreRecherche(j) && j.id !== ligneVisee).length;
+  /* V3.152 : un bien de l'agence présenté par simple mail (client pas encore
+     actif, ou en pause…) n'a pas de double dans `envois` : sa ligne reste. */
+  const horsDoublons = (j: { type: string; bien_id?: string | null; metadata?: Record<string, unknown> | null }) => !COMM_JOURNAL_TYPES.includes(j.type) || estMailSimple(j);
+  const nbAutresRecherches = journal.filter(j => horsDoublons(j) && autreRecherche(j) && j.id !== ligneVisee).length;
   const suiviEvents = journal
-    .filter(j => !COMM_JOURNAL_TYPES.includes(j.type))
+    .filter(horsDoublons)
     .filter(j => suiviToutes || !autreRecherche(j) || j.id === ligneVisee)
     .map(j => ({ kind: 'event' as const, ts: j.created_at, data: j }));
   // Groupes de filtres du Suivi (alignés sur les types de la modale "Ajouter une action")
@@ -3503,11 +3507,11 @@ ${signatureMail()}`,
     rdv:            { label: '🤝 RDV',            items: evType(['rdv']) },
     note:           { label: '📝 Notes',          items: evType(['note']) },
     message:        { label: '💬 Messages & rappels', items: evType(['message_client', 'demande_rappel', 'point_auto_reponse']) },
-    communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES)] },
+    communications: { label: '✉️ Communications', items: [...suiviComms, ...evType(COMM_EVENT_TYPES), ...suiviEvents.filter(it => estMailSimple(it.data))] },
     /* Le mandat a son filtre : proposé, signé, rétracté, questions — des
        informations qui comptent, pas du bruit « Système ». */
     mandat:         { label: '📋 Mandat',         items: evType(['mandat']) },
-    systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type)) },
+    systeme:        { label: '🔄 Système',        items: suiviEvents.filter(it => !MANUEL_OU_COMM.includes(it.data.type) && !estMailSimple(it.data)) },
   };
   const suiviItems = (
     suiviFiltre === 'tout'
@@ -3976,11 +3980,15 @@ ${signatureMail()}`,
         @keyframes emilioPanneau { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         @keyframes emilioMenu { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
         .emilio-menu { animation: emilioMenu .16s cubic-bezier(.22,.8,.3,1) both; transform-origin: top left; }
-        .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
+        /* V3.152 : quand le mouvement tourne (classe emi-mvt), c'est la
+           cascade de src/lib/mouvement.ts qui fait arriver l'étape ; ces deux
+           fondus ne restent que de secours. */
+        html:not(.emi-mvt) .emilio-panneau { animation: emilioPanneau .3s cubic-bezier(.2,.9,.3,1) both; }
         @keyframes ficheTabIn { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
+        html:not(.emi-mvt) .fiche-tab { animation: ficheTabIn .3s cubic-bezier(.22,.9,.3,1) both; }
         /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
            pas de coupure. On doit sentir qu'on est « dans » l'onglet choisi. */
-        .fiche-tab { animation: ficheTabIn .3s cubic-bezier(.22,.9,.3,1) both; min-height: 240px;
+        .fiche-tab { min-height: 240px;
           background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
           border-radius: 0 0 16px 16px; padding: 16px; }
         @media (max-width: 720px) { .fiche-tab { padding: 12px; } }
@@ -4695,7 +4703,8 @@ ${signatureMail()}`,
           <Onglets items={TABS} actif={tab} onChange={setTab} sombre />
         </div>
 
-        <div key={`${rechercheId}-${tab}`} className="fiche-tab">
+        {/* V3.152 : les étapes changent en cascade (Cascade, style « C »). */}
+        <Cascade cle={`${rechercheId}-${tab}`} className="fiche-tab">
 
         {/* TAB BIENS */}
         {tab === 'biens' && (
@@ -5225,7 +5234,7 @@ ${signatureMail()}`,
           </div>
         )}
 
-        </div>
+        </Cascade>
           </>
         )}
 

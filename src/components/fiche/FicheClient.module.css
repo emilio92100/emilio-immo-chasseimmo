@@ -754,3 +754,43 @@ a.coLien:hover { color: #1a2332; }
 @media (prefers-reduced-motion: reduce) {
   .etiqRecherche, .etiqRecherche i::after, .relanceCheval[data-urgent] .relanceCloche { animation: none; }
 }
+
+/* ══ V3.152 — Le téléphone bord à bord ══════════════════════════════════════
+   Alexandre : « le fond bleu est cassé, il ne prend pas tout l'écran à droite
+   et à gauche, il y a du blanc… sur le mobile tout est bridé, condensé ».
+   Au téléphone, la fiche prend toute la largeur : le bandeau bleu va d'un
+   bord à l'autre, les cartes aussi (ni arrondi ni cadre sur les côtés, le
+   gris de la page les sépare), et ce qui est posé sur la page garde 14 px
+   de marge. Les tuiles, pastilles et boutons gardent leurs arrondis. */
+@media (max-width: 900px) {
+  /* La barre des rubriques défile au doigt et s'efface au bord (V3.152,
+     Defilement.tsx) : son cadre blanc et son ombre passent à l'enveloppe,
+     sinon le fondu les effacerait avec les onglets. */
+  .ongletsTete {
+    background: #fff; border: 1px solid #e3e8f0; border-radius: 14px;
+    box-shadow: 0 14px 30px -16px rgba(26, 35, 50, .45), 0 2px 6px rgba(26, 35, 50, .06);
+  }
+  .ongletsTete > nav { background: transparent; border: none; border-radius: 13px; box-shadow: none; }
+}
+@media (max-width: 760px) {
+  .pageHeader, .pageHeader:not(.pageHeaderPlie) { padding: 9px 14px 0; }
+  .archiveBandeau { margin: 10px 0 0; border-radius: 0; border-left: none; border-right: none; padding: 11px 14px; }
+
+  /* Le bandeau bleu, d'un bord à l'autre ; la pastille et les gestes restent
+     posés dessus, à 14 px du bord. */
+  .teteZone { padding: 10px 0 0; }
+  .teteZone:has(> .chevalHaut) { padding-top: 2px; }
+  .chevalHaut { margin: 0 14px -71px; }
+  .tete { border-radius: 0; border-left: none; border-right: none; padding-left: 14px; padding-right: 14px; }
+  .ongletsTete { margin: -24px 10px 0; }
+
+  /* Le contenu : plus de marge sur les côtés, les cartes vont au bord. */
+  .contentWrap { padding: 12px 0 28px; }
+  .infoCard, .carteEns, .aVenir, .rappro, .emptyTab, .card {
+    border-radius: 0; border-left: none; border-right: none;
+  }
+  .carteEns { padding: 14px; }
+  .aVenir { padding: 8px 10px; }
+  .rappro { padding: 14px; }
+  .emptyTab { padding: 36px 14px; }
+}

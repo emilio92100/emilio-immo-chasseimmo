@@ -353,7 +353,7 @@ export function Vignettes({ photos, plans, max = 7, coinGauche, coinDroit }: {
   return (
     <>
       <div style={{ padding: '14px 16px 0', position: 'relative' }}>
-        <div className="emi-bande">
+        <div className="emi-bande" data-defile="">
           {visibles.map((u, i) => {
             const dernier = i === visibles.length - 1 && reste > 0;
             return (
@@ -2114,7 +2114,7 @@ export function Onglets({ items, actif, onChange, sombre }: {
   sombre?: boolean;
 }) {
   return (
-    <div className={sombre ? 'emi-onglets sombre' : 'emi-onglets'} style={sombre ? {
+    <div className={sombre ? 'emi-onglets sombre' : 'emi-onglets'} data-defile="" style={sombre ? {
       display: 'flex', gap: 3, flexWrap: 'wrap', padding: 0, marginBottom: 0,
     } : {
       display: 'flex', gap: 3, flexWrap: 'wrap', background: '#eef2f7',
@@ -3356,7 +3356,7 @@ export function LienEspace({ recherche, client }: { recherche: any; client: any 
     : 'jamais ouvert';
 
   return (
-    <div style={{
+    <div className="le-cadre" style={{
       background: 'white', border: `1px solid ${BORD}`, borderRadius: 13,
       boxShadow: '0 1px 2px rgba(16,24,40,.04)', overflow: 'hidden',
     }}>

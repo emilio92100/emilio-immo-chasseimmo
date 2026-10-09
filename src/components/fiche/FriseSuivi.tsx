@@ -7,6 +7,7 @@ import { delaiRelance } from '@/lib/relances';
 import { supabase } from '@/lib/supabase';
 import { euros } from '@/lib/mandat';
 import { etapeDe } from '@/lib/biens-vente';
+import { lireRemises, type RemiseClient } from '@/lib/remise-client';
 import s from './FriseSuivi.module.css';
 
 /* ═══ Le suivi du dossier, en frise ═══════════════════════════════════════
@@ -129,6 +130,7 @@ const TRAITS: Record<string, string[]> = {
   corbeille: ['M3 6h18', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6', 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'],
   retour: ['M9 14 4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 0 11H11'],
   loupe: ['c:11,11,7', 'm21 21-4.3-4.3'],
+  oeil: ['M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z', 'c:12,12,3'],
   bas: ['m6 9 6 6 6-6'],
   report: ['M21 11V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7', 'M16 2v4', 'M8 2v4', 'M3 10h18', 'M15 18h7', 'm19 15 3 3-3 3'],
   point: ['c:12,12,3'],
@@ -333,6 +335,49 @@ function mailDuJournal(j: { type?: string; description?: string | null }): { a: 
   return m ? { a: m[1].trim(), corps: m[2].trim() } : null;
 }
 
+/* V3.152 — Un bien de l'agence présenté par simple mail (/api/biens-vente,
+   « presenter ») : une ligne `envoi_bien` sans bien du dossier, qui nomme le
+   bien de l'agence. Elle n'a pas de double dans `envois` : la fiche d'un
+   acheteur la garde dans son Suivi, avec les Communications (FicheClient). */
+export const estMailSimple = (j: { type?: string | null; bien_id?: string | null; metadata?: Record<string, unknown> | null } | null | undefined) =>
+  !!j && j.type === 'envoi_bien' && !j.bien_id && typeof j.metadata?.bien_vente_id === 'string';
+
+/* V3.152 — « Mail ouvert » : ce que Mailjet sait d'un simple mail parti avec
+   son pixel d'ouverture (`metadata.suivi_ouverture`, voir
+   src/app/api/biens-vente/route.ts). Demandé une seule fois par mail et par
+   session, seulement pour les envois de moins de 30 jours, d'un coup pour
+   toute la frise (/api/mail/remise) ; une erreur ne montre rien. */
+const OUVERT = ['opened', 'clicked'];
+const MAIL_OUVERT_JOURS = 30;
+const statutsMail = new Map<string, string>();
+const dejaDemandes = new Set<string>();
+function aDemander(it: LigneSuivi): RemiseClient | null {
+  const j = it.kind === 'event' ? it.data : null;
+  const m = j?.metadata;
+  if (!m || m.suivi_ouverture !== true || typeof m.mailjet_id !== 'string' || !/^\d{1,30}$/.test(m.mailjet_id)) return null;
+  if (!(Date.now() - new Date(j.created_at).getTime() <= MAIL_OUVERT_JOURS * 86_400_000)) return null;
+  return { id: m.mailjet_id, email: typeof m.email === 'string' ? m.email : '', clientId: j.client_id || null, rechercheId: j.recherche_id || null };
+}
+function useMailsOuverts(items: LigneSuivi[]): (j: { metadata?: Record<string, unknown> | null } | null | undefined) => boolean {
+  const [, setMaj] = useState(0);
+  const l = items.map(aDemander).filter((x): x is RemiseClient => !!x);
+  const cle = l.map(x => x.id).join(',');
+  useEffect(() => {
+    const neufs = l.filter(x => !dejaDemandes.has(x.id)).slice(0, 40);
+    if (!neufs.length) return;
+    neufs.forEach(x => dejaDemandes.add(x.id));
+    lireRemises(neufs).then(etats => {
+      for (const e of etats) statutsMail.set(e.id, e.statut);
+      setMaj(n => n + 1);
+    }).catch(() => { /* rien ne s'affiche */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cle]);
+  return j => {
+    const id = j?.metadata?.mailjet_id;
+    return typeof id === 'string' && OUVERT.includes(statutsMail.get(id) || '');
+  };
+}
+
 type Props = {
   items: LigneSuivi[];
   filtre: string;
@@ -365,6 +410,8 @@ type Props = {
 export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, onReporter, onBien, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
   /* Le bien ouvert en grand (V3.150). */
   const [bienOuvert, setBienOuvert] = useState<any | null>(null);
+  /* V3.152 : un simple mail que Mailjet dit ouvert. */
+  const mailOuvert = useMailsOuverts(items);
   /* L'action d'où vient chaque relance : pour « Voir l'action ». */
   const actionDe = new Map<string, string>();
   for (const it of items) { const rid = it.kind === 'event' ? it.data?.metadata?.relance_id : null; if (rid) actionDe.set(rid, it.data.id); }
@@ -422,7 +469,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
         </div>
       </div>
 
-      <div className={s.filtres}>
+      <div className={s.filtres} data-defile="">
         {FILTRES_SUIVI.filter(f => !filtresVisibles || filtresVisibles.includes(f.id)).map(f => {
           const n = comptes[f.id] || 0;
           const fam = f.fam ? FAMILLES[f.fam] : null;
@@ -601,7 +648,8 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
 
             if (!fam.carte) {
               /* Ce que le CRM a noté tout seul : une ligne, pas une carte. */
-              const ic = famK === 'systeme' ? (ICONE_SYSTEME[j.type] || 'point') : fam.ic;
+              /* V3.152 : « A ouvert la fiche du bien » (son lien personnel, metadata.vue_bien). */
+              const ic = famK === 'systeme' ? (j.metadata?.vue_bien ? 'oeil' : ICONE_SYSTEME[j.type] || 'point') : fam.ic;
               return (<Fragment key={cle}>{mois}
                 <li key={cle} id={`suivi-${j.id}`} className={`${s.ligne} ${s.discrete} suivi-ligne${surligne === j.id ? ' suivi-surligne' : ''}`} data-famille={famK}>
                   <span className={s.noeudPetit} style={{ color: fam.c, background: fam.bg }}><IcSuivi n={ic} t={12} e={2.2} /></span>
@@ -625,6 +673,7 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                   <div className={s.carteTete}>
                     <span className={s.titre}>{titre}</span>
                     {issue && issue.k !== 'recu' && <span className={s.pastille} style={{ color: issue.c, background: issue.bg, borderColor: issue.bord }}>{issue.lib}</span>}
+                    {mailOuvert(j) && <span className={s.pastille} style={{ color: '#0f766e', background: '#f0fdfa', borderColor: '#99f6e4' }}>Mail ouvert</span>}
                     <span className={s.heure}>{quand(j.created_at)}</span>
                     {place}
                   </div>

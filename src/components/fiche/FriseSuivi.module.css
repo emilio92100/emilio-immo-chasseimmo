@@ -303,7 +303,9 @@
   .tete { flex-direction: column; align-items: stretch; }
   .teteBoutons { display: grid; grid-template-columns: 1fr 1fr; }
   .btnAppel, .btnAjout { justify-content: center; padding: 0 10px; height: 44px; }
-  .filtres { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; }
+  /* V3.152 : 14 px, la marge des fiches bord à bord ; la rangée défile
+     jusqu'au bord de l'écran et s'y efface (Defilement.tsx). */
+  .filtres { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px 2px; }
   .filtres::-webkit-scrollbar { display: none; }
   .filtre { flex-shrink: 0; }
   .tiroir { padding: 11px 12px 12px; }
