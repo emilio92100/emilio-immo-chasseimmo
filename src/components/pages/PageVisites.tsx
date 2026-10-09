@@ -58,8 +58,10 @@ function versVisiteLibre(x: any): any {
 }
 const LIB_FILTRE: Record<string, string> = { a_venir: 'À venir', a_faire: 'Compte rendu à faire', effectuees: 'Effectuées', tout: 'Toutes', demandes: 'Demandes', annulees: 'Annulées' };
 /* La rubrique où la page s'ouvre (V3.146) : À venir, sinon Compte rendu à
-   faire, sinon Effectuées, sinon Toutes. */
-function rubriqueDArrivee(liste: any[]): 'a_venir' | 'a_faire' | 'effectuees' | 'tout' {
+   faire, sinon Effectuées, sinon Toutes. V3.151 (Alexandre : « il faut que
+   ça arrive sur Demandes quand il y en a une ») : les demandes d'abord. */
+function rubriqueDArrivee(liste: any[], nbDemandes = 0): 'demandes' | 'a_venir' | 'a_faire' | 'effectuees' | 'tout' {
+  if (nbDemandes > 0) return 'demandes';
   const m = maintenantParis(new Date());
   const prevues = liste.filter(v => v.statut === 'a_venir');
   if (prevues.some(v => !visitePasseeParis(v, m))) return 'a_venir';
@@ -472,14 +474,14 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
      n'y en a aucune, sur Compte rendu à faire ; sinon Effectuées, et ensuite
      Toutes ») : la page s'ouvre sur la première rubrique qui a quelque chose. */
   useEffect(() => {
-    load().then((liste) => {
+    load().then(({ toutes: liste, nbDemandes }) => {
       let id: string | null = null;
       try {
         id = window.sessionStorage.getItem('emi-cr');
         if (id) window.sessionStorage.removeItem('emi-cr');
       } catch { /* sans effet */ }
       if (id) { setFiltre('a_faire'); openCR(id, liste); return; }
-      setFiltre(rubriqueDArrivee(liste));
+      setFiltre(rubriqueDArrivee(liste, nbDemandes));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -503,7 +505,7 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
     setDemandes(dem);
     setLoading(false);
     signalerMaj();
-    return toutes;
+    return { toutes, nbDemandes: dem.length };
   }
 
   function openCR(visiteId: string, liste?: any[]) {
@@ -666,13 +668,14 @@ export default function PageVisites({ onNavigate }: { onNavigate: (page: string,
         label="Filtrer les visites" aCheval actif={filtre} onChoisir={(c: string) => setFiltre(c as typeof filtre)}
         /* V3.146 (Alexandre) : « le premier, c'est À venir ; le deuxième,
            Compte rendu à faire ; le troisième, Effectuées ; le quatrième,
-           Toutes ». Les demandes (quand il y en a) et les annulées suivent. */
+           Toutes ». V3.151 : « Demandes, il faut le mettre tout à gauche »
+           (quand il y en a) ; les annulées ferment la marche. */
         tuiles={visites.length === 0 && demandes.length === 0 ? [] : ([
+          { cle: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, couleur: '#ef4444', alerte: true },
           { cle: 'a_venir', lib: 'À venir', n: aVenir.length, couleur: '#3b82f6' },
           { cle: 'a_faire', lib: 'Compte rendu à faire', n: aFaire.length, couleur: '#f59e0b', alerte: true },
           { cle: 'effectuees', lib: 'Effectuées', n: effectuees.length, couleur: '#10b981' },
           { cle: 'tout', lib: 'Toutes', n: trouvees.length },
-          { cle: 'demandes', lib: 'Demandes', n: demandesTrouvees.length, couleur: '#ef4444', alerte: true },
           { cle: 'annulees', lib: 'Annulées', n: annulees.length, couleur: '#94a3b8' },
         ]).filter(x => x.cle !== 'demandes' || demandes.length > 0)} />
 
