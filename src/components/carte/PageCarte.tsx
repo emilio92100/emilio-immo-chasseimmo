@@ -1020,7 +1020,7 @@ export default function PageCarte({ onNavigate, onMenu }: {
           {/* ── En bas : les fiches de la zone, qu'on fait glisser ── */}
           <div className={s.basTel}>
             {liste.length ? (
-              <div className={s.carrousel} ref={carrousel} onScroll={surGlisse}>
+              <div className={s.carrousel} ref={carrousel} onScroll={surGlisse} data-defile="">
                 {/* Des fiches courtes (V3.28) : qui ou quoi, son étiquette et sa
                     rue ; appeler (ou l'itinéraire) et la fiche. La carte garde
                     presque tout l'écran.

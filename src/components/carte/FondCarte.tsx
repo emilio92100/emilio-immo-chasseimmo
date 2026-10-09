@@ -83,7 +83,9 @@ export default function FondCarte({ centre = CENTRE, zoom = 13, className, menti
 
   return (
     <div className={className} style={{ position: 'relative', overflow: 'hidden', background: '#eef1f5' }}>
-      <div ref={boite} style={{ position: 'absolute', inset: 0, opacity: prete ? 1 : 0, transition: 'opacity .55s ease' }} />
+      {/* data-emi-anim="non" (V3.152) : la carte pose et retire ses repères et
+          ses bulles elle-même ; le mouvement global n'y touche pas. */}
+      <div ref={boite} data-emi-anim="non" style={{ position: 'absolute', inset: 0, opacity: prete ? 1 : 0, transition: 'opacity .55s ease' }} />
       {!prete && !panne && <div className="carte-attente" aria-hidden="true" />}
       {panne && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', color: '#64748b', font: "600 14px 'DM Sans', sans-serif" }}>
