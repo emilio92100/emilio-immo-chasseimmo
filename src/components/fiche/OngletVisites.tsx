@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { verifie } from '@/lib/ecritures';
 import styles from './FicheClient.module.css';
 import { ISSUES, issueDe, apprisDe, visitePassee, type Issue } from '@/lib/visites';
+import { LibelleBon, type EtatBon } from '@/components/documents/BonDeVisite';
 
 /* ═══ Onglet Visites de la fiche client ═══════════════════════════════════
    Les mêmes rubriques que « Vos visites » dans l'espace du client, pour que
@@ -51,6 +52,14 @@ function Etoiles({ n }: { n?: number | null }) {
   if (!n) return null;
   return <span style={{ color: '#c9a84c', letterSpacing: 1 }}>{'★'.repeat(n)}<span style={{ color: '#dbe2ea' }}>{'★'.repeat(Math.max(0, 5 - n))}</span></span>;
 }
+/* V3.154 : le petit document du bouton « Bon de visite ». */
+function PictoBon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="m9 14.5 2.2 2.2L15.5 12" />
+    </svg>
+  );
+}
 function Titre({ t, c, n, sous }: { t: string; c: string; n: number; sous?: string }) {
   return (
     <div style={{ margin: '2px 0 8px' }}>
@@ -62,12 +71,17 @@ function Titre({ t, c, n, sous }: { t: string; c: string; n: number; sous?: stri
   );
 }
 
-export default function OngletVisites({ visites, biens, prenom, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser }: {
+export default function OngletVisites({ visites, biens, prenom, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat }: {
   visites: any[]; biens: any[]; prenom: string; masques: string[]; rechercheId: string;
   onCompteRendu: (v: any) => void; onAnnuler: (v: any) => void;
   onRecharger: () => void; onMasques: () => void;
   /* V3.134 : « Organiser une visite », le client déjà choisi. */
   onOrganiser?: () => void;
+  /* V3.154 : le bon de visite, prérempli (BonDeVisite.tsx) ; `bonEnCours` :
+     la visite dont le bon se prépare. */
+  onBon?: (v: any) => void; bonEnCours?: string | null;
+  /* Où en est le bon de chaque visite : « Bon de visite (à signer) »… */
+  bonEtat?: (v: any) => EtatBon | null;
 }) {
   const maintenant = new Date();
   const vivantes = visites.filter(v => v.statut === 'a_venir' || v.statut === 'effectuee');
@@ -174,6 +188,12 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
           <input type="time" defaultValue={v.heure} className={styles.inp} style={{ width: 110 }} onChange={async e => { await modifier(v.id, 'L’heure de la visite', { heure: e.target.value || null }); }} />
           <input className={styles.inp} placeholder="Contact agence" defaultValue={v.contact_agence} style={{ flex: 1, minWidth: 140 }} onBlur={async e => { if (e.target.value !== (v.contact_agence || '')) await modifier(v.id, 'Le contact de la visite', { contact_agence: e.target.value || null }); }} />
           <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => onCompteRendu(v)}>{enRetard ? '📝 Faire le compte rendu' : '✓ Effectuée'}</button>
+          {onBon && (
+            <button className={styles.btn} onClick={() => onBon(v)} disabled={bonEnCours === v.id} title="Le bon de visite, prérempli avec le client et le bien"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <PictoBon /><LibelleBon etat={bonEtat?.(v)} enCours={bonEnCours === v.id} />
+            </button>
+          )}
           <button className={styles.btn} onClick={() => onAnnuler(v)}
             style={{ color: '#dc2626', borderColor: '#fecaca' }}
             title="La visite ne se fera pas : elle sort de l'agenda et de l'espace du client">
@@ -225,6 +245,12 @@ export default function OngletVisites({ visites, biens, prenom, masques, recherc
               <span>{source}</span>
               {v.retenir === false && i === 'non' ? <span>· ne compte pas pour la recherche</span> : null}
               <span style={{ flexGrow: 1 }} />
+              {onBon && (
+                <button type="button" onClick={() => onBon(v)} disabled={bonEnCours === v.id}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#4a6b90', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                  <PictoBon /><LibelleBon etat={bonEtat?.(v)} enCours={bonEnCours === v.id} />
+                </button>
+              )}
               <button type="button" onClick={() => onCompteRendu(v)}
                 style={{ background: 'none', border: 'none', color: '#4a6b90', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
                 {i ? '✎ Modifier' : '📝 Préciser l’issue'}

@@ -300,6 +300,7 @@ import OngletBiens from './OngletBiens';
 import MandatEnLigne from './MandatEnLigne';
 import PointAuto from './PointAuto';
 import OngletVisites from './OngletVisites';
+import { useBonDeVisite, useEtatsBons, type DepartBon } from '@/components/documents/BonDeVisite';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
 import FriseSuivi, { ISSUES_APPEL, estMailSimple } from './FriseSuivi';
@@ -1390,6 +1391,23 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     return () => window.removeEventListener(EVT_RDV_ENREGISTRE, relire);
   }, []);
   const organiserVisite = () => { if (rechercheId) demanderVisitePour(rechercheId); };
+  /* V3.154 : « Bon de visite » sur ses visites (BonDeVisite.tsx) : le bon
+     existant s'ouvre ; sinon il se prépare avec lui (et son conjoint), le
+     bien et la visite — ses autres visites du jour, on demande. */
+  const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id }) });
+  const etatBon = useEtatsBons();
+  const departBon = (v: any): DepartBon => {
+    const b = biens.find(x => x.id === v.bien_id);
+    const lieu = [b?.quartier, b?.ville].filter(Boolean).join(', ');
+    return {
+      visite: {
+        cle: String(v.id), ymd: v.date_visite ? String(v.date_visite).slice(0, 10) : '',
+        heure: /^\d{2}:\d{2}/.test(String(v.heure || '')) ? String(v.heure).slice(0, 5) : '',
+        bienId: v.bien_id || null, bienVenteId: b?.bien_vente_id || null, titre: b?.titre || lieu || 'Bien', lieu,
+      },
+      clientId: client.id, rechercheId: v.recherche_id || rechercheId || null, qui: client.prenom || client.nom || '',
+    };
+  };
   /* Sans transaction, plus rien d'une ancienne ne doit rester affiché. */
   useEffect(() => { txRef.current = transaction; setTxData(transaction || {}); }, [transaction]);
   /* En quittant la fiche, on écrit ce qui attendait encore : sinon la dernière
@@ -4779,12 +4797,14 @@ ${signatureMail()}`,
         )}
 
         {/* TAB VISITES — les mêmes rubriques que « Vos visites » dans son espace */}
+        {bonVisite.fenetre}
         {tab === 'visites' && (
           <OngletVisites visites={visites} biens={biens} prenom={client.prenom || ''}
             masques={((rechercheActive as any)?.appris_masques as string[] | null) || []}
             rechercheId={rechercheId}
             onCompteRendu={(v: any) => setCrVisite(v)} onAnnuler={annulerVisite}
-            onRecharger={load} onMasques={loadRecherches} onOrganiser={organiserVisite} />
+            onRecharger={load} onMasques={loadRecherches} onOrganiser={organiserVisite}
+            onBon={(v: any) => { void bonVisite.lancer(departBon(v)); }} bonEnCours={bonVisite.enCours} bonEtat={(v: any) => etatBon(departBon(v))} />
         )}
 
         {/* ═══ TAB TRANSACTION ═══ */}

@@ -635,9 +635,18 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
             const place = actions || <span className={s.actions} aria-hidden="true" data-vide="oui" />;
             /* « Bien ajouté : Duplex… » nomme déjà le bien : pas d'étiquette en plus. */
             const bienVu = b && !(famK === 'systeme');
-            const etiquettes = (autre || rel || bienVu) ? (
+            /* V3.154 : un bon de visite signé — ses biens, un par étiquette ;
+               celui qu'on retrouve dans le dossier s'ouvre d'un clic. */
+            const bonBiens = Array.isArray(j.metadata?.biens) ? (j.metadata.biens as { id?: string | null; lib?: string }[]) : [];
+            const etiquettes = (autre || rel || bienVu || bonBiens.length > 0) ? (
               <div className={s.etiquettes}>
                 {bienVu && <PastilleBien b={b} onVoir={setBienOuvert} petite />}
+                {bonBiens.map((x, k) => {
+                  const lie = x.id ? biens.find(y => y.id === x.id) : null;
+                  return lie
+                    ? <PastilleBien key={k} b={lie} onVoir={setBienOuvert} petite />
+                    : <span key={k} className={s.etAutre}><IcSuivi n="maison" t={12} />{x.lib || 'Bien'}</span>;
+                })}
                 {rel && (() => {
                   const n = joursJusquA(rel.date_echeance);
                   return <span className={s.etRelance} data-retard={n < 0 ? 'oui' : 'non'}><IcSuivi n="cloche" t={13} />{`Relance le ${midi(rel.date_echeance).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · ${delai(n)}`}</span>;
