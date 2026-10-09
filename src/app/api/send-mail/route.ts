@@ -7,6 +7,7 @@ import { ecritServeur } from '@/lib/ecritures';
 import { personnaliser, conseillerDe } from '@/lib/mail-variables';
 import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
 import { adresseVente } from '@/lib/adresse-vente';
+import { prixDuBien } from '@/lib/honoraires-bien';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,7 @@ interface BienLite {
   etage?: number | null;
   prix_vendeur?: number | null;
   prix_acquereur?: number | null;
+  bien_vente_id?: string | null;
   photos?: string[] | null;
   score?: number | null;
 }
@@ -118,7 +120,13 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
   const photoOf = (b: BienLite) => (Array.isArray(b.photos) && b.photos.length > 0 ? b.photos[0] : null);
   const titreOf = (b: BienLite) => b.titre || `${b.type_bien || 'Bien'}${b.surface ? ` de ${b.surface} m²` : ''}`;
   const locOf = (b: BienLite) => [b.code_postal, b.ville].filter(Boolean).join(' ');
-  const prixOf = (b: BienLite) => b.prix_acquereur || b.prix_vendeur;
+  /* V3.145 : le prix de l'annonce, comme dans l'espace ; ses honoraires en
+     petit dessous, seulement quand ils s'ajoutent. */
+  const prixOf = (b: BienLite) => prixDuBien(b).demande;
+  const honoOf = (b: BienLite) => {
+    const p = prixDuBien(b);
+    return p.hono && p.total ? `+ ${fmt(p.hono)} € de nos honoraires, soit ${fmt(p.total)} € frais d’agence compris` : '';
+  };
   const etageOf = (b: BienLite) => {
     const e = (b as { etage?: number | null }).etage;
     if (e === 0) return 'RDC';
@@ -147,7 +155,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
       </td></tr>
       ${statsRow ? `<tr><td class="bord" style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E8EDF3;border-bottom:1px solid #E8EDF3;"><tr>${statsRow}</tr></table></td></tr>` : ''}
       <tr><td class="bord" style="padding:18px 28px 6px;">
-        ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE_TEXTE};font-weight:600;margin:6px 0 18px;">${b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix'}</div>` : ''}
+        ${prix ? `<div style="font-size:26px;font-weight:800;color:${BLEU};line-height:1;">${fmt(prix)} €</div><div style="font-size:11px;color:${DORE_TEXTE};font-weight:600;margin:6px 0 ${honoOf(b) ? '4' : '18'}px;">${b.bien_vente_id && b.prix_acquereur ? 'Prix FAI · honoraires inclus' : 'Prix demandé'}</div>${honoOf(b) ? `<div style="font-size:12px;color:#5B6B80;margin:0 0 18px;">${honoOf(b)}</div>` : ''}` : ''}
         <a href="${lienBien(b, token, rech)}" style="display:block;background:${BLEU};color:#ffffff;text-decoration:none;text-align:center;padding:15px;border-radius:11px;font-size:15px;font-weight:600;">Consulter le bien &rarr;</a>
       </td></tr>`;
   }
@@ -168,7 +176,7 @@ function buildHtml(opts: { prenom: string; corps: string; biens: BienLite[]; tok
             <div style="font-size:15px;font-weight:700;color:${BLEU};margin-bottom:3px;">${escapeHtml(titreOf(b))}</div>
             ${loc ? `<div style="font-size:12px;color:#8FA3BF;margin-bottom:6px;"><span style="color:${DORE};">&#9679;</span> ${escapeHtml(loc)}</div>` : ''}
             ${carac ? `<div style="font-size:12px;color:#5B6B80;margin-bottom:8px;">${escapeHtml(carac)}</div>` : ''}
-            ${prix ? `<div style="font-size:17px;font-weight:800;color:${BLEU};margin-bottom:8px;">${fmt(prix)} €</div>` : ''}
+            ${prix ? `<div style="font-size:17px;font-weight:800;color:${BLEU};margin-bottom:${honoOf(b) ? '2' : '8'}px;">${fmt(prix)} €</div>${honoOf(b) ? `<div style="font-size:11.5px;color:#5B6B80;margin-bottom:8px;">+ ${fmt(prixDuBien(b).hono)} € de nos honoraires</div>` : ''}` : ''}
             <a href="${lienBien(b, token, rech)}" style="color:${DORE_TEXTE};text-decoration:none;font-size:13px;font-weight:700;">Consulter le bien &rarr;</a>
           </td>
         </tr></table>
@@ -1256,7 +1264,7 @@ export async function POST(req: NextRequest) {
     if (mode !== 'libre' && !bienvenue && !lienSeul) {
       let query = supabase
         .from('biens')
-        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, photos, badge_retour, score')
+        .select('id, client_id, titre, ville, code_postal, type_bien, surface, nb_pieces, nb_chambres, etage, prix_vendeur, prix_acquereur, bien_vente_id, photos, badge_retour, score')
         .in('client_id', client_ids)
         .order('created_at', { ascending: false });
 
