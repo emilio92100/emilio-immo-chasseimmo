@@ -537,9 +537,10 @@ client, il n'a rien à répondre — on lui donne de quoi appeler.
 et `decoupeTexte()` dans `EspaceClient.tsx` pour l'espace. Même logique, deux copies. Les changer
 séparément ferait diverger les deux pages — à sortir dans un fichier commun un jour.
 
-Le prix affiché est `prix_acquereur || prix_vendeur` : **si la commission n'a pas été saisie, c'est
-le prix vendeur qui s'affiche**, sous le libellé « Prix ». Ce n'est donc « FAI uniquement » que si
-la commission est renseignée.
+Le prix affiché est **le prix de l'annonce** (`prixDuBien`, `src/lib/honoraires-bien.ts`, V3.145),
+sous le libellé « Prix demandé » ; quand les honoraires d'Alexandre s'ajoutent (pas d'inter-cabinet),
+une petite ligne dessous : « + X € de nos honoraires, soit Y € frais d'agence compris ». Un bien de
+l'agence (`bien_vente_id`) garde son prix « FAI · honoraires inclus ».
 
 ### L'espace acheteur — `/espace/<token>`
 
@@ -1497,6 +1498,59 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.145 — 9 octobre 2026 · Inter-cabinet ou pas : le prix de l'annonce partout, l'offre frais d'agence compris
+
+**SQL à passer** : `outils/sql/biens-inter.sql` (une colonne jsonb, `biens.inter`). Sans elle, tout
+marche : seul le partage d'un inter-cabinet n'est pas gardé, et la fenêtre le dit.
+
+Alexandre : « tous les biens de l'espace au même prix que SeLoger ; si on n'arrive pas à faire un
+inter-cabinet, on rajoute notre commission, et il le voit » ; « s'il dit 450, ça s'affiche 450 » ;
+« il ne faut pas que ma commission soit vue par l'agence ou le propriétaire ».
+
+- **Trois cas, choisis à l'envoi d'un bien** (`ChoixHonoraires`, `ModaleEnvoi`, envoi groupé) :
+  *Agence, avec inter* (par défaut : rien ne s'ajoute), *Agence, sans inter*, *Particulier* (coché
+  d'office quand la veille dit `est_particulier`). Rien de neuf pour le client dans la base :
+  `prix_vendeur` = l'annonce, `prix_acquereur` = l'annonce + ses honoraires (= l'annonce en inter),
+  `commission_type/val`, `est_particulier`. En inter, le partage (honoraires de l'agence en % ou en
+  €, sa part en %) va dans `biens.inter`, pour lui seul : « tu toucheras environ… ». Les calculs et
+  les mots : `src/lib/honoraires-bien.ts` (`prixDuBien`, `casDuBien`, `honorairesDuMandat` déplacé
+  de ParcoursBien, `plafondMandat`).
+- **Jamais au-dessus du mandat** : au-delà de ce que dit `recherches.mandat_honoraires` au prix de
+  l'annonce, la fenêtre bloque l'envoi (loi Hoguet). L'offre bloque la finalisation (`manques`).
+- **Après coup** : dans Présentés, « … · Modifier » sous le prix (ou le bouton € en vue compacte)
+  ouvre `ModaleHonoraires`. Si ce qu'il paiera augmente, un message tout prêt (WhatsApp ou mail)
+  pour prévenir le client. Une ligne « Honoraires du bien » va dans son journal.
+- **Côté client** : l'espace (cartes, carrousel, fiche), la page `/bien/<id>`, les mails de biens,
+  le partage, WhatsApp montrent le prix de l'annonce ; la ligne « + X € de nos honoraires, soit Y €
+  frais d'agence compris », en petit, seulement quand ils s'ajoutent. Un « ? » à côté du prix de la
+  fiche (`AIDES.prix`, texte validé : « Prix demandé pour ce bien. Le plus souvent, vous n'avez rien
+  à payer en plus… »). Les biens déjà présentés à 2,5 % montrent maintenant la ligne : à repasser en
+  « avec inter » s'ils le sont.
+- **L'offre d'achat part de son total, frais d'agence compris** (`total`) : le prix proposé au
+  vendeur s'en déduit (`decomposer`, `Modele.deduire`, appelé par l'éditeur à chaque réponse),
+  arrondi à la centaine AU-DESSUS ; ses honoraires prennent le reste (450 000 € à 2,5 % → 439 100 €
+  + 10 900 €, soit 2,48 % : jamais plus que le taux). Honoraires : `honoMode` aucun / taux / forfait,
+  repris du bien, plafonnés par `honoMandat` (le mandat relu à la création). Une offre d'avant
+  (`honoRecherche`) devient un forfait à l'ouverture, son total se déduit de son prix.
+- **Plus un mot de ses honoraires dans l'offre** (elle part à l'agence). Le client les voit au
+  moment de signer (`Modele.rappel` → « Pour vous, frais d'agence compris : 450 000 € · dont 439 100 €
+  proposés au vendeur et 10 900 € de nos honoraires »), en ligne comme sur place, jamais pour la
+  case de l'agence, et dans son mail de confirmation (`envoyerExemplaire`). Une seule signature.
+- **« Envoyer l'offre à l'agence »** (Documents, offre signée) : `FenetreOffre` → `/api/documents`
+  action `offre` : l'exemplaire signé rangé (`signe_chemin`), seul, en pièce jointe ; noté dans
+  `documents.envois` (`offre: true`, « Offre envoyée » dans l'historique), dans le Suivi du client
+  et dans celui du confrère s'il est dans le CRM.
+- **Ses honoraires, pour lui seul** (`noteOffre`, `src/lib/actes/offre-achat.ts`) : « Son offre :
+  450 000 € frais d'agence compris · proposé au vendeur : 439 100 € · tes honoraires : 10 900 € »
+  (ou « sans honoraires de recherche »). Sur la fiche de l'offre (Documents), et en ligne 💶 dans
+  le Suivi du client à la signature (`classer`) et à l'envoi à l'agence. Jamais dans l'offre ni
+  dans le mail à l'agence.
+- **Le mandat de recherche** (en ligne et Documents) : l'Agence dit le cas « notamment dans son
+  espace personnel » ; les prix de l'espace sont ceux des annonces, et l'espace indique sur le bien
+  les honoraires dus, avec leur montant. À faire relire par l'avocat.
+- Le bon de visite prend le prix de l'annonce. La question « Vous avez un prix en tête ? » dit
+  « frais d'agence compris ».
 
 ### V3.144 — 9 octobre 2026 · Le mandat de recherche dit les deux cas d'honoraires
 
