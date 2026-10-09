@@ -9,8 +9,9 @@ import {
   Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
   useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
   NotesVeille, ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
-  ModalePhotos, AvisLien, etatLien,
+  ModalePhotos, AvisLien, etatLien, ModaleHonoraires,
 } from './ParcoursBien';
+import { prixDuBien } from '@/lib/honoraires-bien';
 
 /**
  * Deux onglets pour un seul composant :
@@ -164,6 +165,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const [envoiGroupe, setEnvoiGroupe] = useState<any[] | null>(null);
   /* Le bien dont on réorganise les photos. */
   const [photosDe, setPhotosDe] = useState<any>(null);
+  /* V3.145 : les honoraires d'un bien présenté (inter ou pas), à changer après coup. */
+  const [honoDe, setHonoDe] = useState<any>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -397,7 +400,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       {affiches.map((b, idx) => {
         const r = RETOURS[b.badge_retour] || RETOURS.propose;
         const ouvert = frise === b.id;
-        const prixAff = b.prix_acquereur || b.prix_vendeur;
+        /* V3.145 : le prix de l'annonce, comme le client le voit ; ce qui s'y
+           ajoute (ou « Inter ») est dit dessous. */
+        const prixAff = prixDuBien(b).demande;
+        const hono = libelleHonoraires(b, mode === 'presentes');
         // BandeauMarche lit `prix` : on lui donne le prix vendeur, celui du marché
         const marche = { ...b, prix: b.prix_vendeur, agence: b.agence_nom, portail: b.source_portail };
         /* V3.101 : le lien enregistré est-il toujours le bon ? (ok · remplacé · retiré) */
@@ -426,7 +432,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                 lieu={b.adresse || b.adresse_probable || b.quartier || b.ville}
                 specs={resumeSpecs(b)}
                 prix={euros(prixAff)}
-                sousPrix={libelleHonoraires(b)
+                sousPrix={hono
                   || (prixAff && b.surface ? `${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²` : null)}
                 coche={groupable ? { actif: coches.includes(b.id), onBascule: () => basculer(b.id) } : undefined}
                 accent={mode === 'presentes' ? r.c : undefined}
@@ -450,7 +456,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                     <BoutonIcone icone="crayon" titre="Ouvrir le détail du bien" onClick={() => onFiche(b.id)} />
                     {mode === 'selection'
                       ? <BoutonIcone icone="envoyer" titre="Envoyer au client" ton="or" onClick={() => setEnvoi(b)} />
-                      : <BoutonIcone icone="calendrier" titre="Planifier une visite" onClick={() => onVisite(b.id)} />}
+                      : <>
+                        {!b.bien_vente_id && <BoutonIcone icone="euro" titre="Tes honoraires sur ce bien (inter ou pas)" onClick={() => setHonoDe(b)} />}
+                        <BoutonIcone icone="calendrier" titre="Planifier une visite" onClick={() => onVisite(b.id)} />
+                      </>}
                     <button type="button" onClick={() => retirer(b)} title="Retirer ce bien du dossier"
                       style={{
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -543,8 +552,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                 <div className="emi-prix-bien" style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1.1 }}>{euros(prixAff)}</div>
-                {libelleHonoraires(b)
-                  ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{libelleHonoraires(b)}</div>
+                {hono
+                  ? mode === 'presentes' && !b.bien_vente_id
+                    ? (
+                      <button type="button" onClick={() => setHonoDe(b)} title="Changer : avec inter, sans inter, particulier"
+                        style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12, color: '#94a3b8', fontWeight: 600, cursor: 'pointer', textAlign: 'right' }}>
+                        {hono}<span style={{ color: NAVY, fontWeight: 800 }}>{' · Modifier'}</span>
+                      </button>
+                    )
+                    : <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{hono}</div>
                   : prixAff && b.surface
                     ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²</div>
                     : null}
@@ -671,6 +687,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       )}
       {photosDe && (
         <ModalePhotos bien={photosDe} onFerme={() => setPhotosDe(null)} onEnregistre={recharge} />
+      )}
+      {honoDe && (
+        <ModaleHonoraires bien={honoDe} clientId={clientId} client={client} mandat={mandat}
+          onFerme={() => setHonoDe(null)} onEnregistre={recharge} />
       )}
       {envoiGroupe && (
         <ModaleEnvoiGroupe biens={envoiGroupe} clientId={clientId} client={client} recherche={recherche}
