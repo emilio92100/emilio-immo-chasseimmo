@@ -1499,6 +1499,26 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.150 — 9 octobre 2026 · Le bien envoyé, cliquable ; l'acheteur, cliquable
+
+Alexandre : « dans Communications, 1 bien joint, maison 7 pièces : il faudrait pouvoir appuyer
+dessus pour savoir laquelle c'est… même si un jour elle est vendue » ; « depuis la fiche du bien,
+Présenté à…, le petit icône avec l'avatar, qu'on puisse cliquer sur l'acheteur ».
+
+- **Fiche client, Historique** (FriseSuivi) : les biens joints d'un mail sont des pastilles avec leur
+  photo (`PastilleBien`) ; un clic ouvre `CarteBienEnvoye` — les photos (flèches, clavier), le
+  lieu, surface, pièces, chambres, le prix qu'il a reçu, « Présenté le … par mail », « Fiche ouverte
+  le … », sa réponse, et pour un bien de l'agence son étape d'aujourd'hui (lue dans `biens_vente`,
+  « Vendu » compris). C'est la copie de son dossier : elle reste quand le bien est vendu. « Ouvrir la
+  fiche du bien » (`onBien`, FicheClient : la fiche du bien de l'agence, sinon celle du dossier).
+  Un bien joint retiré depuis de son dossier est dit (« 1 autre, retiré de son dossier »).
+  L'étiquette du bien d'une ligne du journal s'ouvre de la même façon.
+- **Fiche bien, Historique** : `chez` porte l'avatar du contact (`c`, `t`) — « Présenté à »,
+  « a répondu », les visites, la présentation par simple mail, les lignes du Suivi d'un contact :
+  une pastille ronde avec son nom et « Sa fiche ». « Présenté à » dit le canal (`canal_envoi`) :
+  « Envoyé par mail · le bien est aussi dans son espace » ; « Dans son espace, avec la note de
+  correspondance » quand il n'est parti que dans l'espace.
+
 ### V3.149 — 9 octobre 2026 · Nouveau contact, un couple : chaque personne sur toute la largeur
 
 Alexandre : « le prénom et le nom, c'est des petites cases, ça dépasse… le mail, il faut appuyer
