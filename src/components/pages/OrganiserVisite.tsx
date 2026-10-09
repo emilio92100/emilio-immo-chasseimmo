@@ -16,7 +16,17 @@ import o from './OrganiserVisite.module.css';
    Alexandre : « un bouton dans la partie bleue… je souhaite organiser une
    visite ; ça me demande le nom de la personne, ou si elle est hors CRM, et
    de choisir un bien par le nom du propriétaire ou par le prix ». Une seule
-   fenêtre, en trois temps : qui visite, quel bien, quand.
+   fenêtre, en trois temps : qui visite, quels biens, quand.
+
+   V3.147 (Alexandre : « pourquoi on ne peut sélectionner qu'un bien ? ») :
+   plusieurs biens d'un coup, le même jour. Les heures s'enchaînent toutes
+   seules (la première à l'heure choisie, chacune après la précédente, de la
+   durée d'une visite) et se changent une par une. Chaque bien a sa visite à
+   lui — une ligne dans `visites` (ou dans le suivi du bien, hors CRM), son
+   rendez-vous, sa ligne dans le Suivi de l'acheteur et dans l'historique du
+   bien —, toutes le même jour : la page Visites les montre sur une seule
+   carte, et le mail de rappel les reprend toutes, chacune à son heure
+   (ModaleRappelVisite lit toutes les visites du jour).
 
    Les écritures sont celles qui existent déjà, rien de neuf :
    - un bien de l'agence avec un acheteur suivi : visiteAcheteur (le bien
@@ -52,6 +62,18 @@ const aujourdhui = () => new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Pa
 const heureMaintenant = () => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
 /* « 18 h », « 18 h 30 ». */
 const hFr = (d: Date) => `${d.getHours()} h ${String(d.getMinutes()).padStart(2, '0')}`.replace(' h 00', ' h');
+/* « 18:00 » + 45 min → « 18:45 » (jamais après 23 h 59). */
+const plusMinutes = (hhmm: string, m: number) => {
+  const [h, mi] = (hhmm || '00:00').split(':').map(Number);
+  const t = Math.min(23 * 60 + 59, (h || 0) * 60 + (mi || 0) + m);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+const minutesEntre = (a: string, b: string) => {
+  const m = (x: string) => { const [h, mi] = x.split(':').map(Number); return (h || 0) * 60 + (mi || 0); };
+  return m(b) - m(a);
+};
+/* « 18:00 » → « 18 h », « 18:45 » → « 18 h 45 ». */
+const hLisible = (hhmm: string) => hhmm.replace(':', ' h ').replace(/ h 00$/, ' h');
 /* L'heure pleine suivante, entre 9 h et 19 h. */
 const heureProposee = () => {
   const h = Number(heureMaintenant().slice(0, 2)) + 1;
@@ -100,7 +122,7 @@ function Etape({ n, titre, fait, children }: { n: number; titre: string; fait: b
   );
 }
 
-export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => void; onFait: (texte: string, passee: boolean) => void }) {
+export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => void; onFait: (texte: string, passee: boolean, n: number) => void }) {
   /* ── Qui visite ── */
   const [mode, setMode] = useState<'crm' | 'libre'>('crm');
   const [clients, setClients] = useState<ClientMini[] | null>(null);
@@ -114,13 +136,27 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
   const [agence, setAgence] = useState<BienAgence[] | null>(null);
   const [dossier, setDossier] = useState<BienDossier[]>([]);
   const [qBien, setQBien] = useState('');
-  const [bien, setBien] = useState<Choix | null>(null);
+  /* V3.147 : plusieurs biens, dans l'ordre où ils sont choisis ; une heure
+     changée à la main (par bien) l'emporte sur l'enchaînement. */
+  const [choisis, setChoisis] = useState<Choix[]>([]);
+  const [heures, setHeures] = useState<Record<string, string>>({});
   /* ── Quand ── */
   const [date, setDate] = useState(aujourdhui());
   const [heure, setHeure] = useState(heureProposee());
   const [duree, setDuree] = useState(45);
   const [note, setNote] = useState('');
   const [pris, setPris] = useState<CreneauPris[]>([]);
+  /* Le programme de la journée : la première visite à l'heure choisie,
+     chacune des suivantes juste après la précédente (sauf heure tapée). */
+  const programme = useMemo(() => {
+    const l: { c: Choix; heure: string }[] = [];
+    choisis.forEach((c, i) => {
+      const auto = i === 0 ? heure : plusMinutes(l[i - 1].heure, duree);
+      l.push({ c, heure: i > 0 && heures[c.cle] ? heures[c.cle] : auto });
+    });
+    return l;
+  }, [choisis, heures, heure, duree]);
+  const finProgramme = programme.length ? plusMinutes(programme.reduce((m, p) => (p.heure > m ? p.heure : m), heure), duree) : plusMinutes(heure, duree);
   /* ── La fenêtre ── */
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -181,10 +217,12 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
   useEffect(() => {
     let vivant = true;
     const t = window.setTimeout(() => {
-      creneauxPris(date, heure, duree).then(l => { if (vivant) setPris(l); }).catch(() => { if (vivant) setPris([]); });
+      /* V3.147 : toute la tournée, de la première visite à la fin de la dernière. */
+      const span = Math.max(duree, minutesEntre(heure, finProgramme));
+      creneauxPris(date, heure, span).then(l => { if (vivant) setPris(l); }).catch(() => { if (vivant) setPris([]); });
     }, 300);
     return () => { vivant = false; window.clearTimeout(t); };
-  }, [date, heure, duree]);
+  }, [date, heure, duree, finProgramme]);
 
   const nomsClients = useMemo(() => Object.fromEntries((clients || []).map(c => [c.id, nomClient(c)])), [clients]);
   const recherchesDe = (id: string) => {
@@ -226,10 +264,11 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qBien, agence, dossier, nomsClients]);
 
+  const titreBien = (c: Choix) => c.b.titre || c.b.ville || 'Bien';
   const rechClient = client ? recherchesDe(client.id) : [];
   const quiOk = mode === 'crm' ? !!client && !!rechercheId : !!libreNom.trim();
   const passe = !!date && (date < aujourdhui() || (date === aujourdhui() && heure.slice(0, 5) < heureMaintenant()));
-  const pret = quiOk && !!bien && !!date && !!heure && !envoi;
+  const pret = quiOk && choisis.length > 0 && !!date && !!heure && !envoi;
   const nomVisiteur = mode === 'crm' ? (client ? nomClient(client) : '') : libreNom.trim();
 
   function choisirClient(c: ClientMini) {
@@ -237,49 +276,85 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
     const r = recherchesDe(c.id);
     setRechercheId(r[0]?.id || '');
     /* Un bien du dossier d'un autre ne reste pas choisi. */
-    if (bien?.genre === 'dossier') setBien(null);
+    sansDossier();
   }
   function changerMode(m: 'crm' | 'libre') {
     if (m === mode) return;
     setMode(m); setErreur('');
-    if (bien?.genre === 'dossier') setBien(null);
+    sansDossier();
+  }
+  const sansDossier = () => setChoisis(l => l.filter(c => c.genre !== 'dossier'));
+  const estChoisi = (c: Choix) => choisis.some(x => x.cle === c.cle);
+  /* Un clic sur un bien trouvé l'ajoute (ou le retire s'il y est déjà) ;
+     la recherche se vide pour en ajouter un autre. */
+  function basculer(c: Choix) {
+    setErreur('');
+    if (estChoisi(c)) { retirer(c); return; }
+    setChoisis(l => [...l, c]);
+    setQBien('');
+  }
+  function retirer(c: Choix) {
+    setChoisis(l => l.filter(x => x.cle !== c.cle));
+    setHeures(h => { const n = { ...h }; delete n[c.cle]; return n; });
   }
 
   async function enregistrer() {
-    if (!pret || !bien) return;
+    if (!pret || !choisis.length) return;
     if (mode === 'crm' && client && !rechercheId) { setErreur(`${nomClient(client)} n’a pas de recherche : note la visite « hors du CRM », ou ouvre-lui une recherche depuis sa fiche.`); return; }
-    if (bien.genre === 'agence' && bien.b.etape === 'compromis'
-      && !window.confirm(`« ${bien.b.titre || bien.b.ville || 'Ce bien'} » est sous compromis : la visite ne sert qu’à une offre de secours.\n\nLa planifier quand même ?`)) return;
+    const secours = choisis.filter(c => c.genre === 'agence' && c.b.etape === 'compromis');
+    if (secours.length && !window.confirm(`${secours.length > 1 ? `${secours.length} de ces biens sont` : `« ${titreBien(secours[0])} » est`} sous compromis : la visite ne sert qu’à une offre de secours.\n\nLa planifier quand même ?`)) return;
     setEnvoi(true); setErreur('');
-    const creneau = { date, heure, duree, commentaire: note.trim() };
+    /* Une à une, dans l'ordre du programme. Si l'une échoue, celles déjà
+       faites sont dites et quittent la liste : « Planifier » ne les
+       referait pas une seconde fois. */
+    const faites: string[] = [];
     try {
-      if (bien.genre === 'agence') {
-        const { data, error } = await supabase.from('biens_vente').select('*').eq('id', bien.b.id).maybeSingle();
-        if (error || !data) throw new Error('Le bien n’a pas pu être relu' + (error ? ` : ${error.message}` : '.'));
-        const bv = data as BienVente;
-        if (mode === 'crm' && client) await visiteAcheteur(bv, client.id, rechercheId, creneau);
-        else await visiteExterne(bv, libreNom.trim(), libreTel.trim(), creneau, true);
-      } else if (client) {
-        const ok = await poserVisites({
-          clientId: client.id, rechercheId, biens: [{ id: bien.b.id, titre: bien.b.titre, ville: bien.b.ville, bien_vente_id: null }],
-          revus: [], date, heure, contact: bien.b.agence_nom || '', notes: note.trim(), duree,
-        });
-        if (!ok) { setEnvoi(false); return; }
+      /* Un bien de son dossier déjà visité (ou déjà prévu) : c'est une 2e
+         visite — sa demande « Veut revoir » se solde (poserVisites). */
+      const ids = choisis.filter(c => c.genre === 'dossier').map(c => c.b.id);
+      let revus = new Set<string>();
+      if (ids.length) {
+        const { data } = await supabase.from('visites').select('bien_id').in('bien_id', ids).in('statut', ['effectuee', 'a_venir']);
+        revus = new Set(((data || []) as { bien_id: string }[]).map(x => x.bien_id));
       }
-      signalerMaj();
-      const quand = new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-      const texte = `Visite planifiée avec ${nomVisiteur} ${quand} à ${heure.replace(':', ' h ').replace(/ h 00$/, ' h')}.`;
-      setFini(texte);
-      corps.current?.scrollTo({ top: 0 });
-      window.setTimeout(() => onFait(texte, passe), 1500);
+      for (const p of programme) {
+        const creneau = { date, heure: p.heure, duree, commentaire: note.trim() };
+        if (p.c.genre === 'agence') {
+          const { data, error } = await supabase.from('biens_vente').select('*').eq('id', p.c.b.id).maybeSingle();
+          if (error || !data) throw new Error(`« ${titreBien(p.c)} » n’a pas pu être relu${error ? ` : ${error.message}` : '.'}`);
+          const bv = data as BienVente;
+          if (mode === 'crm' && client) await visiteAcheteur(bv, client.id, rechercheId, creneau);
+          else await visiteExterne(bv, libreNom.trim(), libreTel.trim(), creneau, true);
+        } else if (client) {
+          const ok = await poserVisites({
+            clientId: client.id, rechercheId, biens: [{ id: p.c.b.id, titre: p.c.b.titre, ville: p.c.b.ville, bien_vente_id: null }],
+            revus: revus.has(p.c.b.id) ? [p.c.b.id] : [], date, heure: p.heure, contact: p.c.b.agence_nom || '', notes: note.trim(), duree,
+          });
+          if (!ok) throw new Error(`La visite de « ${titreBien(p.c)} » n’a pas pu être enregistrée.`);
+        }
+        faites.push(p.c.cle);
+      }
     } catch (e) {
-      setErreur((e as Error).message);
+      const m = (e as Error).message;
+      if (faites.length) {
+        signalerMaj();
+        setChoisis(l => l.filter(c => !faites.includes(c.cle)));
+        setErreur(`${faites.length > 1 ? `${faites.length} visites sont enregistrées` : 'Une visite est enregistrée'}, puis ça s’est arrêté : ${m} Les biens qui restent sont toujours là : « Planifier » reprend avec eux.`);
+      } else setErreur(m);
       setEnvoi(false);
+      return;
     }
+    signalerMaj();
+    const quand = new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const texte = programme.length > 1
+      ? `${programme.length} visites planifiées avec ${nomVisiteur} ${quand}, de ${hLisible(heure)} à ${hLisible(finProgramme)}.`
+      : `Visite planifiée avec ${nomVisiteur} ${quand} à ${hLisible(heure)}.`;
+    setFini(texte);
+    corps.current?.scrollTo({ top: 0 });
+    window.setTimeout(() => onFait(texte, passe, programme.length), 1500);
   }
 
   if (typeof document === 'undefined') return null;
-  const titreBien = (c: Choix) => (c.genre === 'agence' ? c.b.titre || c.b.ville : c.b.titre || c.b.ville) || 'Bien';
   const photoBien = (c: Choix) => (c.genre === 'agence' ? c.b.photo : c.b.photos?.[0]) || null;
   const sousBien = (c: Choix) => {
     if (c.genre === 'agence') {
@@ -319,7 +394,9 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
             <span className={o.bravoRond}><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path className={o.trace} d="M5 12.5l4.2 4.2L19 7" /></svg></span>
             <b>{'C’est noté'}</b>
             <span>{fini}</span>
-            <small>{passe ? 'Elle attend son compte rendu, dans « Compte rendu à faire ».' : 'Elle est dans « À venir » et dans l’agenda.'}</small>
+            <small>{programme.length > 1
+              ? (passe ? 'Elles attendent leur compte rendu, dans « Compte rendu à faire ».' : 'Elles sont dans « À venir » et dans l’agenda.')
+              : (passe ? 'Elle attend son compte rendu, dans « Compte rendu à faire ».' : 'Elle est dans « À venir » et dans l’agenda.')}</small>
           </div>
         ) : (
           <div className={o.corps} ref={corps}>
@@ -339,7 +416,7 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
                       <b>{nomClient(client)}</b>
                       <small>{rechClient.length ? `${rechClient.length > 1 ? `${rechClient.length} recherches` : `Recherche : ${rechClient[0].nom || 'en cours'}`}` : 'Aucune recherche'}</small>
                     </span>
-                    <button type="button" className={o.changer} onClick={() => { setClient(null); setRechercheId(''); setQClient(''); if (bien?.genre === 'dossier') setBien(null); }}>Changer</button>
+                    <button type="button" className={o.changer} onClick={() => { setClient(null); setRechercheId(''); setQClient(''); sansDossier(); }}>Changer</button>
                   </div>
                 ) : (
                   <>
@@ -377,7 +454,7 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
               {mode === 'crm' && client && rechClient.length > 1 && (
                 <div className={o.pills} role="radiogroup" aria-label="Pour quelle recherche">
                   {rechClient.map(r => (
-                    <button key={r.id} type="button" role="radio" aria-checked={r.id === rechercheId} className={o.pill} onClick={() => { setRechercheId(r.id); if (bien?.genre === 'dossier') setBien(null); }}>
+                    <button key={r.id} type="button" role="radio" aria-checked={r.id === rechercheId} className={o.pill} onClick={() => { setRechercheId(r.id); sansDossier(); }}>
                       {r.nom || 'Recherche'}{r.active === false ? ' · en attente' : ''}
                     </button>
                   ))}
@@ -388,58 +465,83 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
               )}
             </Etape>
 
-            {/* 2. Quel bien */}
-            <Etape n={2} titre="Quel bien ?" fait={!!bien}>
-              {bien ? (
-                <>
-                  <div className={o.retenu} key={bien.cle}>
-                    {vignette(bien, true)}
-                    <span className={o.retenuTx}>
-                      <b>{titreBien(bien)}</b>
-                      <small>{sousBien(bien)}</small>
-                    </span>
-                    <button type="button" className={o.changer} onClick={() => setBien(null)}>Changer</button>
-                  </div>
-                  {bien.genre === 'agence' && avantMandat(bien.b.etape) && (
-                    <div className={o.info}><Ico n="info" t={15} /><span>{`Pas encore sous mandat (${etapeDe(bien.b.etape).lib.toLowerCase()}) : la visite se planifie quand même.${mode === 'crm' ? ' Dans son espace, le bien apparaît sans prix.' : ''}`}</span></div>
-                  )}
-                  {bien.genre === 'agence' && bien.b.etape === 'compromis' && (
-                    <div className={`${o.info} ${o.infoOr}`}><Ico n="info" t={15} /><span>{'Sous compromis : une visite ne sert plus qu’à une offre de secours.'}</span></div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <label className={o.cherche}>
-                    <Ico n="loupe" />
-                    <input value={qBien} onChange={e => setQBien(e.target.value)} placeholder="Propriétaire, prix, adresse, référence…" aria-label="Chercher un bien" />
-                  </label>
-                  <div className={o.liste}>
-                    {agence === null && <div className={o.vide}>Chargement des biens…</div>}
-                    {agence !== null && biensTrouves.length === 0 && (
-                      <div className={o.vide}>{qBien.trim().length >= 2 ? 'Aucun bien ne correspond. Essaie le nom du propriétaire, le prix ou la rue.' : 'Tape le nom du propriétaire, le prix ou l’adresse.'}</div>
-                    )}
-                    {qBien.trim().length < 2 && biensTrouves.length > 0 && <div className={o.sur}>{dossier.length ? 'Son dossier, puis tes biens en vente' : 'Tes biens en vente'}</div>}
-                    {biensTrouves.map((c, i) => {
-                      const p = pastille(c);
-                      return (
-                        <button key={c.cle} type="button" className={o.ligne} style={{ animationDelay: `${i * 35}ms` }} onClick={() => setBien(c)}>
-                          {vignette(c)}
-                          <span className={o.ligneTx}>
-                            <b>{titreBien(c)}</b>
-                            <small className={o.deuxL}>{sousBien(c)}</small>
-                          </span>
-                          <span className={o.pastille} style={{ color: p.c, background: `${p.c}14`, borderColor: `${p.c}38` }}>{p.lib}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
+            {/* 2. Quels biens — un ou plusieurs (V3.147) */}
+            <Etape n={2} titre={choisis.length > 1 ? `Quels biens ? · ${choisis.length}` : 'Quels biens ?'} fait={choisis.length > 0}>
+              {choisis.length > 0 && (
+                <div className={o.choisis}>
+                  {choisis.map(c => (
+                    <div className={o.retenu} key={c.cle}>
+                      {vignette(c, true)}
+                      <span className={o.retenuTx}>
+                        <b>{titreBien(c)}</b>
+                        <small>{sousBien(c)}</small>
+                      </span>
+                      <button type="button" className={o.retirer} onClick={() => retirer(c)} aria-label={`Retirer ${titreBien(c)}`} title="Retirer ce bien"><Ico n="croix" t={14} /></button>
+                    </div>
+                  ))}
+                </div>
               )}
+              {(() => {
+                const avant = choisis.filter(c => c.genre === 'agence' && avantMandat(c.b.etape));
+                const secours = choisis.filter(c => c.genre === 'agence' && c.b.etape === 'compromis');
+                return <>
+                  {avant.length > 0 && (
+                    <div className={o.info}><Ico n="info" t={15} /><span>{`${avant.length > 1 ? `${avant.length} de ces biens ne sont` : `« ${titreBien(avant[0])} » n’est`} pas encore sous mandat : la visite se planifie quand même.${mode === 'crm' ? ' Dans son espace, le bien apparaît sans prix.' : ''}`}</span></div>
+                  )}
+                  {secours.length > 0 && (
+                    <div className={`${o.info} ${o.infoOr}`}><Ico n="info" t={15} /><span>{`${secours.length > 1 ? `${secours.length} de ces biens sont` : `« ${titreBien(secours[0])} » est`} sous compromis : une visite ne sert plus qu’à une offre de secours.`}</span></div>
+                  )}
+                </>;
+              })()}
+              <label className={o.cherche}>
+                <Ico n="loupe" />
+                <input value={qBien} onChange={e => setQBien(e.target.value)} placeholder={choisis.length ? 'Ajouter un autre bien : propriétaire, prix, adresse…' : 'Propriétaire, prix, adresse, référence…'} aria-label="Chercher un bien" />
+              </label>
+              <div className={o.liste}>
+                {agence === null && <div className={o.vide}>Chargement des biens…</div>}
+                {agence !== null && biensTrouves.length === 0 && (
+                  <div className={o.vide}>{qBien.trim().length >= 2 ? 'Aucun bien ne correspond. Essaie le nom du propriétaire, le prix ou la rue.' : 'Tape le nom du propriétaire, le prix ou l’adresse.'}</div>
+                )}
+                {qBien.trim().length < 2 && biensTrouves.length > 0 && <div className={o.sur}>{dossier.length ? 'Son dossier, puis tes biens en vente' : 'Tes biens en vente'}{choisis.length ? ' · touche pour ajouter ou retirer' : ''}</div>}
+                {biensTrouves.map((c, i) => {
+                  const p = pastille(c);
+                  const on = estChoisi(c);
+                  return (
+                    <button key={c.cle} type="button" className={`${o.ligne} ${on ? o.ligneOn : ''}`} aria-pressed={on} style={{ animationDelay: `${i * 35}ms` }} onClick={() => basculer(c)}>
+                      {vignette(c)}
+                      <span className={o.ligneTx}>
+                        <b>{titreBien(c)}</b>
+                        <small className={o.deuxL}>{sousBien(c)}</small>
+                      </span>
+                      {on
+                        ? <span className={o.coche} aria-hidden="true"><Ico n="check" t={14} /></span>
+                        : <span className={o.pastille} style={{ color: p.c, background: `${p.c}14`, borderColor: `${p.c}38` }}>{p.lib}</span>}
+                    </button>
+                  );
+                })}
+              </div>
             </Etape>
 
             {/* 3. Quand */}
             <Etape n={3} titre="Quand ?" fait={!!date && !!heure}>
               <ChoixQuand date={date} heure={heure} duree={duree} onDate={setDate} onHeure={setHeure} onDuree={setDuree} durees={DUREES} />
+              {/* V3.147 : plusieurs biens — le programme de la journée. */}
+              {programme.length > 1 && (
+                <div className={o.programme}>
+                  <div className={o.sur}>{`Le programme · ${programme.length} visites, de ${hLisible(heure)} à ${hLisible(finProgramme)}`}</div>
+                  {programme.map((p, i) => (
+                    <div className={o.pLigne} key={p.c.cle}>
+                      <span className={o.pNum}>{i + 1}</span>
+                      <span className={o.pTx}><b>{titreBien(p.c)}</b><small>{`jusqu’à ${hLisible(plusMinutes(p.heure, duree))}`}</small></span>
+                      {i === 0
+                        ? <span className={o.pHeureFixe} title="L’heure de départ, choisie juste au-dessus">{hLisible(p.heure)}</span>
+                        : <input type="time" className={o.pHeure} value={p.heure} step={300} aria-label={`Heure de la visite de ${titreBien(p.c)}`}
+                            onChange={e => { const v = e.target.value; setHeures(h => ({ ...h, [p.c.cle]: v })); }} />}
+                    </div>
+                  ))}
+                  <small className={o.aideP}>{'Chaque visite suit la précédente ; tu peux changer une heure. Le rappel envoyé au client les reprend toutes, chacune à son heure.'}</small>
+                </div>
+              )}
               {(passe || pris.length > 0) && (
                 <div className={`${o.info} ${o.infoOr}`}>
                   <Ico n="horloge" t={15} />
@@ -459,11 +561,11 @@ export default function OrganiserVisite({ onFermer, onFait }: { onFermer: () => 
         {!fini && (
           <footer className={o.pied}>
             <span className={o.resume}>
-              {nomVisiteur && bien ? `${nomVisiteur} · ${titreBien(bien)}` : 'Choisis qui visite et le bien.'}
+              {nomVisiteur && choisis.length ? `${nomVisiteur} · ${choisis.length > 1 ? `${choisis.length} biens` : titreBien(choisis[0])}` : 'Choisis qui visite et les biens.'}
             </span>
             <button type="button" className={o.btn} onClick={fermer} disabled={envoi}>Annuler</button>
             <button type="button" className={`${o.btn} ${o.btnOr}`} onClick={() => { void enregistrer(); }} disabled={!pret}>
-              <Ico n="cal" t={16} /><span>{envoi ? 'Enregistrement…' : 'Planifier la visite'}</span>
+              <Ico n="cal" t={16} /><span>{envoi ? 'Enregistrement…' : choisis.length > 1 ? `Planifier les ${choisis.length} visites` : 'Planifier la visite'}</span>
             </button>
           </footer>
         )}
