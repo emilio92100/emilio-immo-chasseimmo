@@ -121,7 +121,7 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
        V3.73 : sans celles du tri d'après l'import (compterRelancesDues). */
     /* Le compte des clients actifs est parti (V3.20) : plus aucune pastille ne
        l'affichait depuis la V3.14, il coûtait une requête toutes les 20 s. */
-    const [rel, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }, { count: siteRappels }] = await Promise.all([
+    const [rel, { data: vis }, demandes, { count: sig }, { count: bv }, { count: site }, { count: siteRappels }, { count: libres }] = await Promise.all([
       compterRelancesDues().catch(() => 0),
       supabase.from('visites').select('date_visite, heure').eq('statut', 'a_venir').gte('date_visite', today).limit(1000),
       /* Les clients qui ont demandé à visiter depuis leur espace, sans date
@@ -139,8 +139,11 @@ export default function Sidebar({ activePage, onNavigate, ouvert = false, onFerm
       supabase.from(TABLE_DEMANDES).select('*', { count: 'exact', head: true }).eq('statut', 'nouveau').eq('archive', false),
       /* V3.127 : les demandes à rappeler aujourd'hui ou en retard, pas encore traitées. */
       supabase.from(TABLE_DEMANDES).select('*', { count: 'exact', head: true }).neq('statut', 'traite').eq('archive', false).lte('a_rappeler_le', today),
+      /* V3.146 : les visites hors CRM à venir (suivi des biens de l'agence),
+         comptées comme dans la page Visites. Sans la table, zéro. */
+      supabase.from('biens_vente_suivi').select('*', { count: 'exact', head: true }).eq('type', 'visite').eq('statut', 'a_venir').gt('le', new Date().toISOString()),
     ]);
-    const visAVenir = ((vis || []) as { date_visite: string | null; heure: string | null }[]).filter(v => !visitePasseeParis(v, mParis)).length;
+    const visAVenir = ((vis || []) as { date_visite: string | null; heure: string | null }[]).filter(v => !visitePasseeParis(v, mParis)).length + (libres || 0);
     setCounts({ relances: rel || 0, visites: visAVenir, demandes: demandes.length, aSigner: sig || 0, enVente: bv || 0, site: site || 0, siteRappels: siteRappels || 0 });
   }
 
