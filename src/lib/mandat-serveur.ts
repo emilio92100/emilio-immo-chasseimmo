@@ -34,7 +34,7 @@ import {
 import { alerteMailActive } from './alertes';
 import { lireDepart } from './registre';
 import { enveloppeMail } from '@/lib/mail-charte';
-import { noterRemises } from '@/lib/remise-mail';
+import { idsMailjet, noterRemises } from '@/lib/remise-mail';
 
 export const CLE_RESERVE = 'mandat_numeros_reserve';
 export const CLE_APPROBATION = 'mandat_modele_approuve_le';
@@ -278,15 +278,27 @@ export const echappe = (t: string) =>
 
 export type PieceJointe = { nom: string; type: string; base64: string };
 
-/* Rend null si tout va bien, sinon le message d'erreur. */
-export async function envoyerMail(o: {
+type MailAEnvoyer = {
   a: string; nomA?: string; sujet: string; texte: string; html: string;
   /* L'expéditeur affiché : Alexandre (par défaut), le CRM (ses alertes), ou
      l'agence seule (le mail du code : un nom neutre, qu'on reconnaît). */
   pj?: PieceJointe[]; deLaPartDe?: 'alexandre' | 'crm' | 'agence'; repondreA?: string;
-}): Promise<string | null> {
+  /* V3.152 : le pixel d'ouverture de Mailjet, pour ce mail seulement. Coupé
+     partout depuis le réglage de la délivrabilité (context.md §8). */
+  suiviOuverture?: boolean;
+};
+
+/* Rend null si tout va bien, sinon le message d'erreur. */
+export async function envoyerMail(o: MailAEnvoyer): Promise<string | null> {
+  return (await envoyerMailSuivi(o)).erreur;
+}
+
+/* V3.152 — Le même envoi, avec l'identifiant Mailjet du message (lu dans
+   `MessageHref`, comme la vérification de la remise) : l'appelant le garde
+   pour demander plus tard si le mail a été ouvert. */
+export async function envoyerMailSuivi(o: MailAEnvoyer): Promise<{ erreur: string | null; id: string | null }> {
   const apiKey = process.env.MAILJET_API_KEY, apiSecret = process.env.MAILJET_API_SECRET;
-  if (!apiKey || !apiSecret) return 'Mailjet non configuré';
+  if (!apiKey || !apiSecret) return { erreur: 'Mailjet non configuré', id: null };
   const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
   try {
     const r = await fetch('https://api.mailjet.com/v3.1/send', {
@@ -301,17 +313,18 @@ export async function envoyerMail(o: {
           TextPart: o.texte,
           HTMLPart: o.html,
           ...(o.pj?.length ? { Attachments: o.pj.map(p => ({ ContentType: p.type, Filename: p.nom, Base64Content: p.base64 })) } : {}),
-          TrackOpens: 'disabled', TrackClicks: 'disabled',
+          TrackOpens: o.suiviOuverture ? 'enabled' : 'disabled', TrackClicks: 'disabled',
         }],
       }),
     });
-    if (!r.ok) return `Mailjet ${r.status}`;
+    if (!r.ok) return { erreur: `Mailjet ${r.status}`, id: null };
+    const j = await r.json().catch(() => null);
     /* V3.151 : on vérifiera qu'il est bien arrivé (src/lib/remise-mail.ts) ;
        pas les alertes du CRM à Alexandre. */
-    if (o.deLaPartDe !== 'crm') noterRemises(await r.json().catch(() => null), { nom: o.nomA, objet: o.sujet });
-    return null;
+    if (o.deLaPartDe !== 'crm') noterRemises(j, { nom: o.nomA, objet: o.sujet });
+    return { erreur: null, id: idsMailjet(j)[0]?.[0]?.id || null };
   } catch (e) {
-    return e instanceof Error ? e.message : 'envoi impossible';
+    return { erreur: e instanceof Error ? e.message : 'envoi impossible', id: null };
   }
 }
 
