@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { CHAUFFAGE_MODES, CHAUFFAGE_ENERGIES, CHAUFFAGE_EMETTEURS, versListe } from '@/lib/chauffage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,8 +59,9 @@ Réponds avec ce JSON exact :
   "dpe_conso": "consommation DPE en kWh/m².an (entier)",
   "ges": "lettre GES : A, B, C, D, E, F ou G",
   "ges_emissions": "émissions GES en kg CO₂/m².an (entier)",
-  "chauffage": "type de chauffage (central, individuel, électrique...)",
-  "source_energie": "source d'énergie (gaz, électrique, fioul, pompe à chaleur...)",
+  "chauffage": "Collectif ou Individuel, sinon null",
+  "source_energie": "l'énergie du chauffage : Gaz, Électrique, Pompe à chaleur, Fioul, Bois, Réseau urbain ou Solaire, sinon null",
+  "chauffage_emetteurs": "ce qui diffuse la chaleur : Radiateurs, Plancher chauffant, Plafond chauffant, Convecteurs, Air pulsé ou Poêle, sinon null",
   "prix_vendeur": "le PRIX PRINCIPAL affiché en gros dans l'annonce (le prix de vente annoncé, généralement FAI). TOUJOURS prendre CE prix affiché en grand. NE JAMAIS utiliser le prix 'hors honoraires' / 'net vendeur' / 'hors frais d'agence', même si une ventilation honoraires (prix net + commission) est détaillée plus bas dans l'annonce. Entier, sans espaces ni virgules.",
   "charges_trimestrielles": "charges de copropriété en € par trimestre (entier)",
   "taxe_fonciere": "taxe foncière annuelle en € (entier)",
@@ -198,21 +200,35 @@ function enrichWithRegex(bien: Record<string, unknown>, texte: string) {
     if (/\brez[\s-]de[\s-]chauss[ée]e\b|\bRDC\b/i.test(t)) bien.etage = 0;
   }
 
-  // Chauffage
+  // Chauffage (V3.171 : trois cases — collectif ou individuel, énergie, diffusion)
   if (!bien.chauffage) {
-    if (/chauffage\s+central/i.test(t)) bien.chauffage = 'Central';
-    else if (/chauffage\s+individuel/i.test(t)) bien.chauffage = 'Individuel';
-    else if (/chauffage\s+collectif/i.test(t)) bien.chauffage = 'Collectif';
-    else if (/chauffage\s+[ée]lectrique/i.test(t)) bien.chauffage = 'Électrique';
+    if (/chauffage[^.\n]{0,30}collectif|collectif[^.\n]{0,15}chauffage/i.test(t)) bien.chauffage = 'Collectif';
+    else if (/chauffage[^.\n]{0,30}individuel|individuel[^.\n]{0,15}chauffage/i.test(t)) bien.chauffage = 'Individuel';
+    else if (/chauffage\s+central/i.test(t)) bien.chauffage = 'Central';
   }
 
   // Source énergie
   if (!bien.source_energie) {
     if (/pompe\s+[àa]\s+chaleur|PAC\b/i.test(t)) bien.source_energie = 'Pompe à chaleur';
+    else if (/r[ée]seau\s+(?:de\s+)?chaleur|chauffage\s+urbain|\bCPCU\b/i.test(t)) bien.source_energie = 'Réseau urbain';
     else if (/\bgaz\b/i.test(t)) bien.source_energie = 'Gaz';
-    else if (/[ée]lectrique/i.test(t)) bien.source_energie = 'Électrique';
+    else if (/chauffage[^.\n]{0,30}[ée]lectrique|[ée]lectrique[^.\n]{0,15}chauffage/i.test(t)) bien.source_energie = 'Électrique';
     else if (/fioul/i.test(t)) bien.source_energie = 'Fioul';
   }
+
+  // Diffusion
+  if (!bien.chauffage_emetteurs) {
+    if (/plancher\s+chauffant|chauffage\s+au\s+sol|sol\s+chauffant/i.test(t)) bien.chauffage_emetteurs = 'Plancher chauffant';
+    else if (/plafond\s+chauffant|chauffage\s+(?:par\s+le|au)\s+plafond/i.test(t)) bien.chauffage_emetteurs = 'Plafond chauffant';
+    else if (/air\s+puls[ée]/i.test(t)) bien.chauffage_emetteurs = 'Air pulsé';
+    else if (/convecteur/i.test(t)) bien.chauffage_emetteurs = 'Convecteurs';
+    else if (/radiateur/i.test(t)) bien.chauffage_emetteurs = 'Radiateurs';
+  }
+
+  // Les mots des menus du CRM (« gaz » → « Gaz »)
+  bien.chauffage = versListe(CHAUFFAGE_MODES, bien.chauffage);
+  bien.source_energie = versListe(CHAUFFAGE_ENERGIES, bien.source_energie);
+  bien.chauffage_emetteurs = versListe(CHAUFFAGE_EMETTEURS, bien.chauffage_emetteurs);
 
   // Booleans manqués
   bien.balcon = bien.balcon || /\bbalcon\b/i.test(t);
