@@ -50,8 +50,10 @@ export function demanderNouveauRdv() {
 /* V3.134 : « Organiser une visite » depuis la fiche d'un client. La même
    fenêtre, son dossier déjà choisi : il ne reste qu'à chercher les biens et
    le créneau. */
-export function demanderVisitePour(rechercheId: string) {
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVT_NOUVEAU_RDV, { detail: { rechercheId } }));
+/* V3.169 : `bienId` — « Caler la 2e visite » (onglet Visites) : le bien
+   est déjà coché dans la fenêtre. */
+export function demanderVisitePour(rechercheId: string, bienId?: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(EVT_NOUVEAU_RDV, { detail: { rechercheId, bienId } }));
 }
 
 /* « Envoyer un mail », de n'importe quel écran (V3.87) : la fenêtre de
