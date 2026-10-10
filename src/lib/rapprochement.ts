@@ -16,6 +16,7 @@ import { raisonEcart } from '@/lib/ecart-acheteur';
 import { versCorrespondance, typeCompatible, versBienAcheteur, titreBien, lirePhotos, type BienVente } from '@/lib/biens-vente';
 import { SEUIL_LISTE } from '@/components/biens/outils';
 import { signalerEchec } from '@/lib/ecritures';
+import { champsChauffage } from '@/lib/chauffage';
 
 export type SourceRappro = 'mandats' | 'veilles' | 'deux';
 /* En jours ; 0 = depuis le début. */
@@ -108,6 +109,7 @@ export function bienDepuisProposition(p: Ligne, clientId: string, rechercheId: s
     nb_lots: p.nb_lots, photos: p.photos || [],
     charges_trimestrielles: p.charges_trimestrielles ?? null, taxe_fonciere: p.taxe_fonciere ?? null,
     ...(p.charges_comprises ? { charges_comprises: p.charges_comprises } : {}),
+    ...champsChauffage(p),
     ...(Array.isArray(p.plans) && p.plans.length ? { plans: p.plans } : {}),
     source_portail: p.portail || 'Veille', agence_nom: p.agence || null, agence_tel: telAgence(p), badge_retour: 'propose',
     etape: 'selection', yanport_id: p.yanport_id || null, est_particulier: p.est_particulier || false,
