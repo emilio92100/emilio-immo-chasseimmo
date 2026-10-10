@@ -55,7 +55,7 @@ type Bien = {
   etat: string;
   /* Un bien de l'agence sous compromis ou vendu (V3.47) ; `vous` : c'est le
      sien, il l'achète. */
-  vente?: { etat: 'compromis' | 'vendu' | 'retire' | 'pause'; vous: boolean } | null;
+  vente?: { etat: 'compromis' | 'vendu' | 'retire' | 'pause'; vous: boolean; note?: string | null } | null;
   /* V3.48 : son offre sur un bien de l'agence, telle que le CRM la tient. */
   offre?: { statut: string; tombe: boolean } | null;
   /* V3.114 : un bien de l'agence (une copie d'un de ses biens en vente).
@@ -4486,6 +4486,13 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             <span>{phraseVente(b.vente)}</span>
           </div>
         )}
+        {/* V3.164 : le mot de son conseiller, quand il a dit le bien plus disponible. */}
+        {b.vente?.note && (
+          <div className="mot-indispo">
+            <i>{'Le mot de votre conseiller'}</i>
+            <span>{`« ${b.vente.note} »`}</span>
+          </div>
+        )}
         {corr && (
           <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
             <AnneauNote note={corr.note} />
@@ -6584,6 +6591,9 @@ input, textarea, select{font-family:inherit}
 .ruban-vente{position:absolute; top:10px; left:10px; z-index:2; padding:5px 10px; border-radius:99px; background:rgba(19,36,61,.88); color:#fff; font-size:12px; font-weight:800; letter-spacing:.2px}
 .ruban-vente.vous{background:var(--or); color:#13243D}
 .avis-vente{display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:14px; background:#F2F5F9; color:#13243D; font-size:14px; line-height:1.5; margin-bottom:14px}
+/* V3.164 : le mot du conseiller sur un bien plus disponible. */
+.mot-indispo{display:flex; flex-direction:column; gap:4px; margin:-6px 0 14px; padding:11px 14px; border-radius:14px; background:white; border:1px solid #E3E8F0; border-left:3px solid var(--or); color:#13243D; font-size:14px; line-height:1.55}
+.mot-indispo i{font-style:normal; font-size:11.5px; font-weight:700; letter-spacing:.3px; text-transform:uppercase; color:#8592A6}
 .avis-vente svg{flex-shrink:0; margin-top:2px}
 .avis-vente.vous{background:#fbf6e9; color:#5c4a1a}
 .bandeau-prix .p{font-family:'Plus Jakarta Sans',sans-serif; font-size:27px; font-weight:800; color:var(--or-fonce); letter-spacing:-1px}
