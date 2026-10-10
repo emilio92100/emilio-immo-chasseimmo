@@ -9,6 +9,7 @@ import {
   ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
   ModalePhotos, ModaleHonoraires,
 } from './ParcoursBien';
+import Cascade from '@/components/shared/Cascade';
 import FenetreBien, { LigneListe, BasLigne, BoutonBas, BoutonPied, LienPied, Ressort, BoutonVite } from './FenetreBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
@@ -622,6 +623,9 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         </div>
       )}
 
+      {/* V3.166 : Tout, Il veut visiter, En attente… — les lignes tombent en
+          cascade quand on change de filtre, comme partout ailleurs (Cascade). */}
+      <Cascade cle={filtreP} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       {affiches.map((b, idx) => {
         const r = RETOURS[groupeP(b)] || RETOURS.propose;
         return (
@@ -639,6 +643,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
           </Fragment>
         );
       })}
+      </Cascade>
 
       {/* De la place sous le dernier bien : la barre ne doit pas le cacher. */}
       {groupable && coches.length > 0 && <div aria-hidden="true" style={{ height: 64 }} />}
