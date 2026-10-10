@@ -269,21 +269,22 @@
 }
 
 /* ── V3.132 : la pastille qui glisse d'une tuile à l'autre ──────────────
-   Posée derrière les tuiles de la barre à cheval ; la tuile choisie devient
-   transparente et laisse voir la pastille, son texte passe au blanc en
-   douceur. Même courbe que les onglets de la fiche d'un bien. */
-.glisse { display: none; }
+   Posée derrière les tuiles ; la tuile choisie devient transparente et
+   laisse voir la pastille, son texte change de couleur en douceur.
+   V3.167 : la glissade de « Demandes Internet » (450 ms, partie vite, posée
+   en douceur), et partout — le bandeau bleu (pastille blanche), la barre à
+   cheval (pastille bleue), le téléphone (la carte blanche et son trait
+   d'or). `.avecGlisse` : la pastille est posée. */
+.glisse { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; }
+.glisseAnime { transition: transform .45s cubic-bezier(.2, .8, .2, 1), width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1); }
+.avecGlisse .tuile { z-index: 1; }
+.avecGlisse .n, .avecGlisse .lib, .avecGlisse .teteIc, .avecGlisse .archIc { transition: color .3s ease, background .3s ease; }
 @media (min-width: 761px) {
-  .glisse {
-    display: block; position: absolute; left: 0; top: 0; z-index: 0; border-radius: 11px; pointer-events: none;
-    background: var(--emilio-fond); box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85);
-  }
-  /* V3.152 : 300 ms, la courbe de la maquette « C », comme les onglets des fiches. */
-  .glisseAnime { transition: transform .3s cubic-bezier(.65, 0, .35, 1), width .3s cubic-bezier(.65, 0, .35, 1), height .3s cubic-bezier(.65, 0, .35, 1); }
-  .cheval .tuile { z-index: 1; transition: background .2s, border-color .2s, transform .15s; }
-  .cheval .n, .cheval .lib, .cheval .teteIc, .cheval .archIc { transition: color .3s ease, background .3s ease; }
+  .glisse { border-radius: 10px; background: #fff; box-shadow: 0 8px 18px -12px rgba(16, 24, 40, 0.7); }
+  .cheval .glisse { border-radius: 11px; background: var(--emilio-fond); box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85); }
+  .cheval .tuile { transition: background .2s, border-color .2s, transform .15s; }
   /* La pastille fait le fond : la tuile choisie s'efface derrière elle. */
-  .cheval .on, .cheval .on:hover, .cheval .tete.on, .cheval .tete.on:hover, .cheval .arch.on, .cheval .arch.on:hover {
+  .avecGlisse .on, .avecGlisse .on:hover, .avecGlisse .tete.on, .avecGlisse .tete.on:hover, .avecGlisse .arch.on, .avecGlisse .arch.on:hover {
     background: transparent; border-color: transparent; box-shadow: none;
   }
   /* V3.136 : plusieurs tuiles allumées (Ctrl + clic), pas de pastille —
@@ -293,6 +294,13 @@
     background: var(--emilio-fond); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(46, 65, 102, 0.85);
   }
 }
+@media (max-width: 760px) {
+  .glisse { background: #fff; }
+  .glisse::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: #c9a84c; border-radius: 0 0 3px 3px; }
+  .avecGlisse .on, .avecGlisse .tete.on, .avecGlisse .arch.on { background: transparent; }
+  .avecGlisse .on::before { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .glisseAnime { transition: none; } }
 /* V3.136 : « Ctrl + clic… » n'a pas de sens au doigt. */
 @media (max-width: 760px) { .phraseOrdi { display: none; } }
 

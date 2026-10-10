@@ -8,8 +8,9 @@
   border-radius: 10px; background: var(--emilio-fond);
   box-shadow: 0 8px 18px -10px rgba(26, 35, 50, .7);
 }
-/* V3.152 : 300 ms, accélérée puis freinée (la maquette « C »). */
-.anime { transition: transform .3s cubic-bezier(.65, 0, .35, 1), width .3s cubic-bezier(.65, 0, .35, 1); }
+/* V3.167 : la glissade de « Demandes Internet » (450 ms, partie vite, posée
+   en douceur), comme toutes les barres de choix (Curseur.tsx). */
+.anime { transition: transform .45s cubic-bezier(.2, .8, .2, 1), width .45s cubic-bezier(.2, .8, .2, 1); }
 
 .onglet {
   position: relative; z-index: 1; flex-shrink: 0;

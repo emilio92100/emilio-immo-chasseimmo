@@ -2,9 +2,9 @@
 
 /* ═══ Le contenu d'un onglet, en cascade (V3.152, style « C ») ═══════════
    Quand `cle` change (un autre onglet, une autre tuile, un autre filtre),
-   l'ancien contenu s'efface en 130 ms, posé par-dessus, et les blocs du
-   nouveau tombent de 12 px, l'un après l'autre (src/lib/mouvement.ts,
-   `cascader`). Seuls les blocs à l'écran bougent ; le contenu est utilisable
+   l'ancien contenu s'efface en 100 ms, posé par-dessus, et les blocs du
+   nouveau montent de 10 px, l'un après l'autre (src/lib/mouvement.ts,
+   `cascader` ; V3.167 : l'effet des cartes de « Demandes Internet »). Seuls les blocs à l'écran bougent ; le contenu est utilisable
    tout de suite.
 
    C'est un <div> ordinaire, rendu à neuf à chaque clé (comme le faisaient les

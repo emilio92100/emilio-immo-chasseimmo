@@ -195,9 +195,11 @@ export default function EnteteRubrique({
      son propre fond bleu — avant, la seconde restait blanche, son nom écrit
      en blanc : on ne voyait plus que « 162 • ». */
   const plusieurs = Array.isArray(actif) && tuiles.filter(t => actif.includes(t.cle)).length > 1;
+  /* V3.167 : partout — la barre bleue, la barre à cheval, et le bandeau
+     du téléphone (la carte blanche et son trait d'or glissent aussi). */
   useLayoutEffect(() => {
     const r = rangee.current;
-    if (!aCheval || !r || plusieurs) return;
+    if (!r || plusieurs) return;
     /* La position ne change que si elle a bougé : un `setGlisse` à
        l'identique redessinait l'en-tête pour rien à chaque mesure. */
     const caler = () => {
@@ -209,7 +211,7 @@ export default function EnteteRubrique({
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(caler) : null;
     if (ro) { ro.observe(r); r.querySelectorAll('button').forEach(b => ro.observe(b)); }
     return () => ro?.disconnect();
-  }, [aCheval, cleActive, cleTuiles, plusieurs]);
+  }, [cleActive, cleTuiles, plusieurs]);
   useEffect(() => {
     if (!glisse || anime) return;
     const id = requestAnimationFrame(() => setAnime(true));
@@ -254,8 +256,8 @@ export default function EnteteRubrique({
         )}
       </div>
 
-      {tuiles.length > 0 && <div ref={rangee} className={`${styles.rangee} ${plusieurs ? styles.plusieurs : ''}`} role="group" aria-label={label} data-defile="fondu">
-        {aCheval && glisse && !plusieurs && (
+      {tuiles.length > 0 && <div ref={rangee} className={`${styles.rangee} ${plusieurs ? styles.plusieurs : ''} ${glisse && !plusieurs ? styles.avecGlisse : ''}`} role="group" aria-label={label} data-defile="fondu">
+        {glisse && !plusieurs && (
           <span className={`${styles.glisse} ${anime ? styles.glisseAnime : ''}`} aria-hidden="true"
             style={{ transform: `translate(${glisse.x}px, ${glisse.y}px)`, width: glisse.l, height: glisse.h }} />
         )}
