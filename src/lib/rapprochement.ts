@@ -75,6 +75,19 @@ function typeAnnonceOk(t: unknown, typesRecherche: string | null | undefined): b
   return ['duplex', 'loft', 'studio', 'triplex'].includes(v) && l.includes('appartement');
 }
 
+/* V3.165 : le numéro de l'agence qui vend. Relevé par la veille dans
+   `agence_tel` ; à défaut, celui qu'elle a noté pour cette même agence dans
+   ses lignes « diffuseur » (`historique_prix`). Jamais celui d'une autre agence. */
+export function telAgence(p: Ligne | null | undefined): string | null {
+  if (!p) return null;
+  const direct = String(p.agence_tel || '').trim();
+  if (direct) return direct;
+  const agence = String(p.agence_nom || p.agence || '').trim().toLowerCase();
+  if (!agence || !Array.isArray(p.historique_prix)) return null;
+  const d = p.historique_prix.find((x: any) => x?.type === 'diffuseur' && x?.tel && String(x.agence || '').trim().toLowerCase() === agence);
+  return d ? String(d.tel).trim() || null : null;
+}
+
 /* La ligne à poser dans `biens` pour une proposition de veille — exactement
    les colonnes qu'écrit « Retenir » dans l'onglet Veille (OngletVeille). */
 export function bienDepuisProposition(p: Ligne, clientId: string, rechercheId: string): Ligne {
@@ -96,7 +109,7 @@ export function bienDepuisProposition(p: Ligne, clientId: string, rechercheId: s
     charges_trimestrielles: p.charges_trimestrielles ?? null, taxe_fonciere: p.taxe_fonciere ?? null,
     ...(p.charges_comprises ? { charges_comprises: p.charges_comprises } : {}),
     ...(Array.isArray(p.plans) && p.plans.length ? { plans: p.plans } : {}),
-    source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
+    source_portail: p.portail || 'Veille', agence_nom: p.agence || null, agence_tel: telAgence(p), badge_retour: 'propose',
     etape: 'selection', yanport_id: p.yanport_id || null, est_particulier: p.est_particulier || false,
     date_publication: p.date_publication || p.date_annonce || null, prix_initial: p.prix_initial || null,
     nb_baisses: p.nb_baisses || null, nb_agences: p.nb_agences || null,
