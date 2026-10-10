@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, addJournal } from '@/lib/supabase';
 import { apprisDe } from '@/lib/visites';
 import { reprendreSuspendus } from '@/lib/suspension';
+import { champsChauffage } from '@/lib/chauffage';
 
 /**
  * Page d'import de la veille — /veille/import
@@ -319,6 +320,10 @@ export default function PageImportVeille() {
               // (« chauffage et eau chaude collectifs, gardien ») ; la colonne
               // n'est écrite que si l'annonce en dit quelque chose
               ...(p.charges_comprises ? { charges_comprises: String(p.charges_comprises) } : {}),
+              // V3.171 : le chauffage en trois cases — chauffage (Collectif,
+              // Individuel), source_energie (Gaz, Électrique…), chauffage_emetteurs
+              // (Radiateurs, Plancher chauffant…) ; seulement ce qui est connu
+              ...champsChauffage(p),
               taxe_fonciere: p.taxe_fonciere ?? null,
               dpe: p.dpe || null,
               ges: p.ges || null,
