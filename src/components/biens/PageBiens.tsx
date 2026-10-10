@@ -25,6 +25,7 @@ import { CIBLES_ETAPE, FenEnvoiLot, RaisonEtape, bloqueEtape, passerEtape, type 
 import { aererTexte, texteEnBloc } from '@/lib/annonce-texte';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 /* ═══ Biens ═══════════════════════════════════════════════════════════════
    Les biens qu'Alexandre vend ou pourrait vendre pour un propriétaire : un
@@ -113,6 +114,7 @@ function Pastilles<K extends string>({ choix, v, onChange, label, aide }: {
   return (
     <div className={b.sousDiff}>
       <div className={b.sousDiffPills} role="group" aria-label={label}>
+        <Curseur cle={v} />
         {choix.map(x => (
           <button key={x.k} type="button" aria-pressed={v === x.k} onClick={() => onChange(x.k)}>
             {x.c && <i className={b.sousDiffPoint} style={{ background: x.c }} />}
@@ -613,8 +615,9 @@ export default function PageBiens({ onNavigate }: { onNavigate: (page: string, d
           </div>
         </div>
       ) : (
-        /* V3.152 : une autre catégorie, ou l'autre vue, arrive en cascade. */
-        <Cascade cle={`${filtre}:${vue}`} arrivee className={`${vue === 'lignes' ? b.lignesBiens : b.grille} cascade`}>
+        /* V3.152 : une autre catégorie, ou l'autre vue, arrive en cascade.
+           V3.167 : les pastilles du dessous (Diffusion, Ventes en cours) aussi. */
+        <Cascade cle={`${filtre}:${vue}:${filtre === 'diffusion' ? sousDiff : filtre === 'ventes' ? sousVente : ''}`} arrivee className={`${vue === 'lignes' ? b.lignesBiens : b.grille} cascade`}>
           {visibles.map(x => {
             const Rendu = vue === 'lignes' ? LigneBien : CarteBien;
             const on = choisis.has(x.id);

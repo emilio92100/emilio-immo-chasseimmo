@@ -14,6 +14,7 @@ import { Anneau } from './OngletsBien';
 import { jourParis } from '@/lib/mandat';
 import { demanderDocuments, deposerPiece, envoyerDocuments, ouvrirPiece, retirerPiece, type DestDocuments } from './outils';
 import x from './DossierBien.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 /* ═══ Le dossier d'un bien, dans l'onglet Documents (V3.30, V3.31) ═════════
    Alexandre : « le dossier diagnostic et pièces, c'est sur une seule ligne,
@@ -782,6 +783,7 @@ export function DossierBien({ bienId, d, maj, destinataires, lieu, onMessage, et
 
       <div className={x.outils}>
         <div className={x.filtres} role="group" aria-label="Filtrer le dossier">
+          <Curseur cle={filtre} />
           {([['tout', 'Tout', concernes.length], ['reunir', 'À réunir', reunir], ['demande', 'Demandés', demandes], ['recu', 'Reçus', recus]] as const).map(([k, l, n]) => (
             <button key={k} type="button" aria-pressed={filtre === k} onClick={() => setFiltre(k)}>{l}<i>{n}</i></button>
           ))}

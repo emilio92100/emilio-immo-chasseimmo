@@ -25,6 +25,7 @@ import { PastillePli } from '@/components/shared/Pli';
 import { CarteOffreB, CarteVisiteB, dateAn, type ActionsOffre, type VisiteCarte } from './OngletsBien';
 import { LibelleBon, type EtatBon } from '@/components/documents/BonDeVisite';
 import x from './VisitesOffres.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 const NBSP = ' ';
 const jourMidi = (iso: string) => new Date(iso.length <= 10 ? `${iso}T12:00:00` : iso);
@@ -243,6 +244,7 @@ export function OngletVisitesOffres({ visites, offres, prix, compromis, onVisite
               resume={[evts.filter(e => e.genre === 'visite').length ? `${evts.filter(e => e.genre === 'visite').length} visite${evts.filter(e => e.genre === 'visite').length > 1 ? 's' : ''}` : '', evts.filter(e => e.genre === 'offre').length ? `${evts.filter(e => e.genre === 'offre').length} offre${evts.filter(e => e.genre === 'offre').length > 1 ? 's' : ''} close${evts.filter(e => e.genre === 'offre').length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')} />
             {ouvert('histo') && (
               <div className={x.seg} role="group" aria-label="Que montrer">
+                <Curseur cle={filtre} />
                 <button type="button" aria-pressed={filtre === 'tout'} onClick={() => setFiltre('tout')}>Tout<i>{evts.length}</i></button>
                 <button type="button" aria-pressed={filtre === 'visite'} onClick={() => setFiltre('visite')}>Visites<i>{evts.filter(e => e.genre === 'visite').length}</i></button>
                 <button type="button" aria-pressed={filtre === 'offre'} onClick={() => setFiltre('offre')}>Offres<i>{evts.filter(e => e.genre === 'offre').length}</i></button>

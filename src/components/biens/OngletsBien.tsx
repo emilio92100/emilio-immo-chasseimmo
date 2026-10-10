@@ -13,6 +13,7 @@ import FenAnnonce from './FenAnnonce';
 import { COULEURS, habitable, nbPrincipales } from './ChampsBien';
 import f from '@/components/fiche/FriseSuivi.module.css';
 import o from './OngletsBien.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 /* ═══ Les onglets d'un bien, refaits (V3.29) ════════════════════════════
    Maquettes validées par Alexandre (canevas, planches 13 à 17), codées ici ;
@@ -475,6 +476,7 @@ export function LesPieces({ pieces, onModifier }: { pieces: Piece[]; onModifier:
         <span>{sous}</span>
         {pieces.length > 0 && (
           <div className={o.vues} role="group" aria-label="Affichage des pièces">
+            <Curseur cle={vue} />
             <button type="button" className={o.vue} aria-pressed={vue === 'usage'} onClick={() => choisir('usage')}>
               <Ic n="groupe" t={14} e={2.1} />Par usage
             </button>
@@ -1301,6 +1303,7 @@ export function HistoriqueBien({ evts, aVenir, parcours, chiffres, erreur, onNot
           <div className={f.teteBoutons}><button type="button" className={f.btnAjout} style={{ gridColumn: '1 / -1' }} onClick={onNote}>+ Ajouter une note</button></div>
         </div>
         <div className={f.filtres} role="group" aria-label="Filtrer l’historique">
+          <Curseur cle={g} />
           {GENRES.map(x => {
             const n = x.k === 'tout' ? evts.length : evts.filter(e => e.genre === x.k).length;
             if (x.k !== 'tout' && !n) return null;

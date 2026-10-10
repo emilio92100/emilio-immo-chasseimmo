@@ -8,6 +8,7 @@ import { COULEURS, SaisieNombre } from './ChampsBien';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
 import l from '@/components/clients/FiltresAcheteurs.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 /* ═══ Affiner la liste des biens (V3.16) ══════════════════════════════════
    Une ligne sous les catégories : le type, la surface, les pièces, le
@@ -164,6 +165,7 @@ export default function FiltresBiens({ biens, f, onF, tri, onTri, n, total, vue,
         </button>
         {/* En cartes ou en lignes (V3.17). */}
         <span className={b.affVue} role="group" aria-label="Affichage">
+          <Curseur cle={vue} />
           <button type="button" aria-pressed={vue === 'cartes'} title="En cartes" aria-label="En cartes" onClick={() => onVue('cartes')}><Ic n="cartes" t={16} /></button>
           <button type="button" aria-pressed={vue === 'lignes'} title="En lignes" aria-label="En lignes" onClick={() => onVue('lignes')}><Ic n="lignes" t={16} /></button>
         </span>
