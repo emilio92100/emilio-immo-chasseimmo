@@ -1499,6 +1499,32 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.169 — 10 octobre 2026 · L'onglet Visites refait (« le fil des visites ») ; les couleurs du menu sur ordinateur
+
+- Alexandre : « l'onglet Visites, ça fait un peu bas de gamme… quand on clique sur Non abouti il n'y
+  a rien… pas de photo du bien… le commentaire pas assez mis en avant… pourquoi Bon de visite sur
+  une visite faite ? ». Trois maquettes (canvas « Onglet Visites — maquettes ») : il a choisi la A,
+  avec un fondu entre la photo et le texte. `OngletVisites.tsx` réécrit + `OngletVisites.module.css` :
+  - une barre de filtres (Curseur) : Compte rendu à faire · À venir · Il/Elle y pense · Pas pour
+    lui/elle · (Sans issue) · Toutes au bout. À l'arrivée : « Compte rendu à faire » s'il en reste,
+    sinon « À venir », sinon « Toutes ». Les mots s'accordent (civilité, couple : props `civilite`,
+    `couple`) ;
+  - « Ce que la veille retient de ses visites » (l'ancien « Ce que ses visites ont appris ») ;
+  - le fil : la date à gauche, la carte avec la photo du bien qui se fond dans le blanc (au
+    téléphone : photo en haut, fondue vers le bas, la date posée dessus) ; ton compte rendu en
+    grand (encadré doré), ce que le client a dit dans son espace (bulle bleue), ses raisons ;
+  - le bon de visite : à venir, « Préparer le bon de visite » ou « prêt, à faire signer » ; une
+    visite faite ne montre que l'état d'un bon qui existe (« Bon de visite signé ») — plus de
+    bouton qui en crée un après coup ;
+  - « Déplacer » déplie la date, l'heure et le contact ; « Appeler » si le bien a `agence_tel` ;
+  - « Caler la 2e visite » (À revoir, pas encore recalée) : `demanderVisitePour(rechercheId,
+    bienId)` (intentions.ts) ouvre la fenêtre du rendez-vous, client et bien déjà cochés
+    (PageAgenda : `Modale.bienId`).
+  Les anciennes règles téléphone `.fc-visite` (crm-mobile.css) sont retirées.
+- Alexandre : « les couleurs du menu sur téléphone, remets-les sur ordinateur ». Sidebar.module.css :
+  au-dessus de 900 px, chaque rubrique a aussi son picto sur une pastille de sa teinte (V3.162),
+  la rubrique ouverte en bleu Emilio, picto doré.
+
 ### V3.168 — 10 octobre 2026 · La page ne bouge plus quand on change d'onglet ; le détail s'ouvre sous sa case
 
 - Alexandre : « quand j'appuie sur Sélection alors que j'étais dans Visites, ma page se remet
