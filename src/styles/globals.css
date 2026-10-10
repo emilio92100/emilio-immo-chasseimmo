@@ -143,6 +143,24 @@ html:not(.emi-mvt) .cascade > :nth-child(8) { animation-delay: 210ms; }
 html:not(.emi-mvt) .cascade > :nth-child(9) { animation-delay: 240ms; }
 html:not(.emi-mvt) .cascade > :nth-child(n+10) { animation-delay: 270ms; }
 
+/* La pastille qui glisse (V3.167, src/components/shared/Curseur.tsx) : le
+   fond du choix actif glisse d'un choix à l'autre, comme dans « Demandes
+   Internet ». Elle prend l'allure du bouton actif ; le bouton, lui, perd son
+   propre fond tant qu'elle est là (`pret`) — `!important` l'emporte sur les
+   styles écrits dans les composants. Pas de transition de fond sur les
+   boutons : la pastille seule bouge, le texte change de couleur en douceur. */
+.emi-curseur {
+  position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; box-sizing: border-box;
+  border-style: solid; border-width: 0; opacity: 0;
+  transition: transform .45s cubic-bezier(.2,.8,.2,1), width .45s cubic-bezier(.2,.8,.2,1), height .45s cubic-bezier(.2,.8,.2,1),
+    background-color .35s ease, border-color .35s ease, box-shadow .35s ease, opacity .2s ease;
+}
+[data-glisse] > :is(button, a, label) { position: relative; z-index: 1; transition: color .3s ease, opacity .3s ease !important; }
+[data-glisse="pret"] > :is([aria-pressed="true"], [aria-selected="true"], [data-actif="true"]) {
+  background: transparent !important; border-color: transparent !important; box-shadow: none !important;
+}
+@media (prefers-reduced-motion: reduce) { .emi-curseur { transition: none; } }
+
 /* Pendant qu'une liste se lit : sa silhouette, qui miroite doucement, au lieu
    d'un « Chargement… » qui laissait place d'un coup à tout le tableau. */
 .squelette { display: flex; flex-direction: column; gap: 8px; }

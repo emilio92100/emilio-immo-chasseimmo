@@ -201,7 +201,8 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
   html.crm .emi-onglets::-webkit-scrollbar { display: none; }
   html.crm .emi-onglet { flex-shrink: 0; scroll-snap-align: start; padding: 10px 13px 11px; font-size: 13.5px; }
   html.crm .emi-onglet[data-actif="true"] { padding-top: 10px; }
-  html.crm .emi-onglets.sombre .emi-onglet[data-actif="true"]::after { display: none; }
+  html.crm .emi-onglets.sombre .emi-onglet[data-actif="true"]::after,
+  html.crm .emi-onglets.sombre .emi-onglet-curseur::after { display: none; }
 
   /* Onglet Suivi */
   html.crm .fc-suivi-carte { padding: 14px !important; }
@@ -345,17 +346,16 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
      suivi (« Où en est la recherche ») et son panneau vont d'un bord à
      l'autre ; les cartes des biens aussi, sans arrondi ni cadre sur les
      côtés. Les titres et les textes du panneau gardent 14 px de marge. */
-  html.crm .fiche-suivi { margin-top: 14px; padding: 12px 0 0; border-radius: 0; }
+  /* V3.167 — Alexandre : « où en est la recherche, sur le téléphone, le
+     bloc bleu n'est pas en arrondi » alors que le bandeau du nom l'est
+     (V3.163). Le bloc reprend ses coins arrondis, à 10 px des bords comme
+     le reste de la fiche ; les cartes des biens gardent les leurs, posées
+     dans le panneau. */
+  html.crm .fiche-suivi { margin-top: 14px; padding: 12px 0 0; border-radius: 20px 20px 0 0; }
   html.crm .fiche-suivi-tete { padding: 0 14px 10px; }
   html.crm .fiche-suivi-tete > .fiche-suivi-rappro, html.crm .fiche-suivi-tete > .fiche-suivi-reinit { margin-left: 0; }
   html.crm .fiche-suivi .emi-onglets { padding: 0 12px !important; }
-  html.crm .fiche-tab { padding: 12px 14px; border-radius: 0; border-left: none; border-right: none; }
-  /* Les cartes sont posées « en ligne » (OngletBiens, OngletVeille) : d'où
-     `!important`. Les marges négatives les amènent au bord de l'écran. */
-  html.crm .fiche-tab .emi-carte, html.crm .fiche-tab .emi-ligne {
-    margin-left: -14px !important; margin-right: -14px !important;
-    border-radius: 0 !important; border-left: none !important; border-right: none !important;
-  }
+  html.crm .fiche-tab { padding: 12px 8px; border-radius: 0 0 20px 20px; }
 }
 
 @keyframes crmDeplie { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
