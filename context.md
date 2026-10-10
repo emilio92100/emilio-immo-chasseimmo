@@ -1499,6 +1499,27 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.171 — 10 octobre 2026 · Le chauffage en trois cases (biens des acheteurs, veille, espace)
+
+- Alexandre (une cliente demandait « le chauffage ? » sur un bien présenté) : « si c'est marqué
+  chauffage collectif, bah, par radiateur ou au sol ou au plafond […]. Quand c'est individuel,
+  mettre si c'est électrique, si c'est au gaz ». Un bien d'acheteur porte trois réponses :
+  `chauffage` (Collectif, Individuel), `source_energie` (Gaz, Électrique, Pompe à chaleur, Fioul,
+  Bois, Réseau urbain, Solaire) et la nouvelle colonne `chauffage_emetteurs` (Radiateurs, Plancher
+  chauffant, Plafond chauffant, Convecteurs, Air pulsé, Poêle). SQL : `outils/sql/chauffage.sql`
+  (passé le 10/10) — `biens.chauffage_emetteurs`, et les trois colonnes sur `veille_propositions`.
+- `src/lib/chauffage.ts` : les listes, `texteChauffage()` (« Collectif, gaz, par radiateurs »),
+  `champsChauffage()` (ce qui est rempli), `versListe()` (« gaz » → « Gaz »), `optionsAvec()` (une
+  ancienne valeur, « Central », reste dans le menu).
+- Saisie : trois menus dans la fenêtre « Détail » (DetailBien) et le formulaire de création
+  (FicheClient). Le texte collé (`/api/parse-texte-bien`) remplit les trois.
+- Affichage : sous les tuiles de la carte (« Chauffage : Collectif, gaz, par radiateurs », sous
+  « Compris dans les charges »), sur la page `/bien/<id>` et dans l'espace du client (tuile
+  « Chauffage » : le mode en gros, l'énergie et la diffusion dessous).
+- Chemin : `veilleDeposer()` dépose `chauffage`, `source_energie`, `chauffage_emetteurs` s'ils sont
+  connus ; « Retenir » et le rapprochement les font suivre ; un bien de l'agence les reprend de
+  son dossier (`versBienAcheteur`, qui écrit maintenant « Électrique » comme les menus).
+
 ### V3.170 — 10 octobre 2026 · Visites : revoir le bien
 
 - Alexandre : « dans Déjà visités, on ne peut plus revoir le bien ? ». Dans l'onglet Visites, la
