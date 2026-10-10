@@ -12,6 +12,7 @@ import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import Cascade from '@/components/shared/Cascade';
 import { signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import FenetrePenseBete, { DEBUT_PENSE_BETE } from './FenetrePenseBete';
+import Curseur from '@/components/shared/Curseur';
 
 /*
  * Les relances : qui recontacter, et quand.
@@ -702,7 +703,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         /* « Plus loin » : la barre des périodes. */
         .rl-periode{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-radius:16px;background:#fff;border:1px solid ${BORD}}
         .rl-periode-t{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#475569;margin-right:2px}
-        .rl-puce{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:20px;border:1px solid #dfe5ee;background:#fff;color:${NAVY};font:700 12.5px 'DM Sans',system-ui,sans-serif;cursor:pointer}
+        .rl-puce{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:20px;border:1px solid #dfe5ee;background:transparent;color:${NAVY};font:700 12.5px 'DM Sans',system-ui,sans-serif;cursor:pointer}
         .rl-puce > i{font-style:normal;font-size:11px;font-weight:800;padding:1px 7px;border-radius:20px;background:#f1f5f9;color:#475569}
         .rl-puce[aria-pressed=true]{background:${NAVY};border-color:${NAVY};color:#fff}
         .rl-puce[aria-pressed=true] > i{background:rgba(255,255,255,.18);color:#fff}
@@ -867,6 +868,8 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
           période — les 30 ou 60 prochains jours, un jour, entre deux dates. */}
       {!seulTri && !loading && filtre === 'plusloin' && (
         <div className="rl-periode rl-entre">
+          {/* V3.167 : la pastille marine glisse d'une période à l'autre. */}
+          <Curseur cle={periode?.k || 'semaines'} />
           <span className="rl-periode-t"><Ic n="calendrier" t={14} ep={2.1} />Voir</span>
           <button type="button" className="rl-puce rl-appui" aria-pressed={!periode} onClick={() => setPeriode(null)}>
             <span>Après cette semaine</span><i>{plusLoin}</i>

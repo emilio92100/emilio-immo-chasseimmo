@@ -746,7 +746,7 @@ function StylesAgenda() {
       .ag-lienBien:hover{border-color:#e6cf8f !important;background-color:#fffaf0 !important}
       .ag-case{transition:background-color .15s ease}
       .ag-case:hover{background-color:#f8f9fc !important}
-      .ag-seg{transition:transform .38s cubic-bezier(.34,1.4,.5,1)}
+      .ag-seg{transition:transform .45s cubic-bezier(.2,.8,.2,1)}
       .ag-maintenant{position:absolute;left:0;right:0;height:2px;background:#d6543c;z-index:5;pointer-events:none}
       .ag-maintenant::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:#d6543c;animation:agPouls 2.2s ease-out infinite}
       .ag-tiroir{animation:agTiroir .42s cubic-bezier(.2,.9,.3,1) both}
@@ -819,7 +819,7 @@ function Segment({ vue, setVue, largeur = 84 }: { vue: string; setVue: (v: 'jour
       <span className="ag-seg" style={{ position: 'absolute', top: 4, left: 4, width: largeur, height: 36, borderRadius: 10, background: 'white', boxShadow: '0 2px 10px -3px rgba(16,24,40,.28)', transform: `translateX(${i * largeur}px)` }} />
       {vues.map(v => (
         <button key={v.id} type="button" onClick={() => setVue(v.id)} aria-pressed={vue === v.id}
-          style={{ position: 'relative', width: largeur, height: 36, border: 'none', background: 'transparent', borderRadius: 10, fontSize: 13, fontWeight: 700, color: vue === v.id ? NAVY : '#6b778a', cursor: 'pointer', fontFamily: 'inherit' }}>{v.lib}</button>
+          style={{ position: 'relative', width: largeur, height: 36, border: 'none', background: 'transparent', borderRadius: 10, fontSize: 13, fontWeight: 700, color: vue === v.id ? NAVY : '#6b778a', cursor: 'pointer', fontFamily: 'inherit', transition: 'color .3s ease' }}>{v.lib}</button>
       ))}
     </div>
   );

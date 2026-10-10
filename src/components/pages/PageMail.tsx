@@ -17,6 +17,7 @@ import {
   type StyleMail,
 } from '@/lib/mail-libre';
 import s from './PageMail.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 /* ═══ Nouveau mail (V3.41) ════════════════════════════════════════════════
    Un mail écrit à la main, à des contacts du CRM ou à n'importe quelle
@@ -320,6 +321,7 @@ function FenetreApercu({ dests, objet, corps, style, h, conseiller, pieces, envo
             {pieces.length > 0 && <><dt>{lourd ? 'Liens' : 'Pièces'}</dt><dd>{`${pieces.map(p => p.nom).join(', ')}${lourd ? ' — trop lourdes pour être jointes : le mail portera des liens de téléchargement, valables 7 jours.' : ''}`}</dd></>}
           </dl>
           <div className={s.ecrans} role="group" aria-label="Taille de l’écran">
+            <Curseur cle={ecran} />
             <button type="button" aria-pressed={ecran === 'ordi'} onClick={() => setEcran('ordi')}><Ic n="ecran" t={14} /><span>Ordinateur</span></button>
             <button type="button" aria-pressed={ecran === 'tel'} onClick={() => setEcran('tel')}><Ic n="tablette" t={14} /><span>Téléphone</span></button>
           </div>

@@ -7,6 +7,7 @@ import ParamPointAuto from './ParamPointAuto';
 import ParamAlertes from './ParamAlertes';
 import ParamAgence from './ParamAgence';
 import { signatureDe, texteModele, VARIABLES_MAIL } from '@/lib/mail-variables';
+import Curseur from '@/components/shared/Curseur';
 
 const CODE: React.CSSProperties = { background: '#f8fafc', padding: '1px 6px', borderRadius: 4 };
 
@@ -82,10 +83,13 @@ export default function PageParametres() {
 
       <div className={styles.paramGrille} style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 20 }}>
         {/* NAV SECTIONS */}
-        <div className={styles.paramNav} style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-defile="">
+        {/* V3.167 : les rubriques dans un rail blanc ; la pastille bleue glisse
+            de l'une à l'autre (Curseur), comme dans « Demandes Internet ». */}
+        <div className={styles.paramNav} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignSelf: 'start', background: 'white', border: '1px solid #e3e8f0', borderRadius: 16, padding: 6 }} data-defile="">
+          <Curseur cle={activeSection} />
           {sections.map(s => (
             <button key={s.id} onClick={() => setActiveSection(s.id)} aria-pressed={activeSection === s.id}
-              style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 10, border: 'none', background: activeSection === s.id ? 'var(--emilio)' : 'white', color: activeSection === s.id ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.12s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 2 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 11, border: 'none', background: activeSection === s.id ? 'var(--emilio)' : 'transparent', color: activeSection === s.id ? 'white' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', boxShadow: activeSection === s.id ? '0 8px 18px -10px rgba(46,65,102,.85)' : 'none' }}>
               {s.icon} {s.label.split(' ').slice(1).join(' ')}
             </button>
           ))}

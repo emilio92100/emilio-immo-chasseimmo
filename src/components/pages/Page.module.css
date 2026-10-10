@@ -167,7 +167,9 @@
   .header, .page > p { padding-left: 14px; padding-right: 14px; }
   .empty, .card, .paramCard, .visiteCard { border-radius: 0; border-left: none; border-right: none; }
   .carteForm { padding: 16px 14px !important; border-radius: 0; }
-  .paramNav { margin: 0; padding: 2px 14px 4px; }
+  /* V3.167 : les rubriques sont dans un rail blanc arrondi (la pastille y
+     glisse) : il garde 10 px de chaque côté. */
+  .paramNav { margin: 0 10px; }
 
   /* V3.160 — Alexandre : « dans Mon activité, remets un peu en arrondi,
      comme le dashboard : ça fait trop carré ». Six tuiles arrondies, deux
