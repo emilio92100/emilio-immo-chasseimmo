@@ -1499,6 +1499,75 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.165 — 10 octobre 2026 · Les biens en lignes et « Voir en grand » ; le nouveau « Détail » ; le pense-bête des Relances
+
+⚠️ **À passer dans Supabase** : `outils/sql/veille-agence-tel.sql` (colonne
+`veille_propositions.agence_tel`) et `outils/sql/relances-pense-bete.sql` (`relances.client_id`
+peut rester vide). Sans le premier, la veille dépose sans le numéro ; sans le second, un
+pense-bête doit avoir un contact (la fenêtre le dit).
+
+- **Veille, Sélection, Présentés : une ligne par bien, et le bien en grand** (maquettes du
+  10 octobre, choix « E » ; Alexandre : « des lignes, j'appuie sur voir en grand… en présenté, que je
+  voie ses commentaires sans ouvrir en grand »). `src/components/fiche/FenetreBien.tsx` :
+  · `LigneListe` : photo (et le nombre de photos), titre, adresse + ville (`lieuDe`), étiquettes
+    (`PucesBien` : note de la veille, chiffres, équipements, baisses, particulier), prix et
+    dessous, « Voir en grand » (picto seul au téléphone). Liseré de couleur à gauche : le verdict
+    de la veille (Veille), la réponse du client (Présentés). Les cartes pleines et la bascule
+    Détaillé / Compact ont disparu des deux onglets (`useAffichage`/`LigneCompacte` restent dans
+    ParcoursBien, plus utilisés ici).
+  · Présentés : sous chaque ligne (`BasLigne`), sa réponse et ses mots (« depuis son espace » ou
+    « noté par toi »), « Noter son retour » et « Planifier une visite » (il veut visiter, ça lui
+    plaît) ; en attente : « Envoyé il y a 3 jours par mail · ouvert 2 fois » ; plus disponible :
+    le motif, ton mot, « Remettre disponible ». Sélection : la fiche soignée (prête, demandée) et un
+    bouton doré « Envoyer » au bout de la ligne ; les cases pour l'envoi groupé restent.
+  · La fenêtre `FenetreBien` (portail, z-index 190 : le Détail et la fenêtre de visite de la fiche,
+    à 200, passent devant ; les `Modale` à 9999 aussi). En haut : ← « 2 sur 7 » →, Annonce
+    d'origine, Détail, Parcours (la frise, en bas), Appeler l'agence. Puis la mosaïque de photos
+    (une grande, quatre petites, la visionneuse au clic ; `Visionneuse` est exportée), les bandeaux
+    (sa réponse, plus disponible, la fiche PDF), `AvisLien`, le titre et le prix, Caractéristiques
+    (`Specs` avec la recherche : vert / ambre), Équipements (`LigneBien`, le même que la Veille — les
+    petites étiquettes « Balcon, Parking… » du bas de carte n'existent plus), « Qui le vend » (agence,
+    numéro, Appeler), et « Ce que dit la veille » : l'anneau de la note (ouvre ModaleScore),
+    `Appreciation`, `BilanBien`, `BandeauMarche sobre` (nouveau : un titre « Le marché » au lieu du
+    second bandeau sombre). Les boutons en bas, toujours à l'écran. Clavier : Échap, ← →
+    (seulement au premier plan, `elementFromPoint`). Au téléphone : plein écran.
+  · Après un choix — Retenir, Écarter (le motif se tape dans le pied), Envoyer, Plus disponible —
+    la liste se relit SANS repasser par « Chargement… » (`dejaLu`, sinon la fenêtre se démontait),
+    et la fenêtre montre le bien qui prend la place (id + rang retenus : `grand`), avec un mot
+    vert (« Retenu : il passe dans Sélection. ») ; plus rien : elle se ferme.
+- **Le numéro de l'agence** (« Tél. agence » était toujours vide pour un bien de la veille) :
+  `telAgence()` (src/lib/rapprochement.ts) lit `agence_tel`, sinon le `tel` de la ligne
+  « diffuseur » de la même agence. « Retenir » (OngletVeille) et `bienDepuisProposition` le
+  recopient dans `biens.agence_tel` ; `veilleDeposer` accepte `agence_tel` (et redépose sans lui
+  tant que la colonne manque). Les consignes de la veille (skill recherche-immobiliere-emilio) sont à
+  compléter : relever le numéro de l'agence au dépôt.
+- **Le nouveau « Détail »** (maquette F ; « plus joli, plus moderne, avec des pictos ») :
+  `src/components/fiche/DetailBien.tsx` remplace la fenêtre « MODAL FICHE BIEN » de FicheClient
+  (même `editBienForm`, même `saveFicheBien`). Un menu des parties (Photos, Lieu et annonce, Le bien,
+  Équipements, Prix et charges, Énergie, Agence, Description ; rangée de pastilles au téléphone) qui
+  suit la lecture, des pictos partout, et tout ce que la veille relève : adresse, quartier,
+  situation, séjour, étage « sur », année, lots, salles d'eau, exposition, état, dix équipements,
+  surface extérieure, places de parking, charges et ce qu'elles comprennent, taxe foncière, DPE et
+  GES en échelle de couleurs, consommation, chauffage, particulier ou agence, téléphone + Appeler.
+  Ce qui manque (titre, ville, lien, surface, pièces, chambres, étage, année, exposition, prix,
+  charges, taxe foncière, DPE, agence, téléphone) : cadre orange en pointillé et compteur dans le
+  menu. Description : « Agrandir » (160 → 460 px) et « Reformuler ». `saveFicheBien` écrit en plus
+  adresse, situation, surface_sejour, surface_exterieur, nb_lots, nb_parking, est_particulier
+  (agence et téléphone vides → null).
+- **Relances : « Nouvelle relance », le pense-bête** (« créer une relance moi-même en note libre…
+  je mets la date et ça arrive dans les relances ») : bouton du bandeau, fenêtre
+  `src/components/pages/FenetrePenseBete.tsx` (bouton « Nouvelle relance / pense-bête ») — pour qui
+  (un contact cherché par son nom, ou personne), quoi, quand : quatre tuiles à picto (aujourd'hui,
+  demain, dans 3 jours, dans une semaine) et le calendrier de « Nouveau rendez-vous » pour une autre
+  date (`ChoixJour`, exporté de PageAgenda : `BoutonChamp` + `PanneauCalendrier`, dont la légende
+  des points ne s'affiche plus quand il n'y en a pas). « C'est fait » clôt la relance (statut
+  `cloturee`, rien n'est effacé) ; « Reporter » change sa date. Une relance
+  `manuelle` dont la note commence par « Pense-bête — » (étiquette « Pense-bête », picto note) ;
+  rattachée à la recherche ouverte du contact s'il en a une. Sans contact : nom « Pense-bête »,
+  picto à la place de l'avatar, ni fiche ni Traiter (Reporter et C'est fait). Créée : la page passe
+  sur son jour, l'entoure et le dit. Tableau de bord : une relance sans contact ne plante plus
+  (`r.client_id.slice`) et ouvre les Relances.
+
 ### V3.164 — 10 octobre 2026 · Planifier une visite : le calendrier de l'agenda ; « Ce bien n'est plus disponible »
 
 ⚠️ **À passer dans Supabase** : `outils/sql/biens-indispo.sql` (colonne `biens.indispo`). Sans lui,
