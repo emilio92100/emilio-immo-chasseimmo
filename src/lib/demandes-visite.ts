@@ -67,12 +67,21 @@ export async function chargerDemandesVisite(): Promise<DemandeVisite[]> {
     }
   }
 
+  /* V3.164 : un bien trouvé ailleurs, dit « plus disponible » par Alexandre
+     (biens.indispo) : sa demande n'a plus d'objet. Lu à part, sans rien
+     bloquer : avant le SQL (outils/sql/biens-indispo.sql), la colonne
+     n'existe pas et rien n'est retiré. */
+  const indispos = new Set<string>();
+  {
+    const { data: ind, error: eI } = await supabase.from('biens').select('id, indispo').in('id', ids);
+    if (!eI) for (const x of (ind || []) as { id: string; indispo: unknown }[]) if (x.indispo) indispos.add(x.id);
+  }
   const repondue = (bienId: string, depuis: string) => (visites || []).some((v: any) =>
     v.bien_id === bienId && (v.statut === 'a_venir'
       || (v.statut === 'effectuee' && String(v.date_visite || '').slice(0, 10) >= depuis.slice(0, 10))));
 
   const enAttente = (biens || []).filter((b: any) =>
-    b.badge_retour === 'souhaite_visiter' && !(b.bien_vente_id && horsVente.has(b.bien_vente_id))
+    b.badge_retour === 'souhaite_visiter' && !(b.bien_vente_id && horsVente.has(b.bien_vente_id)) && !indispos.has(b.id)
     && !repondue(b.id, parBien.get(b.id).created_at));
   if (!enAttente.length) return [];
 
