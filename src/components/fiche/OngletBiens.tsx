@@ -12,6 +12,8 @@ import {
   ModalePhotos, AvisLien, etatLien, ModaleHonoraires,
 } from './ParcoursBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
+import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
+import FenetreIndispo from './FenetreIndispo';
 
 /**
  * Deux onglets pour un seul composant :
@@ -27,6 +29,8 @@ const RETOURS: Record<string, { l: string; c: string; bg: string; bd: string; i:
   visite: { l: 'Visité', c: '#7c3aed', bg: '#f5f3ff', bd: '#ddd6fe', i: '🔑' },
   offre_faite: { l: 'Offre faite', c: '#b45309', bg: '#fffbeb', bd: '#fde68a', i: '✍️' },
   refuse: { l: 'Pas pour lui', c: '#dc2626', bg: '#fef2f2', bd: '#fecaca', i: '👎' },
+  /* V3.164 : un bien trouvé ailleurs, vendu ou retiré, d'après l'agence ou le vendeur. */
+  indispo: { l: 'Plus disponible', c: '#475569', bg: '#f1f5f9', bd: '#cbd5e1', i: '🔒' },
 };
 
 /* Un bien présenté reste présenté : c'est son historique. Mais dans l'onglet,
@@ -40,9 +44,11 @@ const GROUPES_P: { id: string; titre: string; note?: string }[] = [
   { id: 'offre_faite', titre: 'Offre faite' },
   { id: 'visite', titre: 'Visite effectuée' },
   { id: 'refuse', titre: 'Pas pour lui', note: 'Lis la raison : c’est elle qui affine la recherche suivante.' },
+  { id: 'indispo', titre: 'Plus disponible', note: 'Vendus, sous compromis ou retirés : il le voit aussi dans son espace, avec ton mot.' },
 ];
-const groupeP = (b: { badge_retour?: string | null }) =>
-  (b.badge_retour && GROUPES_P.some(g => g.id === b.badge_retour) ? b.badge_retour : 'propose');
+/* V3.164 : « Plus disponible » l'emporte sur son retour (il ne demande plus rien). */
+const groupeP = (b: { badge_retour?: string | null; indispo?: unknown }) =>
+  (lireIndispo(b.indispo) ? 'indispo' : b.badge_retour && GROUPES_P.some(g => g.id === b.badge_retour) ? b.badge_retour : 'propose');
 
 /* Retirer un bien est rare et sans retour : le bouton se voit quand on le
    cherche, jamais assez pour être cliqué de travers. */
@@ -167,6 +173,8 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const [photosDe, setPhotosDe] = useState<any>(null);
   /* V3.145 : les honoraires d'un bien présenté (inter ou pas), à changer après coup. */
   const [honoDe, setHonoDe] = useState<any>(null);
+  /* V3.164 : « Ce bien n'est plus disponible » (FenetreIndispo). */
+  const [indispoDe, setIndispoDe] = useState<any>(null);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
@@ -216,6 +224,11 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       pdf_url: null, pdf_message: null,
     }).eq('id', bienId).select('id'), { ligne: true });
     recharge();
+  }
+
+  /* V3.164 : de nouveau à vendre — il revient dans ses biens présentés. */
+  async function remettre(b: any) {
+    if (await remettreDispo({ bien: b, clientId, rechercheId })) { recharge(); }
   }
 
   async function renvoyerEnSelection(bienId: string) {
@@ -525,6 +538,25 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               </div>
             )}
 
+            {/* V3.164 : plus disponible — le motif, et le mot que l'acheteur lit dans son espace. */}
+            {mode === 'presentes' && (() => {
+              const x = lireIndispo(b.indispo);
+              if (!x) return null;
+              return (
+                <div style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', borderLeft: '4px solid #475569', padding: '12px 18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 16, lineHeight: 1 }}>🔒</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: '#334155' }}>{`Plus disponible · ${motifIndispo(x.motif).l}`}</span>
+                    {x.le && <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600 }}>· {depuisQuand(x.le)}</span>}
+                    <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#a9b6c8' }}>Vu dans son espace</span>
+                  </div>
+                  <div style={{ marginTop: 7, fontSize: 13.5, lineHeight: 1.55, color: x.note ? NAVY : '#94a3b8', fontWeight: x.note ? 600 : 500 }}>
+                    {x.note ? `Ton mot : « ${x.note} »` : 'Pas de mot laissé : il lit seulement le motif.'}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── titre, adresse, prix ─────────────────────── */}
             <div className="emi-tete-carte" style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 220, flex: '1 1 320px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -644,8 +676,19 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                 ) : (
                   <>
                     {b.pdf_url && <Action href={b.pdf_url} ton="neutre">📄&nbsp; Le PDF</Action>}
-                    <Action onClick={() => onVisite(b.id)} ton="violet">📅&nbsp; Planifier une visite</Action>
+                    {lireIndispo(b.indispo) ? (
+                      <Action onClick={() => { void remettre(b); }} ton="neutre">🔓&nbsp; Remettre disponible</Action>
+                    ) : (
+                      <Action onClick={() => onVisite(b.id)} ton="violet">📅&nbsp; Planifier une visite</Action>
+                    )}
                     <Action onClick={() => setObs(b)} ton="navy">💬&nbsp; Noter son retour</Action>
+                    {/* V3.164 : un bien trouvé ailleurs (un bien de l'agence suit sa fiche). */}
+                    {!b.bien_vente_id && !lireIndispo(b.indispo) && (
+                      <button type="button" onClick={() => setIndispoDe(b)} title="Vendu, sous compromis ou retiré, d’après l’agence ou le vendeur"
+                        style={{ background: 'none', border: 'none', color: '#8a97ab', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🔒 Plus disponible
+                      </button>
+                    )}
                     <button type="button" onClick={() => renvoyerEnSelection(b.id)}
                       style={{ background: 'none', border: 'none', color: '#a9b6c8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Remettre en sélection
@@ -684,6 +727,10 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       {envoi && (
         <ModaleEnvoi bien={envoi} clientId={clientId} client={client} mandat={mandat}
           onFerme={() => setEnvoi(null)} onEnvoye={recharge} onMail={onMail} />
+      )}
+      {indispoDe && (
+        <FenetreIndispo bien={indispoDe} clientId={clientId} rechercheId={rechercheId} prenom={client?.prenom}
+          onFermer={() => setIndispoDe(null)} onFait={() => { setIndispoDe(null); recharge(); }} />
       )}
       {photosDe && (
         <ModalePhotos bien={photosDe} onFerme={() => setPhotosDe(null)} onEnregistre={recharge} />

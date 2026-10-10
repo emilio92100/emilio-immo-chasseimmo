@@ -316,6 +316,8 @@ import Cascade from '@/components/shared/Cascade';
 import Rapprochement, { GuideRapprochement, RapprochementsFaits, rapproAReprendre, type DepartRappro } from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
+import { ChoixQuand } from '@/components/pages/PageAgenda';
+import FenetreIndispo from './FenetreIndispo';
 
 /* Les titres que le formulaire « Ajouter une action » écrit tout seul (un
    type, une issue d'appel) : un autre clic peut les remplacer. Un titre tapé
@@ -892,6 +894,11 @@ function dureeSuivi(j: number): string {
 type VueFiche = 'ensemble' | 'recherche' | 'rapprochement' | 'espace' | 'documents' | 'suivi';
 const ORDRE_VUES: VueFiche[] = ['ensemble', 'recherche', 'rapprochement', 'espace', 'documents', 'suivi'];
 
+/* V3.164 : une visite se pose comme dans l'agenda — aujourd'hui à 18 h,
+   45 minutes, d'office ; le calendrier et l'heure de l'agenda (ChoixQuand). */
+const DUREES_VISITE = [{ v: 30, lib: '30 min' }, { v: 45, lib: '45 min' }, { v: 60, lib: '1 h' }, { v: 90, lib: '1 h 30' }];
+const QUAND_VISITE = () => ({ date: jourParis(), heure: '18:00', duree: 45 });
+
 export default function FicheClient({ client: init, onBack, onNavigate, retourVers }: Props) {
   /* Arrivée « au bon endroit » (depuis une relance) : l'onglet, le filtre du
      Suivi, la recherche, et l'action à surligner. Voir src/lib/intentions.ts. */
@@ -1370,7 +1377,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   /* Une visite se planifie souvent pour plusieurs biens d'affilée : on garde
      une liste, pas un bien unique. La table `visites` n'ayant qu'une colonne
      `bien_id`, on écrit une ligne par bien, toutes sur le même créneau. */
-  const [planVisteForm, setPlanVisiteForm] = useState<{ bien_ids: string[]; date: string; heure: string; contact: string; notes: string }>({ bien_ids: [], date: '', heure: '', contact: '', notes: '' });
+  /* V3.164 : « Ce bien n'est plus disponible », depuis la fenêtre de la visite. */
+  const [indispoPlan, setIndispoPlan] = useState<any>(null);
+  const [planVisteForm, setPlanVisiteForm] = useState<{ bien_ids: string[]; date: string; heure: string; duree: number; contact: string; notes: string }>({ bien_ids: [], date: '', heure: '', duree: 45, contact: '', notes: '' });
   const [ajoutVisite, setAjoutVisite] = useState(false);
 
   useEffect(() => { loadRecherches(); }, [client.id]);
@@ -2780,7 +2789,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     setPendingBienId(bienId);
     return;
     }
-    setPlanVisiteForm({ bien_ids: [bienId], date: '', heure: '', contact: '', notes: '' });
+    setPlanVisiteForm({ bien_ids: [bienId], ...QUAND_VISITE(), contact: '', notes: '' });
     setAjoutVisite(false);
     setShowPlanVisite(true);
   }
@@ -2795,7 +2804,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     if (visiteId && !(await verifie('Le remplacement de la visite', supabase.from('visites').delete().eq('id', visiteId).select('id'), { ligne: true }))) { setShowConfirmVisite(null); return; }
     setShowConfirmVisite(null);
     await load();
-    setPlanVisiteForm({ bien_ids: bienId ? [bienId] : [], date: '', heure: '', contact: '', notes: '' });
+    setPlanVisiteForm({ bien_ids: bienId ? [bienId] : [], ...QUAND_VISITE(), contact: '', notes: '' });
     setAjoutVisite(false);
     setShowPlanVisite(true);
   }
@@ -3126,7 +3135,7 @@ ${signatureMail()}`,
   }
 
   async function enregistrerVisite() {
-    const { bien_ids, date, heure, contact, notes } = planVisteForm;
+    const { bien_ids, date, heure, duree, contact, notes } = planVisteForm;
     /* V3.50 : un bien ajouté au créneau peut être un mandat de l'agence vendu
        ou sous compromis : même contrôle que pour le premier. */
     if (!(await venteAgenceVisitable(bien_ids))) return;
@@ -3136,7 +3145,7 @@ ${signatureMail()}`,
     const ok = await poserVisites({
       clientId: client.id, rechercheId: rechercheId || null,
       biens: bien_ids.map(id => { const b = biens.find(x => x.id === id); return { id, titre: b?.titre, ville: b?.ville, bien_vente_id: b?.bien_vente_id }; }),
-      revus, date, heure, contact, notes,
+      revus, date, heure, duree, contact, notes,
     });
     if (!ok) return;
     setShowPlanVisite(false); chargerRelances(); load();
@@ -6527,7 +6536,7 @@ ${signatureMail()}`,
       {showPlanVisite && (
         <Portail>
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowPlanVisite(false); }}>
-          <div className={styles.modal} style={{ maxWidth: 500 }}>
+          <div className={styles.modal} style={{ maxWidth: 580 }}>
             <div className={styles.modalHeader}><h2 className={styles.modalTitle}>📅 Planifier une visite</h2><button className={styles.modalClose} onClick={() => setShowPlanVisite(false)}>✕</button></div>
             <div className={styles.modalBody}>
               <div>
@@ -6602,14 +6611,28 @@ ${signatureMail()}`,
                   );
                 })()}
               </div>
-              <div className={styles.formRow}>
-                <div><label className={styles.lbl}>Date de la visite</label><input className={styles.inp} type="date" value={planVisteForm.date} onChange={e => setPlanVisiteForm(f => ({ ...f, date: e.target.value }))} /></div>
-                <div><label className={styles.lbl}>Heure</label><input className={styles.inp} type="time" value={planVisteForm.heure} onChange={e => setPlanVisiteForm(f => ({ ...f, heure: e.target.value }))} /></div>
-              </div>
+              {/* V3.164 — Alexandre : « la date et l'heure, c'est le truc de base,
+                  brut : il faut le joli calendrier de Nouveau rendez-vous ».
+                  Le calendrier, l'heure et la durée de l'agenda (ChoixQuand). */}
+              <ChoixQuand date={planVisteForm.date} heure={planVisteForm.heure} duree={planVisteForm.duree}
+                onDate={k => setPlanVisiteForm(f => ({ ...f, date: k }))} onHeure={h => setPlanVisiteForm(f => ({ ...f, heure: h }))}
+                onDuree={n => setPlanVisiteForm(f => ({ ...f, duree: n }))} durees={DUREES_VISITE} />
               <div><label className={styles.lbl}>Contact agence / vendeur</label><input className={styles.inp} value={planVisteForm.contact} onChange={e => setPlanVisiteForm(f => ({ ...f, contact: e.target.value }))} placeholder="Nom, téléphone, email..." /></div>
               <div><label className={styles.lbl}>Notes préparatoires</label><textarea className={styles.inp} rows={2} value={planVisteForm.notes} onChange={e => setPlanVisiteForm(f => ({ ...f, notes: e.target.value }))} placeholder="Points à vérifier, documents à apporter..." /></div>
             </div>
-            <div className={styles.modalFooter}>
+            <div className={styles.modalFooter} style={{ flexWrap: 'wrap' }}>
+              {/* V3.164 — Alexandre : « depuis Planifier une visite, un bouton Ce
+                  bien n'est plus disponible, après échange » (un bien trouvé
+                  ailleurs ; un bien de l'agence suit sa propre fiche). */}
+              {(() => {
+                const seul = planVisteForm.bien_ids.length === 1 ? biens.find(x => x.id === planVisteForm.bien_ids[0]) : null;
+                return seul && !seul.bien_vente_id ? (
+                  <button type="button" onClick={() => setIndispoPlan(seul)}
+                    style={{ marginRight: 'auto', background: 'none', border: 'none', color: '#64748b', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                    🔒 Ce bien n’est plus disponible
+                  </button>
+                ) : null;
+              })()}
               <button className={styles.btn} onClick={() => setShowPlanVisite(false)}>Annuler</button>
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={savePlanVisite} disabled={!planVisteForm.bien_ids.length}>
                 📅 {planVisteForm.bien_ids.length > 1 ? `Confirmer les ${planVisteForm.bien_ids.length} visites` : 'Confirmer la visite'}
@@ -6618,6 +6641,12 @@ ${signatureMail()}`,
           </div>
         </div>
         </Portail>
+      )}
+
+      {indispoPlan && (
+        <FenetreIndispo bien={indispoPlan} clientId={client.id} rechercheId={rechercheId || null} prenom={client.prenom}
+          onFermer={() => setIndispoPlan(null)}
+          onFait={() => { setIndispoPlan(null); setShowPlanVisite(false); setVersionBiens(v => v + 1); void load(); }} />
       )}
 
       {/* ═══ COMPTE RENDU DE VISITE ═══ */}
