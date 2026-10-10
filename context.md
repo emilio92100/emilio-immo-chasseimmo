@@ -1499,6 +1499,25 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.168 — 10 octobre 2026 · La page ne bouge plus quand on change d'onglet ; le détail s'ouvre sous sa case
+
+- Alexandre : « quand j'appuie sur Sélection alors que j'étais dans Visites, ma page se remet
+  au-dessus… quand je change d'onglet, la page doit rester telle quelle, même sur téléphone ». Un
+  onglet plus court raccourcissait la page, et le navigateur remontait la zone qui défile.
+  `src/components/layout/GardePlace.tsx` (monté dans AppLayout) : un clic sur un CHOIX du `<main>`
+  (`aria-pressed`, `aria-selected`, `role="tab"`, `data-actif`, `data-k`, ou un bouton d'une
+  rangée `role="group"`/`tablist`/`data-glisse`/`nav`) pose, en phase de capture — avant React —,
+  une cale (`padding-bottom` en plus sur le `<main>`) assez haute pour que rien ne bouge ; elle
+  fond ensuite toute seule (deux images après, puis à chaque défilement), sans jamais déplacer
+  l'écran. Le panneau de « Où en est la recherche » a en plus `shared/GardeHauteur.tsx` : son
+  fond descend avec la place gardée. Vérifié au banc : barre des étapes au même pixel de Présentés
+  à Transaction, Visites, Sélection, Veille, en 1280 et en 390.
+- Alexandre, au téléphone, dans « Voir en grand » : « j'appuie sur Atouts, ça se déplie en dessous
+  de À trancher… pareil pour le marché ». BilanBien et BandeauMarche (ParcoursBien) : chaque volet
+  suit sa case dans la grille (`.emi-volet-grille`) ; sur ordinateur `order: 1` le range sous la
+  ligne des cases comme avant, au téléphone il s'ouvre juste sous la case touchée
+  (crm-mobile.css).
+
 ### V3.167 — 10 octobre 2026 · L'effet de « Demandes Internet » partout ; la pastille des documents signés ; Documents au téléphone
 
 - **La pastille qui glisse** (Alexandre : « dans Demandes Internet, quand on switch entre Mon site,
