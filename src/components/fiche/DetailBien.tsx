@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icone } from './ParcoursBien';
 import s from './DetailBien.module.css';
+import { CHAUFFAGE_MODES, CHAUFFAGE_ENERGIES, CHAUFFAGE_EMETTEURS, optionsAvec } from '@/lib/chauffage';
 
 type Form = Record<string, any>;
 
@@ -38,8 +39,6 @@ const euros = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} €`;
 const TYPES = ['Appartement', 'Maison', 'Duplex', 'Loft', 'Studio', 'Villa', 'Terrain', 'Autre'];
 const EXPOSITIONS = ['Nord', 'Sud', 'Est', 'Ouest', 'Sud-Est', 'Sud-Ouest', 'Nord-Est', 'Nord-Ouest', 'Est-Ouest'];
 const ETATS = ['Neuf', 'Rénové', 'Bon état', 'Entretenu', 'À rafraîchir', 'À rénover'];
-const CHAUFFAGES = ['Central', 'Individuel', 'Collectif', 'Électrique'];
-const ENERGIES = ['Gaz', 'Électrique', 'Fioul', 'Pompe à chaleur', 'Bois', 'Solaire'];
 const DPE_C: Record<string, [string, string]> = {
   A: ['#319834', '#fff'], B: ['#4ab84a', '#fff'], C: ['#a8d84a', '#1a2332'], D: ['#f7e017', '#1a2332'],
   E: ['#f5b912', '#1a2332'], F: ['#ee8235', '#fff'], G: ['#e2231a', '#fff'],
@@ -454,11 +453,13 @@ export default function DetailBien({ form, setForm, saving, onFermer, onEnregist
                 <Champ etiquette="Émissions">
                   <Saisie valeur={f.ges_emissions} onChange={v => set('ges_emissions', v)} unite="kg CO₂/m²/an" mode="numeric" />
                 </Champ>
+                {/* V3.171 : le chauffage en trois cases (src/lib/chauffage.ts) ;
+                    une ancienne valeur (« Central ») reste dans la liste. */}
                 <Champ etiquette="Chauffage">
                   <span className={s.boite}>
                     <select value={val(f.chauffage)} onChange={e => set('chauffage', e.target.value || null)}>
                       <option value="">—</option>
-                      {CHAUFFAGES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {optionsAvec(CHAUFFAGE_MODES, f.chauffage).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </span>
                 </Champ>
@@ -466,7 +467,15 @@ export default function DetailBien({ form, setForm, saving, onFermer, onEnregist
                   <span className={s.boite}>
                     <select value={val(f.source_energie)} onChange={e => set('source_energie', e.target.value || null)}>
                       <option value="">—</option>
-                      {ENERGIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {optionsAvec(CHAUFFAGE_ENERGIES, f.source_energie).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </span>
+                </Champ>
+                <Champ etiquette="Diffusion" className={s.g2}>
+                  <span className={s.boite}>
+                    <select value={val(f.chauffage_emetteurs)} onChange={e => set('chauffage_emetteurs', e.target.value || null)}>
+                      <option value="">—</option>
+                      {optionsAvec(CHAUFFAGE_EMETTEURS, f.chauffage_emetteurs).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </span>
                 </Champ>
