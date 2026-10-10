@@ -1499,6 +1499,22 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.170 — 10 octobre 2026 · Visites : revoir le bien
+
+- Alexandre : « dans Déjà visités, on ne peut plus revoir le bien ? ». Dans l'onglet Visites, la
+  photo (« Voir le bien » au survol, toujours visible au téléphone) et le nom du bien ouvrent le
+  bien en grand (FenetreBien, comme dans la Sélection et les Présentés) : en tête, la visite (sa
+  date, l'agence, ce que le client en a dit, ton compte rendu), l'issue sur la photo, « Détail »,
+  « Parcours », et en pied « Modifier le compte rendu » (ou « Faire le compte rendu »). ← → passent
+  aux autres biens du filtre affiché, un par bien.
+- Alexandre : « sur un client, dans Documents, je clique sur le mandat de recherche : ça m'emmène
+  dans Documents juridiques ; je veux rester sur la fiche, avec la partie à droite ». Le panneau
+  du document (`Panneau`, exporté de PageDocuments avec `itemDoc`, `itemMandat`, `Item`,
+  `SuiteBien`) s'ouvre maintenant sur la fiche (DocumentsDuClient). Ce qui demande l'éditeur part
+  dans Documents : « Modifier » (nouvelle intention `editer`), « Préparer un avenant » /
+  « Déléguer » / un courrier (`deriver`), « Dupliquer » ; un brouillon s'ouvre toujours dans
+  l'éditeur. « Fiche client » sur sa propre fiche ferme le panneau.
+
 ### V3.169 — 10 octobre 2026 · L'onglet Visites refait (« le fil des visites ») ; les couleurs du menu sur ordinateur
 
 - Alexandre : « l'onglet Visites, ça fait un peu bas de gamme… quand on clique sur Non abouti il n'y
