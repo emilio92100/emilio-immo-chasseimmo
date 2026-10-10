@@ -1216,7 +1216,9 @@ export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheI
   const d = b.donnees || {};
   const ann = liste(d, 'annexes'), eq = liste(d, 'equipements'), imm = liste(d, 'immeuble');
   const photos = lirePhotos(d.photos).map(p => p.url);
-  const energie = { gaz: 'Gaz', electrique: 'Électricité', pac: 'Pompe à chaleur', fioul: 'Fioul', bois: 'Bois', urbain: 'Réseau urbain' } as Record<string, string>;
+  /* V3.171 : les mêmes mots que les menus du CRM (src/lib/chauffage.ts). */
+  const energie = { gaz: 'Gaz', electrique: 'Électrique', pac: 'Pompe à chaleur', fioul: 'Fioul', bois: 'Bois', urbain: 'Réseau urbain' } as Record<string, string>;
+  const emetteurs = { radiateurs: 'Radiateurs', sol: 'Plancher chauffant', plafond: 'Plafond chauffant', convecteurs: 'Convecteurs', air: 'Air pulsé', poele: 'Poêle' } as Record<string, string>;
   const chargesAn = nb(d, 'chargesAn');
   const COMPRIS: Record<string, string> = { chauffage: 'chauffage', eauChaude: 'eau chaude', eauFroide: 'eau froide', gardien: 'gardien', ascenseur: 'ascenseur' };
   const compris = liste(d, 'chargesInclus').map(v => COMPRIS[v]).filter(Boolean);
@@ -1233,6 +1235,7 @@ export function versBienAcheteur(b: BienVente, o: { clientId: string; rechercheI
     ges: typeof d.ges === 'string' && d.ges ? d.ges : null, ges_emissions: nb(d, 'gesValeur'),
     chauffage: d.chauffageMode === 'collectif' ? 'Collectif' : d.chauffageMode === 'individuel' ? 'Individuel' : null,
     source_energie: typeof d.chauffageEnergie === 'string' ? energie[d.chauffageEnergie] || null : null,
+    chauffage_emetteurs: typeof d.chauffageEmetteurs === 'string' ? emetteurs[d.chauffageEmetteurs] || null : null,
     parking: ann.some(x => ['parking', 'box', 'garage'].includes(x)), balcon: ann.includes('balcon'), terrasse: ann.includes('terrasse') || ann.includes('loggia'),
     jardin: ann.includes('jardin'), cave: ann.includes('cave'), ascenseur: imm.includes('ascenseur'), gardien: imm.includes('gardien'),
     cuisine_equipee: d.cuisineEquip === 'equipee', climatisation: eq.includes('clim'), traversant: eq.includes('traversant') || d.expo === 'traversant',
