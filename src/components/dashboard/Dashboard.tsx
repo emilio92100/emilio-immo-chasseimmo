@@ -195,7 +195,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
     const cli = clients.find(c => c.id === r.client_id);
     return (
       <div className={styles.listRow} onClick={() => {
-        if (!cli) return;
+        /* V3.165 : un pense-bête sans contact s'ouvre dans les Relances. */
+        if (!cli) { if (!r.client_id) onNavigate('relances'); return; }
         /* La fiche s'ouvre là où la relance a du sens : Présentés, ou le Suivi
            sur l'action qui l'a créée (voir src/lib/intentions.ts). */
         demanderOuvertureFiche(ouvertureDepuisRelance(r as Relance & { recherche_id?: string | null }));
@@ -203,7 +204,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string, d
       }}>
         <div className={styles.urgBar} style={{ background: enRetard || cejour ? '#ef4444' : '#f59e0b' }} />
         <div className={styles.listInfo}>
-          <div className={styles.listName}>{cli ? `${cli.prenom} ${cli.nom}` : `Client #${r.client_id.slice(0, 8)}`}</div>
+          <div className={styles.listName}>{cli ? `${cli.prenom} ${cli.nom}` : r.client_id ? `Client #${String(r.client_id).slice(0, 8)}` : 'Pense-bête'}</div>
           <div className={styles.listDetail}>{r.note || (r.type === 'manuelle' ? 'Relance manuelle' : 'Sans réponse du client')}</div>
         </div>
         <span className={`${styles.badge} ${enRetard || cejour ? styles.badgeRed : styles.badgeAmber}`}>
