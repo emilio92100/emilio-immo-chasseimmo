@@ -314,6 +314,7 @@ import { colonneSourceAbsente, libelleSource, MESSAGE_SQL_SOURCE } from '@/lib/s
 import BoutonCarte from '@/components/carte/BoutonCarte';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import Cascade from '@/components/shared/Cascade';
+import GardeHauteur from '@/components/shared/GardeHauteur';
 import Rapprochement, { GuideRapprochement, RapprochementsFaits, rapproAReprendre, type DepartRappro } from './Rapprochement';
 import { mandatsPour, type MandatOk } from '@/lib/rapprochement';
 import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
@@ -4042,6 +4043,10 @@ ${signatureMail()}`,
         html:not(.emi-mvt) .fiche-tab { animation: ficheTabIn .3s cubic-bezier(.22,.9,.3,1) both; }
         /* Le panneau prolonge la barre d'onglets : même fond, bordure continue,
            pas de coupure. On doit sentir qu'on est « dans » l'onglet choisi. */
+        /* V3.167 : l'enveloppe qui garde la hauteur (GardeHauteur) ; le
+           panneau la remplit, son fond va jusqu'en bas. */
+        .fiche-tab-garde { display: flex; flex-direction: column; }
+        .fiche-tab-garde > .fiche-tab { flex: 1 1 auto; }
         .fiche-tab { min-height: 240px;
           background: #f7f9fc; border: 1px solid #e3e8f0; border-top: none;
           border-radius: 0 0 16px 16px; padding: 16px; }
@@ -4758,6 +4763,9 @@ ${signatureMail()}`,
         </div>
 
         {/* V3.152 : les étapes changent en cascade (Cascade, style « C »). */}
+        {/* V3.167 : le panneau garde sa hauteur au changement d'étape ou de
+            filtre — la page ne remonte plus (GardeHauteur). */}
+        <GardeHauteur avecPrecedent className="fiche-tab-garde">
         <Cascade cle={`${rechercheId}-${tab}`} className="fiche-tab">
 
         {/* TAB BIENS */}
@@ -5291,6 +5299,7 @@ ${signatureMail()}`,
         )}
 
         </Cascade>
+        </GardeHauteur>
           </>
         )}
 

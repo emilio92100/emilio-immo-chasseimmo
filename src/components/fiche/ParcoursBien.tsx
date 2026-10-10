@@ -77,6 +77,10 @@ export function StylesEmilio() {
         transition: grid-template-rows .4s cubic-bezier(.16,1,.3,1), opacity .3s ease, margin-top .4s cubic-bezier(.16,1,.3,1) }
       .emi-volet[data-ouvert="true"] { grid-template-rows:1fr; opacity:1; margin-top:9px }
       .emi-volet > div { overflow:hidden; min-height:0 }
+      /* V3.167 : un volet posé dans une grille de cases (le bilan, le marché)
+         prend toute la largeur, sous la ligne des cases ; au téléphone il
+         reprend sa place, juste sous sa case (crm-mobile.css). */
+      .emi-volet-grille { grid-column: 1 / -1; order: 1 }
       .emi-chevron { transition: transform .32s cubic-bezier(.16,1,.3,1); display:inline-block }
       .emi-chevron[data-ouvert="true"] { transform: rotate(180deg) }
 
@@ -1397,34 +1401,36 @@ export function BilanBien({ p }: { p: any }) {
     bloquants.length ? ('rouge' as const) : null,
   ].filter(Boolean) as TonBilan[];
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-      <div className="emi-bilan" style={{ display: 'grid', gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))`, gap: 9 }}>
-        {!!atouts.length && (
-          <Compteur ton="vert" titre="Atouts" items={atouts} ouvert={ouvert === 'vert'} onClick={bascule('vert')} />
-        )}
-        {!!verifier.length && (
-          <Compteur ton="ambre" titre="À vérifier avant d'appeler" items={verifier} ouvert={ouvert === 'ambre'} onClick={bascule('ambre')} />
-        )}
-        {!!bloquants.length && (
-          <Compteur ton="rouge" titre="À trancher" items={bloquants} ouvert={ouvert === 'rouge'} onClick={bascule('rouge')} />
-        )}
-      </div>
-
-      <div className="emi-volet" data-ouvert={!!ouvert}>
-        <div>
-          <div style={{ background: '#fafcff', border: `1px solid ${BORD}`, borderRadius: 12, padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: ouvert ? TONS_BILAN[ouvert].titre : '#9aa8bd' }}>
-              {ouvert === 'vert' && `Les ${atouts.length} atouts`}
-              {ouvert === 'ambre' && `Les ${verifier.length} points à vérifier avant d'appeler`}
-              {ouvert === 'rouge' && (bloquants.length > 1 ? `Les ${bloquants.length} points à trancher` : 'Le point à trancher')}
-            </span>
-            {ouvert === 'vert' && <ListeNumerotee items={atouts} ton="vert" />}
-            {ouvert === 'ambre' && <ListeNumerotee items={verifier} ton="ambre" />}
-            {ouvert === 'rouge' && <ListeNumerotee items={bloquants} ton="rouge" />}
-          </div>
+  /* V3.167 (Alexandre, au téléphone : « j'appuie sur Atouts, ça se déplie
+     en dessous de À trancher, il faut que je scrolle ») : chaque volet suit
+     sa case dans la grille. Sur ordinateur, `order` les range sous la ligne
+     des trois cases ; au téléphone, une case par ligne, son volet juste
+     dessous (crm-mobile.css). */
+  const volet = (v: TonBilan, items: string[], titre: string) => (
+    <div className="emi-volet emi-volet-grille" data-ouvert={ouvert === v}>
+      <div>
+        <div style={{ background: '#fafcff', border: `1px solid ${BORD}`, borderRadius: 12, padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: TONS_BILAN[v].titre }}>{titre}</span>
+          <ListeNumerotee items={items} ton={v} />
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="emi-bilan" style={{ display: 'grid', gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))`, columnGap: 9, rowGap: 0 }}>
+      {!!atouts.length && (
+        <Compteur ton="vert" titre="Atouts" items={atouts} ouvert={ouvert === 'vert'} onClick={bascule('vert')} />
+      )}
+      {!!atouts.length && volet('vert', atouts, `Les ${atouts.length} atouts`)}
+      {!!verifier.length && (
+        <Compteur ton="ambre" titre="À vérifier avant d'appeler" items={verifier} ouvert={ouvert === 'ambre'} onClick={bascule('ambre')} />
+      )}
+      {!!verifier.length && volet('ambre', verifier, `Les ${verifier.length} points à vérifier avant d'appeler`)}
+      {!!bloquants.length && (
+        <Compteur ton="rouge" titre="À trancher" items={bloquants} ouvert={ouvert === 'rouge'} onClick={bascule('rouge')} />
+      )}
+      {!!bloquants.length && volet('rouge', bloquants, bloquants.length > 1 ? `Les ${bloquants.length} points à trancher` : 'Le point à trancher')}
     </div>
   );
 }
@@ -1934,7 +1940,9 @@ export function BandeauMarche({ p, sobre }: { p: any; sobre?: boolean }) {
       )}
 
       <div style={{ padding: 9 }}>
-      <div className="emi-marche-grille" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 7 }}>
+      {/* V3.167 : chaque volet suit sa case (voir BilanBien) : sous la ligne
+          des trois cases sur ordinateur, juste sous la sienne au téléphone. */}
+      <div className="emi-marche-grille" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', columnGap: 7, rowGap: 0 }}>
         {dateConnue(p.date_publication) ? (
           <CaseMarche icone="horloge" titre="En ligne depuis" valeur={anciennete(p.date_publication)}
             detail={`depuis le ${jour(p.date_publication)}`}
@@ -1942,6 +1950,17 @@ export function BandeauMarche({ p, sobre }: { p: any; sobre?: boolean }) {
         ) : (
           <CaseMarche icone="horloge" titre="En ligne depuis" valeur="—" detail="date de première publication inconnue" />
         )}
+        {/* volet : la date exacte */}
+        <div className="emi-volet emi-volet-grille" data-ouvert={ouvert === 'date'}>
+          <div>
+            <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexWrap: 'wrap', gap: 22 }}>
+              <Ligne lib="Première mise en ligne" val={dateConnue(p.date_publication) ? jour(p.date_publication) : 'inconnue'} />
+              <Ligne lib="Sur le marché depuis" val={anciennete(p.date_publication) || '—'} />
+              {p.date_derniere_baisse && <Ligne lib="Dernier changement de prix" val={jour(p.date_derniere_baisse)} />}
+              {agenceMandat && <Ligne lib="Mandat" val={agenceMandat} />}
+            </div>
+          </div>
+        </div>
 
         {aDuPrix ? (
           <CaseMarche icone="baisse" titre="Prix" ton={baissePct >= 8 ? 'vert' : 'neutre'}
@@ -1951,6 +1970,58 @@ export function BandeauMarche({ p, sobre }: { p: any; sobre?: boolean }) {
         ) : (
           <CaseMarche icone="baisse" titre="Prix" valeur="Inchangé" detail="aucune baisse connue" />
         )}
+        {/* volet : l'historique du prix */}
+        <div className="emi-volet emi-volet-grille" data-ouvert={ouvert === 'prix'}>
+          <div>
+            <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px 8px' }}>
+              {pts.length >= 2 ? (
+                <>
+                  <GraphePrix points={pts} />
+                  <div style={{ marginTop: 6 }}>
+                    {pts.map((x, i) => {
+                      const d = i === 0 ? 0 : x.prix - pts[i - 1].prix;
+                      const pc = i === 0 || !pts[i - 1].prix ? 0 : (d / pts[i - 1].prix) * 100;
+                      return (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '7px 2px', flexWrap: 'wrap', rowGap: 2,
+                          borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', fontSize: 13,
+                        }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? '#cbd5e1' : d < 0 ? '#16a34a' : '#ef4444', flexShrink: 0 }} />
+                          <span style={{ color: '#64748b', minWidth: 112 }}>{jour(x.date)}</span>
+                          <span style={{ fontWeight: 800, color: NAVY, minWidth: 104 }}>{x.prix.toLocaleString('fr-FR')} €</span>
+                          {i === 0
+                            ? <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>prix de mise en ligne</span>
+                            : <span style={{ fontWeight: 700, color: d < 0 ? '#15803d' : '#b91c1c' }}>
+                                {d < 0 ? '−' : '+'} {Math.abs(d).toLocaleString('fr-FR')} €
+                                <span style={{ fontWeight: 600, opacity: .7 }}> ({pc > 0 ? '+' : ''}{pc.toFixed(1).replace('.', ',')} %)</span>
+                              </span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {baisse > 0 && (
+                    <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
+                        Depuis la mise en ligne
+                      </span>
+                      <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>
+                        − {baisse.toLocaleString('fr-FR')} €
+                        <span style={{ fontSize: 13, fontWeight: 700, opacity: .75 }}> ({baissePct.toFixed(1).replace('.', ',')} %)</span>
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>Source : Yanport</div>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0 10px' }}>
+                  {nbBaisses > 0
+                    ? `Yanport signale ${nbBaisses} baisse${nbBaisses > 1 ? 's' : ''}, mais le détail n'a pas encore été récupéré. La prochaine veille le complétera.`
+                    : "Aucun historique de prix récupéré pour l'instant."}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Le nombre d'agences s'ouvre sur la liste, et chaque agence y est cliquable. */}
         {nbAgences > 0 ? (
@@ -1965,170 +2036,106 @@ export function BandeauMarche({ p, sobre }: { p: any; sobre?: boolean }) {
         ) : (
           <CaseMarche icone="maison" titre="Diffusion" valeur="—" detail={portail ? `vu sur ${portail}` : 'agence inconnue'} />
         )}
-      </div>
-
-      {/* volet : qui commercialise le bien, et à quel prix */}
-      <div className="emi-volet" data-ouvert={ouvert === 'agences'}>
-        <div>
-          <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '10px 14px 8px' }}>
-            {tout.length ? (
-              <>
-                {!liste.length && (
-                  <div style={{ fontSize: 13, color: '#92400e', padding: '4px 0 8px', lineHeight: 1.5 }}>
-                    {'Plus aucune annonce en ligne pour ce bien.'}
-                  </div>
-                )}
-                {liste.map((d, i) => {
-                  const estMandat = agenceMandat && d.agence.toLowerCase() === String(agenceMandat).toLowerCase();
-                  const estMoinsCher = liste.length >= 2 && moinsCher && d.agence === moinsCher.agence;
-                  const corps = (
-                    <>
-                      <span className="emi-diff-pt" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: estMoinsCher ? '#16a34a' : '#cbd5e1' }} />
-                      <span className="emi-diff-nom" style={{ fontWeight: 800, color: NAVY, flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
-                        {d.agence}
-                        {estMandat && <span style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8' }}> · annonce retenue</span>}
-                      </span>
-                      {typeof d.prix === 'number' && (
-                        <span className="emi-diff-prix" style={{ fontWeight: 800, color: estMoinsCher ? '#15803d' : NAVY, minWidth: 104, textAlign: 'right' }}>
-                          {d.prix.toLocaleString('fr-FR')} €
-                        </span>
-                      )}
-                      {d.date && <span className="emi-diff-date" style={{ color: '#94a3b8', fontSize: 12, minWidth: 96, textAlign: 'right' }}>{jour(d.date)}</span>}
-                      <span className="emi-diff-lien" style={{ color: d.url ? OR : '#e2e8f0', display: 'flex', flexShrink: 0 }}>
-                        <Icone nom="lien" taille={14} epaisseur={2} />
-                      </span>
-                    </>
-                  );
-                  const style: React.CSSProperties = {
-                    display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap', rowGap: 3,
-                    padding: '9px 4px', fontSize: 13, background: 'none', color: 'inherit',
-                    borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', borderLeft: 0, borderRight: 0, borderBottom: 0,
-                    textDecoration: 'none',
-                  };
-                  return d.url
-                    ? <a key={i} className="emi-diff" href={d.url} target="_blank" rel="noreferrer" style={{ ...style, cursor: 'pointer' }}>{corps}</a>
-                    : <div key={i} className="emi-diff" style={style} title="Lien non renseigné par la veille">{corps}</div>;
-                })}
-                {/* V3.101 : les annonces retirées, sous les agences qui vendent.
-                    Pas de lien : il ne mène nulle part. */}
-                {retirees.length > 0 && (
-                  <div style={{ marginTop: liste.length ? 4 : 0, paddingTop: liste.length ? 9 : 2, borderTop: liste.length ? `1px dashed ${BORD}` : 'none' }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 2 }}>
-                      {retirees.length > 1 ? 'Annonces retirées' : 'Annonce retirée'}
+        {/* volet : qui commercialise le bien, et à quel prix */}
+        <div className="emi-volet emi-volet-grille" data-ouvert={ouvert === 'agences'}>
+          <div>
+            <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '10px 14px 8px' }}>
+              {tout.length ? (
+                <>
+                  {!liste.length && (
+                    <div style={{ fontSize: 13, color: '#92400e', padding: '4px 0 8px', lineHeight: 1.5 }}>
+                      {'Plus aucune annonce en ligne pour ce bien.'}
                     </div>
-                    {retirees.map((d, i) => (
-                      <div key={'r' + i} className="emi-diff" title="Annonce retirée : son lien ne mène plus nulle part"
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap', rowGap: 3, padding: '8px 4px', fontSize: 13, borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                        <span className="emi-diff-pt" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'white', border: '2px solid #cbd5e1', boxSizing: 'border-box' }} />
-                        <span className="emi-diff-nom" style={{ fontWeight: 700, color: '#94a3b8', flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
-                          <span style={{ textDecoration: 'line-through', textDecorationColor: '#cbd5e1' }}>{d.agence}</span>
-                          {d.portail ? <span style={{ fontWeight: 600, fontSize: 11.5 }}>{` · ${d.portail}`}</span> : null}
-                          {d.lien_retenu ? <span style={{ fontWeight: 700, fontSize: 11, color: '#b6c1d1' }}>{' · ancien lien du bien'}</span> : null}
+                  )}
+                  {liste.map((d, i) => {
+                    const estMandat = agenceMandat && d.agence.toLowerCase() === String(agenceMandat).toLowerCase();
+                    const estMoinsCher = liste.length >= 2 && moinsCher && d.agence === moinsCher.agence;
+                    const corps = (
+                      <>
+                        <span className="emi-diff-pt" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: estMoinsCher ? '#16a34a' : '#cbd5e1' }} />
+                        <span className="emi-diff-nom" style={{ fontWeight: 800, color: NAVY, flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
+                          {d.agence}
+                          {estMandat && <span style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8' }}> · annonce retenue</span>}
                         </span>
                         {typeof d.prix === 'number' && (
-                          <span className="emi-diff-prix" style={{ fontWeight: 700, color: '#a9b6c8', minWidth: 104, textAlign: 'right' }}>
-                            {`${d.prix.toLocaleString('fr-FR')} €`}
+                          <span className="emi-diff-prix" style={{ fontWeight: 800, color: estMoinsCher ? '#15803d' : NAVY, minWidth: 104, textAlign: 'right' }}>
+                            {d.prix.toLocaleString('fr-FR')} €
                           </span>
                         )}
-                        <span className="emi-diff-date" style={{ color: '#b45309', fontSize: 12, fontWeight: 700, minWidth: 96, textAlign: 'right' }}>
-                          {`retirée le ${jourCourt(d.retiree_le)}`}
-                        </span>
-                        <span className="emi-diff-lien" style={{ color: '#e2e8f0', display: 'flex', flexShrink: 0 }}>
+                        {d.date && <span className="emi-diff-date" style={{ color: '#94a3b8', fontSize: 12, minWidth: 96, textAlign: 'right' }}>{jour(d.date)}</span>}
+                        <span className="emi-diff-lien" style={{ color: d.url ? OR : '#e2e8f0', display: 'flex', flexShrink: 0 }}>
                           <Icone nom="lien" taille={14} epaisseur={2} />
                         </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {ecart > 0 && (
-                  <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
-                      Écart entre diffuseurs
-                    </span>
-                    <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>{ecart.toLocaleString('fr-FR')} €</span>
-                  </div>
-                )}
-                {nomPortail(portail) && (
-                  <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>
-                    {`Annonce retenue trouvée sur ${nomPortail(portail)}`}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0 10px' }}>
-                {nbAgences > 1
-                  ? `${nbAgences} agences commercialisent ce bien, mais leurs noms n'ont pas encore été récupérés. La prochaine veille les complétera.`
-                  : "Le nom de l'agence n'a pas encore été récupéré."}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* volet : la date exacte */}
-      <div className="emi-volet" data-ouvert={ouvert === 'date'}>
-        <div>
-          <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexWrap: 'wrap', gap: 22 }}>
-            <Ligne lib="Première mise en ligne" val={dateConnue(p.date_publication) ? jour(p.date_publication) : 'inconnue'} />
-            <Ligne lib="Sur le marché depuis" val={anciennete(p.date_publication) || '—'} />
-            {p.date_derniere_baisse && <Ligne lib="Dernier changement de prix" val={jour(p.date_derniere_baisse)} />}
-            {agenceMandat && <Ligne lib="Mandat" val={agenceMandat} />}
-          </div>
-        </div>
-      </div>
-
-      {/* volet : l'historique du prix */}
-      <div className="emi-volet" data-ouvert={ouvert === 'prix'}>
-        <div>
-          <div style={{ background: 'white', border: `1px solid ${BORD}`, borderRadius: 12, padding: '12px 14px 8px' }}>
-            {pts.length >= 2 ? (
-              <>
-                <GraphePrix points={pts} />
-                <div style={{ marginTop: 6 }}>
-                  {pts.map((x, i) => {
-                    const d = i === 0 ? 0 : x.prix - pts[i - 1].prix;
-                    const pc = i === 0 || !pts[i - 1].prix ? 0 : (d / pts[i - 1].prix) * 100;
-                    return (
-                      <div key={i} style={{
-                        display: 'flex', alignItems: 'center', gap: 12, padding: '7px 2px', flexWrap: 'wrap', rowGap: 2,
-                        borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', fontSize: 13,
-                      }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? '#cbd5e1' : d < 0 ? '#16a34a' : '#ef4444', flexShrink: 0 }} />
-                        <span style={{ color: '#64748b', minWidth: 112 }}>{jour(x.date)}</span>
-                        <span style={{ fontWeight: 800, color: NAVY, minWidth: 104 }}>{x.prix.toLocaleString('fr-FR')} €</span>
-                        {i === 0
-                          ? <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>prix de mise en ligne</span>
-                          : <span style={{ fontWeight: 700, color: d < 0 ? '#15803d' : '#b91c1c' }}>
-                              {d < 0 ? '−' : '+'} {Math.abs(d).toLocaleString('fr-FR')} €
-                              <span style={{ fontWeight: 600, opacity: .7 }}> ({pc > 0 ? '+' : ''}{pc.toFixed(1).replace('.', ',')} %)</span>
-                            </span>}
-                      </div>
+                      </>
                     );
+                    const style: React.CSSProperties = {
+                      display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap', rowGap: 3,
+                      padding: '9px 4px', fontSize: 13, background: 'none', color: 'inherit',
+                      borderTop: i === 0 ? 'none' : '1px solid #f1f5f9', borderLeft: 0, borderRight: 0, borderBottom: 0,
+                      textDecoration: 'none',
+                    };
+                    return d.url
+                      ? <a key={i} className="emi-diff" href={d.url} target="_blank" rel="noreferrer" style={{ ...style, cursor: 'pointer' }}>{corps}</a>
+                      : <div key={i} className="emi-diff" style={style} title="Lien non renseigné par la veille">{corps}</div>;
                   })}
+                  {/* V3.101 : les annonces retirées, sous les agences qui vendent.
+                      Pas de lien : il ne mène nulle part. */}
+                  {retirees.length > 0 && (
+                    <div style={{ marginTop: liste.length ? 4 : 0, paddingTop: liste.length ? 9 : 2, borderTop: liste.length ? `1px dashed ${BORD}` : 'none' }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, color: '#a9b6c8', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 2 }}>
+                        {retirees.length > 1 ? 'Annonces retirées' : 'Annonce retirée'}
+                      </div>
+                      {retirees.map((d, i) => (
+                        <div key={'r' + i} className="emi-diff" title="Annonce retirée : son lien ne mène plus nulle part"
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap', rowGap: 3, padding: '8px 4px', fontSize: 13, borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+                          <span className="emi-diff-pt" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'white', border: '2px solid #cbd5e1', boxSizing: 'border-box' }} />
+                          <span className="emi-diff-nom" style={{ fontWeight: 700, color: '#94a3b8', flex: '1 1 150px', minWidth: 0, textAlign: 'left' }}>
+                            <span style={{ textDecoration: 'line-through', textDecorationColor: '#cbd5e1' }}>{d.agence}</span>
+                            {d.portail ? <span style={{ fontWeight: 600, fontSize: 11.5 }}>{` · ${d.portail}`}</span> : null}
+                            {d.lien_retenu ? <span style={{ fontWeight: 700, fontSize: 11, color: '#b6c1d1' }}>{' · ancien lien du bien'}</span> : null}
+                          </span>
+                          {typeof d.prix === 'number' && (
+                            <span className="emi-diff-prix" style={{ fontWeight: 700, color: '#a9b6c8', minWidth: 104, textAlign: 'right' }}>
+                              {`${d.prix.toLocaleString('fr-FR')} €`}
+                            </span>
+                          )}
+                          <span className="emi-diff-date" style={{ color: '#b45309', fontSize: 12, fontWeight: 700, minWidth: 96, textAlign: 'right' }}>
+                            {`retirée le ${jourCourt(d.retiree_le)}`}
+                          </span>
+                          <span className="emi-diff-lien" style={{ color: '#e2e8f0', display: 'flex', flexShrink: 0 }}>
+                            <Icone nom="lien" taille={14} epaisseur={2} />
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {ecart > 0 && (
+                    <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
+                        Écart entre diffuseurs
+                      </span>
+                      <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>{ecart.toLocaleString('fr-FR')} €</span>
+                    </div>
+                  )}
+                  {nomPortail(portail) && (
+                    <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>
+                      {`Annonce retenue trouvée sur ${nomPortail(portail)}`}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0 10px' }}>
+                  {nbAgences > 1
+                    ? `${nbAgences} agences commercialisent ce bien, mais leurs noms n'ont pas encore été récupérés. La prochaine veille les complétera.`
+                    : "Le nom de l'agence n'a pas encore été récupéré."}
                 </div>
-                {baisse > 0 && (
-                  <div style={{ marginTop: 6, borderTop: `2px solid ${BORD}`, paddingTop: 9, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .8 }}>
-                      Depuis la mise en ligne
-                    </span>
-                    <span style={{ fontSize: 15.5, fontWeight: 800, color: '#15803d' }}>
-                      − {baisse.toLocaleString('fr-FR')} €
-                      <span style={{ fontSize: 13, fontWeight: 700, opacity: .75 }}> ({baissePct.toFixed(1).replace('.', ',')} %)</span>
-                    </span>
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: '#b6c1d1', marginTop: 8, marginBottom: 4 }}>Source : Yanport</div>
-              </>
-            ) : (
-              <div style={{ fontSize: 13, color: '#94a3b8', padding: '6px 0 10px' }}>
-                {nbBaisses > 0
-                  ? `Yanport signale ${nbBaisses} baisse${nbBaisses > 1 ? 's' : ''}, mais le détail n'a pas encore été récupéré. La prochaine veille le complétera.`
-                  : "Aucun historique de prix récupéré pour l'instant."}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+
       </div>
     </div>
   );
