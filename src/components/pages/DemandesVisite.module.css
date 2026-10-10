@@ -49,7 +49,7 @@
 .voile { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(17, 35, 64, .45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: fondu .2s ease both; }
 @keyframes fondu { from { opacity: 0; } to { opacity: 1; } }
 .fenetre {
-  width: min(520px, 100%); max-height: calc(100dvh - 36px); overflow-y: auto; overscroll-behavior: contain; background: white; border-radius: 22px;
+  width: min(580px, 100%); max-height: calc(100dvh - 36px); overflow-y: auto; overscroll-behavior: contain; background: white; border-radius: 22px;
   box-shadow: 0 30px 80px -20px rgba(17, 35, 64, .5); animation: monte .32s cubic-bezier(.2, .8, .2, 1) both;
 }
 @keyframes monte { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -71,7 +71,7 @@
 .champ textarea { resize: vertical; min-height: 60px; }
 .plein { grid-column: 1 / -1; }
 .aide { font-size: 12px; color: #94a3b8; line-height: 1.45; }
-.fPied { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px 18px; }
+.fPied { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 14px 18px 18px; }
 
 @media (max-width: 760px) {
   .carte { grid-template-columns: minmax(0, 1fr); padding: 12px; }
@@ -95,3 +95,11 @@
   .carte, .bravo { border-radius: 16px; margin-left: 10px; margin-right: 10px; }
   .carte { padding: 12px; }
 }
+
+/* V3.164 : « Ce bien n'est plus disponible », à gauche du pied de la fenêtre. */
+.lienIndispo {
+  margin-right: auto; background: none; border: none; color: #64748b; font: 700 13px 'DM Sans', sans-serif; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; padding: 6px 2px;
+}
+.lienIndispo:hover { color: #22497D; }
+@media (max-width: 760px) { .lienIndispo { flex-basis: 100%; margin: 0 0 2px; text-align: center; } }

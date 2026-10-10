@@ -23,6 +23,8 @@ import { annulerVisiteLibre, majSuivi, personneVide } from '@/components/biens/o
 import { LibelleBon, useBonDeVisite, useEtatsBons, type DepartBon, type EtatBon } from '@/components/documents/BonDeVisite';
 import { personneDe } from '@/components/contacts/AvatarContact';
 import OrganiserVisite from './OrganiserVisite';
+import { ChoixQuand } from './PageAgenda';
+import FenetreIndispo from '@/components/fiche/FenetreIndispo';
 import { lirePlace, retenirPlace, useHauteur } from '@/lib/place-fiche';
 
 /* ═══ Les visites hors CRM (V3.146) ═══════════════════════════════════════
@@ -140,14 +142,17 @@ function BienDemande({ d }: { d: DemandeVisite }) {
    (src/lib/planifier-visite.ts) : la relance « Veut visiter » se solde, le
    Suivi note la visite, la demande passe dans « À venir ». */
 function FenetreVisite({ d, revu, onFermer, onFait }: { d: DemandeVisite; revu: boolean; onFermer: () => void; onFait: (texte: string) => void }) {
-  const [date, setDate] = useState('');
-  const [heure, setHeure] = useState('');
+  /* V3.164 : aujourd'hui à 18 h, 45 minutes, d'office — comme dans l'agenda. */
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' }));
+  const [heure, setHeure] = useState('18:00');
+  const [duree, setDuree] = useState(45);
   const [contact, setContact] = useState('');
   const [notes, setNotes] = useState('');
   const [envoi, setEnvoi] = useState(false);
+  /* V3.164 : « Ce bien n'est plus disponible », après échange avec l'agence ou le vendeur. */
+  const [indispo, setIndispo] = useState(false);
   const acceptes = useRef<Set<string>>(new Set());
   const nom = `${d.client?.prenom || ''} ${d.client?.nom || ''}`.trim() || 'le client';
-  const aujourdhui = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !envoi) onFermer(); };
     window.addEventListener('keydown', esc);
@@ -159,7 +164,7 @@ function FenetreVisite({ d, revu, onFermer, onFait }: { d: DemandeVisite; revu: 
     const bien = { id: d.bien.id, titre: d.bien.titre, ville: d.bien.ville, bien_vente_id: d.bien.bien_vente_id || null };
     try {
       if (!(await bienVisitable([bien], acceptes.current))) return;
-      const ok = await poserVisites({ clientId: d.client.id, rechercheId: d.rechercheId, biens: [bien], revus: revu ? [bien.id] : [], date, heure, contact, notes });
+      const ok = await poserVisites({ clientId: d.client.id, rechercheId: d.rechercheId, biens: [bien], revus: revu ? [bien.id] : [], date, heure, duree, contact, notes });
       if (!ok) return;
       const quand = date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
       onFait(`Visite planifiée avec ${nom}${quand ? ` le ${quand}` : ''}${heure ? ` à ${heure}` : ''}. Elle passe dans « À venir ».`);
@@ -181,20 +186,34 @@ function FenetreVisite({ d, revu, onFermer, onFait }: { d: DemandeVisite; revu: 
           <BienDemande d={d} />
           {d.dispos && <div className={dv.dispo}><small>Ses disponibilités</small>{d.dispos}</div>}
           <div className={dv.champs}>
-            <div className={dv.champ}><label htmlFor="pv-date">Date</label><input id="pv-date" type="date" min={aujourdhui} value={date} onChange={e => setDate(e.target.value)} /></div>
-            <div className={dv.champ}><label htmlFor="pv-heure">Heure</label><input id="pv-heure" type="time" value={heure} onChange={e => setHeure(e.target.value)} /></div>
+            {/* V3.164 — Alexandre : « quand j'appuie sur date ou heure, c'est le
+                truc de base, brut : il faut le joli calendrier de Nouveau
+                rendez-vous ». Le calendrier, l'heure et la durée de l'agenda. */}
+            <div className={dv.plein}>
+              <ChoixQuand date={date} heure={heure} duree={duree} onDate={setDate} onHeure={setHeure} onDuree={setDuree}
+                durees={[{ v: 30, lib: '30 min' }, { v: 45, lib: '45 min' }, { v: 60, lib: '1 h' }, { v: 90, lib: '1 h 30' }]} />
+            </div>
             <div className={`${dv.champ} ${dv.plein}`}><label htmlFor="pv-contact">Contact agence ou vendeur</label><input id="pv-contact" value={contact} onChange={e => setContact(e.target.value)} placeholder="Nom, téléphone, e-mail…" /></div>
             <div className={`${dv.champ} ${dv.plein}`}><label htmlFor="pv-notes">Notes préparatoires</label><textarea id="pv-notes" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Points à vérifier, documents à apporter…" /></div>
           </div>
           <div className={dv.aide}>{'La visite va dans l’agenda et dans son espace. La demande quitte « Demandes » et passe dans « À venir ».'}</div>
         </div>
         <div className={dv.fPied}>
+          {!d.bien.bien_vente_id && d.client && (
+            <button type="button" className={dv.lienIndispo} onClick={() => setIndispo(true)} disabled={envoi}>🔒 Ce bien n’est plus disponible</button>
+          )}
           <button type="button" className={dv.btn} onClick={onFermer} disabled={envoi}>Annuler</button>
           <button type="button" className={`${dv.btn} ${dv.btnV}`} onClick={() => { void valider(); }} disabled={envoi}>
             <Picto n="cal" t={15} /><span>{envoi ? 'Enregistrement…' : 'Confirmer la visite'}</span>
           </button>
         </div>
       </div>
+      {indispo && d.client && (
+        <FenetreIndispo bien={{ id: d.bien.id, titre: d.bien.titre, ville: d.bien.ville, badge_retour: 'souhaite_visiter' }}
+          clientId={d.client.id} rechercheId={d.rechercheId} prenom={d.client.prenom}
+          onFermer={() => setIndispo(false)}
+          onFait={() => { setIndispo(false); onFait(`« ${d.bien.titre || 'Le bien'} » est passé dans « Plus disponible » : ${nom} le voit dans son espace, et sa demande de visite est close.`); }} />
+      )}
     </div>,
     document.body,
   );
