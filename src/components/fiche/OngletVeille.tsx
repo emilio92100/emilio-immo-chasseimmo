@@ -7,6 +7,7 @@ import {
 } from './ParcoursBien';
 import { telAgence } from '@/lib/rapprochement';
 import FenetreBien, { LigneListe, BoutonPied, Ressort, ChampPied, InfoPied } from './FenetreBien';
+import { champsChauffage } from '@/lib/chauffage';
 
 /**
  * Onglet Veille — les biens trouvés par la veille, en attente d'arbitrage.
@@ -97,6 +98,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
       charges_trimestrielles: p.charges_trimestrielles ?? null, taxe_fonciere: p.taxe_fonciere ?? null,
       // ce que couvrent les charges suit le montant
       ...(p.charges_comprises ? { charges_comprises: p.charges_comprises } : {}),
+      // V3.171 : le chauffage (collectif ou individuel, énergie, diffusion)
+      ...champsChauffage(p),
       // le plan suit le bien ; la colonne n'est écrite que s'il y en a un
       ...(Array.isArray(p.plans) && p.plans.length ? { plans: p.plans } : {}),
       source_portail: p.portail || 'Veille', agence_nom: p.agence || null, badge_retour: 'propose',
