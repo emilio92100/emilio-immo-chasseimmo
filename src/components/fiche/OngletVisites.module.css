@@ -1,0 +1,174 @@
+/* V3.169 — L'onglet Visites de la fiche acheteur, « le fil des visites »
+   (maquette A, choisie par Alexandre le 10 octobre 2026). Voir OngletVisites.tsx. */
+
+.onglet { display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', system-ui, sans-serif; color: #13243d; }
+
+/* ── La barre : les filtres dans un rail (la pastille glisse, Curseur), puis
+   « Organiser une visite ». « Toutes » est au bout du rail. ── */
+.barre { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rail { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; background: #e9eef6; border-radius: 16px; padding: 4px; max-width: 100%; box-sizing: border-box; }
+.filtre {
+  display: inline-flex; align-items: center; gap: 8px; border: none; border-radius: 12px; padding: 9px 14px; background: transparent;
+  color: #34496e; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.filtre:hover:not([aria-pressed='true']) { background: rgba(255, 255, 255, .7); }
+.filtre[aria-pressed='true'] { background: #34496e; color: #fff; box-shadow: 0 10px 22px -12px rgba(34, 73, 124, .85); }
+.filtre i { font-style: normal; font-size: 11px; font-weight: 800; border-radius: 20px; padding: 1px 7px; background: #fff; color: #64748b; font-variant-numeric: tabular-nums; transition: background .3s ease, color .3s ease; }
+.filtre[aria-pressed='true'] i { background: #c9a84c; color: #1a2332; }
+.filtreVide { color: #8a97ab; }
+.filtreVide i { color: #a3afc0; }
+/* Une visite qui attend son compte rendu : le chiffre en orange. */
+.filtreAlerte i { background: #fff1db; color: #b45309; }
+.sep { width: 1px; align-self: stretch; margin: 6px 4px; background: #d3dceb; flex-shrink: 0; }
+.ressort { flex: 1 1 auto; }
+.organiser {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 42px; padding: 0 18px; border: none; border-radius: 12px;
+  background: var(--emilio-fond, #34496e); color: #fff; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer;
+  box-shadow: 0 8px 18px -10px rgba(26, 35, 50, .6); white-space: nowrap;
+}
+
+/* ── « Ce que la veille retient » ── */
+.retient { display: flex; gap: 16px; align-items: flex-start; background: #fff; border: 1px solid #e3e8f0; border-radius: 16px; padding: 16px 18px; }
+.retientIc { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; background: #fbf4e1; color: #8a6a1f; display: flex; align-items: center; justify-content: center; }
+.retientCorps { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.retientT { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15.5px; font-weight: 800; }
+.retientP { font-size: 13px; color: #64748b; margin-top: 3px; line-height: 1.5; }
+.retientLignes { display: flex; gap: 10px 22px; flex-wrap: wrap; }
+.retientGroupe { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.retientLib { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+.puceRetient { display: inline-flex; align-items: center; gap: 7px; border-radius: 99px; padding: 5px 7px 5px 12px; font-size: 12.5px; font-weight: 700; border: 1px solid; }
+.puceRetient small { font-size: 12px; font-weight: 600; opacity: .75; }
+.puceRetient button { width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(0, 0, 0, .06); color: inherit; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.puceRetient button:hover { background: rgba(0, 0, 0, .12); }
+.ecarte { background: #fdf1ec; border-color: #f5cdb9; color: #9a3412; }
+.aime { background: #effaf3; border-color: #bfe8cf; color: #166534; }
+.reafficher { background: none; border: none; color: #4a6b90; font: 700 12px 'DM Sans', sans-serif; cursor: pointer; padding: 0; align-self: flex-start; }
+
+/* ── Les sections et le fil ── */
+.section { display: flex; flex-direction: column; gap: 12px; }
+.sectionT { display: flex; align-items: center; gap: 10px; }
+.sectionT b { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+.sectionT span { flex: 1 1 auto; height: 1px; background: #dde4ee; }
+.sectionP { font-size: 12.5px; color: #64748b; margin: -6px 0 0; line-height: 1.45; }
+.vide { background: #fff; border: 1px dashed #d5dde8; border-radius: 16px; padding: 22px 18px; text-align: center; font-size: 13.5px; color: #64748b; line-height: 1.5; }
+
+.fil { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 16px; align-items: start; }
+.date { text-align: center; padding-top: 6px; }
+.dateJ { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px; color: #94a3b8; }
+.dateN { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 34px; font-weight: 800; color: #34496e; line-height: 1.05; }
+.dateM { font-size: 12px; font-weight: 700; color: #94a3b8; }
+.dateH { display: inline-block; margin-top: 6px; background: #e6ebf2; color: #34496e; border-radius: 8px; padding: 3px 8px; font-size: 12px; font-weight: 800; }
+.dateVenir .dateJ { color: #22497c; }
+.dateVenir .dateN { color: #13243d; }
+.dateVenir .dateM { color: #64748b; }
+.dateVenir .dateH { background: #22497c; color: #fff; }
+.dateAlerte .dateJ { color: #b45309; }
+.dateAlerte .dateH { background: #d97706; color: #fff; }
+
+/* ── La carte d'une visite : la photo, fondue dans le texte ── */
+.carte { display: flex; background: #fff; border: 1px solid #e3e8f0; border-radius: 18px; overflow: hidden; min-width: 0; }
+.carteVenir { border-color: #d9e3f2; box-shadow: 0 14px 30px -24px rgba(34, 73, 124, .6); }
+.carteAlerte { border-color: #f6d89a; box-shadow: 0 14px 30px -24px rgba(180, 83, 9, .5); }
+.photo { position: relative; flex: 0 0 auto; width: 230px; min-height: 170px; background: #eef2f7; }
+.photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.photoFanee img { filter: saturate(.75); }
+/* Alexandre : « pas que la photo s'arrête net, un petit effet transparent
+   entre les deux ». La photo se fond dans le blanc de la carte. */
+.photo::after {
+  content: ''; position: absolute; top: 0; bottom: 0; right: -1px; width: 72px; pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .55) 55%, #fff 100%);
+}
+.sansPhoto { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b6c2d3; }
+.etiquette {
+  position: absolute; z-index: 1; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 5px 11px;
+  font-size: 12px; font-weight: 800; color: #fff; box-shadow: 0 6px 14px -6px rgba(0, 0, 0, .5); max-width: calc(100% - 20px);
+}
+.datePhoto { display: none; }
+
+.corps { flex: 1 1 auto; min-width: 0; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.tete { display: flex; align-items: flex-start; gap: 12px; }
+.titre { flex: 1 1 auto; min-width: 0; }
+.titre h3 { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 17px; font-weight: 800; color: #13243d; line-height: 1.3; }
+.titre p { margin: 4px 0 0; font-size: 13px; color: #64748b; line-height: 1.4; }
+.titre p b { font-weight: 800; }
+.badge { flex: 0 0 auto; border-radius: 99px; padding: 4px 11px; font-size: 12px; font-weight: 800; white-space: nowrap; border: 1px solid; }
+.badgeBleu { background: #eef4ff; border-color: #c9dbfb; color: #1d4ed8; }
+.badgeGris { background: #eef1f6; border-color: #e1e7ef; color: #34496e; }
+.badgeOrange { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+
+/* Ton compte rendu : l'encadré doré, le texte en grand. */
+.cr { position: relative; background: #fbf7ec; border: 1px solid #efe2bd; border-radius: 14px; padding: 13px 16px 13px 46px; }
+.cr::before { content: '“'; position: absolute; left: 14px; top: 5px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 40px; font-weight: 800; color: #c9a84c; line-height: 1; }
+.crLib { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #a07c28; margin-bottom: 4px; }
+.crTexte { font-size: 16px; font-weight: 600; color: #13243d; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+/* Ce que le client a dit dans son espace : la bulle bleue. */
+.mot { display: flex; gap: 10px; align-items: flex-start; background: #eef4ff; border: 1px solid #c9dbfb; border-radius: 14px; padding: 12px 14px; }
+.motIc { width: 30px; height: 30px; border-radius: 50%; background: #2563eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; flex: 0 0 auto; }
+.motLib { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #1d4ed8; margin-bottom: 3px; }
+.motTexte { font-size: 15px; font-weight: 600; color: #13243d; line-height: 1.45; overflow-wrap: anywhere; }
+.motTexte small { display: block; font-size: 12.5px; font-weight: 600; color: #1e3a8a; margin-top: 3px; }
+
+.raisons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.raisons > span:first-child { font-size: 12px; color: #94a3b8; font-weight: 600; margin-right: 2px; }
+.raison { border-radius: 99px; padding: 3px 10px; font-size: 12px; font-weight: 700; border: 1px solid; }
+.raisonNon { background: #fdf1ec; border-color: #f5cdb9; color: #9a3412; }
+.raisonOui { background: #effaf3; border-color: #bfe8cf; color: #166534; }
+.raisonNeutre { background: #f1f5f9; border-color: #e2e8f0; color: #334155; }
+
+/* L'agence du rendez-vous, et l'appel. */
+.agent { display: flex; align-items: center; gap: 12px; background: #f5f8fc; border-radius: 12px; padding: 10px 12px; }
+.agentIc { width: 34px; height: 34px; border-radius: 50%; background: #e3eaf5; color: #34496e; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.agentTx { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.4; }
+.agentTx b { color: #13243d; }
+.agentTx span { color: #64748b; }
+
+/* Le pied : le bon de visite, puis les gestes. */
+.pied { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid #f0f3f7; padding-top: 12px; }
+.bon { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.bonSigne { color: #15803d; }
+.bonASigner { color: #8a6a1f; background: #fbf4e1; border: 1px solid #ecdcb0; border-radius: 99px; padding: 6px 12px; }
+.bonPreparer { color: #34496e; border: 1px dashed #c7d2e1; border-radius: 99px; padding: 6px 12px; }
+.bon:disabled { opacity: .6; cursor: default; }
+.etoiles { color: #c9a84c; letter-spacing: 1px; font-size: 13px; }
+.etoiles span { color: #dbe2ea; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 13px; border-radius: 10px;
+  border: 1px solid #d0d9e6; background: #fff; color: #34496e; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap;
+}
+.btnTexte { border-color: transparent; background: transparent; color: #64748b; }
+.btnRouge { border-color: transparent; background: transparent; color: #b91c1c; }
+.btnPlein { border: none; background: var(--emilio-fond, #34496e); color: #fff; font-weight: 800; }
+.btnBleu { border: none; background: #2563eb; color: #fff; font-weight: 800; }
+
+/* « Déplacer » : la date, l'heure, le contact, à la main. */
+.deplacer { display: flex; gap: 8px; flex-wrap: wrap; background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 12px; padding: 10px; }
+.deplacer input { height: 38px; border: 1px solid #d8e0eb; border-radius: 10px; padding: 0 10px; font: 500 13.5px 'DM Sans', sans-serif; color: #13243d; background: #fff; box-sizing: border-box; min-width: 0; }
+.deplacer input:focus { outline: none; border-color: #34496e; box-shadow: 0 0 0 3px rgba(52, 73, 110, .12); }
+.deplacer label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: .6px; flex: 1 1 130px; }
+
+/* ── Au téléphone : la photo en haut, fondue vers le bas ; la date passe sur la photo. ── */
+@media (max-width: 760px) {
+  .onglet { gap: 16px; }
+  .barre { flex-direction: column; align-items: stretch; gap: 10px; }
+  .rail { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .rail::-webkit-scrollbar { display: none; }
+  .filtre { padding: 9px 12px; }
+  .organiser { height: 46px; font-size: 14px; }
+  .retient { padding: 14px; gap: 12px; }
+  .retientIc { width: 34px; height: 34px; border-radius: 10px; }
+  .fil { grid-template-columns: minmax(0, 1fr); }
+  .date { display: none; }
+  .carte { flex-direction: column; }
+  .photo { width: auto; min-height: 0; height: 168px; }
+  .photo::after { top: auto; left: 0; right: 0; bottom: -1px; width: auto; height: 56px; background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .55) 55%, #fff 100%); }
+  .datePhoto { display: block; position: absolute; z-index: 1; right: 10px; top: 10px; background: rgba(19, 36, 61, .82); color: #fff; border-radius: 10px; padding: 5px 9px; font-size: 12px; font-weight: 700; }
+  .corps { padding: 6px 14px 14px; gap: 11px; }
+  .tete { flex-direction: column; gap: 6px; }
+  .titre h3 { font-size: 16px; }
+  .cr { padding: 12px 14px 12px 40px; }
+  .cr::before { left: 12px; font-size: 36px; }
+  .crTexte { font-size: 15.5px; }
+  .btn { height: 42px; }
+  .pied .btn { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .filtre i { transition: none; } }

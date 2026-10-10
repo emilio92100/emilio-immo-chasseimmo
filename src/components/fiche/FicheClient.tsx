@@ -4844,6 +4844,8 @@ ${signatureMail()}`,
         {bonVisite.fenetre}
         {tab === 'visites' && (
           <OngletVisites visites={visites} biens={biens} prenom={client.prenom || ''}
+            civilite={client.civilite || null} couple={!!client.couple}
+            onDeuxieme={(v: any) => { if (rechercheId) demanderVisitePour(rechercheId, v.bien_id || undefined); }}
             masques={((rechercheActive as any)?.appris_masques as string[] | null) || []}
             rechercheId={rechercheId}
             onCompteRendu={(v: any) => setCrVisite(v)} onAnnuler={annulerVisite}
