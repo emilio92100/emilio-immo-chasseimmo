@@ -350,7 +350,7 @@ function useEtroit() {
 
 /* ══ La page ═══════════════════════════════════════════════════ */
 
-type Modale = { mode: 'nouveau'; jour: string; heure: string; rechercheId?: string } | { mode: 'modifier'; ev: Ev } | null;
+type Modale = { mode: 'nouveau'; jour: string; heure: string; rechercheId?: string; bienId?: string } | { mode: 'modifier'; ev: Ev } | null;
 
 /* Tout ce que l'agenda affiche, par pages de 1 000 (V3.33) : au-delà,
    Supabase coupait sans rien dire et des visites ou des rendez-vous
@@ -687,7 +687,7 @@ function dossiersDe(recherches: any[], clientsParId: Record<string, any>): Dossi
    la fenêtre de l'agenda reçoit : les dossiers, les relances, et l'agenda
    lui-même pour signaler un chevauchement. */
 export function NouveauRdvPartout() {
-  const [creneau, setCreneau] = useState<{ jour: string; heure: string; rechercheId?: string } | null>(null);
+  const [creneau, setCreneau] = useState<{ jour: string; heure: string; rechercheId?: string; bienId?: string } | null>(null);
   const [brut, setBrut] = useState<{ visites: any[]; rdvs: any[]; relances: any[]; transactions: any[]; recherches: any[]; clients: any[] } | null>(null);
   const [tableAbsente, setTableAbsente] = useState(false);
 
@@ -696,13 +696,15 @@ export function NouveauRdvPartout() {
     const ouvrir = async (e: Event) => {
       /* V3.134 : depuis la fiche d'un client, son dossier est déjà choisi. */
       const rechercheId = (e as CustomEvent<{ rechercheId?: string }>).detail?.rechercheId || undefined;
+      /* V3.169 : « Caler la 2e visite » — le bien est déjà coché. */
+      const bienId = (e as CustomEvent<{ bienId?: string }>).detail?.bienId || undefined;
       const [v, r, rel, tx, rech, cl] = await lireAgenda();
       if (!vivant) return;
       setTableAbsente(!!r.erreur);
       setBrut({ visites: v.data, rdvs: r.data, relances: rel.data, transactions: tx.data, recherches: rech.data, clients: cl.data });
       /* Comme le bouton de l'agenda : aujourd'hui, à l'heure pleine suivante. */
       const n = new Date(); const suiv = Math.min(20, Math.max(8, n.getHours() + 1));
-      setCreneau({ jour: cleDe(n), heure: `${pad(suiv)}:00`, rechercheId });
+      setCreneau({ jour: cleDe(n), heure: `${pad(suiv)}:00`, rechercheId, bienId });
     };
     window.addEventListener(EVT_NOUVEAU_RDV, ouvrir);
     return () => { vivant = false; window.removeEventListener(EVT_NOUVEAU_RDV, ouvrir); };
@@ -713,13 +715,13 @@ export function NouveauRdvPartout() {
     ? construire(brut.visites, brut.rdvs, brut.transactions, brut.recherches, clientsParId, new Date()).evs
     : []), [brut, clientsParId]);
   const dossiers = useMemo(() => dossiersDe(brut?.recherches || [], clientsParId), [brut, clientsParId]);
-  const modale = useMemo(() => (creneau ? { mode: 'nouveau' as const, jour: creneau.jour, heure: creneau.heure, rechercheId: creneau.rechercheId } : null), [creneau]);
+  const modale = useMemo(() => (creneau ? { mode: 'nouveau' as const, jour: creneau.jour, heure: creneau.heure, rechercheId: creneau.rechercheId, bienId: creneau.bienId } : null), [creneau]);
 
   if (!modale || !brut) return null;
   return (
     <>
       <StylesAgenda />
-      <ModaleRdv key={`${modale.jour}-${modale.heure}-${modale.rechercheId || ''}-${brut.rdvs.length}`} modale={modale} dossiers={dossiers} relances={brut.relances}
+      <ModaleRdv key={`${modale.jour}-${modale.heure}-${modale.rechercheId || ''}-${modale.bienId || ''}-${brut.rdvs.length}`} modale={modale} dossiers={dossiers} relances={brut.relances}
         tableAbsente={tableAbsente} evs={evs}
         onFerme={() => setCreneau(null)}
         onEnregistre={() => { setCreneau(null); signalerMaj(); window.dispatchEvent(new Event(EVT_RDV_ENREGISTRE)); }} />
@@ -2219,7 +2221,8 @@ function ModaleRdv({ modale, dossiers, relances, tableAbsente, evs, onFerme, onE
       };
     }
     return {
-      type: 'visite', rechercheId: modale.mode === 'nouveau' ? modale.rechercheId || '' : '', choisis: {},
+      type: 'visite', rechercheId: modale.mode === 'nouveau' ? modale.rechercheId || '' : '',
+      choisis: modale.mode === 'nouveau' && modale.bienId ? { [modale.bienId]: true } : {},
       date: modale.mode === 'nouveau' ? modale.jour : cleDe(new Date()), heure: modale.mode === 'nouveau' ? modale.heure : '10:00',
       duree: 60, titre: null, lieu: null, contact: null, notes: '',
       rappel: 'veille', prevenir: false, mode: 'tel', etape: 'compromis', proprietaire: '', telephone: '', bienVenteId: '',
