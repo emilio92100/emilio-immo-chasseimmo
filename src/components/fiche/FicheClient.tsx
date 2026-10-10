@@ -41,6 +41,7 @@ import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from 
 import { ajouterMois, jourParis, joursRestants } from '@/lib/mandat';
 import { retracteEnLigne } from '@/lib/documents-espace';
 import { CLES_MAIL, signatureDe, personnaliser, conseillerDe, dejaSigne, texteModele } from '@/lib/mail-variables';
+import { CHAUFFAGE_MODES, CHAUFFAGE_ENERGIES, CHAUFFAGE_EMETTEURS, optionsAvec } from '@/lib/chauffage';
 
 /* ══ Le bloc « Critères de recherche » de la fiche ════════════════════════
    Un bandeau sombre pour le client et son enveloppe, puis trois familles :
@@ -652,26 +653,27 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
           <label className={styles.lbl}>Émissions kg CO₂/m²/an</label>
           <input className={styles.inp} type="number" value={bienForm.ges_emissions||''} onChange={e => set('ges_emissions', e.target.value)} placeholder="64" />
         </div>
+        {/* V3.171 : le chauffage en trois cases — collectif ou individuel,
+            l'énergie, ce qui diffuse la chaleur (src/lib/chauffage.ts). */}
         <div>
           <label className={styles.lbl}>Chauffage</label>
           <select className={styles.inp} value={bienForm.chauffage||''} onChange={e => set('chauffage', e.target.value)}>
             <option value="">—</option>
-            <option value="Central">Central</option>
-            <option value="Individuel">Individuel</option>
-            <option value="Collectif">Collectif</option>
-            <option value="Électrique">Électrique</option>
+            {optionsAvec(CHAUFFAGE_MODES, bienForm.chauffage).map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <div className="fc-auto" style={{ gridColumn: '2/-1' }}>
-          <label className={styles.lbl}>Source d&apos;énergie</label>
+        <div>
+          <label className={styles.lbl}>Énergie</label>
           <select className={styles.inp} value={bienForm.source_energie||''} onChange={e => set('source_energie', e.target.value)}>
             <option value="">—</option>
-            <option value="Gaz">Gaz</option>
-            <option value="Électrique">Électrique</option>
-            <option value="Fioul">Fioul</option>
-            <option value="Pompe à chaleur">Pompe à chaleur</option>
-            <option value="Bois">Bois</option>
-            <option value="Solaire">Solaire</option>
+            {optionsAvec(CHAUFFAGE_ENERGIES, bienForm.source_energie).map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="fc-auto" style={{ gridColumn: '3/-1' }}>
+          <label className={styles.lbl}>Diffusion</label>
+          <select className={styles.inp} value={bienForm.chauffage_emetteurs||''} onChange={e => set('chauffage_emetteurs', e.target.value)}>
+            <option value="">—</option>
+            {optionsAvec(CHAUFFAGE_EMETTEURS, bienForm.chauffage_emetteurs).map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
       </div>
@@ -2718,6 +2720,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       ges_emissions: parseInt(bienForm.ges_emissions)||null,
       chauffage: bienForm.chauffage||null,
       source_energie: bienForm.source_energie||null,
+      chauffage_emetteurs: bienForm.chauffage_emetteurs||null,
       // Caractéristiques booléennes
       parking: bienForm.parking||false,
       balcon: bienForm.balcon||false,
@@ -2933,6 +2936,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       ges_emissions: parseInt(editBienForm.ges_emissions)||null,
       chauffage: editBienForm.chauffage||null,
       source_energie: editBienForm.source_energie||null,
+      chauffage_emetteurs: editBienForm.chauffage_emetteurs||null,
       parking: editBienForm.parking||false,
       balcon: editBienForm.balcon||false,
       terrasse: editBienForm.terrasse||false,
