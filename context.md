@@ -1499,6 +1499,34 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.164 — 10 octobre 2026 · Planifier une visite : le calendrier de l'agenda ; « Ce bien n'est plus disponible »
+
+⚠️ **À passer dans Supabase** : `outils/sql/biens-indispo.sql` (colonne `biens.indispo`). Sans lui,
+tout marche comme avant, seul « Plus disponible » le dit au lieu d'enregistrer.
+
+- **Planifier la visite** (page Visites › Demandes, et la fiche d'un acheteur) — Alexandre : « la date
+  et l'heure, c'est le truc de base, brut ; il faut le joli calendrier de Nouveau rendez-vous » :
+  `ChoixQuand` (PageAgenda.tsx, déjà dans « Organiser une visite ») — le calendrier, l'heure, la
+  durée en pastilles (enregistrée : `duree_min`). Aujourd'hui à 18 h, 45 minutes, d'office. Les deux
+  fenêtres s'élargissent un peu (580 px).
+- **« Ce bien n'est plus disponible »** — « après échange avec l'agence ou le vendeur : ça se range
+  dans Plus disponible, il le voit dans son espace avec mon commentaire ; s'il revient à la vente,
+  je le remets disponible » : `src/lib/biens-indispo.ts` (`marquerIndispo`, `remettreDispo`,
+  `lireIndispo`), fenêtre `src/components/fiche/FenetreIndispo.tsx` (le motif — vendu, sous
+  compromis, retiré, autre — et un mot pour l'acheteur). Pour un bien trouvé ailleurs seulement : un
+  bien de l'agence suit sa propre fiche.
+  · Où : l'onglet Présentés (« 🔒 Plus disponible » au pied de la carte), et « Planifier une
+    visite » (fiche et page Visites), à gauche du pied de la fenêtre.
+  · CRM : groupe « Plus disponible » en fin d'onglet Présentés, bandeau gris sur la carte (motif,
+    date, « Ton mot »), « Planifier une visite » remplacé par « Remettre disponible ». Journal
+    (`bien_modifie`) : « 🔒 Plus disponible : … » / « 🔓 De nouveau disponible : … ».
+  · Sa demande de visite se solde (relance « Veut visiter ») et quitte Visites › Demandes
+    (demandes-visite.ts lit `indispo` à part, sans rien bloquer avant le SQL).
+  · Espace : le bien passe dans « Plus disponibles » (le même `vente` qu'un bien de l'agence vendu,
+    page.tsx `indispoDe`), sa fiche dit « Ce bien a été vendu » (ou le motif) puis « Le mot de votre
+    conseiller ». Ses visites prévues n'y apparaissent plus ; l'API refuse « je veux visiter » et
+    les avis d'offre ou de 2e visite (`etapeVente`, /api/espace/[action]).
+
 ### V3.163 — 10 octobre 2026 · Les fiches arrondies au téléphone ; « Reçues » en bandeau bleu
 
 - **La fiche d'un bien et celle d'un contact, au téléphone** (Alexandre : « finalement en arrondi,
