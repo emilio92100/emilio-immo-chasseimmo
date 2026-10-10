@@ -496,10 +496,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
        trouvé ailleurs). Une visite ou une offre sur un bien vendu, retiré ou
        sous compromis est refusée ici, pas seulement cachée à l'écran : une
        page restée ouverte la laissait passer (mail, relance, mandat). */
-    async function etapeVente(b: { bien_vente_id?: string | null } | null): Promise<string | null> {
-      if (!b?.bien_vente_id) return null;
-      const { data } = await supabase.from('biens_vente').select('etape').eq('id', b.bien_vente_id).maybeSingle();
-      return (data as { etape?: string } | null)?.etape || null;
+    async function etapeVente(b: { id?: string; bien_vente_id?: string | null } | null): Promise<string | null> {
+      if (!b) return null;
+      if (b.bien_vente_id) {
+        const { data } = await supabase.from('biens_vente').select('etape').eq('id', b.bien_vente_id).maybeSingle();
+        return (data as { etape?: string } | null)?.etape || null;
+      }
+      /* V3.164 : un bien trouvé ailleurs, dit « plus disponible » par
+         Alexandre (biens.indispo) : ni visite ni offre. Sans la colonne
+         (SQL pas encore passé), la lecture échoue et rien n'est bloqué. */
+      if (!b.id) return null;
+      const { data, error } = await supabase.from('biens').select('indispo').eq('id', b.id).maybeSingle();
+      const x = !error ? (data as { indispo?: { motif?: string } | null } | null)?.indispo : null;
+      return x ? (x.motif === 'compromis' ? 'compromis' : x.motif === 'vendu' ? 'vendu' : 'retire') : null;
     }
 
     switch (action) {
