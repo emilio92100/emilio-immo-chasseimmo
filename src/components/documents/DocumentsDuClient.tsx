@@ -13,6 +13,8 @@ import { etatMandatEnLigne, exemplaireManquant, libStatut, lienFichier, nomFichi
 import { jourParis } from '@/lib/mandat';
 import { retracteEnLigne } from '@/lib/documents-espace';
 import s from './Documents.module.css';
+import { Panneau, itemDoc, itemMandat, type Item, type SuiteBien } from './PageDocuments';
+import SuiteMandatBien from './SuiteMandatBien';
 
 /* ═══ « Ses documents », sur la fiche d'un client (V3.17, rangés en V3.32) ═
    Tout ce qui est rattaché à ce client : les documents de la rubrique
@@ -289,6 +291,14 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
      fiche, sans changer de rubrique ; on ne part dans Documents qu'une fois
      le document créé, pour le remplir. */
   const [nouveau, setNouveau] = useState(false);
+  /* V3.170 — Alexandre : « quand je clique sur le mandat de recherche, ça
+     m'emmène dans Documents juridiques ; je veux rester sur la fiche du
+     client, avec la partie à droite ». Le panneau du document s'ouvre ici,
+     par-dessus la fiche. Ce qui demande l'éditeur (modifier, préparer un
+     avenant, déléguer, dupliquer) part dans Documents, comme avant. */
+  const [lignes, setLignes] = useState<{ docs: DocumentRow[]; mandats: MandatRecherche[] }>({ docs: [], mandats: [] });
+  const [panneau, setPanneau] = useState<Item | null>(null);
+  const [suiteBien, setSuiteBien] = useState<SuiteBien | null>(null);
 
   useEffect(() => {
     let vivant = true;
@@ -340,9 +350,31 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
       if (!vivant) return;
       setSuivis(lus);
       setListe(elements);
+      setLignes({ docs: docsRows, mandats: mandatsRows });
     })();
     return () => { vivant = false; };
   }, [clientId, confrere, prenom, tour]);
+
+  /* Le nom du client, pour le titre d'un mandat en ligne sans mandant. */
+  const noms: Record<string, string> = { [clientId]: prenom || 'Client' };
+  /* Ouvrir un document : son panneau ici ; un brouillon, dans l'éditeur. */
+  function ouvrirIci(cle: string) {
+    if (cle.startsWith('r-')) {
+      const m = lignes.mandats.find(x => 'r-' + x.id === cle);
+      if (m) { setPanneau(itemMandat(m, noms)); return; }
+    } else {
+      const d = lignes.docs.find(x => x.id === cle || 'd-' + x.id === cle);
+      if (d && d.statut !== 'brouillon') { setPanneau(itemDoc(d)); return; }
+      if (d) { onNavigate('documents', { editer: d.id }); return; }
+    }
+    onNavigate('documents', { ouvrir: cle });
+  }
+  /* « Fiche client » d'un autre client (une délégation, sur la fiche d'un confrère). */
+  async function ficheDe(id: string) {
+    const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
+    if (error || !data) return;
+    onNavigate('fiche', data);
+  }
 
   if (!liste || (erreur && !liste.length)) return null;
   const signes = liste.filter(x => x.statut === 'signe').length;
@@ -362,7 +394,7 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
         : <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}><svg className={s.dcPlus} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Nouveau<span className={s.rpLong}>{' '}document</span></button>}>
       {liste.length ? (
         <>
-          <DocsParEtat elements={liste} suivis={suivis} onOuvrir={cle => onNavigate('documents', { ouvrir: cle })} onFait={() => setTour(t => t + 1)} />
+          <DocsParEtat elements={liste} suivis={suivis} onOuvrir={ouvrirIci} onFait={() => setTour(t => t + 1)} />
           {erreur && <div className={s.dcVide}>{erreur}</div>}
         </>
       ) : (
@@ -371,6 +403,22 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
           : `Aucun document pour ${prenom || 'ce client'} pour l’instant. Un mandat, un avenant, un bon de visite ou une offre rattaché à lui apparaîtra ici, avec son exemplaire signé.`}</div>
       )}
     </BlocRepliable>
+    {/* V3.170 : le panneau du document, sur la fiche (voir plus haut). */}
+    {panneau && typeof document !== 'undefined' && createPortal(
+      <Panneau it={panneau} noms={noms} docs={lignes.docs}
+        onFermer={() => setPanneau(null)}
+        onEditer={d => { setPanneau(null); onNavigate('documents', { editer: d.id }); }}
+        onMaj={d => { setPanneau(p => (p && p.doc?.id === d.id ? itemDoc(d) : p)); setTour(t => t + 1); }}
+        onSupprime={() => { setPanneau(null); setTour(t => t + 1); }}
+        onDupliquer={d => { setPanneau(null); onNavigate('documents', { ouvrir: d.id }); }}
+        onFiche={cid => { setPanneau(null); if (cid !== clientId) void ficheDe(cid); }}
+        onDeriver={(cle, modeleId, o) => { setPanneau(null); onNavigate('documents', { deriver: { cle, modele: modeleId, echeance: o?.echeance } }); }}
+        onSuiteBien={setSuiteBien} />,
+      document.body)}
+    {suiteBien && typeof document !== 'undefined' && createPortal(
+      <SuiteMandatBien bien={suiteBien.bien} doc={suiteBien.doc} etaitSigne={suiteBien.etaitSigne} supprime={suiteBien.supprime}
+        onFermer={() => setSuiteBien(null)} onFicheBien={id => { setSuiteBien(null); onNavigate('biens', { bien: id }); }} />,
+      document.body)}
     {/* Hors du bloc : replié, il ne rend pas ses enfants. */}
     {nouveau && typeof document !== 'undefined' && createPortal(
       <NouveauDocument modeleId={confrere ? 'delegation' : undefined} clientId={confrere ? undefined : clientId} confrereId={confrere ? clientId : undefined}

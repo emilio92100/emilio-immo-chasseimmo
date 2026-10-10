@@ -42,7 +42,7 @@ import { retenirPlace } from '@/lib/place-fiche';
    signent depuis l'espace acheteur) : ils figurent ici aussi, en lecture,
    à côté des mandats de recherche signés sur papier. */
 
-type Item = {
+export type Item = {
   cle: string;
   categorie: Categorie;
   statut: Statut;
@@ -113,7 +113,7 @@ function TeteGroupe({ g, titre, n, aide }: { g: string; titre: string; n: number
   );
 }
 
-function itemDoc(d: DocumentRow): Item {
+export function itemDoc(d: DocumentRow): Item {
   /* V3.56 : un mandat auquel le client a renoncé en ligne, depuis son espace :
      « Annulé », et la ligne dit « rétracté » (comme un mandat signé en ligne
      dans l'espace puis rétracté). */
@@ -131,7 +131,7 @@ function itemDoc(d: DocumentRow): Item {
     aDeposer: exemplaireManquant(d) ? rappelExemplaire(d) : undefined,
   };
 }
-function itemMandat(x: MandatRecherche, noms: Record<string, string>): Item {
+export function itemMandat(x: MandatRecherche, noms: Record<string, string>): Item {
   const nom = [x.mandant?.prenom, x.mandant?.nom].filter(Boolean).join(' ') || (x.client_id ? noms[x.client_id] : '') || 'Client';
   /* V3.50 : signé par une partie seulement, il attend encore une signature
      (il passait « Signé » ici, « En attente de signature » sur la fiche). */
@@ -205,7 +205,7 @@ function FenetreFinMandat({ vide, onFermer, onChoix }: { vide: boolean; onFermer
 
 /* ── La fiche d'un document ── */
 /* Un mandat de vente annulé ou supprimé dont le bien dépend encore (V3.42). */
-type SuiteBien = { bien: BienVente; doc: DocumentRow; etaitSigne: boolean; supprime: boolean };
+export type SuiteBien = { bien: BienVente; doc: DocumentRow; etaitSigne: boolean; supprime: boolean };
 
 /* La fiche du bien dépend-elle encore de ce mandat de vente ? Rend de quoi
    ouvrir la question, ou null (pas de bien, bien non concerné, lecture
@@ -218,7 +218,9 @@ async function suiteBienDe(d: DocumentRow, etaitSigne: boolean, supprime: boolea
   } catch { return null; }
 }
 
-function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupliquer, onFiche, onDeriver, onSuiteBien }: {
+/* V3.170 : exporté — la fiche d'un client ouvre aussi ce panneau sur place
+   (DocumentsDuClient), sans partir dans « Documents juridiques ». */
+export function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupliquer, onFiche, onDeriver, onSuiteBien }: {
   it: Item;
   noms: Record<string, string>;
   /* Tous les documents : pour retrouver les courriers déjà préparés. */
@@ -638,7 +640,11 @@ function Panneau({ it, noms, docs, onFermer, onEditer, onMaj, onSupprime, onDupl
    l'éditeur dit « Visites » et y ramène, comme si on n'était jamais parti.
    `place` : la clé de lib/place-fiche.ts que l'écran relit en revenant. */
 export type RetourDocuments = { page: string; data?: unknown; lib: string; place?: string };
-export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste'; delegation?: string; retour?: RetourDocuments };
+/* V3.170 : `editer` — un document à ouvrir dans l'éditeur ; `deriver` — un
+   avenant ou un courrier à préparer à partir d'un mandat (« Préparer un
+   avenant », « Déléguer » depuis le panneau ouvert sur la fiche du client). */
+export type IntentionDocuments = { avenantRecherche?: string; ouvrir?: string; nouveau?: string; ancre?: 'creer' | 'liste'; delegation?: string; retour?: RetourDocuments;
+  editer?: string; deriver?: { cle: string; modele: string; echeance?: string } };
 
 export default function PageDocuments({ onNavigate, intention, onIntention }: {
   onNavigate: (page: string, data?: unknown) => void;
@@ -897,6 +903,28 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
       if (r.statut === 'brouillon') setEdition(r); else setOuvert(r.id);
     })();
   }, [intention, onIntention, majDoc]);
+  /* V3.170 : « Modifier » depuis le panneau ouvert sur la fiche d'un client. */
+  useEffect(() => {
+    const id = intention?.editer;
+    if (!id || faite.current === 'e-' + id) return;
+    faite.current = 'e-' + id;
+    (async () => {
+      const { data, error } = await supabase.from('documents').select('*').eq('id', id).maybeSingle();
+      onIntention?.();
+      if (error || !data) { alert('Le document n’a pas pu être ouvert.' + (error ? `\n\n${error.message}` : '')); return; }
+      majDoc(data as DocumentRow);
+      setEdition(data as DocumentRow);
+    })();
+  }, [intention, onIntention, majDoc]);
+  /* V3.170 : « Préparer un avenant », « Déléguer », un courrier… depuis le
+     panneau ouvert sur la fiche d'un client. */
+  useEffect(() => {
+    const x = intention?.deriver;
+    if (!x || faite.current === `dv-${x.cle}-${x.modele}`) return;
+    faite.current = `dv-${x.cle}-${x.modele}`;
+    onIntention?.();
+    void deriver(x.cle, x.modele, x.echeance ? { echeance: x.echeance } : {});
+  }, [intention, onIntention, deriver]);
   /* « Déléguer un mandat » depuis la fiche d'un confrère : il est déjà choisi. */
   useEffect(() => {
     const cid = intention?.delegation;
