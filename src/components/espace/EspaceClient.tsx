@@ -4405,7 +4405,12 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
   if (b.chargesAn) couts.push(['euro', 'Charges', EUR(b.chargesAn), `par an · ${EUR(Math.round(b.chargesAn / 12))} par mois`]);
   else if (b.charges) couts.push(['euro', 'Charges', EUR(b.charges), 'par trimestre']);
   if (b.taxe) couts.push(['immeuble', 'Taxe foncière', EUR(b.taxe), 'par an']);
-  if (b.chauffage) couts.push(['eclair', 'Chauffage', b.chauffage, '']);
+  /* V3.171 : « Collectif » en gros, « gaz, par radiateurs » dessous (le
+     texte entier est composé côté serveur, src/lib/chauffage.ts). */
+  if (b.chauffage) {
+    const [mode, ...reste] = b.chauffage.split(', ');
+    couts.push(['eclair', 'Chauffage', mode, reste.join(', ')]);
+  }
   if (b.lots) couts.push(['maison', 'Copropriété', String(b.lots), b.lots > 1 ? 'lots' : 'lot']);
 
   /* La surface d'extérieur est parfois saisie en bloc, parfois balcon par
