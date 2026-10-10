@@ -63,6 +63,18 @@
    place des symboles ⊞ ◎ ◇, pour aller avec les icônes des sous-menus). */
 .navPicto { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #94a3b8; transition: color .15s; }
 .navItem:hover .navPicto, .navItem.active .navPicto, .navParent .navPicto { color: var(--emilio); }
+/* V3.169 — Alexandre : « les couleurs du menu sur téléphone, remets-les sur
+   ordinateur ; les icônes sont toutes grises ». Comme au téléphone (V3.162) :
+   chaque rubrique a son pictogramme sur une pastille de sa teinte (`--nc`,
+   `--nf`, Sidebar.tsx), son nom en bleu nuit ; la rubrique ouverte, sa
+   pastille bleu Emilio et le picto doré. */
+@media (min-width: 901px) {
+  .navItem { padding: 7px 12px 7px 9px; color: #3b4a60; font-weight: 600; }
+  .navPicto { width: 30px; height: 30px; border-radius: 9px; background: var(--nf, #f1f5f9); color: var(--nc, #64748b); transition: background .2s, color .2s; }
+  .navItem:hover .navPicto, .navParent .navPicto { background: var(--nf, #e8edf5); color: var(--nc, var(--emilio)); }
+  .navItem.active .navPicto { background: var(--emilio-fond); color: #c9a84c; }
+  .reduit .navItem { padding: 8px 0; }
+}
 
 /* ── Les sous-menus : Documents (V3.18), Contacts et Biens (V3.24) ──
    La rubrique garde son geste (elle ouvre la page) ; la petite flèche à
