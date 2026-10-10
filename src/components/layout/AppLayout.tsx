@@ -23,6 +23,7 @@ import EnvoiPortails from '@/components/layout/EnvoiPortails';
 import Avertissements from '@/components/layout/Avertissements';
 import SuiviRemises from '@/components/layout/SuiviRemises';
 import Defilement from '@/components/layout/Defilement';
+import GardePlace from '@/components/layout/GardePlace';
 import Mouvement from '@/components/layout/Mouvement';
 import styles from './AppLayout.module.css';
 /* Toute l'adaptation au téléphone des écrans du CRM, au même endroit. */
@@ -405,6 +406,8 @@ export default function AppLayout() {
       <SuiviRemises onFiche={c => handleNavigate('fiche', c)} />
       {/* Le fondu au bord des rangées qui défilent de côté (V3.152). */}
       <Defilement />
+      {/* Changer d'onglet ou de filtre ne fait plus remonter la page (V3.167). */}
+      <GardePlace />
       {/* Les fenêtres sortent du bouton touché et y rentrent, les onglets
           arrivent en cascade (V3.152, src/lib/mouvement.ts). */}
       <Mouvement />
