@@ -215,10 +215,7 @@ html.crm .fc-envoi-choix:not(:disabled):hover { border-color: #e0c77d !important
   html.crm .fc-suivi-filtres > button { flex-shrink: 0; white-space: nowrap; }
   html.crm .fc-suivi-ajout { justify-content: center; padding: 12px 14px; font-size: 14px; border-radius: 12px; }
 
-  /* Onglet Visites */
-  html.crm .fc-visite { padding: 14px !important; }
-  html.crm .fc-visite input[type="date"], html.crm .fc-visite input[type="time"] { flex: 1 1 130px !important; width: auto !important; min-width: 0 !important; }
-  html.crm .fc-visite button { flex: 1 1 auto; justify-content: center; }
+  /* Onglet Visites : ses propres règles téléphone (OngletVisites.module.css, V3.169). */
 
   /* Onglet Transaction */
   html.crm .tx-bien { flex-wrap: wrap; }
