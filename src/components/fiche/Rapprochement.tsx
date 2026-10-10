@@ -43,6 +43,7 @@ import { SEUIL_CORRESPOND, suiteEnvoi } from '@/components/biens/outils';
 import { supabase } from '@/lib/supabase';
 import { AvecScore, AvisDetail, IconeAvis, MOT_IA, Progression, analyserIA, compareIA, dateRappro, type AvisIA, type AvisParBien } from '@/components/biens/RapprochementIA';
 import s from './Rapprochement.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ligne = Record<string, any>;
@@ -371,6 +372,7 @@ export default function Rapprochement({ client, recherche, resume, onFermer, onF
                     <p>Plus c’est ancien, plus l’annonce risque d’être vendue : vérifiez son lien avant de l’envoyer.</p>
                   </div>
                   <div className={s.seg} role="group" aria-label="Période" data-defile="">
+                    <Curseur cle={periode} />
                     {PERIODES.map(p => (
                       <button key={p.k} type="button" className={periode === p.k ? s.segOn : ''} aria-pressed={periode === p.k} onClick={() => setPeriode(p.k)}>{p.l}</button>
                     ))}

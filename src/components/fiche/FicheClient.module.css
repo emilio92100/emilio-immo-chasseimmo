@@ -728,6 +728,22 @@ a.coLien:hover { color: #1a2332; }
   75% { transform: translateX(-50%) translateY(-5px) rotate(2.5deg); }
 }
 @keyframes etiqPoint { 0% { transform: scale(1); opacity: .8; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+/* V3.167 — Ses documents signés : un petit numéro sur le bleu Emilio, posé
+   au coin de l'onglet « Documents », qui flotte comme « En cours » (décalé
+   d'une demi-période : les deux ne se balancent pas ensemble) et lance une
+   onde douce. */
+.pastilleDocs {
+  position: absolute; z-index: 5; top: -10px; left: 0; min-width: 23px; height: 23px; padding: 0 7px; box-sizing: border-box; border-radius: 99px;
+  display: inline-flex; align-items: center; justify-content: center; pointer-events: none;
+  background: var(--emilio-fond); color: #fff; font: 800 12px 'Plus Jakarta Sans', sans-serif; font-variant-numeric: tabular-nums;
+  box-shadow: 0 6px 14px -6px rgba(46, 65, 102, .9), 0 0 0 2px #fff;
+  transform: translateX(-50%); animation: etiqFlotte 2.6s ease-in-out -1.3s infinite;
+}
+.pastilleDocs::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  animation: docsOnde 2.4s ease-out infinite;
+}
+@keyframes docsOnde { 0% { box-shadow: 0 0 0 0 rgba(46, 65, 102, .45); } 70%, 100% { box-shadow: 0 0 0 9px rgba(46, 65, 102, 0); } }
 
 @media (max-width: 900px) {
   .gestesHaut { display: none; }
@@ -752,7 +768,7 @@ a.coLien:hover { color: #1a2332; }
   .gesteTx { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .etiqRecherche, .etiqRecherche i::after, .relanceCheval[data-urgent] .relanceCloche { animation: none; }
+  .etiqRecherche, .etiqRecherche i::after, .relanceCheval[data-urgent] .relanceCloche, .pastilleDocs, .pastilleDocs::after { animation: none; }
 }
 
 /* ══ V3.152 — Le téléphone bord à bord ══════════════════════════════════════

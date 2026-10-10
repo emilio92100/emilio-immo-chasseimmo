@@ -21,7 +21,7 @@
 .filtres { display: flex; gap: 7px; flex-wrap: wrap; }
 .filtre {
   display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 99px;
-  border: 1px solid #e3e8f0; background: white; color: #52607a; cursor: pointer;
+  border: 1px solid #e3e8f0; background: transparent; color: #52607a; cursor: pointer;
   font: 700 13px 'DM Sans', sans-serif; white-space: nowrap; transition: background .15s, border-color .15s, color .15s;
 }
 .filtre:hover { border-color: #cdd6e3; color: var(--emilio, #2e4166); }
@@ -63,8 +63,20 @@
 .tiroirPuce:first-child[data-on='oui'] b { background: rgba(255, 255, 255, .16); color: #f0dc9c; }
 
 /* La liste qui change (filtre ou issue) arrive en fondu. */
-.listeArrive { animation: listeArrive .3s cubic-bezier(.16, 1, .3, 1) both; }
-@keyframes listeArrive { from { opacity: 0; transform: translateY(5px); } }
+.listeArrive { animation: listeArrive .3s ease both; }
+@keyframes listeArrive { from { opacity: 0; } }
+/* V3.167 : un autre filtre, et les lignes MONTENT l'une après l'autre,
+   comme les cartes de « Demandes Internet ». */
+.listeArrive > li { animation: ligneMonte .42s cubic-bezier(.2, .8, .2, 1) backwards; }
+.listeArrive > li:nth-child(2) { animation-delay: 35ms; }
+.listeArrive > li:nth-child(3) { animation-delay: 70ms; }
+.listeArrive > li:nth-child(4) { animation-delay: 105ms; }
+.listeArrive > li:nth-child(5) { animation-delay: 140ms; }
+.listeArrive > li:nth-child(6) { animation-delay: 175ms; }
+.listeArrive > li:nth-child(7) { animation-delay: 210ms; }
+.listeArrive > li:nth-child(8) { animation-delay: 245ms; }
+.listeArrive > li:nth-child(n+9) { animation-delay: 280ms; }
+@keyframes ligneMonte { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 /* ── La frise : un trait continu, du futur vers le passé ── */
 .liste { list-style: none; margin: 4px 0 0; padding: 0; position: relative; display: flex; flex-direction: column; gap: 12px; }
@@ -332,7 +344,7 @@
 @media (prefers-reduced-motion: reduce) {
   .bvVoile, .bvFen, .bvPhoto img { animation: none; }
   .carte, .actions { transition: none; }
-  .listeArrive { animation: none; }
+  .listeArrive, .listeArrive > li { animation: none; }
   .tiroirBarre i { transition: none; }
 }
 

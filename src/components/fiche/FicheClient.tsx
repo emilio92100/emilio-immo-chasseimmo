@@ -36,7 +36,7 @@ import { solderRelancesVisite, solderRelancesRetourVisite } from '@/lib/demandes
 import { bienVisitable, poserVisites } from '@/lib/planifier-visite';
 import { TypesEnLigne } from '@/components/contacts/ChampsContact';
 import { BiensHero, useBiensBandeau } from '@/components/contacts/BiensBandeau';
-import DocumentsDuClient from '@/components/documents/DocumentsDuClient';
+import DocumentsDuClient, { compterSignes } from '@/components/documents/DocumentsDuClient';
 import { colonneSuspensionAbsente, lireSuspension, dansMois, jourLisible } from '@/lib/suspension';
 import { ajouterMois, jourParis, joursRestants } from '@/lib/mandat';
 import { retracteEnLigne } from '@/lib/documents-espace';
@@ -934,14 +934,16 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     if (t === 'suivi') { setVue('suivi'); return; }
     setTabBrut(t); setVue('recherche');
   }, []);
-  /* Le nombre de ses documents, pour l'onglet « Documents ». */
-  const [nbDocs, setNbDocs] = useState<number | null>(null);
+  /* V3.167 — Ses documents SIGNÉS, pour la pastille bleue de l'onglet
+     « Documents » (elle flotte, comme « En cours » sur « Sa recherche »).
+     Relus à chaque changement de rubrique : un document signé depuis
+     l'onglet Documents compte au retour. */
+  const [nbSignes, setNbSignes] = useState(0);
   useEffect(() => {
     let vivant = true;
-    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('client_id', init.id)
-      .then(({ count, error }) => { if (vivant) setNbDocs(error ? null : count ?? 0); });
+    void compterSignes(init.id).then(n => { if (vivant) setNbSignes(n || 0); });
     return () => { vivant = false; };
-  }, [init.id]);
+  }, [init.id, vue]);
   /* Le rapprochement (V3.29) : la fenêtre, et les mandats en cours qui
      correspondent déjà à sa recherche (pour le bandeau de la Vue d'ensemble). */
   const [rappro, setRappro] = useState(false);
@@ -1176,15 +1178,23 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   const stDossier = String(client.statut || '');
   const etatRecherche: '' | 'cours' | 'pause' = !recherches.length || stDossier === 'bien_trouve' || stDossier === 'perdu' ? ''
     : stDossier === 'suspendu' || (stDossier !== 'prospect' && !recherches.some(r => r.active !== false)) ? 'pause' : 'cours';
+  /* V3.167 : la pastille des documents signés, au coin de « Documents ». */
+  const [docX, setDocX] = useState<number | null>(null);
   useEffect(() => {
     const zone = ongletsRef.current;
     const nav = zone?.querySelector('nav');
-    if (!zone || !nav || !etatRecherche) { setEtiqX(null); return; }
+    if (!zone || !nav || (!etatRecherche && !nbSignes)) { setEtiqX(null); setDocX(null); return; }
+    /* Le point d'accroche, s'il est dans la partie visible de la barre (qui
+       défile au téléphone) : le milieu de l'onglet, ou son coin droit. */
+    const accroche = (k: string, coin: boolean) => {
+      const b = nav.querySelector<HTMLElement>(`[data-k="${k}"]`);
+      if (!b) return null;
+      const x = nav.offsetLeft + b.offsetLeft - nav.scrollLeft + (coin ? b.offsetWidth - 10 : b.offsetWidth / 2);
+      return x >= 34 && x <= nav.offsetLeft + nav.clientWidth - (coin ? 16 : 34) ? Math.round(x) : null;
+    };
     const place = () => {
-      const b = nav.querySelector<HTMLElement>('[data-k="recherche"]');
-      if (!b) { setEtiqX(null); return; }
-      const x = nav.offsetLeft + b.offsetLeft - nav.scrollLeft + b.offsetWidth / 2;
-      setEtiqX(x >= 34 && x <= nav.offsetLeft + nav.clientWidth - 34 ? Math.round(x) : null);
+      setEtiqX(etatRecherche ? accroche('recherche', false) : null);
+      setDocX(nbSignes ? accroche('documents', true) : null);
     };
     place();
     nav.addEventListener('scroll', place, { passive: true });
@@ -1192,10 +1202,12 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     void document.fonts?.ready.then(place);
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(place) : null;
     ro?.observe(nav);
-    const b0 = nav.querySelector<HTMLElement>('[data-k="recherche"]');
-    if (b0) ro?.observe(b0);
+    for (const k of ['recherche', 'documents']) {
+      const b0 = nav.querySelector<HTMLElement>(`[data-k="${k}"]`);
+      if (b0) ro?.observe(b0);
+    }
     return () => { nav.removeEventListener('scroll', place); window.removeEventListener('resize', place); ro?.disconnect(); };
-  }, [etatRecherche, recherches.length]);
+  }, [etatRecherche, recherches.length, nbSignes]);
   /* « Sa société » ouverte depuis le bandeau, avant qu'elle soit notée (V3.31). */
   const [societeOuverte, setSocieteOuverte] = useState(false);
   /* Chaque « Ajouter » repart d'un formulaire neuf (le bloc reste monté, V3.32). */
@@ -3998,6 +4010,10 @@ ${signatureMail()}`,
                   <i />{etatRecherche === 'pause' ? 'En pause' : 'En cours'}
                 </span>
               )}
+              {/* V3.167 : ses documents signés, sur fond bleu Emilio, qui flotte. */}
+              {nbSignes > 0 && docX !== null && (
+                <span className={styles.pastilleDocs} style={{ left: docX }} aria-hidden="true">{nbSignes}</span>
+              )}
               <BarreOnglets<VueFiche> label="Rubriques du contact" actif={vue} onChoisir={setVue}
                 onglets={[
                   { k: 'ensemble', l: 'Vue d’ensemble', ic: <Icone nom="oeil" taille={15} epaisseur={2} /> },
@@ -4005,7 +4021,7 @@ ${signatureMail()}`,
                   /* Le rapprochement (V3.32) : pour un acheteur, dès qu'il a une recherche. */
                   ...(rechercheActive ? [{ k: 'rapprochement' as VueFiche, l: 'Rapprochement', ic: <Icone nom="etoile" taille={15} epaisseur={2} /> }] : []),
                   { k: 'espace', l: 'Son espace', ic: <Icone nom="mobile" taille={15} epaisseur={2} /> },
-                  { k: 'documents', l: 'Documents', n: nbDocs || undefined, ic: <Icone nom="doc" taille={15} epaisseur={2} /> },
+                  { k: 'documents', l: 'Documents', ic: <Icone nom="doc" taille={15} epaisseur={2} /> },
                   { k: 'suivi', l: 'Suivi', n: suiviCount || undefined, ic: <Icone nom="horloge" taille={15} epaisseur={2} /> },
                 ]} />
             </div>

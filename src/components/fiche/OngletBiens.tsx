@@ -10,6 +10,7 @@ import {
   ModalePhotos, ModaleHonoraires,
 } from './ParcoursBien';
 import Cascade from '@/components/shared/Cascade';
+import Curseur from '@/components/shared/Curseur';
 import FenetreBien, { LigneListe, BasLigne, BoutonBas, BoutonPied, LienPied, Ressort, BoutonVite } from './FenetreBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
@@ -603,28 +604,22 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         </div>
       )}
 
+      {/* V3.167 : la barre de « Demandes Internet » — la pastille marine
+          glisse d'un filtre à l'autre (Curseur), le compteur passe au doré. */}
       {mode === 'presentes' && groupesVisibles.length > 1 && (
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
-          {[{ id: 'tout', titre: 'Tout', n: biens.length }, ...groupesVisibles.map(g => ({ id: g.id, titre: g.titre, n: parGroupe[g.id].length }))].map(f => {
-            const actif = filtreP === f.id;
-            return (
-              <button type="button" key={f.id} onClick={() => setFiltreP(f.id)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 20, padding: '7px 13px',
-                  fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                  border: `1px solid ${actif ? NAVY : BORD}`, background: actif ? NAVY : 'white',
-                  color: actif ? 'white' : '#64748b', transition: 'all .12s',
-                }}>
-                {f.id !== 'tout' && <Icone nom={ICONES_R[f.id] || 'horloge'} taille={14} epaisseur={2.1} />}{f.titre}
-                <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 20, padding: '1px 7px', background: actif ? 'rgba(255,255,255,.18)' : '#f1f5f9', color: actif ? 'white' : '#94a3b8' }}>{f.n}</span>
-              </button>
-            );
-          })}
+        <div className="emi-filtres" data-defile="" role="group" aria-label="Filtrer les biens présentés">
+          <Curseur cle={filtreP} />
+          {[{ id: 'tout', titre: 'Tout', n: biens.length }, ...groupesVisibles.map(g => ({ id: g.id, titre: g.titre, n: parGroupe[g.id].length }))].map(f => (
+            <button type="button" key={f.id} className="emi-filtre" aria-pressed={filtreP === f.id} onClick={() => setFiltreP(f.id)}>
+              {f.id !== 'tout' && <Icone nom={ICONES_R[f.id] || 'horloge'} taille={14} epaisseur={2.1} />}{f.titre}<i>{f.n}</i>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* V3.166 : Tout, Il veut visiter, En attente… — les lignes tombent en
-          cascade quand on change de filtre, comme partout ailleurs (Cascade). */}
+      {/* V3.166 : Tout, Il veut visiter, En attente… — les lignes arrivent en
+          cascade quand on change de filtre, comme partout ailleurs (Cascade ;
+          V3.167 : elles montent, comme les cartes de « Demandes Internet »). */}
       <Cascade cle={filtreP} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       {affiches.map((b, idx) => {
         const r = RETOURS[groupeP(b)] || RETOURS.propose;

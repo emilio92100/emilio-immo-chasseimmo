@@ -7,6 +7,7 @@ import { verifie } from '@/lib/ecritures';
 import { programmerRelance, cloturerRelancesAuto } from '@/lib/relances';
 import { lienEspace, lienBienPublic } from '@/lib/jeton';
 import { HONORAIRES_TAUX } from '@/lib/mandat';
+import Curseur from '@/components/shared/Curseur';
 import {
   prixDuBien, casDuBien, partageDe, gainInter, plafondMandat, montantHonoraires, colonneInterAbsente, honorairesDuMandat,
   type TypeHono, type HonoMandat, type CasHono,
@@ -117,13 +118,38 @@ export function StylesEmilio() {
       /* Le raccord de l'onglet au panneau. Deux quarts de cercle peints dans la
          couleur du panneau, de part et d'autre : l'onglet cesse d'être un
          rectangle posé là, il se fond dans la page comme un intercalaire. */
-      .emi-onglets.sombre .emi-onglet[data-actif="true"]::after {
+      .emi-onglets.sombre .emi-onglet[data-actif="true"]::after,
+      .emi-onglets.sombre .emi-onglet-curseur::after {
         content:""; position:absolute; bottom:0; left:-11px; right:-11px; height:11px;
         pointer-events:none;
         background:
           radial-gradient(circle at 0 0, transparent 11px, #f7f9fc 11.5px) left bottom / 11px 11px no-repeat,
           radial-gradient(circle at 100% 0, transparent 11px, #f7f9fc 11.5px) right bottom / 11px 11px no-repeat;
       }
+
+      /* V3.167 — L'onglet blanc GLISSE d'une étape à l'autre (Curseur.tsx),
+         comme la pastille de « Demandes Internet » : c'est lui qui porte le
+         fond, le liseré doré et les coins ; l'onglet choisi n'a plus que son
+         texte. */
+      .emi-onglets[data-glisse="pret"] .emi-onglet[data-actif="true"]::before,
+      .emi-onglets[data-glisse="pret"] .emi-onglet[data-actif="true"]::after { display:none }
+      /* V3.167 — Une barre de filtres façon « Demandes Internet » : un rail
+         bleu pâle, la pastille marine glisse dessous (Curseur.tsx). */
+      .emi-filtres { display:flex; gap:4px; flex-wrap:wrap; align-items:center; align-self:flex-start; max-width:100%;
+        box-sizing:border-box; background:#f1f5fb; border-radius:16px; padding:4px }
+      .emi-filtre { display:inline-flex; align-items:center; gap:7px; border:none; border-radius:12px; padding:8px 13px;
+        background:transparent; color:${NAVY}; font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; flex-shrink:0 }
+      .emi-filtre:hover:not([aria-pressed="true"]) { background:rgba(255,255,255,.75) }
+      .emi-filtre[aria-pressed="true"] { background:${NAVY}; color:#fff; box-shadow:0 10px 22px -12px rgba(34,73,124,.85) }
+      .emi-filtre i { font-style:normal; font-size:11px; font-weight:800; border-radius:20px; padding:1px 7px; background:#fff; color:#64748b;
+        font-variant-numeric:tabular-nums; transition:background .3s ease, color .3s ease }
+      .emi-filtre[aria-pressed="true"] i { background:${OR}; color:#1a2332 }
+      @media (max-width: 760px) {
+        .emi-filtres { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; align-self:stretch }
+        .emi-filtres::-webkit-scrollbar { display:none }
+      }
+      .emi-onglets:not(.sombre) .emi-onglet-curseur::before { content:""; position:absolute; left:-1px; right:-1px; top:-1px;
+        height:3px; border-radius:3px 3px 0 0; background:${OR} }
     `}</style>
   );
 }
@@ -2134,6 +2160,7 @@ export function Onglets({ items, actif, onChange, sombre }: {
       border: `1px solid ${BORD}`, borderBottom: 'none',
       borderRadius: '16px 16px 0 0', padding: '6px 6px 0', marginBottom: 0,
     }}>
+      <Curseur cle={actif} className="emi-onglet-curseur" />
       {items.map(t => (
         <button key={t.id} type="button" className="emi-onglet" data-actif={actif === t.id}
           onClick={() => onChange(t.id)}>

@@ -9,6 +9,7 @@ import { euros } from '@/lib/mandat';
 import { etapeDe } from '@/lib/biens-vente';
 import { lireRemises, type RemiseClient } from '@/lib/remise-client';
 import s from './FriseSuivi.module.css';
+import Curseur from '@/components/shared/Curseur';
 
 /* ═══ Le suivi du dossier, en frise ═══════════════════════════════════════
    Avant : une liste de lignes grises, la même petite icône « 📝 » pour un
@@ -470,11 +471,13 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
       </div>
 
       <div className={s.filtres} data-defile="">
+        {/* V3.167 : la pastille glisse d'un filtre à l'autre (Curseur). */}
+        <Curseur cle={filtre} />
         {FILTRES_SUIVI.filter(f => !filtresVisibles || filtresVisibles.includes(f.id)).map(f => {
           const n = comptes[f.id] || 0;
           const fam = f.fam ? FAMILLES[f.fam] : null;
           return (
-            <button key={f.id} type="button" className={s.filtre} data-on={filtre === f.id ? 'oui' : 'non'} data-vide={n ? 'non' : 'oui'} aria-expanded={f.id === 'appel' ? appels && !!n : undefined}
+            <button key={f.id} type="button" className={s.filtre} data-on={filtre === f.id ? 'oui' : 'non'} aria-pressed={filtre === f.id} data-vide={n ? 'non' : 'oui'} aria-expanded={f.id === 'appel' ? appels && !!n : undefined}
               onClick={() => { if (f.id !== filtre) setIssueChoisie('tout'); onFiltre(f.id); }}>
               {fam && <i style={{ background: fam.c }} />}
               {f.lib}
