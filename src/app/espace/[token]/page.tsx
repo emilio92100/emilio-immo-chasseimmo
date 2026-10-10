@@ -248,7 +248,16 @@ export default async function PageEspace({ params, searchParams }: {
      visite à venir (le CRM propose de les annuler ; celles d'avant restent
      masquées ici). Sous compromis, une visite reste : une contre-visite, un
      acheteur de secours. */
+  /* V3.164 : un bien trouvé ailleurs, dit « plus disponible » par son
+     conseiller (biens.indispo, outils/sql/biens-indispo.sql) : il passe dans
+     « Plus disponibles », avec le mot laissé — comme un bien de l'agence vendu. */
+  const indispoDe = (b: Record<string, unknown>): { etat: 'compromis' | 'vendu' | 'retire'; vous: false; note: string | null } | null => {
+    const x = b.indispo as { motif?: string; note?: string } | null | undefined;
+    if (!x || typeof x !== 'object' || b.bien_vente_id) return null;
+    return { etat: x.motif === 'vendu' ? 'vendu' : x.motif === 'compromis' ? 'compromis' : 'retire', vous: false, note: typeof x.note === 'string' && x.note.trim() ? x.note.trim() : null };
+  };
   const copiesIndispo = new Set((biensRes.data || []).filter((b) => {
+    if (indispoDe(b)) return true;
     const v = b.bien_vente_id ? venteParBien.get(b.bien_vente_id) : null;
     return !!v && !v.vous && (v.etat === 'vendu' || v.etat === 'retire');
   }).map((b) => b.id as string));
@@ -293,7 +302,7 @@ export default async function PageEspace({ params, searchParams }: {
     visitePrevue: prevueParBien.get(b.id) || null,
     visiteFaite: faiteParBien.get(b.id) || null,
     etat: ETAT(b),
-    vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || null,
+    vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || indispoDe(b) || null,
     offre: (b.bien_vente_id && offreParBien.get(b.bien_vente_id)) || null,
     /* V3.114 : un bien de l'agence. Le visiter ne demande jamais de mandat
        de recherche (visiteBloquee, /api/espace/retour). */
