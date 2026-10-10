@@ -2,7 +2,7 @@
 
    Ce qu'Alexandre a choisi sur la maquette des quatre styles : chaque fenêtre,
    pop-up ou menu SORT DU BOUTON qu'on vient de toucher, et Y RETOURNE quand on
-   la ferme (×, clic à côté, Échap, validation). Les onglets font tomber leur
+   la ferme (×, clic à côté, Échap, validation). Les onglets font monter leur
    contenu en cascade ; les écrans arrivent en fondu. Rien de brutal.
 
    ── Pourquoi un mécanisme global ──
@@ -56,10 +56,13 @@
 
    4. LES ONGLETS. `<Cascade cle={onglet}>` (src/components/shared/
       Cascade.tsx) : quand la clé change, l'ancien contenu s'efface en
-      130 ms, posé par-dessus, puis les blocs du nouveau tombent de 12 px, un
-      par un (75 ms d'écart, 340 ms, cubic-bezier(.16,1,.3,1)) — seulement
-      ceux qui sont à l'écran. Rien n'attend : le nouveau contenu est
-      utilisable tout de suite.
+      100 ms, posé par-dessus, puis les blocs du nouveau MONTENT de 10 px,
+      un par un (35 ms d'écart, 420 ms, cubic-bezier(.2,.8,.2,1)) — l'effet
+      des cartes de « Demandes Internet », qu'Alexandre a voulu partout
+      (V3.167 ; avant, ils tombaient de 12 px). Seulement ceux qui sont à
+      l'écran. Rien n'attend : le nouveau contenu est utilisable tout de
+      suite. La barre de choix qui va avec : <Curseur> (shared/Curseur.tsx),
+      la pastille qui glisse.
 
    ── Se retirer du mouvement ──
    `data-emi-anim="non"` sur un élément l'exclut, lui et tout ce qu'il
@@ -95,7 +98,9 @@ type Sortie = { el: HTMLElement; parent: Node; fiche: Fiche | null; enveloppe: b
 const OUVRIR = { voile: 260, fenetre: 430, depart: 0.12, opaque: 0.35, courbe: 'cubic-bezier(.2,.85,.25,1)' };
 const FERMER = { fenetre: 340, voile: 320, voileRetard: 30, tenue: 0.55, courbe: 'cubic-bezier(.55,0,.7,.3)' };
 const MENU = { ouvrir: 260, fermer: 180, depart: 0.7, delaiAppui: 600, distance: 80 };
-const ONGLET = { sortie: 130, duree: 340, pas: 75, chute: 12, courbe: 'cubic-bezier(.16,1,.3,1)' };
+/* V3.167 : le contenu MONTE en place, comme les cartes de « Demandes
+   Internet » (10 px, 420 ms, 35 ms d'écart, la courbe de leur pastille). */
+const ONGLET = { sortie: 100, recouvre: 10, duree: 420, pas: 35, finPas: 280, monte: 10, courbe: 'cubic-bezier(.2,.8,.2,1)' };
 /* Au-delà, l'appui est trop vieux pour être l'origine d'une fenêtre (une
    fenêtre qui s'ouvre après une lecture réseau reste dans ce délai). */
 const APPUI_VALABLE = 4000;
@@ -684,17 +689,18 @@ export function cascader(racine: HTMLElement) {
     el.style.left = `${nombre(el.style.left, 0) + dx}px`;
     el.style.height = `${Math.max(1, Math.min(r.height, window.innerHeight - ici.top))}px`;
   }
-  const base = maintenant() - s.sortieOnglet < 100 ? ONGLET.sortie - 10 : 0;
+  /* Le nouveau part un peu avant que l'ancien ait fini de s'effacer. */
+  const base = maintenant() - s.sortieOnglet < 100 ? ONGLET.sortie - ONGLET.recouvre : 0;
   const blocs = aCascader(racine);
   const n = blocs.length;
   /* Une longue liste à l'écran ne met pas une seconde à arriver. */
-  const pas = n <= 6 ? ONGLET.pas : Math.max(30, 450 / (n - 1));
+  const pas = n <= 9 ? ONGLET.pas : Math.max(16, ONGLET.finPas / (n - 1));
   blocs.forEach((el, i) => {
     finirCss(el);
     el.animate([
-      { opacity: 0, translate: `0px -${ONGLET.chute}px` },
+      { opacity: 0, translate: `0px ${ONGLET.monte}px` },
       { opacity: 1, translate: '0px 0px' },
-    ], { duration: ONGLET.duree, delay: base + Math.min(i * pas, 520), easing: ONGLET.courbe, fill: 'backwards' });
+    ], { duration: ONGLET.duree, delay: base + Math.min(i * pas, ONGLET.finPas), easing: ONGLET.courbe, fill: 'backwards' });
   });
 }
 
