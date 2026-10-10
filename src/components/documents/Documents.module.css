@@ -179,6 +179,16 @@
 .fenTete .panFermer { border-color: #e3e8f0; color: #64748b; }
 .fenCorps { padding: 12px 22px 8px; display: flex; flex-direction: column; gap: 12px; }
 .fenPied { padding: 12px 22px 20px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+/* V3.167 — « Nouveau document » (Alexandre, au téléphone : « on ne voit pas
+   le nom en haut, c'est coupé avec le haut du téléphone… baisse le haut du
+   pop-up et fais un effet scroll, quitte à le réduire ») : l'en-tête et le
+   pied restent en place, la liste défile entre les deux. */
+.fenDefile .fenetreIn { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); }
+.fenDefile .fenTete, .fenDefile .fenPied { flex: 0 0 auto; }
+.fenDefile .fenTete { padding-bottom: 12px; border-bottom: 1px solid #eef1f6; }
+.fenDefile .fenCorps { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: 14px; }
+.fenDefile .fenPied:empty { display: none; }
+.fenDefile .fenPied { border-top: 1px solid #eef1f6; }
 .choix { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 13px 14px; border-radius: 14px; border: 1.5px solid #e3e8f0; background: white; cursor: pointer; font-family: inherit; }
 .choix:hover { border-color: #cbd5e1; }
 .choixOn { border-color: #c9a84c; background: #fbf8ef; }
@@ -461,6 +471,16 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .fenetre { align-items: flex-end; padding: 0; }
   .fenetreIn { border-radius: 20px 20px 0 0; max-height: 92vh; }
   .fenPied .btn { flex: 1 1 0; }
+  /* V3.167 : centrée, à distance du haut et du bas de l'écran, plus basse ;
+     on fait défiler la liste à l'intérieur. */
+  .fenDefile.fenetre { align-items: center; padding: max(28px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom)); }
+  .fenDefile .fenetreIn { border-radius: 20px; max-height: min(80vh, 100%); max-height: min(80dvh, 100%); }
+  .fenDefile .fenTete { padding: 16px 16px 12px; gap: 10px; }
+  .fenDefile .fenTete h3 { font-size: 17px; }
+  .fenDefile .fenTete p { font-size: 12.5px; }
+  .fenDefile .fenCorps { padding: 12px 12px 14px; gap: 9px; }
+  .fenDefile .choix { padding: 11px 12px; }
+  .fenDefile .fenPied { padding: 12px 12px 14px; }
 
   .edBarre { padding: 8px 10px; gap: 8px; }
   .edRetour span { display: none; }
@@ -632,11 +652,23 @@ button:disabled.pill, button:disabled.tuile, button:disabled.caseB { cursor: def
   .rpTitre { font-size: 15px; }
   .rpTete { gap: 8px; padding: 9px 12px 9px 10px; }
   .rpLong { display: none; }
+  /* V3.167 : « Voir le détail » ne garde que sa flèche, poussée à droite —
+     il venait se coucher sur « + Nouveau ». */
+  .rpBascule > [data-ouvert] { margin-left: auto; padding: 0 3px; }
+  .rpBascule > [data-ouvert] > span:first-child { display: none; }
+  .dcLien { height: 32px; padding: 0 12px 0 10px; font-size: 12.5px; }
 }
 
 /* ── « Ses documents », sur la fiche d'un client (V3.17) ── */
-.dcLien { flex-shrink: 0; border: none; background: none; padding: 4px 0; color: var(--emilio); font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
-.dcLien:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* V3.167 (Alexandre : « on ne voit pas assez le Nouveau ») : un vrai bouton,
+   bleu Emilio, le + doré — visible plié comme déplié. */
+.dcLien {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px 0 12px; border-radius: 99px; border: none;
+  background: var(--emilio-fond); color: #fff; font: 800 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 8px 16px -10px rgba(46, 65, 102, .85); transition: filter .15s, transform .15s;
+}
+.dcLien:hover { filter: brightness(1.1); }
+.dcPlus { color: #e3c872; flex-shrink: 0; }
 .dcOk { background: #f0fdf4; color: #166534; }
 .dcAttente { background: #eff6ff; color: #1d4ed8; }
 .dcListe { display: flex; flex-direction: column; gap: 6px; }

@@ -256,6 +256,22 @@ export function DocsParEtat({ elements, suivis, onOuvrir, onFait }: {
   );
 }
 
+
+/* V3.167 — Le nombre de documents SIGNÉS d'un client, pour la pastille de
+   l'onglet « Documents » de sa fiche (Alexandre : « quand il y a un document
+   signé, on voit un ; deux documents signés, on voit deux »). Le même compte
+   que « N signés » du bloc ci-dessous : ses documents signés, et ses mandats
+   de recherche signés en ligne (sans les rétractés). `null` : pas lisible. */
+export async function compterSignes(clientId: string): Promise<number | null> {
+  const [a, b] = await Promise.all([
+    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('statut', 'signe'),
+    supabase.from('mandats_signatures').select('id, statut, retracte_le').eq('client_id', clientId).limit(60),
+  ]);
+  if (a.error) return null;
+  const enLigne = b.error ? 0 : ((b.data || []) as Pick<MandatRecherche, 'statut' | 'retracte_le'>[]).filter(x => etatMandatEnLigne(x) === 'signe').length;
+  return (a.count || 0) + enLigne;
+}
+
 /* `confrere` (V3.19) : sur la fiche d'un confrère, « Ses délégations » —
    les mandats que tu lui as confiés (`donnees.confrereId`), et « Déléguer
    un mandat ». */
@@ -342,8 +358,8 @@ export default function DocumentsDuClient({ clientId, prenom, onNavigate, confre
         </>
       ) : undefined}
       action={confrere
-        ? <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}>+ Déléguer<span className={s.rpLong}> un mandat</span></button>
-        : <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}>+ Nouveau<span className={s.rpLong}> document</span></button>}>
+        ? <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}><svg className={s.dcPlus} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Déléguer<span className={s.rpLong}>{' '}un mandat</span></button>
+        : <button type="button" className={s.dcLien} onClick={() => setNouveau(true)}><svg className={s.dcPlus} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Nouveau<span className={s.rpLong}>{' '}document</span></button>}>
       {liste.length ? (
         <>
           <DocsParEtat elements={liste} suivis={suivis} onOuvrir={cle => onNavigate('documents', { ouvrir: cle })} onFait={() => setTour(t => t + 1)} />

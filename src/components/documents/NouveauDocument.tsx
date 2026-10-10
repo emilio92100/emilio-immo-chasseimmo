@@ -282,7 +282,10 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
   }
 
   return (
-    <div className={s.fenetre} onClick={e => { if (e.target === e.currentTarget && !travail) onFermer(); }}>
+    /* V3.167 : `fenDefile` — l'en-tête et le pied restent en place, la liste
+       des modèles défile entre les deux ; au téléphone, la fenêtre est
+       centrée, loin du haut de l'écran (Documents.module.css). */
+    <div className={`${s.fenetre} ${s.fenDefile}`} onClick={e => { if (e.target === e.currentTarget && !travail) onFermer(); }}>
       <div className={s.fenetreIn} role="dialog" aria-modal="true" aria-label="Nouveau document">
         <div className={s.fenTete}>
           {m && etape === 2 && <span className={s.modeleIc}><Ic n={m.ic} t={19} /></span>}
