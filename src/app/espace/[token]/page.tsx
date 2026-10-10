@@ -12,6 +12,7 @@ import { maintenantParis, visitePasseeParis, issueDe, apprisDe } from '@/lib/vis
 import { lireDocumentsEspace, fichierDe, modeDoc, type DocEspace, type MandatDocEspace } from '@/lib/documents-espace';
 import { ecritServeur } from '@/lib/ecritures';
 import { prixDuBien } from '@/lib/honoraires-bien';
+import { texteChauffage } from '@/lib/chauffage';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -291,7 +292,9 @@ export default async function PageEspace({ params, searchParams }: {
     charges: b.charges_trimestrielles, taxe: b.taxe_fonciere,
     chargesComprises: b.charges_comprises || null,
     chargesAn: (b.bien_vente_id && chargesAnParVente.get(b.bien_vente_id)) || null,
-    chauffage: b.chauffage, lots: b.nb_lots,
+    /* V3.171 : mode, énergie et diffusion en une phrase (« Collectif, gaz,
+       par radiateurs »). */
+    chauffage: texteChauffage(b) || null, lots: b.nb_lots,
     pdfUrl: b.pdf_statut === 'pret' ? b.pdf_url : null,
     envoyeLe: b.envoye_le, vuLe: b.vu_le,
     avis: b.badge_retour, commentaire: b.retour_client, retourLe: b.retour_le,
