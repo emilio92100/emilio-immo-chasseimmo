@@ -69,8 +69,20 @@
 .carte { display: flex; background: #fff; border: 1px solid #e3e8f0; border-radius: 18px; overflow: hidden; min-width: 0; }
 .carteVenir { border-color: #d9e3f2; box-shadow: 0 14px 30px -24px rgba(34, 73, 124, .6); }
 .carteAlerte { border-color: #f6d89a; box-shadow: 0 14px 30px -24px rgba(180, 83, 9, .5); }
-.photo { position: relative; flex: 0 0 auto; width: 230px; min-height: 170px; background: #eef2f7; }
-.photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo { position: relative; flex: 0 0 auto; width: 230px; min-height: 170px; background: #eef2f7; overflow: hidden;
+  border: none; padding: 0; margin: 0; display: block; font: inherit; text-align: left; cursor: pointer; }
+.photo:disabled { cursor: default; }
+.photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .45s cubic-bezier(.2, .8, .2, 1); }
+.photo:hover:not(:disabled) img { transform: scale(1.04); }
+/* V3.170 : la photo et le nom ouvrent le bien en grand. */
+.voirPhoto {
+  position: absolute; z-index: 1; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 5px 11px;
+  background: rgba(19, 36, 61, .82); color: #fff; font-size: 12px; font-weight: 800; opacity: 0; transform: translateY(4px); transition: opacity .2s ease, transform .2s ease;
+}
+.photo:hover .voirPhoto, .photo:focus-visible .voirPhoto { opacity: 1; transform: none; }
+@media (hover: none) { .voirPhoto { opacity: 1; transform: none; } }
+.lienTitre { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.lienTitre:hover { color: #22497c; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-color: rgba(34, 73, 124, .35); }
 .photoFanee img { filter: saturate(.75); }
 /* Alexandre : « pas que la photo s'arrête net, un petit effet transparent
    entre les deux ». La photo se fond dans le blanc de la carte. */

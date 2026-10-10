@@ -7,6 +7,8 @@ import { type EtatBon } from '@/components/documents/BonDeVisite';
 import Curseur from '@/components/shared/Curseur';
 import Cascade from '@/components/shared/Cascade';
 import Depliant from '@/components/shared/Depliant';
+import FenetreBien, { BoutonPied, Ressort } from './FenetreBien';
+import { prixDuBien } from '@/lib/honoraires-bien';
 import s from './OngletVisites.module.css';
 
 /* ═══ Onglet Visites de la fiche client ═══════════════════════════════════
@@ -30,7 +32,10 @@ import s from './OngletVisites.module.css';
      de visite signé »). Avant, le bouton s'affichait sur une visite faite
      sans bon et en créait un — Alexandre : « aucun rapport ».
    · « Caler la 2e visite » (À revoir) : la fenêtre du rendez-vous s'ouvre,
-     le client et le bien déjà choisis (`onDeuxieme`). */
+     le client et le bien déjà choisis (`onDeuxieme`).
+   · La photo et le nom du bien ouvrent le bien en grand (FenetreBien, comme
+     dans la Sélection et les Présentés), avec la visite en tête et son
+     parcours — Alexandre : « on ne peut plus revoir le bien ». */
 
 type Filtre = 'afaire' | 'avenir' | 'pense' | 'non' | 'sans' | 'toutes';
 
@@ -68,12 +73,13 @@ const IC = {
   bonOk: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="m9 14.5 2.2 2.2L15.5 12" /></>,
   tel: <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z" />,
   maison: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></>,
+  agrandir: <><path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" /></>,
   personne: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
   horloge: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
 };
 const IC_ISSUE: Record<Issue, ReactNode> = { offre: IC.euro, revoir: IC.oeil, reflexion: IC.pause, non: IC.croix };
 
-export default function OngletVisites({ visites, biens, prenom, civilite, couple, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat, onDeuxieme }: {
+export default function OngletVisites({ visites, biens, prenom, civilite, couple, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat, onDeuxieme, onFiche, recherche }: {
   visites: any[]; biens: any[]; prenom: string; masques: string[]; rechercheId: string;
   /* V3.169 : pour accorder « Elle y pense », « Pas pour lui »… */
   civilite?: string | null; couple?: boolean;
@@ -88,9 +94,14 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
   bonEtat?: (v: any) => EtatBon | null;
   /* V3.169 : « Caler la 2e visite » — le rendez-vous, ce bien déjà choisi. */
   onDeuxieme?: (v: any) => void;
+  /* V3.170 : le bien en grand — « Détail » (la fiche du bien), et la
+     recherche pour comparer ses critères. */
+  onFiche?: (id: string) => void; recherche?: any;
 }) {
   const [choisi, setChoisi] = useState<Filtre | null>(null);
   const [deplace, setDeplace] = useState<string | null>(null);
+  /* La visite dont le bien est ouvert en grand. */
+  const [grand, setGrand] = useState<string | null>(null);
   const m = mots(civilite, couple);
   const qui = prenom || 'Le client';
   const maintenant = new Date();
@@ -224,15 +235,17 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
           ) : <div className={s.dateN}>—</div>}
         </div>
         <article className={`${s.carte} ${genre === 'venir' ? s.carteVenir : genre === 'afaire' ? s.carteAlerte : ''}`}>
-          <div className={`${s.photo} ${i === 'non' ? s.photoFanee : ''}`}>
-            {photo ? <img src={photo} alt={titreDe(v)} loading="lazy" /> : <span className={s.sansPhoto}><Ic d={IC.maison} t={34} e={1.6} /></span>}
+          <button type="button" className={`${s.photo} ${i === 'non' ? s.photoFanee : ''}`} onClick={() => b && setGrand(v.id)} disabled={!b}
+            aria-label={`Voir le bien : ${titreDe(v)}`}>
+            {photo ? <img src={photo} alt="" loading="lazy" /> : <span className={s.sansPhoto}><Ic d={IC.maison} t={34} e={1.6} /></span>}
             {etiquette && <span className={s.etiquette} style={{ background: etiquette.c }}><Ic d={etiquette.ic} t={13} e={2.6} />{etiquette.t}</span>}
             {d && <span className={s.datePhoto}>{`${maj(d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }))}${h ? ` · ${h}` : ''}`}</span>}
-          </div>
+            {b && <span className={s.voirPhoto}><Ic d={IC.agrandir} t={12} e={2.4} />Voir le bien</span>}
+          </button>
           <div className={s.corps}>
             <div className={s.tete}>
               <div className={s.titre}>
-                <h3>{titreDe(v)}</h3>
+                <h3>{b ? <button type="button" className={s.lienTitre} onClick={() => setGrand(v.id)} title="Voir le bien en grand">{titreDe(v)}</button> : titreDe(v)}</h3>
                 {sous ? <p>{sous}</p> : null}
               </div>
               {genre === 'venir' && dans && <span className={`${s.badge} ${s.badgeBleu}`}>{dans}</span>}
@@ -333,6 +346,82 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
     </button>
   );
 
+  /* ── Le bien en grand ── Les visites affichées par le filtre, un bien par
+     visite (la plus récente d'un même bien), dans le même ordre : ← → passent
+     de l'une à l'autre. En tête, la visite : sa date, son issue, ton compte
+     rendu, ce que le client en a dit. */
+  const affichees: any[] = filtre === 'afaire' ? aFaire : filtre === 'avenir' ? prochaines : filtre === 'pense' ? retenues
+    : filtre === 'non' ? nonAbouties : filtre === 'sans' ? sansIssue : [...aFaire, ...prochaines, ...faites];
+  const grandUi = () => {
+    if (!grand) return null;
+    const vues = new Set<string>();
+    const paires = affichees.filter(v => {
+      const b = bienDe(v);
+      if (!b || vues.has(b.id)) return false;
+      vues.add(b.id);
+      return true;
+    });
+    const k = paires.findIndex(v => v.id === grand);
+    const liste = k >= 0 ? paires : [visites.find(v => v.id === grand)].filter(v => v && bienDe(v));
+    if (!liste.length) return null;
+    const visiteDe = (b: any) => liste.find(v => v.bien_id === b.id);
+    return (
+      <FenetreBien biens={liste.map(bienDe)} index={Math.max(0, k)} onIndex={j => setGrand(liste[j]?.id || null)} onFermer={() => setGrand(null)}
+        recherche={recherche} parcours onFiche={onFiche}
+        prix={b => ({ montant: prixDuBien(b).demande })}
+        coinPhoto={b => {
+          const v = visiteDe(b);
+          const i = v && v.statut === 'effectuee' ? issueDe(v) : null;
+          return i ? <span className={s.etiquette} style={{ position: 'static', background: COULEUR_ISSUE[i], whiteSpace: 'nowrap', maxWidth: 'none' }}><Ic d={IC_ISSUE[i]} t={13} e={2.6} />{i === 'non' ? m.pas : ISSUES[i].crm}</span> : undefined;
+        }}
+        bandeau={b => {
+          const v = visiteDe(b);
+          if (!v) return null;
+          const d = enDate(v.date_visite);
+          const h = heureDe(v);
+          const faite = v.statut === 'effectuee';
+          const quand = d ? `${maj(d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))}${h ? ` à ${h}` : ''}` : '';
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 700, color: '#34496e' }}>
+                <Ic d={IC.agenda} t={16} e={2.1} />
+                {`${faite ? 'Visité' : 'Visite prévue'}${quand ? ` le ${quand.charAt(0).toLowerCase()}${quand.slice(1)}` : ''}${v.contact_agence ? ` · ${v.contact_agence}` : ''}`}
+              </div>
+              {faite && v.mot_client ? (
+                <div className={s.mot}>
+                  <span className={s.motIc}>{(prenom || '?').charAt(0).toUpperCase()}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className={s.motLib}>{`${qui}, dans son espace`}</div>
+                    <div className={s.motTexte}>{`« ${v.mot_client} »`}</div>
+                  </div>
+                </div>
+              ) : null}
+              {faite && v.commentaire ? (
+                <div className={s.cr}>
+                  <div className={s.crLib}>Ton compte rendu</div>
+                  <div className={s.crTexte}>{v.commentaire}</div>
+                </div>
+              ) : null}
+            </div>
+          );
+        }}
+        pied={b => {
+          const v = visiteDe(b);
+          if (!v) return null;
+          const faite = v.statut === 'effectuee';
+          const aFaireV = !faite && visitePassee(v, maintenant);
+          return (
+            <>
+              <Ressort />
+              <BoutonPied ton="navy" onClick={() => { setGrand(null); onCompteRendu(v); }}>
+                {faite ? (issueDe(v) ? 'Modifier le compte rendu' : 'Préciser l’issue') : aFaireV ? 'Faire le compte rendu' : 'Visite faite'}
+              </BoutonPied>
+            </>
+          );
+        }} />
+    );
+  };
+
   let contenu: ReactNode;
   if (filtre === 'afaire') {
     contenu = aFaire.length
@@ -417,6 +506,8 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
       <Cascade cle={filtre} style={{ display: 'flex', flexDirection: 'column', gap: 22 } as CSSProperties}>
         {contenu}
       </Cascade>
+
+      {grandUi()}
     </div>
   );
 }
