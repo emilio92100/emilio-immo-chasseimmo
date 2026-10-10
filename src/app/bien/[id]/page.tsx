@@ -8,6 +8,7 @@ import AboutPliable from './AboutPliable';
 import VueSuivie from './VueSuivie';
 import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
 import { prixDuBien } from '@/lib/honoraires-bien';
+import { texteChauffage } from '@/lib/chauffage';
 
 /*
  * La fiche publique d'un bien — /bien/<id>
@@ -305,7 +306,13 @@ export default async function PageBien({ params }: { params: Promise<{ id: strin
   if (chargesAn > 0) couts.push({ i: 'euro', l: 'Charges', v: `${fmt(chargesAn)} €`, u: `par an · ${fmt(Math.round(chargesAn / 12))} € par mois` });
   else if (bien.charges_trimestrielles) couts.push({ i: 'euro', l: 'Charges', v: `${fmt(bien.charges_trimestrielles)} €`, u: 'par trimestre' });
   if (bien.taxe_fonciere) couts.push({ i: 'immeuble', l: 'Taxe foncière', v: `${fmt(bien.taxe_fonciere)} €`, u: 'par an' });
-  if (bien.chauffage) couts.push({ i: 'eclair', l: 'Chauffage', v: String(bien.chauffage), u: '' });
+  /* V3.171 : le chauffage en trois cases — « Collectif » en gros, « gaz, par
+     radiateurs » dessous. */
+  const chauffage = texteChauffage(bien);
+  if (chauffage) {
+    const [mode, ...reste] = chauffage.split(', ');
+    couts.push({ i: 'eclair', l: 'Chauffage', v: mode, u: reste.join(', ') });
+  }
   if (bien.nb_lots) couts.push({ i: 'maison', l: 'Copropriété', v: String(bien.nb_lots), u: bien.nb_lots > 1 ? 'lots' : 'lot' });
 
   const lettre = (v?: string | null) => {
