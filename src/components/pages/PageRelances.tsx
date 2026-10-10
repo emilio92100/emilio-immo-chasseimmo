@@ -11,6 +11,7 @@ import FenetreAction from '@/components/contacts/FenetreAction';
 import EnteteRubrique from '@/components/shared/EnteteRubrique';
 import Cascade from '@/components/shared/Cascade';
 import { signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
+import FenetrePenseBete, { DEBUT_PENSE_BETE } from './FenetrePenseBete';
 
 /*
  * Les relances : qui recontacter, et quand.
@@ -113,7 +114,11 @@ const PREFIXES: { debut: string; o: Origine }[] = [
   { debut: 'Prochain contact repris d’ImmoFacile — ', o: { lib: 'Repris d’ImmoFacile', ico: 'horloge' } },
   { debut: 'Relance proposée au tri de l’import — ', o: { lib: 'Après le tri', ico: 'drapeau' } },
   { debut: 'Projet de vente — recontacter ', o: { lib: 'Projet de vente', ico: 'personne' } },
+  /* V3.165 : le pense-bête posé à la main (« Nouvelle relance »). */
+  { debut: DEBUT_PENSE_BETE, o: { lib: 'Pense-bête', ico: 'note' } },
 ];
+/* Le nom d'un pense-bête sans contact, pour le bandeau « clôturée » (V3.165). */
+const PB = '\u0000pense-bete';
 const prefixeDe = (note: unknown) => PREFIXES.find(p => String(note || '').startsWith(p.debut));
 /* La suite d'une note, sans le nom du contact qui l'ouvre (« Claire Martin · … »). */
 function sansNom(reste: string, nom: string): string {
@@ -224,6 +229,8 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
   const [alertes, setAlertes] = useState<AlerteRappro[]>([]);
   const [alerteEnCours, setAlerteEnCours] = useState('');
   const [toutesAlertes, setToutesAlertes] = useState(false);
+  /* V3.165 : « Nouvelle relance », le pense-bête. */
+  const [penseBete, setPenseBete] = useState(false);
 
   /* Lu dans charger() : le bloc ne change pas de mode en cours de route. */
   const triSeulement = useRef(seulTri);
@@ -296,7 +303,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     if (!(await verifie('La relance clôturée', supabase.from('relances').update({ statut: 'cloturee' }).eq('id', r.id).select('id'), { ligne: true }))) return;
     setPartantes(p => ({ ...p, [r.id]: true }));
     setNoteFaite('');
-    setAnnulable({ id: r.id, nom: r.clients ? `${r.clients.prenom} ${r.clients.nom}`.trim() : 'la relance' });
+    setAnnulable({ id: r.id, nom: r.clients ? `${r.clients.prenom} ${r.clients.nom}`.trim() : !r.client_id ? PB : 'la relance' });
     setToastCle(k => k + 1);
     if (minuterie.current) clearTimeout(minuterie.current);
     minuterie.current = setTimeout(() => setAnnulable(null), 6000);
@@ -560,7 +567,8 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
     const enTri = estTri(r.note);
     const o: Origine = enTri ? { lib: 'Dernier appel', ico: 'drapeau' } : origineDe(r, liens[r.id]);
     const c = r.clients;
-    const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : 'Client supprimé';
+    /* V3.165 : un pense-bête sans contact n'a pas de client : ce n'est pas un client supprimé. */
+    const nom = c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : r.client_id ? 'Client supprimé' : 'Pense-bête';
     const ouvert = report?.id === r.id;
     /* Le tri et les relances de l'import : la note sans son en-tête, ni le nom qui est juste au-dessus. */
     const pre = prefixeDe(r.note);
@@ -569,7 +577,9 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       <div key={r.id} className="rl-entre rl-pli" data-rel={r.id} data-partante={partantes[r.id] ? '' : undefined} style={{ animationDelay: `${120 + Math.min(rang++, 12) * 45}ms` }}>
         <div className="rl-pli-in">
         <div className="rl-ligne" data-ok={faites[r.id] ? '' : undefined} data-urg={urg} data-ouvert={ouvert ? '' : undefined} data-repere={repere === r.id ? '' : undefined}>
-          <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 42, height: 42, borderRadius: 13, flexShrink: 0 }} />
+          {c || r.client_id
+            ? <AvatarContact c={c || { prenom: nom }} teinte={{ bg: NAVY, fg: OR }} className="rl-av" libre style={{ width: 42, height: 42, borderRadius: 13, flexShrink: 0 }} />
+            : <span className="rl-av" style={{ width: 42, height: 42, borderRadius: 13, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fbf4e1', color: OR_FONCE }}><Ic n="note" t={20} ep={2} /></span>}
           <span className="rl-texte">
             <span className="rl-l1">
               <b className="rl-nom">{nom}</b>
@@ -793,6 +803,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
           phrase={loading ? 'Les clients à recontacter, du plus pressé au moins pressé.' : retard.length ? `${retard.length > 1 ? `${retard.length} relances en retard` : 'Une relance en retard'} : à rattraper en premier.` : duJour.length ? `${duJour.length > 1 ? `${duJour.length} relances` : 'Une relance'} pour aujourd’hui, rien en retard.` : 'Rien en retard, rien pour aujourd’hui.'}
           recherche={{ valeur: q, onChange: setQ, placeholder: 'Nom, téléphone, note…', label: 'Chercher une relance' }}
           bouton2={tri.length > 0 ? { lib: `Tri à faire · ${triDus.length ? `${triDus.length} à appeler` : 'rien aujourd’hui'}`, court: 'Tri', ic: <Ic n="drapeau" t={15} ep={2.1} />, onClick: () => blocTri.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } : undefined}
+          bouton={{ lib: 'Nouvelle relance / pense-bête', ic: <Ic n="note" t={16} ep={2.1} />, onClick: () => setPenseBete(true) }}
           label="Filtrer les relances" actif={filtre} defiler={false} aCheval
           onChoisir={k => { setPeriode(null); setReport(null); setFiltre(k as Filtre); }}
           tuiles={loading ? [] : [
@@ -1005,6 +1016,23 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
         );
       })()}
 
+      {/* V3.165 : « Nouvelle relance ». Posée, la page montre son jour et l'entoure. */}
+      {penseBete && (
+        <FenetrePenseBete onFermer={() => setPenseBete(false)} onCree={(id, jourPose) => {
+          setPenseBete(false);
+          setPeriode(null); setReport(null); setQ('');
+          setFiltre(jourPose <= auj ? 'afaire' : jourPose <= plusJours(7) ? 'semaine' : 'plusloin');
+          setNoteFaite(`Pense-bête posé pour ${jourPose <= auj ? 'aujourd’hui' : dateLongue(jourPose)}.`);
+          setToastCle(k => k + 1);
+          if (minuterie.current) clearTimeout(minuterie.current);
+          minuterie.current = setTimeout(() => setNoteFaite(''), 4500);
+          void charger().then(() => {
+            setRepere(id);
+            requestAnimationFrame(() => racine.current?.querySelector<HTMLElement>(`[data-rel="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+          });
+        }} />
+      )}
+
       {noteFaite && (
         <div key={toastCle} role="status" className="rl-toast rl-toast-court" style={{ position: 'fixed', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translate(-50%,0)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 16, background: NAVY, color: 'white', boxShadow: '0 20px 40px -18px rgba(10,15,24,.6)', maxWidth: 'calc(100vw - 24px)' }}>
           <span className="rl-toast-ok" style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(16,185,129,.2)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="coche" t={15} ep={2.6} /></span>
@@ -1015,7 +1043,7 @@ export default function PageRelances({ onNavigate, seulTri = false, cherche = ''
       {annulable && (
         <div key={toastCle} role="status" className="rl-toast rl-toast-long" style={{ position: 'fixed', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translate(-50%,0)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 16px', borderRadius: 16, background: NAVY, color: 'white', boxShadow: '0 20px 40px -18px rgba(10,15,24,.6)', maxWidth: 'calc(100vw - 24px)' }}>
           <span className="rl-toast-ok" style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(16,185,129,.2)', color: '#6ee7b7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ic n="coche" t={15} ep={2.6} /></span>
-          <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{annulable.archive ? `${annulable.nom} archivé.` : `Relance de ${annulable.nom} clôturée.`}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{annulable.archive ? `${annulable.nom} archivé.` : annulable.nom === PB ? 'Pense-bête clôturé.' : `Relance de ${annulable.nom} clôturée.`}</span>
           <button type="button" onClick={annuler} style={{ height: 32, padding: '0 12px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,.12)', color: OR, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Annuler</button>
         </div>
       )}

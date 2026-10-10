@@ -1968,7 +1968,10 @@ function PanneauCalendrier({ valeur, onChoisir, min, occupes }: { valeur: string
             );
           })}
         </div>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: PALE, paddingTop: 2 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#9aa7b9' }} />déjà des rendez-vous ce jour-là</span>
+        {/* V3.165 : la légende des points, seulement quand il y en a. */}
+        {Object.keys(occupes).length > 0 && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: PALE, paddingTop: 2 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#9aa7b9' }} />déjà des rendez-vous ce jour-là</span>
+        )}
       </div>
     </div>
   );
@@ -2048,6 +2051,24 @@ export function ChoixQuand({ date, heure, duree, onDate, onHeure, onDuree, duree
         <Puces options={durees} valeur={duree} onChange={onDuree} />
       </div>
       <style>{`@media (max-width: 560px){.ag-quand{grid-template-columns:1fr !important}}`}</style>
+    </div>
+  );
+}
+
+/* V3.165 — Le jour seul, avec le calendrier de « Nouveau rendez-vous » (le
+   pense-bête des Relances). Le bouton montre le jour choisi ; un appui ouvre
+   le calendrier et ses raccourcis, un jour choisi le referme. */
+export function ChoixJour({ date, onDate, min, etiquette = 'Le jour' }: { date: string; onDate: (k: string) => void; min?: string; etiquette?: string }) {
+  const [ouvert, setOuvert] = useState(false);
+  const d = depuisCle(date || cleDe(new Date()));
+  const ecart = Math.round((d.getTime() - depuisCle(cleDe(new Date())).getTime()) / 86400000);
+  const relatif = ecart === 0 ? 'Aujourd’hui' : ecart === 1 ? 'Demain' : ecart > 1 ? `Dans ${ecart} jours` : `Il y a ${-ecart} jours`;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
+      <StylesAgenda />
+      <BoutonChamp ico="calendrier" etiquette={etiquette} ouvert={ouvert} onClick={() => setOuvert(o => !o)}
+        valeur={maj(jourLong(d))} aide={ouvert ? relatif : `${relatif} · choisir une autre date`} />
+      {ouvert && <PanneauCalendrier valeur={date} min={min} occupes={{}} onChoisir={k => { onDate(k); setOuvert(false); }} />}
     </div>
   );
 }
