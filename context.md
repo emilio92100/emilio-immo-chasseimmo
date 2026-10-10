@@ -1499,6 +1499,14 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.166 — 10 octobre 2026 · Présentés : les filtres en cascade
+
+- Alexandre : « quand je passe de Tout à Il veut visiter, c'est brut, pas fluide ». Les lignes de
+  la V3.165 n'avaient plus l'animation d'arrivée des anciennes cartes (`emi-arrivee`) : elles sont
+  maintenant dans un `<Cascade cle={filtreP}>` (OngletBiens) — l'ancienne liste s'efface, la
+  nouvelle tombe ligne à ligne, comme partout (AGENTS §2.8). Le premier affichage reste celui de
+  l'onglet (la Cascade de FicheClient).
+
 ### V3.165 — 10 octobre 2026 · Les biens en lignes et « Voir en grand » ; le nouveau « Détail » ; le pense-bête des Relances
 
 ⚠️ **À passer dans Supabase** : `outils/sql/veille-agence-tel.sql` (colonne
