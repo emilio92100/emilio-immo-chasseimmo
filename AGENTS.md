@@ -142,6 +142,9 @@ la démonter tout de suite. Une sortie maison (classe `sortie` + `setTimeout`)
 jouerait deux fois — si elle doit rester, la sauter quand `mouvementActif()`
 est vrai (voir OrganiserVisite). Ce qui ne doit ni bouger ni attendre porte
 `data-emi-anim="non"`. Un contenu d'onglet qui change : `<Cascade cle={…}>`.
+Une barre de choix (filtres, onglets, vues) : `<Curseur cle={…} />` en premier
+enfant, boutons en `aria-pressed`, fond transparent hors du choix actif — la
+pastille glisse comme dans « Demandes Internet » (V3.167, `shared/Curseur.tsx`).
 
 ---
 

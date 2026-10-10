@@ -1499,6 +1499,39 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.167 — 10 octobre 2026 · L'effet de « Demandes Internet » partout ; la pastille des documents signés ; Documents au téléphone
+
+- **La pastille qui glisse** (Alexandre : « dans Demandes Internet, quand on switch entre Mon site,
+  Portails ou Tout, j'adore cet effet… il faut le mettre un peu partout »). Nouveau
+  `src/components/shared/Curseur.tsx` : posé en premier enfant d'une barre de choix, il suit le
+  bouton `aria-pressed="true"` (ou `aria-selected`, `data-actif`), prend son allure (fond, arrondi,
+  ombre, bordure, lus dans le navigateur) et glisse de l'un à l'autre — 450 ms,
+  `cubic-bezier(.2,.8,.2,1)`, la courbe de Demandes. Le bouton actif perd son propre fond
+  (globals.css, `[data-glisse="pret"]`, `!important` pour battre les styles en ligne). Les autres
+  boutons doivent avoir un fond transparent. Posé sur : les onglets « Où en est la recherche »
+  (l'intercalaire blanc et ses coins glissent), les filtres des Présentés (nouveau rail
+  `.emi-filtres`, compteur doré), les périodes de Relances, les pastilles de Biens, Cartes / Lignes,
+  Ordinateur / Téléphone du mail, les vues et l'historique d'un bien, le dossier d'un bien,
+  Visites et offres, la période du rapprochement, le suivi de la fiche, les rubriques des
+  Paramètres (rail blanc, glisse à la verticale). EnteteRubrique glissait déjà sur ordinateur
+  (V3.132) : il glisse aussi au téléphone (la carte blanche et son trait d'or) et sur le bandeau
+  bleu du Registre ; BarreOnglets et le segment de l'Agenda prennent la même courbe.
+- **Le contenu monte** au lieu de tomber : `cascader` (mouvement.ts) fait monter les blocs de 10 px,
+  420 ms, 35 ms d'écart (les cartes de Demandes) ; l'ancien contenu s'efface en 100 ms. Le suivi
+  de la fiche (FriseSuivi, `.listeArrive`) fait de même. Biens : la clé de la Cascade compte les
+  pastilles du dessous.
+- **Documents signés** : sur la fiche acheteur, un petit numéro sur le bleu Emilio flotte au coin
+  de l'onglet « Documents » (comme « En cours » sur « Sa recherche »), avec une onde douce.
+  `compterSignes(clientId)` (DocumentsDuClient) : ses documents signés + ses mandats signés en
+  ligne, le même compte que « N signés » du bloc. L'ancien compteur gris (tous les documents) est
+  retiré : un seul chiffre sur l'onglet.
+- **Documents au téléphone** : « Voir le détail » ne garde que sa flèche (il se couchait sur
+  « + Nouveau ») ; « + Nouveau document » devient un vrai bouton bleu, + doré. La fenêtre
+  « Nouveau document » (`fenDefile`) : centrée, loin du haut de l'écran, en-tête et pied fixes, la
+  liste des modèles défile entre les deux.
+- **« Où en est la recherche » au téléphone** reprend ses coins arrondis (crm-mobile.css), comme le
+  bandeau du nom depuis la V3.163 ; les cartes des biens gardent les leurs dans le panneau.
+
 ### V3.166 — 10 octobre 2026 · Présentés : les filtres en cascade
 
 - Alexandre : « quand je passe de Tout à Il veut visiter, c'est brut, pas fluide ». Les lignes de
