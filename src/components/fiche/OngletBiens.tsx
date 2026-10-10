@@ -5,15 +5,20 @@ import { supabase } from '@/lib/supabase';
 import { effacerPhotosBien } from '@/lib/photos';
 import { verifie } from '@/lib/ecritures';
 import {
-  Frise, ModaleObservation, ModaleEnvoi, Chip, BoutonLien, CARTE,
-  Vignettes, Specs, BandeauMarche, StylesEmilio, Icone, Action, NAVY, OR, BORD,
-  useAffichage, BasculeAffichage, LigneCompacte, BoutonIcone, resumeSpecs,
-  NotesVeille, ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
-  ModalePhotos, AvisLien, etatLien, ModaleHonoraires,
+  ModaleObservation, ModaleEnvoi, CARTE, StylesEmilio, Icone, NAVY, OR, BORD,
+  ModaleScore, ModaleEnvoiGroupe, CaseACocher, honorairesDuMandat, libelleHonoraires,
+  ModalePhotos, ModaleHonoraires,
 } from './ParcoursBien';
+import FenetreBien, { LigneListe, BasLigne, BoutonBas, BoutonPied, LienPied, Ressort, BoutonVite } from './FenetreBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
 import FenetreIndispo from './FenetreIndispo';
+
+/* V3.165 : le picto de chaque réponse (plus d'émoji dans les nouvelles lignes). */
+const ICONES_R: Record<string, string> = {
+  propose: 'horloge', interesse: 'etoile', souhaite_visiter: 'oeil', visite: 'cle',
+  offre_faite: 'euro', refuse: 'fermer', indispo: 'cadenas',
+};
 
 /**
  * Deux onglets pour un seul composant :
@@ -156,12 +161,10 @@ interface Props {
 export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
-  const [frise, setFrise] = useState<string | null>(null);
   const [obs, setObs] = useState<any>(null);
   const [envoi, setEnvoi] = useState<any>(null);
   const [tick, setTick] = useState(0);
   const [filtreP, setFiltreP] = useState('tout');   // onglet « Présentés » : quel retour afficher
-  const [compact, setCompact] = useAffichage('biens-' + mode);  // détaillé ou une ligne par bien
   /* La note de la veille suit le bien : sa fenêtre s'ouvre ici aussi, et la
      recherche sert à dire ce que le bien coche d'office. */
   const [scoreOuvert, setScoreOuvert] = useState<any>(null);
@@ -175,10 +178,18 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   const [honoDe, setHonoDe] = useState<any>(null);
   /* V3.164 : « Ce bien n'est plus disponible » (FenetreIndispo). */
   const [indispoDe, setIndispoDe] = useState<any>(null);
+  /* V3.165 : le bien ouvert en grand (son id, et sa place dans la liste). */
+  const [grand, setGrand] = useState<{ id: string; i: number } | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  /* Le « Chargement… » ne s'affiche qu'à la première lecture : un
+     rechargement (après un envoi, un retour noté) ne doit pas faire
+     disparaître la liste — ni la fenêtre ouverte dessus. */
+  const dejaLu = useRef(false);
+  useEffect(() => { dejaLu.current = false; }, [rechercheId, mode]);
 
   const charger = useCallback(async () => {
     if (!rechercheId) return;
-    setChargement(true);
+    if (!dejaLu.current) setChargement(true);
     const { data } = await supabase
       .from('biens')
       .select('*')
@@ -188,6 +199,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     setBiens(data || []);
     /* Un bien parti en « Présentés » ou retiré n'est plus coché. */
     setCoches(cs => cs.filter(id => (data || []).some((b: any) => b.id === id)));
+    dejaLu.current = true;
     setChargement(false);
   }, [rechercheId, mode]);
 
@@ -289,6 +301,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
   const euros = (n: any) => (n == null ? '—' : Number(n).toLocaleString('fr-FR') + ' €');
 
+  /* Un mot bref dans la fenêtre après un choix, qui s'efface tout seul. */
+  const minuteur = useRef<number | undefined>(undefined);
+  const dire = (m: string) => {
+    setMessage(m);
+    window.clearTimeout(minuteur.current);
+    minuteur.current = window.setTimeout(() => setMessage(null), 2800);
+  };
+  useEffect(() => () => window.clearTimeout(minuteur.current), []);
+
   if (chargement) {
     return <div style={{ padding: 40, textAlign: 'center', color: '#b6c1d1', fontSize: 14, minHeight: 200 }}>Chargement…</div>;
   }
@@ -325,7 +346,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     const r = RETOURS[g];
     return (
       <div key={'t-' + g} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: idx === 0 ? '2px 0 -2px' : '16px 0 -2px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 16 }}>{r.i}</span>
+        <span style={{ display: 'flex', color: r.c }}><Icone nom={ICONES_R[g] || 'horloge'} taille={17} epaisseur={2.1} /></span>
         <span style={{ fontSize: 15, fontWeight: 800, color: NAVY }}>{def.titre}</span>
         <span style={{ fontSize: 11, fontWeight: 800, color: r.c, background: r.bg, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '1px 8px' }}>{parGroupe[g].length}</span>
         {def.note && <span style={{ fontSize: 12.5, color: '#94a3b8', flex: '1 1 260px' }}>{def.note}</span>}
@@ -346,8 +367,203 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   };
   const mandat = honorairesDuMandat(recherche);
 
+  /* V3.165 : le bien ouvert en grand. On retient son id ET sa place : s'il
+     quitte la liste (envoyé, retiré), la fenêtre montre celui qui prend sa
+     place — le suivant —, et se ferme quand il n'y a plus rien. */
+  const idxGrand = grand
+    ? (() => { const j = affiches.findIndex(b => b.id === grand.id); return j >= 0 ? j : Math.min(grand.i, affiches.length - 1); })()
+    : -1;
+  const ouvrir = (id: string) => setGrand({ id, i: Math.max(0, affiches.findIndex(b => b.id === id)) });
+  const allerA = (j: number) => { const b = affiches[j]; if (b) setGrand({ id: b.id, i: j }); };
+
+  /* Ce qui s'écrit sous le prix, dans la ligne comme dans la fenêtre. */
+  const sousPrixDe = (b: any) => {
+    const prixAff = prixDuBien(b).demande;
+    return libelleHonoraires(b, mode === 'presentes')
+      || (prixAff && b.surface ? `${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²` : null);
+  };
+
+  /* Le bas d'une ligne des Présentés : sa réponse, ou son silence, et quoi faire. */
+  const basPresente = (b: any) => {
+    const x = lireIndispo(b.indispo);
+    if (x) {
+      return (
+        <BasLigne couleur="#475569" fond="#f1f5f9" bord="#cbd5e1" icone="cadenas"
+          etat={`Plus disponible · ${motifIndispo(x.motif).l}`}
+          mot={x.note ? `Ton mot : « ${x.note} »` : 'Pas de mot laissé : il lit seulement le motif.'} vide={!x.note}
+          boutons={<BoutonBas onClick={() => { void remettre(b); }}>Remettre disponible</BoutonBas>} />
+      );
+    }
+    const g = b.badge_retour && RETOURS[b.badge_retour] ? b.badge_retour : 'propose';
+    const r = RETOURS[g];
+    if (g === 'propose') {
+      const canal = b.canal_envoi === 'mail' ? ' par mail' : b.canal_envoi === 'whatsapp' ? ' par WhatsApp' : '';
+      const quand = b.envoye_le ? `Envoyé ${depuisQuand(b.envoye_le)}${canal}` : 'Envoyé';
+      return (
+        <BasLigne couleur="#64748b" fond="#f7f9fc" bord={BORD} icone="horloge" etat="En attente de son retour"
+          mot={`${quand} · ${b.nb_vues ? `ouvert ${b.nb_vues} fois` : 'jamais ouvert'}`} vide
+          boutons={<BoutonBas onClick={() => setObs(b)}>Noter son retour</BoutonBas>} />
+      );
+    }
+    const par = b.retour_par === 'conseiller' ? 'noté par toi' : 'depuis son espace';
+    const quand = [depuisQuand(b.retour_le), par].filter(Boolean).join(', ');
+    const aUnMot = !!b.retour_client && b.retour_client !== r.l;
+    const visiter = g === 'souhaite_visiter' || g === 'interesse';
+    return (
+      <BasLigne couleur={r.c} fond={r.bg} bord={r.bd} icone={ICONES_R[g] || 'horloge'} etat={r.l}
+        mot={aUnMot
+          ? <>{`« ${b.retour_client} »`}{' '}<small>{`· ${quand}`}</small></>
+          : <small>{g === 'refuse' ? `Pas de mot · ${quand}. Un appel dirait ce qui a bloqué.` : `Pas de mot · ${quand}`}</small>}
+        vide={!aUnMot}
+        boutons={<>
+          <BoutonBas onClick={() => setObs(b)}>Noter son retour</BoutonBas>
+          {visiter && <BoutonBas ton="violet" onClick={() => onVisite(b.id)}>Planifier une visite</BoutonBas>}
+        </>} />
+    );
+  };
+
+  /* Le bas d'une ligne de la Sélection : la fiche soignée, quand elle est en route. */
+  const basSelection = (b: any) => {
+    if (b.pdf_message) {
+      return <BasLigne couleur="#92400e" fond="#fffbeb" bord="#fde68a" icone="alerte" etat="Fiche soignée" mot={b.pdf_message} vide />;
+    }
+    if (b.pdf_statut === 'pret' && b.pdf_url) {
+      return (
+        <BasLigne couleur="#15803d" fond="#f0fdf4" bord="#bbf7d0" icone="doc" etat="Fiche soignée prête"
+          boutons={<BoutonBas onClick={() => window.open(b.pdf_url, '_blank', 'noopener')}>La consulter</BoutonBas>} />
+      );
+    }
+    if (b.pdf_statut === 'demande') {
+      return <BasLigne couleur="#64748b" fond="#f7f9fc" bord={BORD} icone="horloge" etat="Fiche soignée demandée" mot="Elle sera prête à la prochaine session." vide />;
+    }
+    return undefined;
+  };
+
+  /* ── La fenêtre : ce qui change d'un onglet à l'autre ── */
+  const bandeauDe = (b: any) => {
+    const r = RETOURS[b.badge_retour] || RETOURS.propose;
+    const aRepondu = mode === 'presentes' && b.badge_retour && b.badge_retour !== 'propose';
+    const x = mode === 'presentes' ? lireIndispo(b.indispo) : null;
+    return (
+      <>
+        {x && (
+          <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', color: '#475569' }}><Icone nom="cadenas" taille={16} epaisseur={2.1} /></span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: '#334155' }}>{`Plus disponible · ${motifIndispo(x.motif).l}`}</span>
+              {x.le && <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600 }}>{`· ${depuisQuand(x.le)}`}</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#94a3b8' }}>Vu dans son espace</span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13.5, lineHeight: 1.55, color: x.note ? NAVY : '#94a3b8', fontWeight: x.note ? 600 : 500 }}>
+              {x.note ? `Ton mot : « ${x.note} »` : 'Pas de mot laissé : il lit seulement le motif.'}
+            </div>
+          </div>
+        )}
+        {aRepondu && (
+          <div style={{ background: r.bg, border: `1px solid ${r.bd}`, borderRadius: 14, padding: '13px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', color: r.c }}><Icone nom={ICONES_R[b.badge_retour] || 'horloge'} taille={17} epaisseur={2.1} /></span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: r.c }}>{r.l}</span>
+              {b.retour_le && <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600 }}>{`· ${depuisQuand(b.retour_le)}, ${b.retour_par === 'conseiller' ? 'noté par toi' : 'depuis son espace'}`}</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#a9b6c8' }}>Son retour</span>
+            </div>
+            {b.retour_client && b.retour_client !== r.l ? (
+              <div style={{ marginTop: 7, fontSize: 15, lineHeight: 1.6, color: NAVY, fontWeight: 600 }}>{`« ${b.retour_client} »`}</div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 13, color: '#94a3b8', lineHeight: 1.55 }}>
+                {b.badge_retour === 'refuse' ? 'Il n’a pas laissé de mot. Un appel dirait ce qui a bloqué : c’est ce qui manque pour affiner la recherche.' : 'Il n’a pas laissé de mot.'}
+              </div>
+            )}
+          </div>
+        )}
+        {mode === 'selection' && b.pdf_message && (
+          <div style={{ fontSize: 13, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 14px', lineHeight: 1.5 }}>
+            {b.pdf_message}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const prixDe = (b: any) => {
+    const hono = libelleHonoraires(b, mode === 'presentes');
+    const prixAff = prixDuBien(b).demande;
+    return {
+      montant: prixAff,
+      dessous: (
+        <>
+          {hono
+            ? mode === 'presentes' && !b.bien_vente_id
+              ? (
+                <button type="button" onClick={() => setHonoDe(b)} title="Changer : avec inter, sans inter, particulier"
+                  style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12.5, color: '#64748b', fontWeight: 600, cursor: 'pointer', textAlign: 'inherit' }}>
+                  {hono}<span style={{ color: NAVY, fontWeight: 800 }}>{' · Modifier'}</span>
+                </button>
+              )
+              : <span>{hono}</span>
+            : prixAff && b.surface ? <span>{`${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²`}</span> : null}
+          {mode === 'presentes' && b.envoye_le && (
+            <span>{`Envoyé le ${new Date(b.envoye_le).toLocaleDateString('fr-FR')}${b.canal_envoi ? ` · ${b.canal_envoi === 'mail' ? 'mail' : b.canal_envoi === 'whatsapp' ? 'WhatsApp' : 'lien'}` : ''}`}</span>
+          )}
+          {mode === 'presentes' && (
+            <span style={{ fontWeight: 700, color: b.nb_vues ? '#2563eb' : '#94a3b8' }}>{b.nb_vues ? `Ouvert ${b.nb_vues} fois par le client` : 'Jamais ouvert'}</span>
+          )}
+        </>
+      ),
+    };
+  };
+
+  const coinDe = (b: any) => {
+    if (mode !== 'presentes') return undefined;
+    const g = groupeP(b);
+    const r = RETOURS[g] || RETOURS.propose;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 800, boxShadow: '0 4px 12px -6px rgba(16,24,40,.5)' }}>
+        <Icone nom={ICONES_R[g] || 'horloge'} taille={14} epaisseur={2.2} />{r.l}
+      </span>
+    );
+  };
+
+  const piedDe = (b: any) => {
+    if (mode === 'selection') {
+      return (
+        <>
+          <LienRetirer onClick={() => retirer(b)} />
+          <Ressort />
+          {b.pdf_statut === 'pret' && b.pdf_url ? (
+            <BoutonPied href={b.pdf_url}><Icone nom="doc" taille={16} epaisseur={2} />Fiche prête : la consulter</BoutonPied>
+          ) : b.pdf_statut === 'demande' ? (
+            <BoutonPied disabled><Icone nom="horloge" taille={16} epaisseur={2} />Fiche demandée</BoutonPied>
+          ) : (
+            <BoutonPied onClick={() => demanderPdf(b.id)}><Icone nom="doc" taille={16} epaisseur={2} />Demander une fiche soignée</BoutonPied>
+          )}
+          <BoutonPied ton="or" onClick={() => setEnvoi(b)}><Icone nom="envoyer" taille={16} epaisseur={2} />Envoyer au client</BoutonPied>
+        </>
+      );
+    }
+    const indispo = lireIndispo(b.indispo);
+    return (
+      <>
+        {/* V3.164 : un bien trouvé ailleurs (un bien de l'agence suit sa fiche). */}
+        {!b.bien_vente_id && !indispo && (
+          <LienPied onClick={() => setIndispoDe(b)} titre="Vendu, sous compromis ou retiré, d’après l’agence ou le vendeur">Plus disponible</LienPied>
+        )}
+        <LienPied onClick={() => renvoyerEnSelection(b.id)}>Remettre en sélection</LienPied>
+        <LienRetirer onClick={() => retirer(b)} />
+        <Ressort />
+        {b.pdf_url && <BoutonPied href={b.pdf_url}><Icone nom="doc" taille={16} epaisseur={2} />Le PDF</BoutonPied>}
+        <BoutonPied ton="navy" onClick={() => setObs(b)}><Icone nom="note" taille={16} epaisseur={2} />Noter son retour</BoutonPied>
+        {indispo
+          ? <BoutonPied onClick={() => { void remettre(b); }}><Icone nom="remettre" taille={16} epaisseur={2} />Remettre disponible</BoutonPied>
+          : <BoutonPied ton="violet" onClick={() => onVisite(b.id)}><Icone nom="calendrier" taille={16} epaisseur={2} />Planifier une visite</BoutonPied>}
+      </>
+    );
+  };
+
+  /* Une fenêtre ouverte par-dessus (retour, envoi, photos…) : la grande
+     fenêtre reste dessous, ses touches attendent. */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 7 : 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       <StylesEmilio />
       {/* V3.129 : le bien qu'on vient voir, entouré en violet un instant. */}
       {eclaire && <style>{`
@@ -356,25 +572,22 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         @media (prefers-reduced-motion: reduce) { .emi-vise { animation: none !important; box-shadow: 0 0 0 3px rgba(124,58,237,.35); } }
       `}</style>}
 
-      <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap' }}>
+      <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'baseline', gap: 11, flexWrap: 'wrap', marginBottom: 4 }}>
         <span className="emi-titre-onglet" style={{ fontSize: 19, fontWeight: 800, color: NAVY, letterSpacing: -.3 }}>
-          {biens.length} bien{biens.length > 1 ? 's' : ''} {mode === 'selection' ? 'en sélection' : 'présenté' + (biens.length > 1 ? 's' : '')}
+          {`${biens.length} bien${biens.length > 1 ? 's' : ''} ${mode === 'selection' ? 'en sélection' : 'présenté' + (biens.length > 1 ? 's' : '')}`}
         </span>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
-          {mode === 'selection' ? 'Fixe tes honoraires et envoie. La fiche soignée est facultative.' : 'Rangés selon ce que le client en a dit.'}
+          {mode === 'selection' ? 'Ouvre un bien en grand pour le revoir, puis envoie-le.' : 'Rangés selon ce que le client en a dit.'}
         </span>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          {mode === 'presentes' && repondus > 0 && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 800 }}>
-              💬 {repondus} retour{repondus > 1 ? 's' : ''} reçu{repondus > 1 ? 's' : ''}
-            </span>
-          )}
-          <BasculeAffichage compact={compact} onChange={setCompact} />
-        </span>
+        {mode === 'presentes' && repondus > 0 && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 20, padding: '5px 13px', fontSize: 12.5, fontWeight: 800 }}>
+            <Icone nom="note" taille={14} epaisseur={2.1} />{`${repondus} retour${repondus > 1 ? 's' : ''} reçu${repondus > 1 ? 's' : ''}`}
+          </span>
+        )}
       </div>
 
       {groupable && (
-        <div className="emi-tout-cocher" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '0 0 0 11px', minHeight: 30 }}>
+        <div className="emi-tout-cocher" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '0 0 0 15px', minHeight: 30 }}>
           <CaseACocher actif={tout} partiel={coches.length > 0 && !tout} onClick={toutBasculer}
             titre={tout ? 'Tout décocher' : 'Tout cocher'} />
           <button type="button" onClick={toutBasculer}
@@ -393,7 +606,6 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
           {[{ id: 'tout', titre: 'Tout', n: biens.length }, ...groupesVisibles.map(g => ({ id: g.id, titre: g.titre, n: parGroupe[g.id].length }))].map(f => {
             const actif = filtreP === f.id;
-            const r = RETOURS[f.id];
             return (
               <button type="button" key={f.id} onClick={() => setFiltreP(f.id)}
                 style={{
@@ -402,7 +614,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
                   border: `1px solid ${actif ? NAVY : BORD}`, background: actif ? NAVY : 'white',
                   color: actif ? 'white' : '#64748b', transition: 'all .12s',
                 }}>
-                {r ? <span>{r.i}</span> : null}{f.titre}
+                {f.id !== 'tout' && <Icone nom={ICONES_R[f.id] || 'horloge'} taille={14} epaisseur={2.1} />}{f.titre}
                 <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 20, padding: '1px 7px', background: actif ? 'rgba(255,255,255,.18)' : '#f1f5f9', color: actif ? 'white' : '#94a3b8' }}>{f.n}</span>
               </button>
             );
@@ -411,313 +623,34 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       )}
 
       {affiches.map((b, idx) => {
-        const r = RETOURS[b.badge_retour] || RETOURS.propose;
-        const ouvert = frise === b.id;
-        /* V3.145 : le prix de l'annonce, comme le client le voit ; ce qui s'y
-           ajoute (ou « Inter ») est dit dessous. */
-        const prixAff = prixDuBien(b).demande;
-        const hono = libelleHonoraires(b, mode === 'presentes');
-        // BandeauMarche lit `prix` : on lui donne le prix vendeur, celui du marché
-        const marche = { ...b, prix: b.prix_vendeur, agence: b.agence_nom, portail: b.source_portail };
-        /* V3.101 : le lien enregistré est-il toujours le bon ? (ok · remplacé · retiré) */
-        const lien = etatLien(marche);
-        const atouts: React.ReactNode[] = [];
-        if (b.terrasse && !b.surface_exterieur) atouts.push(<Chip key="t" ton="or">Terrasse</Chip>);
-        if (b.balcon && !b.surface_exterieur) atouts.push(<Chip key="b">Balcon</Chip>);
-        if (b.jardin && !b.surface_exterieur) atouts.push(<Chip key="j">Jardin</Chip>);
-        if (b.parking) atouts.push(<Chip key="p">{b.nb_parking > 1 ? `${b.nb_parking} parkings` : 'Parking'}</Chip>);
-        if (b.ascenseur) atouts.push(<Chip key="a">Ascenseur</Chip>);
-        if (b.cave) atouts.push(<Chip key="c">Cave</Chip>);
-        if (b.est_particulier) atouts.push(<Chip key="x" ton="vert">Particulier</Chip>);
-
-        const aRepondu = mode === 'presentes' && b.badge_retour && b.badge_retour !== 'propose';
-
-        /* ── affichage compact : une ligne, et tout le reste au clic ── */
-        if (compact) {
-          return (
-            <Fragment key={b.id}>
-              {enTeteDe(b, idx)}
-              <div id={`bien-${b.id}`} className={eclaire === b.id ? 'emi-vise' : undefined} style={{ borderRadius: 16 }}>
-              <LigneCompacte
-                photo={(b.photos || [])[0]}
-                numero={idx + 1}
-                titre={b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
-                lieu={b.adresse || b.adresse_probable || b.quartier || b.ville}
-                specs={resumeSpecs(b)}
-                prix={euros(prixAff)}
-                sousPrix={hono
-                  || (prixAff && b.surface ? `${Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²` : null)}
-                coche={groupable ? { actif: coches.includes(b.id), onBascule: () => basculer(b.id) } : undefined}
-                accent={mode === 'presentes' ? r.c : undefined}
-                badge={mode === 'presentes' ? (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 800 }}>
-                    {r.i} {r.l}
-                  </span>
-                ) : b.pdf_statut === 'pret' ? (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 800 }}>
-                    📄 fiche prête
-                  </span>
-                ) : undefined}
-                onOuvrir={() => onFiche(b.id)}
-                actions={
-                  <>
-                    {b.url && lien.etat !== 'retire' && (
-                      <BoutonIcone icone="lien" href={b.url}
-                        titre={lien.etat === 'remplace' ? 'Ouvrir l’annonce en ligne (lien mis à jour)' : 'Ouvrir l’annonce d’origine'} />
-                    )}
-                    {(b.photos || []).length > 0 && <BoutonIcone icone="photos" titre="Réorganiser les photos" onClick={() => setPhotosDe(b)} />}
-                    <BoutonIcone icone="crayon" titre="Ouvrir le détail du bien" onClick={() => onFiche(b.id)} />
-                    {mode === 'selection'
-                      ? <BoutonIcone icone="envoyer" titre="Envoyer au client" ton="or" onClick={() => setEnvoi(b)} />
-                      : <>
-                        {!b.bien_vente_id && <BoutonIcone icone="euro" titre="Tes honoraires sur ce bien (inter ou pas)" onClick={() => setHonoDe(b)} />}
-                        <BoutonIcone icone="calendrier" titre="Planifier une visite" onClick={() => onVisite(b.id)} />
-                      </>}
-                    <button type="button" onClick={() => retirer(b)} title="Retirer ce bien du dossier"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: 30, height: 30, borderRadius: 9, background: 'white',
-                        border: `1px solid ${BORD}`, color: '#c3ccda', cursor: 'pointer',
-                        fontFamily: 'inherit', transition: 'color .12s, border-color .12s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.borderColor = '#fecaca'; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = '#c3ccda'; e.currentTarget.style.borderColor = BORD; }}>
-                      <IconeCorbeille taille={15} />
-                    </button>
-                  </>
-                }
-              />
-              </div>
-            </Fragment>
-          );
-        }
-
+        const r = RETOURS[groupeP(b)] || RETOURS.propose;
         return (
           <Fragment key={b.id}>
-          {enTeteDe(b, idx)}
-          <div id={`bien-${b.id}`} className={`emi-carte emi-arrivee${eclaire === b.id ? ' emi-vise' : ''}`}
-            style={{
-              ...CARTE, animationDelay: Math.min(idx, 6) * 55 + 'ms',
-              ...(groupable && coches.includes(b.id) ? { borderColor: OR, boxShadow: `0 0 0 3px rgba(201,168,76,.18), ${CARTE.boxShadow}` } : {}),
-              transition: 'border-color .14s, box-shadow .14s',
-            }}>
-
-            <Vignettes photos={b.photos || []} plans={b.plans || []}
-              coinGauche={mode === 'presentes'
-                ? <span style={{ background: r.bg, color: r.c, border: `1px solid ${r.bd}`, borderRadius: 20, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, boxShadow: '0 4px 12px -6px rgba(16,24,40,.5)' }}>{r.i} {r.l}</span>
+            {enTeteDe(b, idx)}
+            <LigneListe b={b} id={`bien-${b.id}`} className={eclaire === b.id ? 'emi-vise' : undefined}
+              accent={mode === 'presentes' ? r.c : undefined}
+              coche={groupable ? { actif: coches.includes(b.id), onBascule: () => basculer(b.id) } : undefined}
+              onOuvrir={() => ouvrir(b.id)}
+              prix={euros(prixDuBien(b).demande)} sousPrix={sousPrixDe(b)}
+              droite={mode === 'selection'
+                ? <BoutonVite onClick={() => setEnvoi(b)} titre="Envoyer ce bien au client"><Icone nom="envoyer" taille={15} epaisseur={2} />Envoyer</BoutonVite>
                 : undefined}
-              coinDroit={(b.photos || []).length > 0 ? (
-                <button type="button" className="emi-reorg" onClick={() => setPhotosDe(b)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,.95)', color: NAVY, border: 'none', borderRadius: 20, padding: '7px 13px', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 16px -8px rgba(16,24,40,.55)' }}>
-                  <Icone nom="photos" taille={14} epaisseur={2} />
-                  {`Réorganiser · ${(b.photos || []).length}`}
-                </button>
-              ) : undefined} />
-
-            {/* Le retour du client se lit AVANT la fiche, pas en bas en petit :
-                c'est l'information qui décide de ce que tu fais ensuite. */}
-            {aRepondu && (
-              <div style={{ background: r.bg, borderBottom: `1px solid ${r.bd}`, borderLeft: `4px solid ${r.c}`, padding: '13px 18px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 17, lineHeight: 1 }}>{r.i}</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: r.c, letterSpacing: -.2 }}>{r.l}</span>
-                  {b.retour_le && <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600 }}>· {depuisQuand(b.retour_le)}</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#a9b6c8' }}>
-                    Retour du client
-                  </span>
-                </div>
-                {b.retour_client ? (
-                  <div style={{ marginTop: 9, fontSize: 14.5, lineHeight: 1.6, color: NAVY, fontWeight: 600 }}>
-                    « {b.retour_client} »
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 7, fontSize: 13, color: '#94a3b8', lineHeight: 1.55 }}>
-                    Il n&apos;a pas laissé de mot.{b.badge_retour === 'refuse' ? ' Un appel dirait ce qui a bloqué — c’est ce qui manque pour affiner la recherche.' : ''}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* V3.164 : plus disponible — le motif, et le mot que l'acheteur lit dans son espace. */}
-            {mode === 'presentes' && (() => {
-              const x = lireIndispo(b.indispo);
-              if (!x) return null;
-              return (
-                <div style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', borderLeft: '4px solid #475569', padding: '12px 18px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 16, lineHeight: 1 }}>🔒</span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#334155' }}>{`Plus disponible · ${motifIndispo(x.motif).l}`}</span>
-                    {x.le && <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600 }}>· {depuisQuand(x.le)}</span>}
-                    <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#a9b6c8' }}>Vu dans son espace</span>
-                  </div>
-                  <div style={{ marginTop: 7, fontSize: 13.5, lineHeight: 1.55, color: x.note ? NAVY : '#94a3b8', fontWeight: x.note ? 600 : 500 }}>
-                    {x.note ? `Ton mot : « ${x.note} »` : 'Pas de mot laissé : il lit seulement le motif.'}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── titre, adresse, prix ─────────────────────── */}
-            <div className="emi-tete-carte" style={{ padding: '15px 18px 0', display: 'flex', gap: 18, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 220, flex: '1 1 320px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                {groupable && (
-                  <span style={{ paddingTop: 3 }}>
-                    <CaseACocher actif={coches.includes(b.id)} onClick={() => basculer(b.id)}
-                      titre={coches.includes(b.id) ? 'Décocher ce bien' : 'Cocher ce bien pour l’envoyer avec d’autres'} />
-                  </span>
-                )}
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="emi-titre-bien" style={{ fontSize: 18, fontWeight: 800, color: NAVY, lineHeight: 1.3, letterSpacing: -.2 }}>
-                  {b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`}
-                </div>
-                {(b.adresse || b.adresse_probable || b.quartier || b.ville) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 13.5, color: '#64748b', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#a9b6c8', display: 'flex' }}><Icone nom="lieu" taille={15} /></span>
-                    <span style={{ fontWeight: 600 }}>
-                      {b.adresse || b.adresse_probable || b.quartier || b.ville}
-                      {b.situation ? ` — ${b.situation}` : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                <div className="emi-prix-bien" style={{ fontSize: 25, fontWeight: 800, color: OR, letterSpacing: -.8, lineHeight: 1.1 }}>{euros(prixAff)}</div>
-                {hono
-                  ? mode === 'presentes' && !b.bien_vente_id
-                    ? (
-                      <button type="button" onClick={() => setHonoDe(b)} title="Changer : avec inter, sans inter, particulier"
-                        style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: 12, color: '#94a3b8', fontWeight: 600, cursor: 'pointer', textAlign: 'right' }}>
-                        {hono}<span style={{ color: NAVY, fontWeight: 800 }}>{' · Modifier'}</span>
-                      </button>
-                    )
-                    : <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{hono}</div>
-                  : prixAff && b.surface
-                    ? <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{Math.round(prixAff / Number(b.surface)).toLocaleString('fr-FR')} €/m²</div>
-                    : null}
-                {mode === 'presentes' && b.envoye_le && (
-                  <div style={{ fontSize: 11.5, color: '#a9b6c8' }}>
-                    envoyé le {new Date(b.envoye_le).toLocaleDateString('fr-FR')}
-                    {b.canal_envoi ? ` · ${b.canal_envoi === 'mail' ? 'mail' : b.canal_envoi === 'whatsapp' ? 'WhatsApp' : 'lien'}` : ''}
-                  </div>
-                )}
-                {mode === 'presentes' && (
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: b.nb_vues ? '#2563eb' : '#cbd5e1' }}>
-                    {b.nb_vues ? `👁️ ouvert ${b.nb_vues} fois par le client` : '👁️ jamais ouvert'}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── caractéristiques, marché, retour ─────────── */}
-            <div className="emi-corps-carte" style={{ padding: '13px 18px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
-              {/* le lien a bougé : d'où il venait, où il est — avant tout le reste */}
-              <AvisLien p={marche} />
-              <Specs p={b} />
-              <BandeauMarche p={marche} />
-
-              {/* en mode sélection, l'observation du chasseur reste ici */}
-              {!aRepondu && b.retour_client && (
-                <div style={{ background: r.bg, border: `1px solid ${r.bd}`, borderLeft: `3px solid ${r.c}`, borderRadius: 11, padding: '9px 13px', fontSize: 13.5, color: r.c, fontStyle: 'italic' }}>
-                  « {b.retour_client} »
-                  {b.retour_le && <span style={{ fontStyle: 'normal', opacity: .6, fontSize: 11.5 }}> — {new Date(b.retour_le).toLocaleDateString('fr-FR')}</span>}
-                </div>
-              )}
-
-              {atouts.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{atouts}</div>
-              )}
-
-              {b.pdf_message && (
-                <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', lineHeight: 1.5 }}>
-                  {b.pdf_message}
-                </div>
-              )}
-
-              {/* ce que la veille en disait : ça reste, et ça reste ici */}
-              <NotesVeille p={b} onScore={() => setScoreOuvert(b)} />
-            </div>
-
-            {/* ── pied de carte : les actions ──────────────── */}
-            <div className="emi-pied" style={{
-              borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '11px 18px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-            }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                {b.url && lien.etat !== 'retire' && (
-                  <BoutonLien href={b.url}>{lien.etat === 'remplace' ? '↗\u00a0 Annonce en ligne' : '↗\u00a0 Annonce d’origine'}</BoutonLien>
-                )}
-                {lien.etat === 'retire' && (
-                  <span title="Le lien enregistré ne mène plus nulle part"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fffaf0', color: '#b45309', border: '1px solid #f6d89a', borderRadius: 9, padding: '5px 11px', fontSize: 12, fontWeight: 700 }}>
-                    {'Annonce retirée'}
-                  </span>
-                )}
-                <BoutonLien onClick={() => onFiche(b.id)}>✎&nbsp; Détail</BoutonLien>
-                <BoutonLien onClick={() => setFrise(ouvert ? null : b.id)} actif={ouvert}>
-                  ◷&nbsp; {ouvert ? 'Masquer le parcours' : 'Parcours du bien'}
-                </BoutonLien>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {mode === 'selection' ? (
-                  <>
-                    {b.pdf_statut === 'pret' && b.pdf_url ? (
-                      <Action href={b.pdf_url} ton="neutre">📄&nbsp; Fiche prête — consulter</Action>
-                    ) : b.pdf_statut === 'demande' ? (
-                      <Action ton="neutre" disabled>⏳&nbsp; En attente · prochaine session</Action>
-                    ) : (
-                      <Action onClick={() => demanderPdf(b.id)} ton="neutre">📄&nbsp; Demander une fiche soignée</Action>
-                    )}
-                    <Action onClick={() => setEnvoi(b)} ton="or">📤&nbsp; Envoyer</Action>
-                    <LienRetirer onClick={() => retirer(b)} />
-                  </>
-                ) : (
-                  <>
-                    {b.pdf_url && <Action href={b.pdf_url} ton="neutre">📄&nbsp; Le PDF</Action>}
-                    {lireIndispo(b.indispo) ? (
-                      <Action onClick={() => { void remettre(b); }} ton="neutre">🔓&nbsp; Remettre disponible</Action>
-                    ) : (
-                      <Action onClick={() => onVisite(b.id)} ton="violet">📅&nbsp; Planifier une visite</Action>
-                    )}
-                    <Action onClick={() => setObs(b)} ton="navy">💬&nbsp; Noter son retour</Action>
-                    {/* V3.164 : un bien trouvé ailleurs (un bien de l'agence suit sa fiche). */}
-                    {!b.bien_vente_id && !lireIndispo(b.indispo) && (
-                      <button type="button" onClick={() => setIndispoDe(b)} title="Vendu, sous compromis ou retiré, d’après l’agence ou le vendeur"
-                        style={{ background: 'none', border: 'none', color: '#8a97ab', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        🔒 Plus disponible
-                      </button>
-                    )}
-                    <button type="button" onClick={() => renvoyerEnSelection(b.id)}
-                      style={{ background: 'none', border: 'none', color: '#a9b6c8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Remettre en sélection
-                    </button>
-                    <LienRetirer onClick={() => retirer(b)} />
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="emi-volet" data-ouvert={ouvert}>
-              <div>
-                <div style={{ borderTop: `1px solid ${BORD}`, background: '#fbfcfe', padding: '16px 18px 12px' }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: '#9aa8bd', textTransform: 'uppercase', letterSpacing: .9, marginBottom: 9 }}>
-                    Parcours du bien
-                  </div>
-                  {ouvert && <Frise bienId={b.id} rafraichir={tick} />}
-                </div>
-              </div>
-            </div>
-          </div>
+              bas={mode === 'presentes' ? basPresente(b) : basSelection(b)} />
           </Fragment>
         );
       })}
 
       {/* De la place sous le dernier bien : la barre ne doit pas le cacher. */}
       {groupable && coches.length > 0 && <div aria-hidden="true" style={{ height: 64 }} />}
-      {groupable && coches.length > 0 && !envoi && !envoiGroupe && (
+      {groupable && coches.length > 0 && !envoi && !envoiGroupe && grand === null && (
         <BarreGroupe n={coches.length} onEnvoyer={envoyerCoches} onVider={() => setCoches([])} />
+      )}
+
+      {grand && idxGrand >= 0 && (
+        <FenetreBien biens={affiches} index={idxGrand} onIndex={allerA} onFermer={() => setGrand(null)}
+          recherche={recherche} bandeau={bandeauDe} prix={prixDe} coinPhoto={coinDe} pied={piedDe}
+          onFiche={onFiche} onPhotos={b => setPhotosDe(b)} onScore={b => setScoreOuvert(b)} parcours
+          message={message} />
       )}
 
       {scoreOuvert && <ModaleScore p={scoreOuvert} recherche={recherche} onFerme={() => setScoreOuvert(null)} />}
@@ -726,11 +659,11 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
       )}
       {envoi && (
         <ModaleEnvoi bien={envoi} clientId={clientId} client={client} mandat={mandat}
-          onFerme={() => setEnvoi(null)} onEnvoye={recharge} onMail={onMail} />
+          onFerme={() => setEnvoi(null)} onEnvoye={() => { recharge(); if (grand) dire('Envoyé : il passe dans Présentés.'); }} onMail={onMail} />
       )}
       {indispoDe && (
         <FenetreIndispo bien={indispoDe} clientId={clientId} rechercheId={rechercheId} prenom={client?.prenom}
-          onFermer={() => setIndispoDe(null)} onFait={() => { setIndispoDe(null); recharge(); }} />
+          onFermer={() => setIndispoDe(null)} onFait={() => { setIndispoDe(null); recharge(); if (grand) dire('Classé dans « Plus disponible ».'); }} />
       )}
       {photosDe && (
         <ModalePhotos bien={photosDe} onFerme={() => setPhotosDe(null)} onEnregistre={recharge} />

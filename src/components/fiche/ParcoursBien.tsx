@@ -199,6 +199,10 @@ const TRAITS: Record<string, string[]> = {
   poignee: ['c:9,6.5,1', 'c:15,6.5,1', 'c:9,12,1', 'c:15,12,1', 'c:9,17.5,1', 'c:15,17.5,1'],
   etoile: ['m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'],
   remettre: ['M4 12a8 8 0 1 0 2.4-5.7', 'M4 4.5v4h4'],
+  /* V3.165 : la fenêtre « Voir en grand » et ses flèches. */
+  agrandir: ['M14.5 3.5h6v6', 'M9.5 20.5h-6v-6', 'M20.5 3.5l-6.8 6.8', 'M3.5 20.5l6.8-6.8'],
+  chevronG: ['m14.5 6-6 6 6 6'],
+  chevronD: ['m9.5 6 6 6-6 6'],
 };
 
 export function Icone({ nom, taille = 17, epaisseur = 1.7 }: { nom: string; taille?: number; epaisseur?: number }) {
@@ -381,7 +385,7 @@ export function Vignettes({ photos, plans, max = 7, coinGauche, coinDroit }: {
   );
 }
 
-function Visionneuse({ photos, depart, onFerme, clair }: { photos: string[]; depart: number; onFerme: () => void; clair?: boolean }) {
+export function Visionneuse({ photos, depart, onFerme, clair }: { photos: string[]; depart: number; onFerme: () => void; clair?: boolean }) {
   const [i, setI] = useState(depart);
   const aller = useCallback((d: number) => setI((n) => (n + d + photos.length) % photos.length), [photos.length]);
 
@@ -1846,7 +1850,7 @@ function CaseMarche({ icone, titre, valeur, detail, ton = 'neutre', onClick, ouv
   return <button type="button" className="emi-case" onClick={onClick} aria-expanded={!!ouvert} style={{ ...st, cursor: 'pointer' }}>{contenu}</button>;
 }
 
-export function BandeauMarche({ p }: { p: any }) {
+export function BandeauMarche({ p, sobre }: { p: any; sobre?: boolean }) {
   const [ouvert, setOuvert] = useState<null | 'date' | 'prix' | 'agences'>(null);
   const pts = seriePrix(p);
   const prixActuel = Number(p.prix ?? p.prix_vendeur) || 0;
@@ -1883,16 +1887,25 @@ export function BandeauMarche({ p }: { p: any }) {
      restent dans le CRM et ne partent jamais chez le client. */
   return (
     <div className="emi-marche" style={{ border: '1px solid #d8e0eb', borderRadius: 14, overflow: 'hidden', background: '#f3f6fa' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', background: NAVY }}>
-        <span style={{ width: 24, height: 24, borderRadius: 7, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icone nom="courbe" taille={14} epaisseur={2.1} />
-        </span>
-        <span style={{ fontSize: 12, fontWeight: 800, color: 'white', letterSpacing: 1.3, textTransform: 'uppercase' }}>Marché</span>
-        <span title="Visible dans le CRM seulement, jamais par le client"
-          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.5)' }}>
-          <Icone nom="cadenas" taille={12} epaisseur={2} />interne
-        </span>
-      </div>
+      {sobre ? (
+        /* V3.165 : dans « Ce que dit la veille », le marché n'a pas besoin d'un
+           second bandeau sombre : un titre suffit. */
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 0', color: NAVY }}>
+          <Icone nom="courbe" taille={15} epaisseur={2.1} />
+          <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1.1, textTransform: 'uppercase' }}>Le marché</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', background: NAVY }}>
+          <span style={{ width: 24, height: 24, borderRadius: 7, background: 'rgba(201,168,76,.16)', color: OR, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icone nom="courbe" taille={14} epaisseur={2.1} />
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: 'white', letterSpacing: 1.3, textTransform: 'uppercase' }}>Marché</span>
+          <span title="Visible dans le CRM seulement, jamais par le client"
+            style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,.5)' }}>
+            <Icone nom="cadenas" taille={12} epaisseur={2} />interne
+          </span>
+        </div>
+      )}
 
       <div style={{ padding: 9 }}>
       <div className="emi-marche-grille" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 7 }}>
