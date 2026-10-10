@@ -293,7 +293,7 @@ export default function PageImportVeille() {
               }
             }
 
-            const { error } = await supabase.from('veille_propositions').insert({
+            const ligne: Record<string, any> = {
               client_id,
               recherche_id,
               url: p.url,
@@ -356,7 +356,17 @@ export default function PageImportVeille() {
               nb_agences: p.nb_agences ?? null,
               historique_prix: p.historique_prix || [],
               date_derniere_baisse: p.date_derniere_baisse || null,
-            });
+              // V3.165 : le numéro de l'agence, relevé sur l'annonce (bouton « Appeler »)
+              ...(p.agence_tel ? { agence_tel: String(p.agence_tel).trim() } : {}),
+            };
+            let { error } = await supabase.from('veille_propositions').insert(ligne);
+            /* Tant que la colonne n'existe pas (outils/sql/veille-agence-tel.sql
+               pas encore passé), le bien se dépose sans son numéro plutôt que
+               pas du tout. */
+            if (error && /agence_tel/i.test(error.message || '') && 'agence_tel' in ligne) {
+              delete ligne.agence_tel;
+              ({ error } = await supabase.from('veille_propositions').insert(ligne));
+            }
 
             if (error) {
               // 23505 = doublon sur (recherche_id, url) : déjà proposé, on ignore
