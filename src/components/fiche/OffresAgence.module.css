@@ -1,0 +1,59 @@
+/* Ses offres sur les biens de l'agence, dans l'onglet Transaction (V3.172). */
+.liste { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.tete { display: flex; flex-direction: column; gap: 3px; padding: 0 2px; }
+.tete b { font: 800 16px 'Plus Jakarta Sans', sans-serif; color: var(--emilio); }
+.tete span { font-size: 13px; color: #64748b; line-height: 1.5; }
+
+.carte {
+  display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 18px; background: #fff;
+  border: 1px solid #e3e8f0; box-shadow: 0 1px 3px rgba(15, 23, 42, .04);
+}
+.carte[data-statut='acceptee'] { border-color: #bbf0cf; }
+
+.bien { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.photo { width: 58px; height: 46px; border-radius: 11px; overflow: hidden; flex-shrink: 0; background: #eef2f8; color: #64748b; display: inline-flex; align-items: center; justify-content: center; }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bienTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.bienTx small { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #a07c28; }
+.bienTx b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bienTx span { font-size: 12.5px; color: #64748b; }
+.puce { flex-shrink: 0; padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+
+.montant { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.montant b { font: 800 26px/1 'Plus Jakarta Sans', sans-serif; color: #1a2332; letter-spacing: -.3px; }
+.montant span { font-size: 13px; color: #64748b; font-weight: 600; }
+
+/* L'historique : un fil, un point par tour de la négociation. */
+.fil { list-style: none; margin: 0; padding: 4px 0 0; display: flex; flex-direction: column; }
+.fil li {
+  position: relative; display: grid; grid-template-columns: 14px 96px minmax(0, 1fr) auto; align-items: baseline; gap: 10px;
+  padding: 7px 0; font-size: 13px; color: #475569;
+}
+.fil li:not(:last-child)::after { content: ''; position: absolute; left: 6px; top: 22px; bottom: -8px; width: 2px; background: #e8edf3; }
+.point { width: 10px; height: 10px; border-radius: 50%; background: #c9a84c; box-shadow: 0 0 0 3px #fbf6e9; align-self: center; margin-left: 2px; }
+.fil li[data-par='vendeur'] .point { background: #2563eb; box-shadow: 0 0 0 3px #eff6ff; }
+.fil li[data-par='accord'] .point { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
+.fil li[data-par='fin'] .point { background: #94a3b8; box-shadow: 0 0 0 3px #f1f5f9; }
+.date { font-size: 12px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
+.quoi { min-width: 0; }
+.fil li[data-par='vendeur'] .quoi { color: #1d4ed8; font-weight: 600; }
+.fil li[data-par='accord'] .quoi, .fil li[data-par='accord'] b { color: #15803d; font-weight: 700; }
+.fil b { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #1a2332; white-space: nowrap; }
+
+.ouvrir {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 11px;
+  border: 1px solid #d5deeb; background: #fff; color: var(--emilio); font: 700 13px 'DM Sans', sans-serif; cursor: pointer;
+}
+.ouvrir:hover { border-color: #c9a84c; background: #fffaf0; }
+
+@media (max-width: 600px) {
+  .carte { padding: 14px 12px; border-radius: 16px; }
+  .bien { flex-wrap: wrap; }
+  .puce { order: 3; }
+  .fil li { grid-template-columns: 14px minmax(0, 1fr) auto; row-gap: 0; }
+  .date { grid-column: 2; grid-row: 1; }
+  .quoi { grid-column: 2; grid-row: 2; }
+  .fil li b { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+  .fil li .point { grid-row: 1 / span 2; }
+  .ouvrir { align-self: stretch; justify-content: center; }
+}

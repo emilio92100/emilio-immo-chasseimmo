@@ -156,6 +156,7 @@
 .deplacer { display: flex; gap: 8px; flex-wrap: wrap; background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 12px; padding: 10px; }
 .deplacer input { height: 38px; border: 1px solid #d8e0eb; border-radius: 10px; padding: 0 10px; font: 500 13.5px 'DM Sans', sans-serif; color: #13243d; background: #fff; box-sizing: border-box; min-width: 0; }
 .deplacer input:focus { outline: none; border-color: #34496e; box-shadow: 0 0 0 3px rgba(52, 73, 110, .12); }
+.deplacerJour { flex: 1 1 100%; min-width: 0; }
 .deplacer label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: .6px; flex: 1 1 130px; }
 
 /* ── Au téléphone : la photo en haut, fondue vers le bas ; la date passe sur la photo. ── */

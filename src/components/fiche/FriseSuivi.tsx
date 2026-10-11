@@ -75,6 +75,9 @@ const JALONS: Record<string, Famille> = {
   offre_faite:     { ic: 'euro',      c: '#a07c28', bg: '#fbf4e2', carte: true },
   offre_recue:     { ic: 'euro',      c: '#a07c28', bg: '#fbf4e2', carte: true },
   offre_acceptee:  { ic: 'accord',    c: '#0f766e', bg: '#e5f4f1', carte: true },
+  /* V3.172 : chaque tour de la négociation, et l'offre qui tombe. */
+  negociation:     { ic: 'euro',      c: '#1d4ed8', bg: '#eaf2fb', carte: true },
+  offre_close:     { ic: 'retour',    c: '#64748b', bg: '#f1f4f8', carte: true },
   compromis:       { ic: 'signature', c: '#1d4ed8', bg: '#eaf2fb', carte: true },
   compromis_tombe: { ic: 'retour',    c: '#b91c1c', bg: '#fef2f2', carte: true },
   acte:            { ic: 'cle',       c: '#15803d', bg: '#eaf7ef', carte: true },

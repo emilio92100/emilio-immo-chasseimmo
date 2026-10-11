@@ -7,6 +7,7 @@ import { type EtatBon } from '@/components/documents/BonDeVisite';
 import Curseur from '@/components/shared/Curseur';
 import Cascade from '@/components/shared/Cascade';
 import Depliant from '@/components/shared/Depliant';
+import { ChoixJour } from '@/components/pages/PageAgenda';
 import FenetreBien, { BoutonPied, Ressort } from './FenetreBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import s from './OngletVisites.module.css';
@@ -299,7 +300,11 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
             {genre !== 'faite' && (
               <Depliant ouvert={deplace === v.id} ecart={12}>
                 <div className={s.deplacer}>
-                  <label>Date<input type="date" defaultValue={String(v.date_visite || '').split('T')[0]} onChange={async e => { await modifier(v.id, 'La date de la visite', { date_visite: e.target.value || null }); onRecharger(); }} /></label>
+                  {/* V3.172 : le calendrier de l'agenda, plutôt que le champ date du navigateur. */}
+                  <div className={s.deplacerJour}>
+                    <ChoixJour date={String(v.date_visite || '').split('T')[0]} etiquette="La date de la visite"
+                      onDate={async k => { await modifier(v.id, 'La date de la visite', { date_visite: k || null }); onRecharger(); }} />
+                  </div>
                   <label style={{ flex: '0 1 120px' }}>Heure<input type="time" defaultValue={v.heure || ''} onChange={async e => { await modifier(v.id, 'L’heure de la visite', { heure: e.target.value || null }); }} /></label>
                   <label style={{ flex: '2 1 180px' }}>Contact<input placeholder="Contact agence" defaultValue={v.contact_agence || ''} onBlur={async e => { if (e.target.value !== (v.contact_agence || '')) await modifier(v.id, 'Le contact de la visite', { contact_agence: e.target.value || null }); }} /></label>
                 </div>

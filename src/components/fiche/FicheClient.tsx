@@ -302,6 +302,8 @@ import DetailBien from './DetailBien';
 import MandatEnLigne from './MandatEnLigne';
 import PointAuto from './PointAuto';
 import OngletVisites from './OngletVisites';
+import OffresAgence, { lireOffresAgence } from './OffresAgence';
+import type { SuiviVente } from '@/lib/biens-vente';
 import { useBonDeVisite, useEtatsBons, type DepartBon } from '@/components/documents/BonDeVisite';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
@@ -422,6 +424,17 @@ function ChampAdresseAuto({ etiquette, valeur, onChange }: { etiquette: string; 
       {sug.length === 0 && <span className={styles.adrAide}>{'Tapez l’adresse et choisissez-la dans la liste.'}</span>}
     </div>
   );
+}
+
+/* V3.172 — Une recherche a-t-elle au moins un critère ? Les mêmes que le
+   bloc « Ses critères » (sinon : « Aucun critère défini »). Une recherche
+   vide n'est pas « en cours ». */
+function rechercheRemplie(r: Recherche): boolean {
+  const x = r as Recherche & { type_bien?: unknown };
+  const plein = (v: unknown) => (Array.isArray(v) ? v.length > 0 : !!v);
+  return plein(x.type_bien) || !!r.budget_min || !!r.budget_max || !!r.surface_min || !!r.nb_pieces_min || plein(r.secteurs) || !!r.dpe_max
+    || !!r.parking || !!r.balcon || !!r.terrasse || !!r.jardin || !!r.cave || !!r.ascenseur || !!r.cuisine_type || !!r.etage_max_sans_ascenseur
+    || Object.keys(r.exigences || {}).length > 0;
 }
 
 /* V3.50 — Un bien d'acheteur qui est en fait un mandat de l'agence (une copie
@@ -1012,6 +1025,16 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   const [biens, setBiens] = useState<any[]>([]);
   const [visites, setVisites] = useState<any[]>([]);
   const [transaction, setTransaction] = useState<any>(null);
+  /* V3.172 : ses offres sur les biens de l'agence, lues à l'ouverture de l'onglet Transaction. */
+  const [offresAgence, setOffresAgence] = useState<{ l: SuiviVente[]; erreur?: string }>({ l: [] });
+  useEffect(() => {
+    if (tab !== 'transaction') return;
+    let vivant = true;
+    lireOffresAgence(client.id, rechercheId || null)
+      .then(l => { if (vivant) setOffresAgence({ l }); })
+      .catch(e => { if (vivant) setOffresAgence({ l: [], erreur: (e as Error).message }); });
+    return () => { vivant = false; };
+  }, [tab, client.id, rechercheId]);
   const [envois, setEnvois] = useState<any[]>([]);
   const [journal, setJournal] = useState<any[]>([]);
   /* Venu d'une relance : dès que le journal est là, on retrouve l'action qui
@@ -1179,8 +1202,13 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      En pause : dossier suspendu, ou plus aucune recherche qui tourne. Rien
      une fois le dossier clos. */
   const stDossier = String(client.statut || '');
-  const etatRecherche: '' | 'cours' | 'pause' = !recherches.length || stDossier === 'bien_trouve' || stDossier === 'perdu' ? ''
-    : stDossier === 'suspendu' || (stDossier !== 'prospect' && !recherches.some(r => r.active !== false)) ? 'pause' : 'cours';
+  /* V3.172 (Alexandre : « pourquoi, quand je crée un acheteur sans remplir sa
+     recherche, il y a le badge En cours ? ») : la fiche crée une recherche
+     vide avec le client. Sans un seul critère, elle n'est pas « en cours » :
+     pas d'étiquette tant qu'aucune n'est remplie. */
+  const remplies = recherches.filter(rechercheRemplie);
+  const etatRecherche: '' | 'cours' | 'pause' = !remplies.length || stDossier === 'bien_trouve' || stDossier === 'perdu' ? ''
+    : stDossier === 'suspendu' || (stDossier !== 'prospect' && !remplies.some(r => r.active !== false)) ? 'pause' : 'cours';
   /* V3.167 : la pastille des documents signés, au coin de « Documents ». */
   const [docX, setDocX] = useState<number | null>(null);
   useEffect(() => {
@@ -4530,7 +4558,7 @@ ${signatureMail()}`,
             )}
 
             <div className={styles.infoCardBody}>
-              {(cr.type_bien || cr.budget_min || cr.surface_min || cr.nb_pieces_min || cr.secteurs?.length || cr.dpe_max || cr.parking || cr.balcon || cr.terrasse || cr.jardin || cr.cave || cr.ascenseur || cr.cuisine_type || cr.etage_max_sans_ascenseur || Object.keys(cr.exigences || {}).length) ? (
+              {rechercheRemplie(cr) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Le bandeau : le client et son enveloppe */}
                   <div className="fc-bandeau" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderRadius: 14, padding: '15px 18px', color: 'var(--emilio)', background: '#fdfaf1', border: '1px solid #ecdcb4' }}>
@@ -4867,8 +4895,28 @@ ${signatureMail()}`,
                    ici — ils se suivent sur la fiche du bien. */
                 const visites_ = biensPourTx();
                 const agence = biensVisites().filter(b => b.bien_vente_id);
+                /* V3.172 : une offre sur un bien de l'agence — elle s'affiche ici,
+                   avec sa négociation, au lieu de « Aucune transaction en cours ». */
+                if (offresAgence.l.length) {
+                  const sansOffre = agence.filter(b => !offresAgence.l.some(o => o.bien_id === b.bien_vente_id));
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '4px 0' }}>
+                      <OffresAgence offres={offresAgence.l} biens={biens} onBien={id => onNavigate('biens', { bien: id })} />
+                      {sansOffre.map(b => (
+                        <CarteMandatAgence key={b.id} titre={b.titre || b.ville || null} onOuvrir={() => onNavigate('biens', { bien: b.bien_vente_id })} />
+                      ))}
+                      {visites_.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13, color: '#64748b' }}>
+                          <span>{`Et sur un bien de chasse (${visites_.length} visité${visites_.length > 1 ? 's' : ''}) :`}</span>
+                          <button className={styles.btn} disabled={saving} onClick={() => setShowChoixTx('creer')}>+ Créer une transaction</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
                 return (
                   <div className={styles.emptyTab} style={{ padding: '46px 24px' }}>
+                    {offresAgence.erreur && <div style={{ marginBottom: 14, fontSize: 13, color: '#b91c1c' }}>{offresAgence.erreur}</div>}
                     <div style={{ fontSize: 40, marginBottom: 14 }}>💼</div>
                     <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontWeight: 800, fontSize: 18, color: 'var(--emilio)', marginBottom: 6 }}>
                       Aucune transaction en cours
