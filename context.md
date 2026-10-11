@@ -1499,6 +1499,43 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.172 — 11 octobre 2026 · L'offre jusqu'au compromis : honoraires négociés, net vendeur, notaires, comptant, calendrier
+
+- Alexandre : « quand j'appuie sur valider l'offre, une demande : quels sont vos honoraires
+  négociés sur ce dossier ; ça affiche le net vendeur, charge acheteur ou vendeur — le prix final
+  moins la com ». « Il accepte », sur la carte de l'offre, ouvre `FenAcceptation`
+  (FenetresBien) : le prix convenu, le jour de l'accord, les honoraires (ceux du mandat sur ce
+  prix proposés), à la charge de qui, et le calcul prix − honoraires = net vendeur
+  (`BlocHonoraires`). Ils restent avec l'offre (`donnees.hono`, `charge`, `net` — outils.ts
+  `donneesHono`, `lireHono`, `ligneHono`) ; la carte acceptée les montre, crayon pour les
+  corriger (« Les honoraires du dossier »). « Le vendeur a déjà accepté » (FenOffre) les demande
+  aussi. Rien en SQL : tout est dans `biens_vente_suivi.donnees`.
+- Le compromis reprend ce que l'offre sait, modifiable : les honoraires de l'acceptation (avec le
+  rappel du net vendeur), le financement (nouvelle rubrique ; « Comptant » : pas de condition de
+  prêt — la date, son rappel et « À renseigner » disparaissent, `pretLimite` vide), les notaires.
+  Le compromis garde `financement`, `charge`, `net`, `notaireCommun`.
+- Les notaires dès l'offre (« je suis obligé d'aller dans compromis ») : un notaire chacun ou un
+  notaire commun (`BlocNotaires`), dans « Une offre est arrivée », l'acceptation, ou depuis la
+  carte (« Les notaires du dossier », `FenNotaires`). Un notaire commun est écrit des deux côtés
+  (`notaireVendeur` = `notaireAcquereur`, `notaireCommun: true`) : la vente et l'historique le
+  lisent sans changement (`donneesNotaires`, `lireNotairesDossier`).
+- L'historique : chaque tour de la négociation (contre-offre du vendeur, nouvelle proposition,
+  refus, retrait) s'écrit dans le Suivi du vendeur et de l'acquéreur (`noterNegociation`, jalons
+  `negociation` et `offre_close` dans FriseSuivi) ; un contact sans recherche a aussi sa ligne
+  d'offre. L'historique du bien montre chaque tour à sa date, puis la fin (acceptée avec les
+  honoraires, refusée, retirée), avec l'avatar de l'acquéreur. L'onglet Transaction de l'acheteur
+  montre ses offres sur les biens de l'agence et leur négociation (`fiche/OffresAgence.tsx`) au
+  lieu de « Aucune transaction en cours ».
+- Le nom de l'acquéreur ouvre sa fiche : sur la carte de l'offre et dans le résumé du bien
+  (« Offre de … », qui donne aussi la dernière proposition et dit quand c'est à l'acquéreur de
+  répondre). « À venir » ne compte plus une contre-offre comme une réponse attendue du vendeur.
+- Les dates des fenêtres d'un bien (offre, compromis et ses rappels, mandat, acte, pause,
+  estimation, avis de valeur) prennent le calendrier de l'agenda : `ChampJour` (FenetresBien) +
+  `CalendrierJour` (PageAgenda, avec des raccourcis par champ : « Sous 5 jours », « 3 mois
+  après »…, et « Effacer la date »). « Déplacer la visite » prend `ChoixQuand`.
+- Fiche client : l'étiquette « En cours » de « Sa recherche » n'apparaît plus tant qu'aucune
+  recherche n'a un critère (`rechercheRemplie`) — la fiche crée une recherche vide avec le client.
+
 ### V3.171 — 10 octobre 2026 · Le chauffage en trois cases (biens des acheteurs, veille, espace)
 
 - Alexandre (une cliente demandait « le chauffage ? » sur un bien présenté) : « si c'est marqué

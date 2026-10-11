@@ -146,6 +146,13 @@ Une barre de choix (filtres, onglets, vues) : `<Curseur cle={…} />` en premier
 enfant, boutons en `aria-pressed`, fond transparent hors du choix actif — la
 pastille glisse comme dans « Demandes Internet » (V3.167, `shared/Curseur.tsx`).
 
+### 2.9 Un nom de classe déjà pris dans un `.module.css` (V3.172)
+
+Deux règles `.jour` dans `Biens.module.css` deviennent **une seule classe** : la nouvelle hérite
+de l'ancienne (`flex-direction: column`) et le bouton de date s'affichait en colonne. Avant
+d'ajouter une classe à un module partagé (Biens, OngletsBien, Documents) :
+`grep -n '\.nom\b' fichier.module.css`.
+
 ---
 
 ## 3. Deux règles de données qui ne se voient pas
