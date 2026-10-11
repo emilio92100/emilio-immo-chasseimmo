@@ -1322,19 +1322,27 @@ export async function modifierOffre(b: BienVente, o: SuiviVente, x: SaisieOffre)
    (`biens_vente_suivi`, type 'etape', statut 'compromis', `donnees`) : rien en
    SQL. Les deux notaires sont des contacts du CRM (type « Notaire »), gardés
    avec leur nom, leur étude, leur téléphone et leur mail au moment du choix. */
-export type NotaireChoisi = { id: string | null; nom: string; etude?: string; tel?: string; email?: string };
-export type ContactNotaire = { id: string; prenom: string | null; nom: string | null; emails: string[] | null; telephones: string[] | null; pro?: unknown };
+/* V3.173 : l'adresse de l'étude (la colonne `adresse` du contact) et tous
+   ses numéros (le standard, une ligne directe…) ; `tel` reste le premier. */
+export type NotaireChoisi = { id: string | null; nom: string; etude?: string; tel?: string; email?: string; adresse?: string; tels?: string[] };
+export type ContactNotaire = { id: string; prenom: string | null; nom: string | null; emails: string[] | null; telephones: string[] | null; pro?: unknown; adresse?: string | null };
 export const notaireDepuisContact = (c: ContactNotaire): NotaireChoisi => {
   const pro = (c.pro && typeof c.pro === 'object' ? c.pro : {}) as Record<string, unknown>;
+  const tels = (c.telephones || []).filter((t): t is string => !!t && !!t.trim());
   return {
     id: c.id, nom: nomClient(c), etude: typeof pro.etude === 'string' ? pro.etude : '',
-    tel: (c.telephones || []).find(Boolean) || '', email: (c.emails || []).find(Boolean) || '',
+    tel: tels[0] || '', tels, email: (c.emails || []).find(Boolean) || '', adresse: (c.adresse || '').trim(),
   };
 };
 export const lireNotaire = (x: unknown): NotaireChoisi | null => {
   if (!x || typeof x !== 'object') return null;
   const o = x as Record<string, unknown>;
-  return typeof o.nom === 'string' && o.nom ? { id: typeof o.id === 'string' ? o.id : null, nom: o.nom, etude: String(o.etude || ''), tel: String(o.tel || ''), email: String(o.email || '') } : null;
+  if (typeof o.nom !== 'string' || !o.nom) return null;
+  const tels = Array.isArray(o.tels) ? o.tels.map(String).filter(t => !!t.trim()) : [];
+  return {
+    id: typeof o.id === 'string' ? o.id : null, nom: o.nom, etude: String(o.etude || ''), tel: String(o.tel || '') || tels[0] || '', email: String(o.email || ''),
+    adresse: String(o.adresse || ''), tels: tels.length ? tels : o.tel ? [String(o.tel)] : [],
+  };
 };
 /* V3.172 — Les notaires du dossier, dès l'offre. Alexandre : « où je mets
    les infos du notaire ? notaire acheteur, vendeur, notaire commun ? Je suis
@@ -1379,21 +1387,26 @@ export function ligneHono(a: AccordHono): string | null {
 }
 
 export async function lireNotaires(): Promise<ContactNotaire[]> {
-  const { data, error } = await supabase.from('clients').select('id, prenom, nom, emails, telephones, pro, types').contains('types', ['notaire']).order('nom').limit(300);
+  const { data, error } = await supabase.from('clients').select('id, prenom, nom, emails, telephones, pro, types, adresse').contains('types', ['notaire']).order('nom').limit(300);
   if (error) {
     if (colonneContactAbsente(error.message)) return [];
     throw new Error('Les notaires n’ont pas pu être lus : ' + error.message);
   }
   return (data || []) as ContactNotaire[];
 }
-export async function creerNotaire(x: { prenom: string; nom: string; etude: string; tel: string; email: string }): Promise<ContactNotaire> {
+/* « Créer le contact » : un vrai contact du CRM (type « Notaire »), dans
+   Contacts, proposé ensuite sur toutes les ventes. V3.173 : l'adresse de
+   l'étude et plusieurs numéros. */
+export async function creerNotaire(x: { prenom: string; nom: string; etude: string; adresse: string; tels: string[]; email: string }): Promise<ContactNotaire> {
   const reference = await genererReference();
+  const tels: string[] = [];
+  for (const t of x.tels.map(v => v.trim()).filter(Boolean)) if (!tels.some(y => y.replace(/[^\d+]/g, '') === t.replace(/[^\d+]/g, ''))) tels.push(t);
   const ligne = {
     reference, prenom: x.prenom.trim(), nom: x.nom.trim(), token_espace: jetonEspace(x.prenom, x.nom),
-    emails: x.email.trim() ? [x.email.trim().toLowerCase()] : [], telephones: x.tel.trim() ? [x.tel.trim()] : [],
+    emails: x.email.trim() ? [x.email.trim().toLowerCase()] : [], telephones: tels, adresse: x.adresse.trim() || null,
     statut: 'prospect', types: ['notaire'], pro: x.etude.trim() ? { etude: x.etude.trim() } : {},
   };
-  const { data, error } = await supabase.from('clients').insert(ligne).select('id, prenom, nom, emails, telephones, pro').single();
+  const { data, error } = await supabase.from('clients').insert(ligne).select('id, prenom, nom, emails, telephones, pro, adresse').single();
   if (error) {
     throw new Error(colonneContactAbsente(error.message)
       ? 'Pour enregistrer un notaire, lance d’abord outils/sql/types-contact.sql dans Supabase.'
@@ -2314,7 +2327,10 @@ export async function creerDocument(b: BienVente, x: PourDocument): Promise<stri
       ...(typeof od.jusquau === 'string' && od.jusquau ? { validite: od.jusquau } : {}),
       ...(typeof od.apport === 'number' ? { apport: od.apport } : {}),
       ...(od.financement === 'comptant' ? { pret: 'non' } : typeof od.pret === 'number' ? { pret: 'oui', pretMontant: od.pret } : {}),
-      notaire: String(d.notaire || base.notaire || ''),
+      /* V3.173 : la case est « Notaire de l'acquéreur ». Elle prenait « Son
+         notaire » du bien — celui du vendeur. C'est maintenant le notaire de
+         l'acquéreur noté avec l'offre (ou le notaire commun), sinon rien. */
+      notaire: (() => { const n = lireNotairesDossier(od).acquereur; return n ? [n.nom, n.etude].filter(Boolean).join(', ') : ''; })(),
     };
   } else {
     /* V3.154 : plus de « documents remis » ; le prix est celui de l'annonce

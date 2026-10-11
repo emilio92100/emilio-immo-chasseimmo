@@ -1890,8 +1890,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
   const carteNotaire = (role: NotaireCarte['role'], n: NotaireChoisi | null): NotaireCarte | null => {
     if (!n) return null;
     const vif = n.id ? liste.clients[n.id] : null;
+    const tels = (vif?.telephones || []).filter((x): x is string => !!x && !!x.trim());
     return {
-      role, nom: n.nom, etude: n.etude, tel: (vif?.telephones || []).find(Boolean) || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
+      role, nom: n.nom, etude: n.etude, tel: tels[0] || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
+      tels: tels.length ? tels : n.tels, adresse: (vif?.adresse || '').trim() || n.adresse,
       onFiche: n.id ? () => ouvrirClient(n.id!) : undefined,
     };
   };

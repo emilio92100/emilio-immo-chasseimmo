@@ -1345,6 +1345,18 @@ button.pillRouge svg { color: white !important; }
 .notaireChanger { border: none; background: none; padding: 4px 2px; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif; color: #64748b; flex-shrink: 0; }
 .notaireChanger:hover { color: #1a2332; }
 .notaireNouveau { display: flex; flex-direction: column; gap: 10px; }
+/* V3.173 : le notaire choisi, une ligne par information (l'étude, son
+   adresse, chaque numéro, l'e-mail) — rien n'est coupé. */
+.notaireChoisi small { display: flex; align-items: flex-start; gap: 6px; line-height: 1.4; }
+.notaireChoisi small svg { flex-shrink: 0; margin-top: 2px; color: #94a3b8; }
+.notaireChoisi .notaireEtude { font-weight: 700; color: #34496e; }
+/* Le nouveau notaire : un petit titre, puis l'étude, l'adresse, la personne, les numéros, l'e-mail. */
+.notaireNouveau { padding: 12px; border-radius: 13px; background: #fff; border: 1px solid #e3e8f0; }
+.notaireNouveauT { display: flex; align-items: center; gap: 6px; font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
+.notaireNouveauT svg { color: var(--c); }
+.notaireNouveauT small { margin-left: auto; font: 600 11.5px 'DM Sans', sans-serif; color: #94a3b8; }
+.notaireLib { font-size: 12.5px; font-weight: 700; color: var(--emilio); margin-bottom: 5px; }
+.notaireTels input { font: 14.5px 'DM Sans', sans-serif; }
 .notaireBtns { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .notaireAjout { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 1px dashed #cbd5e1; background: #fff; border-radius: 10px; padding: 6px 11px; cursor: pointer; font: 700 12.5px 'DM Sans', sans-serif; color: #34496e; }
 .notaireAjout:hover { border-color: #c9a84c; color: #1a2332; }

@@ -713,7 +713,9 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche, on
    signe — facultatif, l'offre est déjà notée. Sur un écran étroit, les deux
    moitiés se suivent. */
 export type DocOffre = { etat: 'prepa' | 'pret' | 'signe'; detail: string; onOuvrir: () => void; onPdf?: () => void };
-export type NotaireCarte = { role: 'vendeur' | 'acquereur'; nom: string; etude?: string; tel?: string; email?: string; onFiche?: () => void };
+export type NotaireCarte = { role: 'vendeur' | 'acquereur'; nom: string; etude?: string; tel?: string; email?: string; onFiche?: () => void;
+  /* V3.173 : l'adresse de l'étude, et tous ses numéros. */
+  adresse?: string; tels?: string[] };
 export type InfosCompromis = {
   signe?: string; sru?: string; pretLimite?: string; acte?: string; prix?: number | null; venduLe?: string | null;
   /* V3.45 : ce que le compromis porte aussi — les deux notaires, les rappels
@@ -1035,7 +1037,14 @@ function NotairesListe({ notaires, commun, onModifier, onRenseigner, toujours, c
           <div className={o.notaireTx}>
             <small>{r.l}</small>
             {n ? <b>{n.nom}</b> : onRenseigner ? <button type="button" className={o.aRenseigner} onClick={onRenseigner}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
-            {n && (n.etude || n.tel) && <span>{[n.etude, n.tel].filter(Boolean).join(' · ')}</span>}
+            {n?.etude && <span>{n.etude}</span>}
+            {n?.adresse && <span>{n.adresse}</span>}
+            {/* Chaque numéro s'appelle d'un appui (le standard, une ligne directe). */}
+            {n && (n.tels?.length || n.tel) && (
+              <span className={o.notaireTels}>
+                {(n.tels?.length ? n.tels : [n.tel || '']).map((x, i) => <Fragment key={x}>{i ? ' · ' : ''}<a href={`tel:${sansEsp(x)}`}>{x}</a></Fragment>)}
+              </span>
+            )}
           </div>
           {n && (
             <div className={o.notaireActs}>

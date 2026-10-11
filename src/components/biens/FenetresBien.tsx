@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AvatarContact, { personneDe } from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
@@ -13,6 +13,7 @@ import { signalerEchec } from '@/lib/ecritures';
 import { etatDiffusion } from '@/lib/diffusion';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import { CalendrierJour, ChoixQuand } from '@/components/pages/PageAgenda';
+import { ListeCoordonnees } from '@/components/shared/ListeCoordonnees';
 import {
   ajouterSuivi, annulerMandatNote, changerEtape, cloreRelancesEstimation, estimationMiseDeCote, noterRdvEstimation, planifierEstimation, poserDansBien, type FaitRdv, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
   corrigerActe, creneauxPris, deplacerVisiteCRM, deplacerVisiteLibre, creerFicheProprio, donneesProprio, doublonsContact, marquerVendeur, finaliserAcquereur, finaliserTransactionsAcquereur, ligneNotaires, lireNotaire, majPrixDansAnnonces, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, nouvelleVente, offresTombees, retirerAutresAcceptees, annulerVisitesPrevues, solderDemandesDuBien, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
@@ -1131,24 +1132,41 @@ function BlocNotaires({ v, onChange }: { v: NotairesDossier; onChange: (n: Notai
 /* Le prix d'une offre : celui convenu au bout de la négociation (V3.45),
    sinon la dernière proposition. */
 export const prixRetenu = (o: SuiviVente | null | undefined): number | null => (o ? montantActuel(o) || null : null);
-/* ── Choisir un notaire (V3.45) : parmi les contacts « Notaire », ou créé ici. ── */
+/* ── Choisir un notaire (V3.45) : parmi les contacts « Notaire », ou créé ici. ──
+   « Nouveau notaire » crée un vrai contact du CRM (type « Notaire »), proposé
+   ensuite sur toutes les ventes. V3.173 (Alexandre : « le nom de l'étude en
+   haut, son adresse dessous, avec la recherche d'adresse ; prénom et nom ;
+   le téléphone sur une ligne, l'e-mail sur une ligne, on ne les voit pas en
+   entier ; un bouton Ajouter un numéro, pour le standard et une ligne
+   directe ») : dans cet ordre, une ligne par numéro. */
+type NouveauNotaire = { prenom: string; nom: string; etude: string; adresse: string; tels: string[]; email: string };
+const memeNumero = (a: string, z: string) => !!a && a.replace(/[^\d+]/g, '') === z.replace(/[^\d+]/g, '');
 function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
   lib: string; couleur: string; v: NotaireChoisi | null; onChange: (n: NotaireChoisi | null) => void;
   notaires: ContactNotaire[] | null; onCree: (c: ContactNotaire) => void;
 }) {
   const [q, setQ] = useState('');
-  const [nouveau, setNouveau] = useState<{ prenom: string; nom: string; etude: string; tel: string; email: string } | null>(null);
+  const [nouveau, setNouveau] = useState<NouveauNotaire | null>(null);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const t = sansAccent(q.trim());
   const liste = (notaires || []).filter(c => !t || sansAccent(`${c.prenom || ''} ${c.nom || ''} ${(c.pro as { etude?: string } | null)?.etude || ''}`).includes(t)).slice(0, 5);
+  const majN = (x: Partial<NouveauNotaire>) => setNouveau(n => (n ? { ...n, ...x } : n));
   async function creer() {
     if (!nouveau || !nouveau.nom.trim()) { setErreur('Son nom ?'); return; }
+    /* Déjà dans tes notaires (même nom, même e-mail ou même numéro) : on le prend, sans doublon. */
+    const nomN = sansAccent(`${nouveau.prenom} ${nouveau.nom}`.trim());
+    const mail = nouveau.email.trim().toLowerCase();
+    const deja = (notaires || []).find(c => sansAccent(`${c.prenom || ''} ${c.nom || ''}`.trim()) === nomN
+      || (!!mail && (c.emails || []).some(e => (e || '').toLowerCase() === mail))
+      || nouveau.tels.some(x => (c.telephones || []).some(y => memeNumero(x, y || ''))));
+    if (deja) { setErreur(`${nomClient(deja)} est déjà dans tes notaires : choisis-le dans la liste.`); return; }
     setOccupe(true); setErreur('');
     try { const c = await creerNotaire(nouveau); onCree(c); onChange(notaireDepuisContact(c)); setNouveau(null); setQ(''); }
     catch (e) { setErreur((e as Error).message); }
     setOccupe(false);
   }
+  const telsDe = (n: NotaireChoisi) => (n.tels && n.tels.length ? n.tels : n.tel ? [n.tel] : []);
   return (
     <div className={b.notaire} style={{ ['--c' as string]: couleur } as React.CSSProperties}>
       <div className={b.notaireT}>{lib}</div>
@@ -1157,22 +1175,33 @@ function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
           <span className={b.notaireAv}><Ic n="balance" t={17} /></span>
           <div>
             <b>{v.nom}</b>
-            <small>{[v.etude, v.tel, v.email].filter(Boolean).join(' · ') || (v.id ? 'Contact du CRM' : 'Pas encore dans tes contacts')}</small>
+            {v.etude && <small className={b.notaireEtude}>{v.etude}</small>}
+            {v.adresse && <small><Ic n="lieu" t={12} />{v.adresse}</small>}
+            {telsDe(v).map(x => <small key={x}><Ic n="telephone" t={12} />{x}</small>)}
+            {v.email && <small><Ic n="mail" t={12} />{v.email}</small>}
+            {!v.etude && !v.adresse && !telsDe(v).length && !v.email && <small>{v.id ? 'Contact du CRM' : 'Pas encore dans tes contacts'}</small>}
           </div>
           <button type="button" className={b.notaireChanger} onClick={() => onChange(null)}>Changer</button>
         </div>
       ) : nouveau ? (
         <div className={b.notaireNouveau}>
-          <div className={b.g2}>
-            <Ch lib="Prénom"><input className={s.input} value={nouveau.prenom} onChange={e => setNouveau({ ...nouveau, prenom: e.target.value })} placeholder="Facultatif" /></Ch>
-            <Ch lib="Nom"><input className={s.input} value={nouveau.nom} onChange={e => setNouveau({ ...nouveau, nom: e.target.value })} placeholder="Ex : Durand" autoFocus /></Ch>
-            <Ch lib="Étude" large><input className={s.input} value={nouveau.etude} onChange={e => setNouveau({ ...nouveau, etude: e.target.value })} placeholder="Ex : Étude Durand & Associés, Boulogne" /></Ch>
-            <Ch lib="Téléphone"><input className={s.input} value={nouveau.tel} inputMode="tel" onChange={e => setNouveau({ ...nouveau, tel: e.target.value })} /></Ch>
-            <Ch lib="E-mail"><input className={s.input} value={nouveau.email} inputMode="email" onChange={e => setNouveau({ ...nouveau, email: e.target.value })} /></Ch>
+          <div className={b.notaireNouveauT}><Ic n="plus" t={13} e={2.6} />Nouveau notaire<small>il rejoint tes contacts</small></div>
+          <Ch lib="L’étude"><input className={s.input} value={nouveau.etude} onChange={e => majN({ etude: e.target.value })} placeholder="Ex : Étude Durand & Associés" autoFocus /></Ch>
+          <div className={b.chF}>
+            <span>Adresse de l’étude</span>
+            <AdresseEtude v={nouveau.adresse} onChange={x => majN({ adresse: x })} />
           </div>
+          <div className={b.g2}>
+            <Ch lib="Prénom"><input className={s.input} value={nouveau.prenom} onChange={e => majN({ prenom: e.target.value })} placeholder="Facultatif" /></Ch>
+            <Ch lib="Nom"><input className={s.input} value={nouveau.nom} onChange={e => majN({ nom: e.target.value })} placeholder="Ex : Durand" /></Ch>
+          </div>
+          <ListeCoordonnees genre="tel" etiquette="Téléphone" valeurs={nouveau.tels} onChange={x => majN({ tels: x })}
+            classeBloc={b.notaireTels} classeEtiquette={b.notaireLib} classeChamp={s.input}
+            exemples={{ premier: 'Le standard de l’étude', autres: 'Une ligne directe' }} />
+          <Ch lib="E-mail"><input className={s.input} value={nouveau.email} inputMode="email" type="email" onChange={e => majN({ email: e.target.value })} placeholder="Ex : m.durand@notaires.fr" /></Ch>
           <Erreur t={erreur} />
           <div className={b.notaireBtns}>
-            <button type="button" className={s.btn} disabled={occupe} onClick={() => setNouveau(null)}>Annuler</button>
+            <button type="button" className={s.btn} disabled={occupe} onClick={() => { setNouveau(null); setErreur(''); }}>Annuler</button>
             <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={creer}><Ic n="check" t={14} e={2.4} />{occupe ? 'Création…' : 'Créer le contact'}</button>
           </div>
         </div>
@@ -1191,8 +1220,57 @@ function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
             })}
             {notaires !== null && !liste.length && <div className={b.vide}>{t ? 'Aucun notaire à ce nom dans tes contacts.' : 'Aucun notaire dans tes contacts pour l’instant.'}</div>}
           </div>
-          <button type="button" className={b.notaireAjout} onClick={() => setNouveau({ prenom: '', nom: q.trim(), etude: '', tel: '', email: '' })}><Ic n="plus" t={13} e={2.6} />Nouveau notaire</button>
+          <button type="button" className={b.notaireAjout} onClick={() => setNouveau({ prenom: '', nom: q.trim(), etude: '', adresse: '', tels: [''], email: '' })}><Ic n="plus" t={13} e={2.6} />Nouveau notaire</button>
         </>
+      )}
+    </div>
+  );
+}
+
+/* L'adresse de l'étude, proposée pendant la frappe : la base adresse
+   nationale, comme pour les biens et les contacts. Un choix remplit « rue,
+   code postal ville » d'un coup. Déclaré hors du rendu (AGENTS.md §2.4). */
+type AdresseProposee = { properties?: { label?: string; name?: string; postcode?: string; city?: string; type?: string } };
+function AdresseEtude({ v, onChange }: { v: string; onChange: (x: string) => void }) {
+  const [sug, setSug] = useState<AdresseProposee[]>([]);
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const derniere = useRef('');
+  useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
+  const taper = (x: string) => {
+    onChange(x);
+    derniere.current = x;
+    if (minuterie.current) clearTimeout(minuterie.current);
+    if (x.trim().length < 4) { setSug([]); return; }
+    minuterie.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(x)}&limit=5&autocomplete=1`);
+        const j = await r.json();
+        if (derniere.current === x) setSug(Array.isArray(j.features) ? j.features : []);
+      } catch { setSug([]); }
+    }, 250);
+  };
+  const choisir = (f: AdresseProposee) => {
+    const p = f.properties || {};
+    const ville = [p.postcode, p.city].filter(Boolean).join(' ');
+    onChange(p.type === 'municipality' ? ville || p.label || '' : [p.name || p.label || '', ville].filter(Boolean).join(', '));
+    derniere.current = '';
+    setSug([]);
+  };
+  return (
+    <div className={b.adr}>
+      <input className={s.input} value={v} autoComplete="off" placeholder="Tape le début : 12 rue de Silly…" aria-label="Adresse de l’étude"
+        onChange={e => taper(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setSug([]); }} onBlur={() => setTimeout(() => setSug([]), 180)} />
+      {sug.length > 0 && (
+        <ul className={b.adrSug} role="listbox" aria-label="Adresses proposées">
+          {sug.map((f, i) => (
+            <li key={i}>
+              <button type="button" role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => choisir(f)}>
+                <Ic n="lieu" t={15} />
+                <span><b>{f.properties?.name || f.properties?.label}</b><small>{[f.properties?.postcode, f.properties?.city].filter(Boolean).join(' ')}</small></span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -1739,6 +1817,8 @@ export function FenVendu({ bien, compromis, offres = [], proprio = null, prevues
       const { bien: r } = await changerEtape(bien, 'vendu', { vendu_le: date, infos: {
         prix, hono: honoFinal, ...(sansHono ? { sansHonoraires: true } : {}), acte: date, acquereur: c.acquereur || offre?.qui || null, vendeur: nomProprio || null,
         notaireVendeur: lireNotaire(c.notaireVendeur), notaireAcquereur: lireNotaire(c.notaireAcquereur),
+        /* V3.173 : comme au compromis, à la charge de qui, et le net vendeur. */
+        charge: chargeV, net: honoFinal !== null ? prix - honoFinal : null, ...(c.notaireCommun === true ? { notaireCommun: true } : {}),
       } });
       /* Les rappels du compromis encore en attente n'ont plus d'objet (V3.45). */
       await cloreRappelsCompromis(bien.id);
@@ -1781,6 +1861,9 @@ export function FenVendu({ bien, compromis, offres = [], proprio = null, prevues
     } catch (e) { setErreur((e as Error).message); setOccupe(false); }
   }
   const calcule = honoCalc(prix);
+  /* V3.173 : le rappel du net vendeur, comme à l'acceptation et au compromis. */
+  const chargeV: 'acquereur' | 'vendeur' = c.charge === 'vendeur' || c.charge === 'acquereur' ? c.charge : d.charge === 'vendeur' ? 'vendeur' : 'acquereur';
+  const duCompromis = !correction && typeof c.hono === 'number' && c.hono > 0 && hono === c.hono;
   return (
     <Fenetre sur={correction ? `Vendu${bien.vendu_le ? ` le ${jourSuivi(bien.vendu_le)}` : ''}` : 'Le bien passe « Vendu »'} couleur={etapeDe('vendu').c}
       titre={correction ? 'Corriger l’acte' : 'La vente est signée'} sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
@@ -1797,6 +1880,15 @@ export function FenVendu({ bien, compromis, offres = [], proprio = null, prevues
           <button type="button" className={b.lien} style={{ alignSelf: 'flex-start' }} onClick={() => { setHono(calcule); setHonoTape(false); }}>{`Reprendre ceux du mandat sur ce prix : ${euros(calcule)} TTC`}</button>
         )}
         {!sansHono && !honoTape && calcule !== null && <div className={b.calc}>Les honoraires du mandat, appliqués au prix de vente. Change-les s’ils ont été négociés.</div>}
+        {!sansHono && prix && hono !== null && hono > 0 && (
+          <div className={b.netV}>
+            <div><small>{chargeV === 'acquereur' ? 'Prix, honoraires compris' : 'Prix de vente'}</small><b>{euros(prix)}</b></div>
+            <span className={b.netOp} aria-hidden="true">−</span>
+            <div><small>{duCompromis ? 'Honoraires du compromis' : 'Honoraires'}</small><b>{euros(hono)}</b></div>
+            <span className={b.netOp} aria-hidden="true">=</span>
+            <div className={b.netRes}><small>Net vendeur</small><b>{euros(prix - hono)}</b></div>
+          </div>
+        )}
         <label className={b.caseL}><input type="checkbox" checked={sansHono} onChange={e => setSansHono(e.target.checked)} />Vente sans honoraires (elle ne compte pas dans ton chiffre d’affaires)</label>
       </Section>
       {!correction && (offre?.client_id || proprio || bien.client_id || prevues.length > 0) && (
