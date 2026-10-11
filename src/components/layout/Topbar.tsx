@@ -68,7 +68,8 @@ function chercher(ix: { clients: any[] }, mots: string[]) {
       ['nom', sansAccent(`${c.prenom || ''} ${c.nom || ''} ${c.reference || ''}`)],
       ['conjoint', sansAccent(j ? `${j.prenom || ''} ${j.nom || ''}` : '')],
       ['pro', sansAccent(metier.join(' '))],
-      ['adresse', sansAccent(c.adresse || '')],
+      /* V3.174 : l'adresse de l'étude, de l'agence, de l'immeuble aussi. */
+      ['adresse', sansAccent([c.adresse, p.adresseEtude, p.adresseAgence].filter(x => typeof x === 'string' && x).join(' '))],
       ['bien', sansAccent(c.bien_actuel_adresse || '')],
       ['mail', sansAccent(mails.join(' '))],
       ['tel', tels.join(' ')],
@@ -80,7 +81,7 @@ function chercher(ix: { clients: any[] }, mots: string[]) {
       const trouve = champs.slice(1).find(([, v]) => mots.some(m => contient(v, m)));
       if (trouve?.[0] === 'conjoint') raison = `👥 ${`${j?.prenom || ''} ${j?.nom || ''}`.trim()}`;
       else if (trouve?.[0] === 'pro') raison = `🏢 ${metier.find(x => mots.some(m => contient(sansAccent(x), m))) || metier[0] || ''}`;
-      else if (trouve?.[0] === 'adresse') raison = `📍 ${c.adresse}`;
+      else if (trouve?.[0] === 'adresse') raison = `📍 ${[c.adresse, p.adresseEtude, p.adresseAgence].find(x => typeof x === 'string' && x && mots.some(m => sansAccent(x).includes(m))) || c.adresse || ''}`;
       else if (trouve?.[0] === 'bien') raison = `📍 ${c.bien_actuel_adresse}`;
       else if (trouve?.[0] === 'mail') raison = `✉️ ${mails.find((e: string) => mots.some(m => sansAccent(e).includes(m))) || ''}`;
       else if (trouve?.[0] === 'tel') raison = `📞 ${tels.find((t: string) => mots.some(m => chiffres(t).includes(chiffres(m)) && chiffres(m).length > 1)) || ''}`;
@@ -304,13 +305,18 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                   const sesBiens = index.current?.biens[c.id] || [];
                   /* V3.103 : un contact archivé le dit, à côté de son nom. */
                   const arch = estArchive(c);
+                  /* V3.174 (Alexandre : « l'étude toujours en haut, le nom de la
+                     personne en bas ») : un notaire se lit par son étude,
+                     qu'on l'ait cherché par l'étude ou par son nom. */
+                  const etude = typesDe(c).includes('notaire') ? String(lirePro(c.pro).etude || '').trim() : '';
+                  const nomC = `${c.prenom || ''} ${c.nom || ''}`.trim();
                   return (
                   <div key={c.id} className={styles.searchBloc}>
                   <div className={`${styles.searchItem} ${arch ? styles.searchArchive : ''}`} onClick={() => selectClient(c)} style={{ animationDelay: `${Math.min(i, 8) * 28}ms` }}>
                     <AvatarContact c={c} teinte={teinteDe(c)} className={styles.searchAv} libre />
                     <div className={styles.searchInfo}>
                       <div className={styles.searchName}>
-                        <Surligne texte={`${c.prenom || ''} ${c.nom || ''}`.trim()} mots={motsTapes} />
+                        <Surligne texte={etude || nomC} mots={motsTapes} />
                         {arch && (
                           <span className={styles.searchTagArchive} title="Contact archivé : il n’apparaît plus dans les listes, seulement dans « Archivés »">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h17v4h-17z" /><path d="M5 8.5v10.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5" /><path d="M10 12.5h4" /></svg>
@@ -318,10 +324,12 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                           </span>
                         )}
                       </div>
+                      {etude && nomC && <div className={styles.searchPersonne}><Surligne texte={nomC} mots={motsTapes} /></div>}
                       <div className={styles.searchMeta}>{c.reference}</div>
                       {/* Ce qui a été trouvé, quand ce n'est pas le nom : sur sa
-                          propre ligne, pour qu'une adresse se lise en entier. */}
-                      {raison && <div className={styles.searchRaison}>{raison}</div>}
+                          propre ligne, pour qu'une adresse se lise en entier.
+                          L'étude d'un notaire est déjà en titre. */}
+                      {raison && !(etude && raison.startsWith('🏢')) && <div className={styles.searchRaison}>{raison}</div>}
                     </div>
                     {/* V3.134 — tous ses types, et pour un acheteur l'état de
                         son dossier à côté (« Acheteur – Actif »). Avant : un

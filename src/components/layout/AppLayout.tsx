@@ -21,6 +21,7 @@ import RappelCarte from '@/components/layout/RappelCarte';
 import NouvelleVersion from '@/components/layout/NouvelleVersion';
 import EnvoiPortails from '@/components/layout/EnvoiPortails';
 import Avertissements from '@/components/layout/Avertissements';
+import Succes from '@/components/layout/Succes';
 import SuiviRemises from '@/components/layout/SuiviRemises';
 import Defilement from '@/components/layout/Defilement';
 import GardePlace from '@/components/layout/GardePlace';
@@ -402,6 +403,8 @@ export default function AppLayout() {
       <EnvoiPortails />
       {/* « … : pas enregistré », quand une écriture échoue (V3.17). */}
       <Avertissements />
+      {/* « C'est fait », en haut à droite (V3.174) : un contact notaire créé… */}
+      <Succes />
       {/* « Le mail est-il arrivé ? » après chaque envoi (V3.151). */}
       <SuiviRemises onFiche={c => handleNavigate('fiche', c)} />
       {/* Le fondu au bord des rangées qui défilent de côté (V3.152). */}

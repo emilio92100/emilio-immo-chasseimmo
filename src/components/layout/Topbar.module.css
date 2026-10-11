@@ -172,6 +172,8 @@
 .searchInfo { flex: 1; min-width: 0; }
 .searchName { font-weight: 600; font-size: 13px; color: var(--emilio); }
 .searchMeta { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+/* V3.174 : sous l'étude d'un notaire, la personne. */
+.searchPersonne { font-size: 12.5px; font-weight: 600; color: #475569; margin-top: 1px; }
 /* V3.103 : un contact archivé, trouvé quand même. Une étiquette grise à côté
    du nom, l'avatar et le nom adoucis : on le voit d'un coup d'œil. */
 .searchTagArchive {
