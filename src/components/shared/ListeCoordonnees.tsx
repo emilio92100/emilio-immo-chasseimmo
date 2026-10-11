@@ -45,7 +45,7 @@ export function nettoyer(lignes: string[], genre: GenreCoord): string[] {
   return out;
 }
 
-export function ListeCoordonnees({ genre, valeurs, onChange, etiquette, classeBloc, classeEtiquette, classeChamp }: {
+export function ListeCoordonnees({ genre, valeurs, onChange, etiquette, classeBloc, classeEtiquette, classeChamp, exemples }: {
   genre: GenreCoord;
   valeurs: string[];
   onChange: (v: string[]) => void;
@@ -54,6 +54,9 @@ export function ListeCoordonnees({ genre, valeurs, onChange, etiquette, classeBl
   classeEtiquette?: string;
   /* La classe des champs du formulaire qui l'accueille, pour lui ressembler. */
   classeChamp?: string;
+  /* V3.173 : ce que les cases vides suggèrent (« Le standard de l'étude »,
+     « Une ligne directe »), au lieu de « Numéro » et « Autre numéro ». */
+  exemples?: { premier: string; autres: string };
 }) {
   const id = useId();
   const liste = valeurs.length ? valeurs : [''];
@@ -90,7 +93,7 @@ export function ListeCoordonnees({ genre, valeurs, onChange, etiquette, classeBl
               <input className={`${s.in} ${classeChamp || ''}`} type={genre === 'mail' ? 'email' : 'tel'} value={v}
                 aria-label={i === 0 ? `${etiquette} : principal` : `${etiquette} : ${i + 1}e`}
                 inputMode={genre === 'tel' ? 'tel' : 'email'} autoComplete="off"
-                placeholder={i === 0 ? (genre === 'tel' ? 'Numéro' : 'Adresse e-mail') : (genre === 'tel' ? 'Autre numéro' : 'Autre adresse')}
+                placeholder={exemples ? (i === 0 ? exemples.premier : exemples.autres) : i === 0 ? (genre === 'tel' ? 'Numéro' : 'Adresse e-mail') : (genre === 'tel' ? 'Autre numéro' : 'Autre adresse')}
                 style={plusieurs && i === 0 ? { paddingRight: 82 } : undefined}
                 onChange={e => maj(i, e.target.value)} />
               {plusieurs && i === 0 && <span className={s.principal}>Principal</span>}
