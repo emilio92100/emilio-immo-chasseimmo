@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import AvatarContact, { personneDe } from '@/components/contacts/AvatarContact';
 import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
@@ -14,6 +14,9 @@ import { etatDiffusion } from '@/lib/diffusion';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import { CalendrierJour, ChoixQuand } from '@/components/pages/PageAgenda';
 import { ListeCoordonnees } from '@/components/shared/ListeCoordonnees';
+import SaisieAdresse from '@/components/shared/SaisieAdresse';
+import { annoncerSucces } from '@/lib/succes';
+import { signalerMaj } from '@/lib/intentions';
 import {
   ajouterSuivi, annulerMandatNote, changerEtape, cloreRelancesEstimation, estimationMiseDeCote, noterRdvEstimation, planifierEstimation, poserDansBien, type FaitRdv, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
   corrigerActe, creneauxPris, deplacerVisiteCRM, deplacerVisiteLibre, creerFicheProprio, donneesProprio, doublonsContact, marquerVendeur, finaliserAcquereur, finaliserTransactionsAcquereur, ligneNotaires, lireNotaire, majPrixDansAnnonces, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, nouvelleVente, offresTombees, retirerAutresAcceptees, annulerVisitesPrevues, solderDemandesDuBien, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
@@ -1162,7 +1165,13 @@ function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
       || nouveau.tels.some(x => (c.telephones || []).some(y => memeNumero(x, y || ''))));
     if (deja) { setErreur(`${nomClient(deja)} est déjà dans tes notaires : choisis-le dans la liste.`); return; }
     setOccupe(true); setErreur('');
-    try { const c = await creerNotaire(nouveau); onCree(c); onChange(notaireDepuisContact(c)); setNouveau(null); setQ(''); }
+    try {
+      const c = await creerNotaire(nouveau); onCree(c); onChange(notaireDepuisContact(c)); setNouveau(null); setQ('');
+      /* V3.174 : la petite carte « C'est fait » en haut à droite, et la
+         recherche du haut le trouve tout de suite (par son nom ou son étude). */
+      annoncerSucces({ titre: 'Nouveau contact notaire créé', detail: `${[nomClient(c), nouveau.etude.trim()].filter(Boolean).join(' · ')} — dans tes contacts`, ic: 'balance' });
+      signalerMaj();
+    }
     catch (e) { setErreur((e as Error).message); }
     setOccupe(false);
   }
@@ -1189,7 +1198,7 @@ function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
           <Ch lib="L’étude"><input className={s.input} value={nouveau.etude} onChange={e => majN({ etude: e.target.value })} placeholder="Ex : Étude Durand & Associés" autoFocus /></Ch>
           <div className={b.chF}>
             <span>Adresse de l’étude</span>
-            <AdresseEtude v={nouveau.adresse} onChange={x => majN({ adresse: x })} />
+            <SaisieAdresse v={nouveau.adresse} onChange={x => majN({ adresse: x })} classeChamp={s.input} etiquette="Adresse de l’étude" />
           </div>
           <div className={b.g2}>
             <Ch lib="Prénom"><input className={s.input} value={nouveau.prenom} onChange={e => majN({ prenom: e.target.value })} placeholder="Facultatif" /></Ch>
@@ -1222,55 +1231,6 @@ function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
           </div>
           <button type="button" className={b.notaireAjout} onClick={() => setNouveau({ prenom: '', nom: q.trim(), etude: '', adresse: '', tels: [''], email: '' })}><Ic n="plus" t={13} e={2.6} />Nouveau notaire</button>
         </>
-      )}
-    </div>
-  );
-}
-
-/* L'adresse de l'étude, proposée pendant la frappe : la base adresse
-   nationale, comme pour les biens et les contacts. Un choix remplit « rue,
-   code postal ville » d'un coup. Déclaré hors du rendu (AGENTS.md §2.4). */
-type AdresseProposee = { properties?: { label?: string; name?: string; postcode?: string; city?: string; type?: string } };
-function AdresseEtude({ v, onChange }: { v: string; onChange: (x: string) => void }) {
-  const [sug, setSug] = useState<AdresseProposee[]>([]);
-  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const derniere = useRef('');
-  useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
-  const taper = (x: string) => {
-    onChange(x);
-    derniere.current = x;
-    if (minuterie.current) clearTimeout(minuterie.current);
-    if (x.trim().length < 4) { setSug([]); return; }
-    minuterie.current = setTimeout(async () => {
-      try {
-        const r = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(x)}&limit=5&autocomplete=1`);
-        const j = await r.json();
-        if (derniere.current === x) setSug(Array.isArray(j.features) ? j.features : []);
-      } catch { setSug([]); }
-    }, 250);
-  };
-  const choisir = (f: AdresseProposee) => {
-    const p = f.properties || {};
-    const ville = [p.postcode, p.city].filter(Boolean).join(' ');
-    onChange(p.type === 'municipality' ? ville || p.label || '' : [p.name || p.label || '', ville].filter(Boolean).join(', '));
-    derniere.current = '';
-    setSug([]);
-  };
-  return (
-    <div className={b.adr}>
-      <input className={s.input} value={v} autoComplete="off" placeholder="Tape le début : 12 rue de Silly…" aria-label="Adresse de l’étude"
-        onChange={e => taper(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setSug([]); }} onBlur={() => setTimeout(() => setSug([]), 180)} />
-      {sug.length > 0 && (
-        <ul className={b.adrSug} role="listbox" aria-label="Adresses proposées">
-          {sug.map((f, i) => (
-            <li key={i}>
-              <button type="button" role="option" aria-selected={false} onMouseDown={e => e.preventDefault()} onClick={() => choisir(f)}>
-                <Ic n="lieu" t={15} />
-                <span><b>{f.properties?.name || f.properties?.label}</b><small>{[f.properties?.postcode, f.properties?.city].filter(Boolean).join(' ')}</small></span>
-              </button>
-            </li>
-          ))}
-        </ul>
       )}
     </div>
   );

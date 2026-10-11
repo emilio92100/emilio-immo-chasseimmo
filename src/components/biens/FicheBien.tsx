@@ -1893,7 +1893,9 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
     const tels = (vif?.telephones || []).filter((x): x is string => !!x && !!x.trim());
     return {
       role, nom: n.nom, etude: n.etude, tel: tels[0] || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
-      tels: tels.length ? tels : n.tels, adresse: (vif?.adresse || '').trim() || n.adresse,
+      tels: tels.length ? tels : n.tels,
+      /* V3.174 : l'adresse de l'étude (« Son étude » du contact), sinon celle notée. */
+      adresse: String(((vif?.pro || {}) as { adresseEtude?: unknown }).adresseEtude || '').trim() || (vif?.adresse || '').trim() || n.adresse,
       onFiche: n.id ? () => ouvrirClient(n.id!) : undefined,
     };
   };

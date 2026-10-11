@@ -1322,8 +1322,10 @@ export async function modifierOffre(b: BienVente, o: SuiviVente, x: SaisieOffre)
    (`biens_vente_suivi`, type 'etape', statut 'compromis', `donnees`) : rien en
    SQL. Les deux notaires sont des contacts du CRM (type « Notaire »), gardés
    avec leur nom, leur étude, leur téléphone et leur mail au moment du choix. */
-/* V3.173 : l'adresse de l'étude (la colonne `adresse` du contact) et tous
-   ses numéros (le standard, une ligne directe…) ; `tel` reste le premier. */
+/* V3.173 : l'adresse de l'étude et tous ses numéros (le standard, une ligne
+   directe…) ; `tel` reste le premier. V3.174 : l'adresse de l'étude vit où
+   la fiche du contact l'attend, `pro.adresseEtude` (« Son étude ») ; la
+   colonne `adresse` n'est qu'un repli (la V3.173 l'y écrivait). */
 export type NotaireChoisi = { id: string | null; nom: string; etude?: string; tel?: string; email?: string; adresse?: string; tels?: string[] };
 export type ContactNotaire = { id: string; prenom: string | null; nom: string | null; emails: string[] | null; telephones: string[] | null; pro?: unknown; adresse?: string | null };
 export const notaireDepuisContact = (c: ContactNotaire): NotaireChoisi => {
@@ -1331,7 +1333,8 @@ export const notaireDepuisContact = (c: ContactNotaire): NotaireChoisi => {
   const tels = (c.telephones || []).filter((t): t is string => !!t && !!t.trim());
   return {
     id: c.id, nom: nomClient(c), etude: typeof pro.etude === 'string' ? pro.etude : '',
-    tel: tels[0] || '', tels, email: (c.emails || []).find(Boolean) || '', adresse: (c.adresse || '').trim(),
+    tel: tels[0] || '', tels, email: (c.emails || []).find(Boolean) || '',
+    adresse: (typeof pro.adresseEtude === 'string' && pro.adresseEtude.trim()) || (c.adresse || '').trim(),
   };
 };
 export const lireNotaire = (x: unknown): NotaireChoisi | null => {
@@ -1403,8 +1406,9 @@ export async function creerNotaire(x: { prenom: string; nom: string; etude: stri
   for (const t of x.tels.map(v => v.trim()).filter(Boolean)) if (!tels.some(y => y.replace(/[^\d+]/g, '') === t.replace(/[^\d+]/g, ''))) tels.push(t);
   const ligne = {
     reference, prenom: x.prenom.trim(), nom: x.nom.trim(), token_espace: jetonEspace(x.prenom, x.nom),
-    emails: x.email.trim() ? [x.email.trim().toLowerCase()] : [], telephones: tels, adresse: x.adresse.trim() || null,
-    statut: 'prospect', types: ['notaire'], pro: x.etude.trim() ? { etude: x.etude.trim() } : {},
+    emails: x.email.trim() ? [x.email.trim().toLowerCase()] : [], telephones: tels,
+    statut: 'prospect', types: ['notaire'],
+    pro: { ...(x.etude.trim() ? { etude: x.etude.trim() } : {}), ...(x.adresse.trim() ? { adresseEtude: x.adresse.trim() } : {}) },
   };
   const { data, error } = await supabase.from('clients').insert(ligne).select('id, prenom, nom, emails, telephones, pro, adresse').single();
   if (error) {
