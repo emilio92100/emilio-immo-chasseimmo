@@ -1499,6 +1499,28 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.174 — 11 octobre 2026 · Les notaires : « c'est fait », la recherche par l'étude, le formulaire ; les types de contact
+
+- « C'est fait », en haut à droite : `src/lib/succes.ts` (`annoncerSucces`) et
+  `layout/Succes.tsx` (posé dans AppLayout, au-dessus de toute fenêtre) — une carte qui glisse,
+  une coche qui se dessine, partie seule au bout de 4,5 s. Premier usage : « Nouveau contact
+  notaire créé » (« Nouveau notaire », depuis l'offre ou les notaires du dossier).
+- L'adresse de l'étude va dans `pro.adresseEtude`, là où « Son étude » de la fiche l'attend
+  (la V3.173 l'écrivait dans `clients.adresse`, qui reste lue en repli). Champ d'adresse partagé :
+  `shared/SaisieAdresse.tsx` (la base adresse nationale), dans « Nouveau notaire » et dans les
+  champs d'un professionnel (l'étude, l'agence d'un confrère, l'immeuble d'un gardien).
+- La recherche du haut : un notaire s'affiche par son étude en titre et la personne dessous, qu'on
+  le cherche par l'une ou l'autre ; elle cherche aussi dans l'adresse de l'étude et de l'agence,
+  et retrouve un notaire tout juste créé (`signalerMaj`). « Chercher dans tes notaires » (offre,
+  compromis) cherchait déjà par l'étude.
+- Un notaire, dans « Modifier » et « Nouveau contact » : « Son étude » d'abord (l'étude, son
+  adresse, puis le clerc), « Qui, et comment le joindre » ensuite ; plus de « D'où vient ce
+  contact ? » (sauf s'il est aussi acheteur, vendeur ou propriétaire) ; l'adresse personnelle
+  seulement si elle est déjà notée.
+- « Ce contact est… » (`ChoixTypes`, ChampsContact) : des cartes plus petites — en tête la
+  pastille, le nom et la coche, la précision dessous sur toute la largeur ; la carte choisie prend
+  la couleur de son type. Au téléphone, deux colonnes, la précision sur trois lignes au plus.
+
 ### V3.173 — 11 octobre 2026 · Le nouveau notaire refait ; deux incohérences de la vente corrigées
 
 - Alexandre : « le nom de l'étude en haut, son adresse dessous avec la recherche d'adresse,
