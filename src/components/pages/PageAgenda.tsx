@@ -1909,7 +1909,13 @@ function useMontrer<T extends HTMLElement>() {
 
 /* Le calendrier : un mois, les jours déjà chargés marqués d'un point, et des
    raccourcis. Choisir un jour referme le panneau. */
-function PanneauCalendrier({ valeur, onChoisir, min, occupes }: { valeur: string; onChoisir: (k: string) => void; min?: string; occupes: Record<string, number> }) {
+function PanneauCalendrier({ valeur, onChoisir, min, occupes, raccourcis: propres, titreRaccourcis = 'Raccourcis', onEffacer }: {
+  valeur: string; onChoisir: (k: string) => void; min?: string; occupes: Record<string, number>;
+  /* V3.172 : les raccourcis propres à un champ (« Hier », « Sous 5 jours »…),
+     leur titre (« Depuis la signature »), et « Effacer la date » quand le
+     champ peut rester vide. */
+  raccourcis?: { lib: string; k: string }[]; titreRaccourcis?: string; onEffacer?: () => void;
+}) {
   const [mois, setMois] = useState(() => { const d = depuisCle(valeur || cleDe(new Date())); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [sens, setSens] = useState(0);
   const auj = cleDe(new Date());
@@ -1918,21 +1924,23 @@ function PanneauCalendrier({ valeur, onChoisir, min, occupes }: { valeur: string
   const decalage = (mois.getDay() + 6) % 7;
   const nbJours = new Date(mois.getFullYear(), mois.getMonth() + 1, 0).getDate();
   const cases: (Date | null)[] = [...Array(decalage).fill(null), ...Array.from({ length: nbJours }, (_, i) => new Date(mois.getFullYear(), mois.getMonth(), i + 1))];
-  const court = (d: Date) => `${JOURS[d.getDay()].slice(0, 3)}. ${d.getDate()}`;
+  /* « lun. 12 » cette semaine ; plus loin, le mois aussi (« 11 janv. »). */
+  const court = (d: Date) => (Math.abs(d.getTime() - depuisCle(auj).getTime()) > 7.5 * 86400000
+    ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : `${JOURS[d.getDay()].slice(0, 3)}. ${d.getDate()}`);
   const lundiProchain = plusJours(lundiDe(new Date()), 7);
-  const raccourcis = [
+  const raccourcis = (propres ? propres.map(r => ({ lib: r.lib, d: depuisCle(r.k) })) : [
     { lib: 'Aujourd’hui', d: new Date() },
     { lib: 'Demain', d: plusJours(new Date(), 1) },
     { lib: 'Lundi prochain', d: lundiProchain },
     { lib: 'Dans une semaine', d: plusJours(new Date(), 7) },
-  ].filter(r => !min || cleDe(r.d) >= min);
+  ]).filter(r => !min || cleDe(r.d) >= min);
   const changer = (n: number) => { setSens(n); setMois(m => new Date(m.getFullYear(), m.getMonth() + n, 1)); };
   const fl: React.CSSProperties = { width: 32, height: 32, borderRadius: 10, border: `1px solid ${BORD}`, background: 'white', color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
   const ref = useMontrer<HTMLDivElement>();
   return (
     <div ref={ref} className="ag-panneau ag-cal" style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start', border: `1px solid ${BORD}`, borderRadius: 16, background: 'white', padding: 14, boxShadow: '0 18px 40px -26px rgba(16,24,40,.45)' }}>
       <div className="ag-cal-raccourcis" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 150px', maxWidth: 200 }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE, padding: '2px 2px 4px' }}>Raccourcis</span>
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: PALE, padding: '2px 2px 4px' }}>{titreRaccourcis}</span>
         {raccourcis.map(r => {
           const k = cleDe(r.d), actif = k === valeur;
           return (
@@ -1942,6 +1950,12 @@ function PanneauCalendrier({ valeur, onChoisir, min, occupes }: { valeur: string
             </button>
           );
         })}
+        {onEffacer && valeur && (
+          <button type="button" className="ag-appui" onClick={onEffacer}
+            style={{ height: 34, padding: '0 12px', borderRadius: 11, border: '1px dashed #cbd5e1', background: 'white', color: DOUX, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+            Effacer la date
+          </button>
+        )}
       </div>
 
       <div className="ag-cal-mois" style={{ width: 296, maxWidth: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2072,6 +2086,22 @@ export function ChoixJour({ date, onDate, min, etiquette = 'Le jour' }: { date: 
         valeur={maj(jourLong(d))} aide={ouvert ? relatif : `${relatif} · choisir une autre date`} />
       {ouvert && <PanneauCalendrier valeur={date} min={min} occupes={{}} onChoisir={k => { onDate(k); setOuvert(false); }} />}
     </div>
+  );
+}
+
+/* V3.172 — Le calendrier de l'agenda, seul, pour une date dans un
+   formulaire (les fenêtres d'un bien : l'offre, le compromis, l'acte…).
+   Alexandre : « quand on appuie sur les dates pour choisir, faut mettre le
+   calendrier du CRM, là l'affichage est moche ». Le champ qui l'ouvre est
+   à la charge de la fenêtre (ChampJour, FenetresBien.tsx). */
+export function CalendrierJour({ valeur, onChoisir, min, raccourcis, titreRaccourcis, onEffacer }: {
+  valeur: string; onChoisir: (k: string) => void; min?: string; raccourcis?: { lib: string; k: string }[]; titreRaccourcis?: string; onEffacer?: () => void;
+}) {
+  return (
+    <>
+      <StylesAgenda />
+      <PanneauCalendrier valeur={valeur} min={min} occupes={{}} raccourcis={raccourcis} titreRaccourcis={titreRaccourcis} onEffacer={onEffacer} onChoisir={onChoisir} />
+    </>
   );
 }
 
