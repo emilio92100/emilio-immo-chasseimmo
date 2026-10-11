@@ -669,7 +669,12 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
           onFermer={() => setAction(null)} onFait={() => { setAction(null); recharger(); }} />
       )}
 
-      {edit && (
+      {edit && (() => {
+        /* V3.174 : un notaire — son étude d'abord, sans « D'où vient ce contact ? »
+           (sauf s'il est aussi acheteur, vendeur ou propriétaire). */
+        const notaireEdit = edit.types.includes('notaire');
+        const sansSourceEdit = notaireEdit && !edit.types.some(t => t === 'acheteur' || t === 'vendeur' || t === 'vendeur_signe' || t === 'proprietaire');
+        return (
         <div className={c.fen} onClick={e => { if (e.target === e.currentTarget && !occupe) setEdit(null); }}>
           <div className={c.fenIn} role="dialog" aria-modal="true" aria-label="Modifier le contact">
             <div className={c.fenTete}>
@@ -682,6 +687,10 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
                 <ChoixTypes v={edit.types} onChange={t => setEdit({ ...edit, types: t })} />
                 {edit.types.includes('acheteur') && <div className={c.typesNote}>Acheteur : en enregistrant, sa fiche d’acheteur s’ouvre. Pense à lui ouvrir une recherche (« Il cherche aussi à acheter »).</div>}
               </div>
+              {/* V3.174 (Alexandre) : un notaire se présente par son étude — « Son
+                  étude » d'abord, puis qui le joindre ; et pas de « D'où vient ce
+                  contact ? ». */}
+              {notaireEdit && <ChampsPro types={edit.types} pro={edit.pro} onChange={p => setEdit({ ...edit, pro: p })} cls={cls} />}
               <div className={c.groupe}>
                 <div className={c.groupeT}>{edit.couple && !estPro(edit.types) ? 'Personne 1 · contact principal' : 'Qui, et comment le joindre'}</div>
                 <div className={c.pills}>
@@ -695,7 +704,8 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
                   <ListeCoordonnees genre="tel" etiquette="Téléphones" valeurs={edit.tels} onChange={v => setEdit({ ...edit, tels: v })} classeBloc={c.ch} classeChamp={c.in} />
                   <ListeCoordonnees genre="mail" etiquette="E-mails" valeurs={edit.emails} onChange={v => setEdit({ ...edit, emails: v })} classeBloc={c.ch} classeChamp={c.in} />
                 </div>
-                <label className={c.ch}><span>Adresse</span><input className={c.in} value={edit.adresse} onChange={e => setEdit({ ...edit, adresse: e.target.value })} /></label>
+                {/* Un notaire a l'adresse de son étude juste au-dessus : la sienne seulement si elle est déjà notée. */}
+                {(!notaireEdit || !!edit.adresse) && <label className={c.ch}><span>Adresse</span><input className={c.in} value={edit.adresse} onChange={e => setEdit({ ...edit, adresse: e.target.value })} /></label>}
               </div>
               {edit.couple && !estPro(edit.types) && (
                 <div className={c.groupe}>
@@ -711,11 +721,13 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
                   </div>
                 </div>
               )}
-              <ChampsPro types={edit.types} pro={edit.pro} onChange={p => setEdit({ ...edit, pro: p })} cls={cls} />
-              <div className={c.groupe}>
-                <div className={c.groupeT}>{'D’où vient ce contact ?'}<em className={c.facult} style={{ textTransform: 'none', letterSpacing: 0 }}>{' · facultatif'}</em></div>
-                <ChoixSource source={edit.source} detail={edit.source_detail} onChange={(so, de) => setEdit({ ...edit, source: so, source_detail: de })} />
-              </div>
+              {!notaireEdit && <ChampsPro types={edit.types} pro={edit.pro} onChange={p => setEdit({ ...edit, pro: p })} cls={cls} />}
+              {!sansSourceEdit && (
+                <div className={c.groupe}>
+                  <div className={c.groupeT}>{'D’où vient ce contact ?'}<em className={c.facult} style={{ textTransform: 'none', letterSpacing: 0 }}>{' · facultatif'}</em></div>
+                  <ChoixSource source={edit.source} detail={edit.source_detail} onChange={(so, de) => setEdit({ ...edit, source: so, source_detail: de })} />
+                </div>
+              )}
               {erreur && <div className={c.erreur}>{erreur}</div>}
             </div>
             <div className={c.fenPied}>
@@ -724,7 +736,8 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

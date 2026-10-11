@@ -14,6 +14,7 @@ import { etapeDe, lirePhotos, specsBien, titreBien } from '@/lib/biens-vente';
 import { Ic } from '@/components/documents/ApercuActe';
 import BlocRepliable from '@/components/documents/BlocRepliable';
 import AvatarContact from './AvatarContact';
+import SaisieAdresse from '@/components/shared/SaisieAdresse';
 import { CaseLigne, CaseTout, STYLE_CHOISI } from '@/components/shared/Selection';
 import sd from '@/components/documents/Documents.module.css';
 import c from './Contacts.module.css';
@@ -32,10 +33,16 @@ export function ChoixTypes({ v, onChange }: { v: TypeContact[]; onChange: (x: Ty
       {TYPES_CONTACT.map(t => {
         const on = v.includes(t.k);
         return (
-          <button key={t.k} type="button" className={`${c.type} ${on ? c.typeOn : ''}`} aria-pressed={on} onClick={() => basculer(t.k)}>
-            <span className={c.typeIc} style={{ background: t.fond, color: t.c }}><Ic n={t.ic} t={19} /></span>
-            <span><b>{t.lib}</b><small>{t.aide}</small></span>
-            <span className={c.typeCoche}>{on && <Ic n="check" t={12} e={3} />}</span>
+          /* V3.174 (Alexandre : « les blocs sont un peu gros, pas très jolis ;
+             le nom et les précisions dessous, sur tout l'encadré ») : en tête,
+             la pastille, le nom et la coche ; la précision dessous, sur toute
+             la largeur. La couleur du type borde la carte choisie. */
+          <button key={t.k} type="button" className={`${c.type} ${on ? c.typeOn : ''}`} aria-pressed={on} onClick={() => basculer(t.k)}
+            style={{ ['--tc' as string]: t.c, ['--tf' as string]: t.fond } as React.CSSProperties}>
+            <span className={c.typeIc}><Ic n={t.ic} t={15} /></span>
+            <b className={c.typeLib}>{t.lib}</b>
+            <span className={c.typeCoche}>{on && <Ic n="check" t={11} e={3.2} />}</span>
+            <small className={c.typeAide}>{t.aide}</small>
           </button>
         );
       })}
@@ -165,6 +172,15 @@ function Champ({ cls, lib, v, onV, ph }: { cls: Cls; lib: string; v?: string; on
     </label>
   );
 }
+/* V3.174 : une adresse proposée pendant la frappe (la base adresse nationale). */
+function ChampAdresse({ cls, lib, v, onV }: { cls: Cls; lib: string; v?: string; onV: (x: string) => void }) {
+  return (
+    <div className={cls.group}>
+      <span className={cls.label}>{lib}</span>
+      <SaisieAdresse v={v || ''} onChange={onV} classeChamp={cls.input} etiquette={lib} />
+    </div>
+  );
+}
 /* « Il achète lui-même », « Il vend lui-même »… selon ses types (V3.31). */
 const enSonNom = (t: TypeContact[]) => {
   const verbes = [t.includes('acheteur') && 'achète', t.includes('vendeur') && 'vend', t.includes('proprietaire') && !t.includes('vendeur') && 'possède son bien'].filter(Boolean) as string[];
@@ -194,15 +210,14 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
               ? <Champ cls={cls} lib="Son réseau" v={pro.reseau} onV={set('reseau')} />
               : <Champ cls={cls} lib="Site internet · facultatif" v={pro.siteWeb} onV={set('siteWeb')} />}
           </div>
-          <Champ cls={cls} lib="Adresse de l’agence" v={pro.adresseAgence} onV={set('adresseAgence')} />
+          <ChampAdresse cls={cls} lib="Adresse de l’agence" v={pro.adresseAgence} onV={set('adresseAgence')} />
         </div>
       ))}
+      {/* V3.174 : l'étude, puis son adresse (proposée pendant la frappe), chacune sur sa ligne. */}
       {types.includes('notaire') && bloc('Son étude', (
         <div className={c.pro}>
-          <div className={cls.row}>
-            <Champ cls={cls} lib="L’étude" v={pro.etude} onV={set('etude')} />
-            <Champ cls={cls} lib="Adresse de l’étude" v={pro.adresseEtude} onV={set('adresseEtude')} />
-          </div>
+          <Champ cls={cls} lib="L’étude" v={pro.etude} onV={set('etude')} ph="Ex : Étude Durand & Associés" />
+          <ChampAdresse cls={cls} lib="Adresse de l’étude" v={pro.adresseEtude} onV={set('adresseEtude')} />
           <div className={cls.row}>
             <Champ cls={cls} lib="Son clerc ou assistant(e) · facultatif" v={pro.clerc} onV={set('clerc')} />
             <Champ cls={cls} lib="Son téléphone · facultatif" v={pro.clercTel} onV={set('clercTel')} />
@@ -211,7 +226,7 @@ export function ChampsPro({ types, pro, onChange, cls }: { types: TypeContact[];
       ))}
       {types.includes('gardien') && bloc('L’immeuble', (
         <div className={c.pro}>
-          <Champ cls={cls} lib="Adresse de l’immeuble" v={pro.immeuble} onV={set('immeuble')} />
+          <ChampAdresse cls={cls} lib="Adresse de l’immeuble" v={pro.immeuble} onV={set('immeuble')} />
           <div className={cls.row}>
             <Champ cls={cls} lib="Horaires de la loge · facultatif" v={pro.horaires} onV={set('horaires')} />
             <Champ cls={cls} lib="Accès, clés · facultatif" v={pro.acces} onV={set('acces')} />

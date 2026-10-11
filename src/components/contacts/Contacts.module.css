@@ -5,16 +5,22 @@
    qui compte. Pas de noir. */
 
 /* ── Les types, à cocher ── */
-.types { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-.type { position: relative; display: flex; gap: 11px; align-items: flex-start; padding: 12px 32px 12px 13px; border-radius: 14px; border: 1.5px solid #e3e8f0; background: white; text-align: left; font-family: inherit; cursor: pointer; transition: border-color .12s, background .12s, transform .12s; }
+/* Les types à cocher (V3.174) : des cartes plus petites — en tête la
+   pastille, le nom et la coche ; la précision dessous, sur toute la largeur. */
+.types { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 8px; }
+.type {
+  position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) 18px; grid-template-areas: 'ic lib coche' 'aide aide aide';
+  align-items: center; align-content: start; column-gap: 9px; row-gap: 7px; padding: 10px 11px 11px; border-radius: 13px; border: 1.5px solid #e3e8f0; background: white;
+  text-align: left; font-family: inherit; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s, transform .12s;
+}
 .type:hover { border-color: #cfd8e4; transform: translateY(-1px); }
-.typeOn { border-color: var(--emilio); background: #f8fafc; box-shadow: 0 0 0 3px rgba(52,73,110,.08); }
-.typeIc { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-.type > span:nth-child(2) { min-width: 0; }
-.type b { display: block; font-size: 14px; color: var(--emilio); line-height: 1.25; }
-.type small { display: block; margin-top: 2px; font-size: 11.5px; color: #8593a8; line-height: 1.4; }
-.typeCoche { position: absolute; top: 9px; right: 9px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #d5dce6; background: white; display: flex; align-items: center; justify-content: center; color: white; }
-.typeOn .typeCoche { background: var(--emilio); border-color: var(--emilio); }
+.typeOn { border-color: var(--tc, var(--emilio)); background: color-mix(in srgb, var(--tf, #f8fafc) 55%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc, #34496e) 10%, transparent); }
+.typeIc { grid-area: ic; flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: var(--tf); color: var(--tc); }
+.typeOn .typeIc { background: var(--tc); color: white; }
+.typeLib { grid-area: lib; min-width: 0; font-size: 13.5px; font-weight: 800; color: var(--emilio); line-height: 1.25; }
+.typeAide { grid-area: aide; display: block; font-size: 11.5px; color: #8593a8; line-height: 1.4; }
+.typeCoche { grid-area: coche; justify-self: end; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #d5dce6; background: white; display: flex; align-items: center; justify-content: center; color: white; transition: background .15s, border-color .15s; }
+.typeOn .typeCoche { background: var(--tc, var(--emilio)); border-color: var(--tc, var(--emilio)); }
 .typesNote { font-size: 12px; color: #64748b; line-height: 1.5; }
 
 /* ── Les champs d'un professionnel ── */
@@ -240,9 +246,11 @@ button.lInfo:hover .lTxt { color: var(--emilio); text-decoration: underline; tex
   .aussi > div { flex-basis: calc(100% - 52px); }
   .aussi > button { width: 100%; justify-content: center; }
   .types { grid-template-columns: 1fr 1fr; gap: 6px; }
-  .type { padding: 10px; gap: 8px; }
-  .type small { display: none; }
-  .typeIc { width: 32px; height: 32px; border-radius: 10px; }
+  .type { padding: 9px 9px 10px; column-gap: 7px; row-gap: 6px; grid-template-columns: 26px minmax(0, 1fr) 16px; }
+  .typeIc { width: 26px; height: 26px; border-radius: 8px; }
+  .typeLib { font-size: 13px; }
+  .typeAide { font-size: 11px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .typeCoche { width: 16px; height: 16px; }
   .g2 { grid-template-columns: 1fr; }
   .fen { align-items: flex-end; padding: 0; }
   .fenIn { border-radius: 20px 20px 0 0; }
