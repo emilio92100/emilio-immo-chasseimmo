@@ -1502,11 +1502,12 @@ export default function Clients({ onNavigate, fenetre }: {
                                 : 'Un professionnel : ses coordonnées et son métier, rien de plus. Il se retrouve dans sa catégorie, en haut de la page.'}
                         </div>
                       </Bloc>
-                      {/* D'où il vient (V3.23) : facultatif, rien de choisi = rien d'enregistré. */}
-                      <Bloc ic="drapeau" titre="D’où vient ce contact ?" petit="facultatif · pour vous rappeler comment vous l’avez eu" teinte={OR}>
+                      {/* D'où il vient (V3.23) : facultatif, rien de choisi = rien d'enregistré.
+                          V3.174 : pas pour un notaire (sauf s'il est aussi client). */}
+                      {!(form.types.includes('notaire') && !form.types.some(t => t === 'acheteur' || t === 'vendeur' || t === 'vendeur_signe' || t === 'proprietaire')) && <Bloc ic="drapeau" titre="D’où vient ce contact ?" petit="facultatif · pour vous rappeler comment vous l’avez eu" teinte={OR}>
                         <ChoixSource source={form.source} detail={form.source_detail} onChange={(so, de) => setForm({ ...form, source: so, source_detail: de })}
                           noms={clients.map(x => nomFoyer(x)).filter(Boolean)} />
-                      </Bloc>
+                      </Bloc>}
                     </div>
                   )}
 
@@ -1519,6 +1520,8 @@ export default function Clients({ onNavigate, fenetre }: {
                     <div className="nc-deux">
                       {apercu}
                       <div className="nc-champs">
+                      {/* V3.174 (Alexandre) : un notaire, son étude d'abord ; qui le joindre ensuite. */}
+                      {form.types.includes('notaire') && champsPro}
                       <Bloc ic="personne" titre="Qui est-ce" teinte={teinte}>
                         {!pro && <div className="nc-qui">
                           {([['Monsieur', 'Monsieur'], ['Madame', 'Madame'], ['couple', 'Un couple']] as const).map(([k, lib]) => (
@@ -1598,7 +1601,7 @@ export default function Clients({ onNavigate, fenetre }: {
 
                       {/* Un professionnel se joint à son agence, son étude, son
                          immeuble : son adresse est dans la section de son métier. */}
-                      {pro ? champsPro : (
+                      {pro ? (form.types.includes('notaire') ? null : champsPro) : (
                         <Bloc ic="lieu" titre="Son adresse" teinte={teinte}>
                           <div className={styles.formGroup} style={{ position: 'relative' }}>
                             <label className={styles.label}>Adresse</label>
@@ -1621,7 +1624,7 @@ export default function Clients({ onNavigate, fenetre }: {
                         </Bloc>
                       )}
 
-                      {!pro && champsPro}
+                      {!pro && !form.types.includes('notaire') && champsPro}
 
                       {!acheteur && (form.types.includes('vendeur') || form.types.includes('proprietaire')) && (
                         <Bloc ic="maison" titre="Son bien" teinte={teinte}>
