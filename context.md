@@ -1499,6 +1499,26 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.173 — 11 octobre 2026 · Le nouveau notaire refait ; deux incohérences de la vente corrigées
+
+- Alexandre : « le nom de l'étude en haut, son adresse dessous avec la recherche d'adresse,
+  prénom et nom, le téléphone sur une ligne, l'e-mail sur une ligne — on ne les voit pas en
+  entier —, et un bouton Ajouter un numéro (le standard, une ligne directe) ». « Nouveau
+  notaire » (`ChoixNotaire`, FenetresBien) : l'étude, l'adresse de l'étude (`AdresseEtude`, la
+  base adresse nationale comme pour les biens), prénom et nom, les numéros (`ListeCoordonnees`,
+  nouvelle option `exemples` : « Le standard de l'étude », « Une ligne directe »), l'e-mail.
+  Un notaire déjà dans les contacts (même nom, e-mail ou numéro) n'est pas recréé.
+- « Créer le contact » crée un vrai contact du CRM (type « Notaire », dans Contacts), proposé
+  ensuite sur toutes les ventes : l'adresse va dans `clients.adresse`, les numéros dans
+  `telephones`, l'étude dans `pro.etude`. `NotaireChoisi` garde aussi `adresse` et `tels`. Le
+  notaire choisi et la carte de l'offre montrent l'étude, l'adresse, chaque numéro (un appui
+  l'appelle) et l'e-mail, une ligne chacun.
+- Incohérence corrigée : l'offre écrite remplissait « Notaire de l'acquéreur » avec « Son
+  notaire » du bien — celui du vendeur. Elle prend maintenant le notaire de l'acquéreur noté
+  avec l'offre (ou le notaire commun), sinon rien.
+- « La vente est signée » rappelle le net vendeur (prix − honoraires du compromis) comme
+  l'acceptation et le compromis ; la ligne « vendu » garde `charge`, `net`, `notaireCommun`.
+
 ### V3.172 — 11 octobre 2026 · L'offre jusqu'au compromis : honoraires négociés, net vendeur, notaires, comptant, calendrier
 
 - Alexandre : « quand j'appuie sur valider l'offre, une demande : quels sont vos honoraires
