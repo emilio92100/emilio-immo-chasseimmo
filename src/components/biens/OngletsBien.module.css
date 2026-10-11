@@ -244,6 +244,26 @@
 .offre[data-sorte='fermee'] .montant b { font-size: 22px; color: #475569; }
 .qui { font-size: 13.5px; line-height: 1.5; color: #475569; }
 .qui b { color: #1a2332; }
+/* V3.172 : le nom de l'acquéreur ouvre sa fiche. */
+.quiLien { display: inline-flex; align-items: center; gap: 3px; border: none; background: none; padding: 0; cursor: pointer; font: 700 13.5px 'DM Sans', sans-serif; color: #1a2332; text-decoration: underline; text-decoration-color: #cbd5e1; text-underline-offset: 3px; }
+.quiLien:hover { color: #22497d; text-decoration-color: currentColor; }
+.quiLien svg { color: #94a3b8; }
+.quiLien:hover svg { color: currentColor; }
+/* Les honoraires négociés et le net vendeur, sur la carte (V3.172). */
+.accordH { display: flex; align-items: stretch; gap: 8px; padding: 8px; border-radius: 14px; background: #fbf6e9; border: 1px solid #ecdcb0; }
+.accordH > div { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 4px 6px; }
+.accordH small { font-size: 11.5px; font-weight: 700; color: #7a5d1c; }
+.accordH b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #1a2332; white-space: nowrap; }
+.accordH > .accordNet { background: #22497d; border-radius: 10px; padding: 6px 10px; }
+.accordNet small { color: rgba(255, 255, 255, .72); }
+.accordH .accordNet b { color: #fff; }
+.accordH > button { align-self: center; }
+.honoManque { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 11px; border: 1.5px dashed #e0c98a; background: #fffdf7; color: #7a5d1c; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.honoManque:hover { border-color: #c9a84c; background: #fbf6e9; }
+.honoManque[data-ton='notaires'] { border-color: #cbd5e1; background: #fff; color: #34496e; }
+.honoManque[data-ton='notaires']:hover { border-color: #94a3b8; background: #f8fafc; }
+.notairesTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sansDate { color: #475569 !important; font-weight: 700 !important; }
 .etapes { display: flex; align-items: center; gap: 8px; }
 .etape { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #94a3b8; white-space: nowrap; }
 .etape > span { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid #dfe5ee; background: #fff; }

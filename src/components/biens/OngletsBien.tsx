@@ -720,6 +720,9 @@ export type InfosCompromis = {
      programmés, l'exemplaire signé — et « Compléter le compromis ». */
   hono?: number | null; notaires?: NotaireCarte[]; rappels?: { cle: string; le: string }[];
   piece?: string; onPiece?: () => void; onJoindre?: (f: File) => void; onCompleter?: () => void;
+  /* V3.172 : achat comptant (pas de condition de prêt), un notaire commun,
+     à la charge de qui sont les honoraires. */
+  comptant?: boolean; notaireCommun?: boolean; charge?: 'acquereur' | 'vendeur' | null;
 };
 export type ActionsOffre = {
   /* Une réponse : accepte, contre-offre, nouvelle proposition, refus… */
@@ -736,6 +739,11 @@ export type ActionsOffre = {
   onVendu?: () => void;
   /* Cette offre est celle du compromis : ses dates. */
   compromis?: InfosCompromis | null;
+  /* V3.172 : le nom de l'acquéreur ouvre sa fiche ; les honoraires négociés
+     et les notaires de l'offre, avant le compromis. */
+  onAcquereur?: () => void;
+  onHonoraires?: () => void;
+  notaires?: NotaireCarte[]; notaireCommun?: boolean; onNotaires?: () => void;
 };
 
 export const dateAn = (iso: string | null | undefined) => {
@@ -839,7 +847,12 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
             {puceEcart}
             {a.onModifier && <button type="button" className={o.offreModif} onClick={a.onModifier} aria-label="Corriger l’offre" title="Corriger l’offre"><Ic n="crayon" t={14} /></button>}
           </div>
-          <span className={o.qui}><b>{x.qui || 'Un acquéreur'}</b>{fin ? ` · ${fin}` : ''}{typeof d.conditions === 'string' && d.conditions ? ` · ${d.conditions}` : ''}</span>
+          <span className={o.qui}>
+            {a.onAcquereur
+              ? <button type="button" className={o.quiLien} onClick={a.onAcquereur} title="Ouvrir sa fiche">{x.qui || 'Un acquéreur'}<Ic n="droite" t={12} e={2.6} /></button>
+              : <b>{x.qui || 'Un acquéreur'}</b>}
+            {fin ? ` · ${fin}` : ''}{typeof d.conditions === 'string' && d.conditions ? ` · ${d.conditions}` : ''}
+          </span>
           {x.commentaire && <span className={o.qui}>{x.commentaire}</span>}
           {negocie && (
             <ol className={o.echanges} aria-label="La négociation">
@@ -854,6 +867,29 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
                 <li data-par="accord"><span className={o.echD}>{typeof d.reponse_le === 'string' ? dateAnCourt(d.reponse_le) : ''}</span><span className={o.echL}>Accord</span><b>{euros(actuel)}</b></li>
               )}
             </ol>
+          )}
+          {/* V3.172 : les honoraires négociés, et le net vendeur. */}
+          {(sorte === 'acceptee' || sorte === 'compromis' || sorte === 'vendu') && (() => {
+            const sousC = (sorte === 'compromis' || sorte === 'vendu') && !!c;
+            const h = sousC ? (typeof c!.hono === 'number' ? c!.hono : null) : typeof d.hono === 'number' ? d.hono : null;
+            const ch = (sousC ? c!.charge : null) || (d.charge === 'vendeur' ? 'vendeur' : d.charge === 'acquereur' ? 'acquereur' : null);
+            const modifier = sousC ? c!.onCompleter : a.onHonoraires;
+            if (h === null) return modifier && !fige ? (
+              <button type="button" className={o.honoManque} onClick={modifier}><Ic n="euro" t={14} />Noter tes honoraires sur ce dossier<Ic n="plus" t={13} e={2.6} /></button>
+            ) : null;
+            return (
+              <div className={o.accordH}>
+                <div><small>{`Honoraires${ch ? ` · charge ${ch === 'vendeur' ? 'vendeur' : 'acquéreur'}` : ''}`}</small><b>{`${euros(h)} TTC`}</b></div>
+                <div className={o.accordNet}><small>Net vendeur</small><b>{actuel ? euros(actuel - h) : '—'}</b></div>
+                {modifier && !fige && <button type="button" className={o.offreModif} onClick={modifier} aria-label="Modifier les honoraires" title="Modifier les honoraires"><Ic n="crayon" t={14} /></button>}
+              </div>
+            );
+          })()}
+          {(sorte === 'attente' || sorte === 'contre' || sorte === 'acceptee') && (
+            a.notaires?.length ? <NotairesListe notaires={a.notaires} commun={a.notaireCommun} onModifier={fige ? undefined : a.onNotaires} />
+              : a.onNotaires && !fige ? (
+                <button type="button" className={o.honoManque} data-ton="notaires" onClick={a.onNotaires}><Ic n="balance" t={14} />Les notaires du dossier<Ic n="plus" t={13} e={2.6} /></button>
+              ) : null
           )}
           {(sorte === 'compromis' || sorte === 'vendu') && c && <NotairesCompromis c={c} />}
         </div>
@@ -935,14 +971,14 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
                     {[
                       { ic: 'doc', col: '#2d5c8f', l: 'Compromis signé le', v: c.signe },
                       { ic: 'bouclier', col: '#b45309', l: 'Rétractation jusqu’au', v: c.sru },
-                      { ic: 'banque', col: '#1d4ed8', l: 'Condition de prêt jusqu’au', v: c.pretLimite },
+                      { ic: 'banque', col: '#1d4ed8', l: c.comptant ? 'Condition de prêt' : 'Condition de prêt jusqu’au', v: c.pretLimite, sans: c.comptant ? 'Aucune · comptant' : '' },
                       { ic: 'plume', col: '#6d28d9', l: sorte === 'vendu' ? 'Acte signé le' : 'Acte prévu le', v: sorte === 'vendu' ? c.venduLe || c.acte : c.acte },
-                    ].map(y => {
+                    ].map((y: { ic: string; col: string; l: string; v: string | null | undefined; sans?: string }) => {
                       const passe = !!y.v && (joursDepuis(String(y.v)) ?? -1) > 0;
                       return (
-                        <div key={y.l} data-passe={passe ? 'oui' : 'non'} data-vide={y.v ? 'non' : 'oui'} style={{ ['--c' as string]: y.col } as CSSProperties}>
+                        <div key={y.l} data-passe={passe ? 'oui' : 'non'} data-vide={y.v || y.sans ? 'non' : 'oui'} style={{ ['--c' as string]: y.col } as CSSProperties}>
                           <small><Ic n={y.ic} t={12} />{y.l}</small>
-                          {y.v ? <b>{dateAn(String(y.v))}</b> : c.onCompleter ? <button type="button" className={o.aRenseigner} onClick={c.onCompleter}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
+                          {y.sans ? <b className={o.sansDate}>{y.sans}</b> : y.v ? <b>{dateAn(String(y.v))}</b> : c.onCompleter ? <button type="button" className={o.aRenseigner} onClick={c.onCompleter}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
                         </div>
                       );
                     })}
@@ -970,38 +1006,54 @@ export function CarteOffreB({ o: x, prix, a, replie, onPli }: {
 }
 
 const RAPPEL_MOT: Record<string, string> = { sru: 'rétractation', pret: 'prêt', acte: 'acte' };
-const manque = (c: InfosCompromis) => !c.sru || !c.pretLimite || !c.acte || (c.notaires || []).length < 2;
+const manque = (c: InfosCompromis) => !c.sru || (!c.pretLimite && !c.comptant) || !c.acte || (c.notaires || []).length < (c.notaireCommun ? 1 : 2);
 const sansEsp = (t: string) => t.replace(/[\s.]+/g, '');
 
-/* Les deux notaires du compromis, et l'exemplaire signé (V3.45). */
-function NotairesCompromis({ c }: { c: InfosCompromis }) {
-  const ROLES: { role: NotaireCarte['role']; l: string; col: string }[] = [
-    { role: 'vendeur', l: 'Notaire du vendeur', col: '#a07c28' },
-    { role: 'acquereur', l: 'Notaire de l’acquéreur', col: '#1d4ed8' },
-  ];
+/* Les notaires d'un dossier (V3.45, V3.172) : celui du vendeur et celui de
+   l'acquéreur, ou un notaire commun. Sur une offre, dès qu'ils sont notés ;
+   sous compromis, avec l'exemplaire signé. */
+function NotairesListe({ notaires, commun, onModifier, onRenseigner, toujours, children }: {
+  notaires: NotaireCarte[]; commun?: boolean; onModifier?: () => void;
+  /* « À renseigner » sur un rôle sans notaire. */
+  onRenseigner?: () => void;
+  /* Les deux rôles, même vides (sous compromis). */
+  toujours?: boolean; children?: ReactNode;
+}) {
+  const ROLES: { role: NotaireCarte['role']; l: string; col: string }[] = commun
+    ? [{ role: 'vendeur', l: 'Notaire commun · vendeur et acquéreur', col: '#34496e' }]
+    : [{ role: 'vendeur', l: 'Notaire du vendeur', col: '#a07c28' }, { role: 'acquereur', l: 'Notaire de l’acquéreur', col: '#1d4ed8' }];
+  const lignes = ROLES.map(r => ({ r, n: notaires.find(x => x.role === r.role) || (commun ? notaires[0] : undefined) })).filter(x => toujours || x.n);
   return (
     <div className={o.notairesC}>
-      <b className={o.notairesT}><Ic n="balance" t={14} />Les notaires</b>
-      {ROLES.map(r => {
-        const n = (c.notaires || []).find(x => x.role === r.role);
-        return (
-          <div key={r.role} className={o.notaireL} style={{ ['--c' as string]: r.col } as CSSProperties} data-vide={n ? 'non' : 'oui'}>
-            <span className={o.notaireAv}><Ic n="balance" t={15} /></span>
-            <div className={o.notaireTx}>
-              <small>{r.l}</small>
-              {n ? <b>{n.nom}</b> : c.onCompleter ? <button type="button" className={o.aRenseigner} onClick={c.onCompleter}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
-              {n && (n.etude || n.tel) && <span>{[n.etude, n.tel].filter(Boolean).join(' · ')}</span>}
-            </div>
-            {n && (
-              <div className={o.notaireActs}>
-                {n.tel && <a className={o.rondC} href={`tel:${sansEsp(n.tel)}`} aria-label={`Appeler ${n.nom}`} title={n.tel}><Ic n="telephone" t={14} /></a>}
-                {n.email && <a className={o.rondC} href={`mailto:${n.email}`} aria-label={`Écrire à ${n.nom}`} title={n.email}><Ic n="mail" t={14} /></a>}
-                {n.onFiche && <button type="button" className={o.rondC} onClick={n.onFiche} aria-label={`La fiche de ${n.nom}`} title="Sa fiche"><Ic n="personne" t={14} /></button>}
-              </div>
-            )}
+      <div className={o.notairesTete}>
+        <b className={o.notairesT}><Ic n="balance" t={14} />{commun ? 'Le notaire' : 'Les notaires'}</b>
+        {onModifier && <button type="button" className={o.petit} onClick={onModifier}><Ic n="crayon" t={12} />Modifier</button>}
+      </div>
+      {lignes.map(({ r, n }) => (
+        <div key={r.role} className={o.notaireL} style={{ ['--c' as string]: r.col } as CSSProperties} data-vide={n ? 'non' : 'oui'}>
+          <span className={o.notaireAv}><Ic n="balance" t={15} /></span>
+          <div className={o.notaireTx}>
+            <small>{r.l}</small>
+            {n ? <b>{n.nom}</b> : onRenseigner ? <button type="button" className={o.aRenseigner} onClick={onRenseigner}>À renseigner</button> : <i className={o.aRenseigner}>À renseigner</i>}
+            {n && (n.etude || n.tel) && <span>{[n.etude, n.tel].filter(Boolean).join(' · ')}</span>}
           </div>
-        );
-      })}
+          {n && (
+            <div className={o.notaireActs}>
+              {n.tel && <a className={o.rondC} href={`tel:${sansEsp(n.tel)}`} aria-label={`Appeler ${n.nom}`} title={n.tel}><Ic n="telephone" t={14} /></a>}
+              {n.email && <a className={o.rondC} href={`mailto:${n.email}`} aria-label={`Écrire à ${n.nom}`} title={n.email}><Ic n="mail" t={14} /></a>}
+              {n.onFiche && <button type="button" className={o.rondC} onClick={n.onFiche} aria-label={`La fiche de ${n.nom}`} title="Sa fiche"><Ic n="personne" t={14} /></button>}
+            </div>
+          )}
+        </div>
+      ))}
+      {children}
+    </div>
+  );
+}
+/* Les notaires du compromis, et l'exemplaire signé (V3.45). */
+function NotairesCompromis({ c }: { c: InfosCompromis }) {
+  return (
+    <NotairesListe notaires={c.notaires || []} commun={c.notaireCommun} onRenseigner={c.onCompleter} toujours>
       <div className={o.compromisPdf}>
         <Ic n="doc" t={14} />
         {c.piece ? (
@@ -1016,7 +1068,7 @@ function NotairesCompromis({ c }: { c: InfosCompromis }) {
           </>
         )}
       </div>
-    </div>
+    </NotairesListe>
   );
 }
 

@@ -16,7 +16,7 @@ import { ETAPES_EN_VENTE, TYPES_CONTACT, acheteurEnCours, colonneContactAbsente,
 import {
   ETAPES_BIEN, apresReponse, argentBien, avantMandat, colonnesBien, contexteDocument, dateLongue, lirePhotos, montantActuel, nomProprioActe, personneDepuisClient, prixCopie, referenceSuivante, tableAbsente, titreBien,
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
-  type BienVente, type Donnees, type EtapeVente, type EtatMandatDoc, type Photo, type SuiviVente,
+  type BienVente, type Donnees, type EtapeVente, type EtatMandatDoc, type Photo, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
 import { colonnesListe, identiteDuJour, mandatDepuis, preparerDepuis } from '@/components/documents/outils';
 import { retirerMandatDuBien, type RetraitMandat } from '@/lib/mandat-bien';
@@ -1179,6 +1179,10 @@ export type SaisieOffre = {
   /* V3.45 : une offre convenue avant d'être notée — elle arrive acceptée,
      sans relance « réponse à donner ». */
   dejaAcceptee?: boolean;
+  /* V3.172 : acceptée d'emblée, les honoraires négociés (`AccordHono`) ;
+     et les notaires du dossier, dès l'offre s'ils sont connus. */
+  hono?: AccordHono | null;
+  notaires?: NotairesDossier | null;
 };
 
 /* La relance « réponse à donner » du propriétaire, posée avec l'offre. */
@@ -1192,12 +1196,15 @@ export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: Cl
     donnees: {
       jusquau: o.jusquau, financement: o.financement, apport: o.apport, pret: o.pret, accord: o.accord, conditions: o.conditions,
       ...(o.fichier ? { chemin: o.fichier.chemin, nom: o.fichier.nom } : {}),
-      ...(o.dejaAcceptee ? { reponse_le: o.recue } : {}),
+      ...(o.dejaAcceptee ? { reponse_le: o.recue, ...(o.hono ? donneesHono(o.hono) : {}) } : {}),
+      ...(o.notaires ? donneesNotaires(o.notaires) : {}),
     },
   });
-  /* L'acheteur suivi : une ligne dans son dossier, son bien passe « offre faite ». */
-  if (o.clientId && o.rechercheId) {
-    const { data: cop } = await supabase.from('biens').select('id').eq('bien_vente_id', b.id).eq('recherche_id', o.rechercheId).limit(1);
+  /* L'acheteur suivi : une ligne dans son dossier, son bien passe « offre
+     faite ». V3.172 : un contact sans recherche a aussi sa ligne (dans son
+     Suivi général) — elle n'était écrite qu'avec une recherche. */
+  if (o.clientId) {
+    const { data: cop } = o.rechercheId ? await supabase.from('biens').select('id').eq('bien_vente_id', b.id).eq('recherche_id', o.rechercheId).limit(1) : { data: null };
     const copieId = cop?.[0]?.id as string | undefined;
     if (copieId) {
       const r = await supabase.from('biens').update({ badge_retour: 'offre_faite' }).eq('id', copieId);
@@ -1218,7 +1225,8 @@ export async function enregistrerOffre(b: BienVente, o: SaisieOffre, proprio: Cl
     const fin = o.financement === 'comptant' ? 'Financement : comptant' : o.financement === 'pret' ? 'Financement : avec un prêt' : o.financement === 'relais' ? 'Financement : avec un prêt relais' : null;
     await noterJalon(b, o.dejaAcceptee ? 'offre_acceptee' : 'offre_recue', { vendeur: {
       clientId: b.client_id, titre: `${o.dejaAcceptee ? '🤝 Offre acceptée' : '💶 Offre reçue'} — ${eurosSuivi(o.montant)}`,
-      texte: [`${b.titre || titreBien(b.donnees || {})} · offre de ${o.qui}, faite le ${dateLongue(o.recue)}`, !o.dejaAcceptee && o.jusquau ? `Valable jusqu’au ${dateLongue(o.jusquau)}` : null, fin],
+      texte: [`${b.titre || titreBien(b.donnees || {})} · offre de ${o.qui}, faite le ${dateLongue(o.recue)}`, !o.dejaAcceptee && o.jusquau ? `Valable jusqu’au ${dateLongue(o.jusquau)}` : null, fin,
+        o.dejaAcceptee && o.hono ? ligneHono(o.hono) : null, o.notaires ? ligneNotaires(o.notaires.vendeur, o.notaires.acquereur) : null],
     } });
   }
   /* Le propriétaire : une relance le jour où l'offre expire. Pas quand le
@@ -1281,6 +1289,7 @@ export async function modifierOffre(b: BienVente, o: SuiviVente, x: SaisieOffre)
     ...avant, jusquau: x.jusquau, financement: x.financement, apport: x.apport, pret: x.pret, accord: x.accord, conditions: x.conditions,
     ...(x.fichier ? { chemin: x.fichier.chemin, nom: x.fichier.nom } : {}),
     ...(echanges ? { echanges } : {}),
+    ...(x.notaires ? donneesNotaires(x.notaires) : {}),
   };
   let ligne = await majSuivi(o.id, {
     le: new Date(`${x.recue}T12:00:00`).toISOString(), qui: x.qui, client_id: x.clientId, recherche_id: x.rechercheId, montant: x.montant, donnees,
@@ -1327,6 +1336,48 @@ export const lireNotaire = (x: unknown): NotaireChoisi | null => {
   const o = x as Record<string, unknown>;
   return typeof o.nom === 'string' && o.nom ? { id: typeof o.id === 'string' ? o.id : null, nom: o.nom, etude: String(o.etude || ''), tel: String(o.tel || ''), email: String(o.email || '') } : null;
 };
+/* V3.172 — Les notaires du dossier, dès l'offre. Alexandre : « où je mets
+   les infos du notaire ? notaire acheteur, vendeur, notaire commun ? Je suis
+   obligé d'aller dans compromis alors qu'il faudrait avant ». Ils vivent
+   avec l'offre (`donnees.notaireVendeur`, `notaireAcquereur`,
+   `notaireCommun`), puis avec le compromis, qui les reprend. Un notaire
+   commun est écrit des deux côtés : tout ce qui lit l'un ou l'autre (la
+   vente, l'historique) le trouve. */
+export type NotairesDossier = { vendeur: NotaireChoisi | null; acquereur: NotaireChoisi | null; commun: boolean };
+export function lireNotairesDossier(d: Record<string, unknown> | null | undefined): NotairesDossier {
+  const x = d || {};
+  const vendeur = lireNotaire(x.notaireVendeur), acquereur = lireNotaire(x.notaireAcquereur);
+  return { vendeur, acquereur, commun: x.notaireCommun === true || (!!vendeur && !!acquereur && vendeur.nom === acquereur.nom && x.notaireCommun !== false) };
+}
+export const aDesNotaires = (n: NotairesDossier | null | undefined) => !!n && (!!n.vendeur || !!n.acquereur);
+export function donneesNotaires(n: NotairesDossier): Record<string, unknown> {
+  const v = n.commun ? n.vendeur || n.acquereur : n.vendeur;
+  return { notaireVendeur: v, notaireAcquereur: n.commun ? v : n.acquereur, notaireCommun: n.commun, notaireAcq: (n.commun ? v : n.acquereur)?.nom || '' };
+}
+
+/* V3.172 — Les honoraires négociés sur le dossier, notés quand l'offre est
+   acceptée. Alexandre : « quand j'appuie sur valider l'offre, une demande :
+   quels sont vos honoraires négociés sur ce dossier ; ça affiche le net
+   vendeur — le prix final moins la com, charge acheteur ou vendeur ». Le net
+   vendeur, c'est toujours le prix moins les honoraires : à la charge de
+   l'acquéreur, le prix les comprend ; à celle du vendeur, il les paie dessus. */
+export type AccordHono = { prix: number; hono: number | null; charge: 'acquereur' | 'vendeur' };
+export const netVendeur = (a: Pick<AccordHono, 'prix' | 'hono'>) => (a.hono !== null && a.prix ? a.prix - a.hono : null);
+export function donneesHono(a: AccordHono): Record<string, unknown> {
+  return { hono: a.hono, charge: a.charge, net: netVendeur(a) };
+}
+export function lireHono(d: Record<string, unknown> | null | undefined, prix: number): AccordHono | null {
+  const x = d || {};
+  if (typeof x.hono !== 'number') return null;
+  return { prix, hono: x.hono, charge: x.charge === 'vendeur' ? 'vendeur' : 'acquereur' };
+}
+/* « Honoraires : 15 000 € TTC, à la charge de l'acquéreur · net vendeur : 485 000 € » */
+export function ligneHono(a: AccordHono): string | null {
+  if (a.hono === null) return null;
+  const net = netVendeur(a);
+  return `Honoraires : ${eurosSuivi(a.hono)} TTC, à la charge ${a.charge === 'vendeur' ? 'du vendeur' : 'de l’acquéreur'}${net !== null ? ` · net vendeur : ${eurosSuivi(net)}` : ''}`;
+}
+
 export async function lireNotaires(): Promise<ContactNotaire[]> {
   const { data, error } = await supabase.from('clients').select('id, prenom, nom, emails, telephones, pro, types').contains('types', ['notaire']).order('nom').limit(300);
   if (error) {
@@ -1410,7 +1461,9 @@ export async function joindreCompromis(b: BienVente, ligne: SuiviVente, f: File)
    titre : la ligne s'écrit le jour où on la note, pas forcément le jour où
    c'est arrivé. `metadata.jalon` en fait une carte à sa couleur dans la
    frise (FriseSuivi). Jamais bloquant : un échec se dit, l'étape reste faite. */
-export type Jalon = 'mandat' | 'offre_faite' | 'offre_recue' | 'offre_acceptee' | 'compromis' | 'compromis_tombe' | 'acte';
+export type Jalon = 'mandat' | 'offre_faite' | 'offre_recue' | 'offre_acceptee' | 'compromis' | 'compromis_tombe' | 'acte'
+  /* V3.172 : la négociation (contre-offre, nouvelle proposition), et l'offre qui tombe. */
+  | 'negociation' | 'offre_close';
 export type LigneJalon = { clientId: string; rechercheId?: string | null; titre: string; texte: (string | false | null | undefined)[]; type?: string };
 /* L'espace avant « € » est insécable : « 470 000 » et « € » ne se séparent pas en bout de ligne. */
 export const eurosSuivi = (n: number) => `${Math.round(n).toLocaleString('fr-FR')}\u00a0€`;
@@ -1453,14 +1506,40 @@ export async function noterAcceptationAnnulee(b: BienVente, o: SuiviVente): Prom
     catch (e) { signalerEchec('Le suivi du contact', (e as Error).message); }
   }
 }
-/* Le vendeur accepte une offre (« Accepter », sur sa carte). */
+/* Le vendeur accepte une offre (« Il accepte », sur sa carte). V3.172 : avec
+   les honoraires négociés et les notaires, quand ils sont notés. */
 export async function noterOffreAcceptee(b: BienVente, o: SuiviVente): Promise<void> {
   const m = montantActuel(o);
   const titre = b.titre || titreBien(b.donnees || {});
   const depart = o.montant && o.montant !== m ? `Offre de départ : ${eurosSuivi(o.montant)}, acceptée à ${eurosSuivi(m)} après négociation` : null;
+  const h = lireHono(o.donnees, m);
+  const n = lireNotairesDossier(o.donnees);
+  const not = ligneNotaires(n.vendeur, n.acquereur);
   await noterJalon(b, 'offre_acceptee', {
-    vendeur: b.client_id ? { clientId: b.client_id, titre: `🤝 Offre acceptée — ${eurosSuivi(m)}`, texte: [`${titre} · offre de ${o.qui || 'l’acquéreur'}`, depart] } : null,
-    acquereur: o.client_id ? { clientId: o.client_id, rechercheId: o.recherche_id, titre: `🤝 Offre acceptée — ${eurosSuivi(m)}`, texte: [titre, depart] } : null,
+    vendeur: b.client_id ? { clientId: b.client_id, titre: `🤝 Offre acceptée — ${eurosSuivi(m)}`, texte: [`${titre} · offre de ${o.qui || 'l’acquéreur'}`, depart, h ? ligneHono(h) : null, not] } : null,
+    acquereur: o.client_id ? { clientId: o.client_id, rechercheId: o.recherche_id, titre: `🤝 Offre acceptée — ${eurosSuivi(m)}`, texte: [titre, depart, not] } : null,
+  });
+}
+/* V3.172 — Chaque tour de la négociation, dans le Suivi des deux côtés.
+   Alexandre : « quand une offre est créée, l'historique sur la fiche du
+   client aussi, avec l'historique s'il y a plusieurs contre-offres ». Seule
+   l'offre et son acceptation y étaient : la contre-offre du vendeur, la
+   nouvelle proposition de l'acquéreur, le refus, le retrait s'y ajoutent.
+   `avant` : l'offre telle qu'elle était avant la réponse. */
+export async function noterNegociation(b: BienVente, avant: SuiviVente, r: Reponse): Promise<void> {
+  if (r.k === 'accepte' || r.k === 'rouvrir') return;
+  const titre = b.titre || titreBien(b.donnees || {});
+  const qui = avant.qui || 'l’acquéreur';
+  const sur = montantActuel(avant);
+  const l = (t: string, v: string[], a: string[] = v, jalon: Jalon = 'negociation') => ({ t, v, a, jalon });
+  const x = r.k === 'contre' ? l(`↔️ Contre-offre du vendeur — ${eurosSuivi(r.montant)}`, [`${titre} · en réponse à l’offre de ${qui} à ${eurosSuivi(sur)}`], [`${titre} · en réponse à son offre de ${eurosSuivi(sur)}`])
+    : r.k === 'propose' ? l(`💶 Nouvelle proposition — ${eurosSuivi(r.montant)}`, [`${titre} · ${qui} répond à la contre-offre de ${eurosSuivi(sur)}`], [`${titre} · en réponse à la contre-offre du vendeur à ${eurosSuivi(sur)}`])
+      : r.k === 'refuse' ? l(`✖️ Offre refusée — ${eurosSuivi(sur)}`, [`${titre} · l’offre de ${qui} est refusée`], [`${titre} · le vendeur a refusé l’offre`], 'offre_close')
+        : r.k === 'renonce' ? l(`↩️ L’acquéreur renonce — ${eurosSuivi(sur)}`, [`${titre} · ${qui} ne donne pas suite à la contre-offre`], [`${titre} · pas de suite à la contre-offre du vendeur`], 'offre_close')
+          : l(`↩️ Offre retirée — ${eurosSuivi(sur)}`, [`${titre} · ${qui} retire son offre`], [`${titre} · offre retirée`], 'offre_close');
+  await noterJalon(b, x.jalon, {
+    vendeur: b.client_id ? { clientId: b.client_id, titre: x.t, texte: x.v } : null,
+    acquereur: avant.client_id ? { clientId: avant.client_id, rechercheId: avant.recherche_id, titre: x.t, texte: x.a } : null,
   });
 }
 

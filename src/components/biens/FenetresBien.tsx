@@ -5,18 +5,19 @@ import { createPortal } from 'react-dom';
 import { euros, jourParis } from '@/lib/mandat';
 import { num, txt, PERSONNE_VIDE } from '@/lib/actes';
 import {
-  argentBien, avantMandat, dateLongue as jourSuivi, estimationFaite, etapeDe, honorairesPour, montantActuel, pourcent, pretPourEstimer, texteEstimation, titreBien,
+  argentBien, avantMandat, dateLongue as jourSuivi, echangesDe, estimationFaite, etapeDe, honorairesPour, montantActuel, pourcent, pretPourEstimer, texteEstimation, titreBien,
   type BienVente, type Donnees, type EtapeVente, type SuiviVente,
 } from '@/lib/biens-vente';
 import { Croix, Ic } from '@/components/documents/ApercuActe';
 import { signalerEchec } from '@/lib/ecritures';
 import { etatDiffusion } from '@/lib/diffusion';
 import { SaisieNombre, lireClients } from './ChampsBien';
-import { ChoixQuand } from '@/components/pages/PageAgenda';
+import { CalendrierJour, ChoixQuand } from '@/components/pages/PageAgenda';
 import {
   ajouterSuivi, annulerMandatNote, changerEtape, cloreRelancesEstimation, estimationMiseDeCote, noterRdvEstimation, planifierEstimation, poserDansBien, type FaitRdv, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
   corrigerActe, creneauxPris, deplacerVisiteCRM, deplacerVisiteLibre, creerFicheProprio, donneesProprio, doublonsContact, marquerVendeur, finaliserAcquereur, finaliserTransactionsAcquereur, ligneNotaires, lireNotaire, majPrixDansAnnonces, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, nouvelleVente, offresTombees, retirerAutresAcceptees, annulerVisitesPrevues, solderDemandesDuBien, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
-  type CleRappel, type ClientMini, type CreneauPris, type VisiteRow, type ContactNotaire, type NotaireChoisi, type Rappel, type RechercheMini, type SuiteTombe,
+  aDesNotaires, donneesNotaires, ligneHono, lireHono, lireNotairesDossier,
+  type AccordHono, type CleRappel, type ClientMini, type CreneauPris, type VisiteRow, type ContactNotaire, type NotaireChoisi, type NotairesDossier, type Rappel, type RechercheMini, type SuiteTombe,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
 import b from './Biens.module.css';
@@ -87,6 +88,68 @@ function Pills<T extends string>({ options, v, onChange }: { options: { v: T; l:
 }
 const Erreur = ({ t }: { t: string }) => (t ? <div className={s.erreur}>{t}</div> : null);
 const resume = (bien: BienVente) => [titreBien(bien.donnees || {}), bien.ville, bien.prix ? `affiché ${euros(bien.prix)}` : ''].filter(Boolean).join(' · ');
+
+/* ── Une date (V3.172) ─────────────────────────────────────────────────
+   Alexandre : « quand on appuie sur les dates pour choisir, faut mettre le
+   calendrier du CRM, là l'affichage est moche ». Le champ date du navigateur
+   laisse la place à un bouton qui dit le jour en clair (« Jeudi 15
+   octobre »), et le calendrier de l'agenda s'ouvre juste dessous. Dans une
+   grille (`g2`, `g3`, les dates du compromis), il prend toute la largeur
+   sous la ligne du champ : la grille comble les trous (`dense`), et au
+   téléphone il tombe sous le champ touché. */
+type Raccourci = { lib: string; k: string };
+export function jourEnClair(k: string, court = false): string {
+  if (!k) return '';
+  const d = new Date(`${k}T12:00:00`);
+  if (isNaN(d.getTime())) return k;
+  /* La forme courte d'une autre année laisse le jour de la semaine : « 11 janv. 2027 ». */
+  const autreAnnee = d.getFullYear() !== new Date().getFullYear();
+  const t = d.toLocaleDateString('fr-FR', { ...(court && autreAnnee ? {} : { weekday: court ? 'short' as const : 'long' as const }), day: 'numeric', month: court ? 'short' : 'long', ...(autreAnnee ? { year: 'numeric' as const } : {}) })
+    .replace(/^(\S+) 1 /, '$1 1er ').replace(/^1 /, '1er ');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function ChampJour({ lib, v, onChange, min, vide = 'Choisir une date', effacer, raccourcis, depuis, off, cellule }: {
+  lib: string; v: string; onChange: (k: string) => void; min?: string; vide?: string;
+  /* Le champ peut rester vide : « Effacer la date » dans le calendrier. */
+  effacer?: boolean; raccourcis?: Raccourci[]; off?: boolean;
+  /* Le titre des raccourcis comptés depuis un autre jour (« Depuis la signature »). */
+  depuis?: string;
+  /* La case qui porte le bouton ; par défaut, l'intitulé au-dessus. */
+  cellule?: (bouton: ReactNode) => ReactNode;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const montre = ouvert && !off;
+  const bouton = (
+    <button type="button" className={b.champJour} data-ouvert={montre ? 'oui' : undefined} data-vide={v ? undefined : 'oui'} disabled={off}
+      aria-expanded={montre} aria-label={`${lib} : ${v ? jourEnClair(v) : vide}`} onClick={() => setOuvert(o => !o)}>
+      <span className={b.champJourIc}><Ic n="calendrier" t={15} /></span>
+      {/* Dans une case étroite, la forme courte (« Dim. 11 oct. ») : voir `.champJour` (container). */}
+      <span className={b.champJourTx}>{v ? <><span className={b.champJourLong}>{jourEnClair(v)}</span><span className={b.champJourCourt}>{jourEnClair(v, true)}</span></> : vide}</span>
+      <span className={b.champJourChev}><Ic n="bas" t={14} e={2.2} /></span>
+    </button>
+  );
+  return (
+    <>
+      {cellule ? cellule(bouton) : <div className={b.chF} role="group" aria-label={lib}><span>{lib}</span>{bouton}</div>}
+      {montre && (
+        <div className={b.champJourPanneau}>
+          <CalendrierJour valeur={v} min={min} raccourcis={raccourcis} titreRaccourcis={depuis}
+            onEffacer={effacer ? () => { onChange(''); setOuvert(false); } : undefined}
+            onChoisir={k => { onChange(k); setOuvert(false); }} />
+        </div>
+      )}
+    </>
+  );
+}
+/* Les raccourcis d'un jour passé (« Reçue le », « Signé le ») et ceux d'une
+   échéance comptée depuis un autre jour (« Sous 5 jours », « 3 mois après »). */
+const rDuJour = (): Raccourci[] => [{ lib: 'Aujourd’hui', k: aujourdhui() }, { lib: 'Hier', k: plusJours(aujourdhui(), -1) }, { lib: 'Avant-hier', k: plusJours(aujourdhui(), -2) }];
+const rApres = (de: string, l: [string, number][]): Raccourci[] => (de ? l.map(([lib, n]) => ({ lib, k: plusJours(de, n) })) : []);
+const rMois = (de: string, n: number) => {
+  const x = new Date(`${de || aujourdhui()}T12:00:00`);
+  x.setMonth(x.getMonth() + n);
+  return x.toISOString().slice(0, 10);
+};
 
 /* ══ Choisir un acheteur ═════════════════════════════════════════════════
    D'abord ceux qui connaissent déjà le bien, puis ceux qui correspondent ;
@@ -327,7 +390,7 @@ function ChampRdv({ lib, date, heure, onDate, onHeure, avant }: {
     <div className={b.chF} role="group" aria-label={lib}>
       <span>{lib}</span>
       <div className={b.g2}>
-        <input className={s.input} type="date" value={date} onChange={x => onDate(x.target.value)} aria-label="Le jour" />
+        <ChampJour lib="Le jour" v={date} onChange={onDate} effacer cellule={bt => bt} />
         <input className={s.input} type="time" value={heure} onChange={x => onHeure(x.target.value)} aria-label="L’heure" disabled={!date} />
       </div>
       {mot && (passe && date !== avant.date
@@ -479,7 +542,7 @@ export function FenDefinirEstimation({ bien, onFermer, onFait }: { bien: BienVen
       <div className={b.g2}>
         <div className={b.chF}>
           <span>Avis de valeur envoyé le</span>
-          <input className={s.input} type="date" value={avis} onChange={x => setAvis(x.target.value)} aria-label="Avis de valeur envoyé le" />
+          <ChampJour lib="Avis de valeur envoyé le" v={avis} onChange={setAvis} vide="Pas encore envoyé" effacer raccourcis={rDuJour()} cellule={bt => bt} />
           {!avis && <button type="button" className={b.lien} style={{ alignSelf: 'flex-start' }} onClick={() => setAvis(aujourdhui())}>Envoyé aujourd’hui</button>}
           {avisNeuf && (bien.client_id
             ? <div className={b.calc}>{relanceLe >= aujourdhui() ? `Noté dans son suivi, et une relance le ${jourSuivi(relanceLe)} pour faire le point avec lui.` : 'Noté dans son suivi. La semaine est passée : pas de relance.'}</div>
@@ -678,8 +741,9 @@ export function FenMandat({ bien, offres = [], creation = false, onFermer, onFai
         <Pills options={[{ v: 'simple', l: 'Simple' }, { v: 'semi', l: 'Semi-exclusif' }, { v: 'exclusif', l: 'Exclusif' }]} v={type} onChange={setType} />
         <div className={b.g3}>
           <Ch lib="N° du registre"><input className={s.input} value={numero} onChange={e => setNumero(e.target.value)} placeholder="Ex : 4331" /></Ch>
-          <Ch lib="Signé le"><input className={s.input} type="date" value={date} onChange={e => setDate(e.target.value)} /></Ch>
-          <Ch lib={type === 'simple' ? 'Mandat jusqu’au' : 'Exclusivité jusqu’au'}><input className={s.input} type="date" value={finM} onChange={e => setFinM(e.target.value)} /></Ch>
+          <ChampJour lib="Signé le" v={date} onChange={setDate} raccourcis={rDuJour()} />
+          <ChampJour lib={type === 'simple' ? 'Mandat jusqu’au' : 'Exclusivité jusqu’au'} v={finM} onChange={setFinM} vide="Pas de date" effacer
+            depuis="Depuis la signature" raccourcis={[{ lib: '3 mois après', k: rMois(date, 3) }, { lib: '6 mois après', k: rMois(date, 6) }, { lib: '1 an après', k: rMois(date, 12) }]} />
         </div>
         {type && type !== 'simple' && !finM && <button type="button" className={b.lien} style={{ alignSelf: 'flex-start' }} onClick={() => setFinM(plusJours(date, 91))}>Trois mois d’exclusivité : jusqu’au {new Date(`${plusJours(date, 91)}T12:00:00`).toLocaleDateString('fr-FR')}</button>}
         {!reprise && (
@@ -748,7 +812,8 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
   /* V3.45 : corriger une offre déjà notée (« Modifier l'offre »). */
   existante?: SuiviVente | null;
 }) {
-  const a = argentBien(bien.donnees || {});
+  const d = bien.donnees || {};
+  const a = argentBien(d);
   const ex = (existante?.donnees || {}) as Record<string, unknown>;
   const nb = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const tx = (v: unknown) => (typeof v === 'string' ? v : '');
@@ -766,11 +831,21 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
   const [fichier, setFichier] = useState<File | null>(null);
   const [passer, setPasser] = useState(!existante && (bien.etape === 'mandat' || bien.etape === 'suspendu'));
   const [dejaAcceptee, setDejaAcceptee] = useState(false);
+  /* V3.172 : acceptée d'emblée, les honoraires négociés ; tapés, ils ne
+     suivent plus le montant. */
+  const [hono, setHono] = useState<number | null>(null);
+  const [honoTape, setHonoTape] = useState(false);
+  const [charge, setCharge] = useState<'acquereur' | 'vendeur'>(d.charge === 'vendeur' ? 'vendeur' : 'acquereur');
+  /* V3.172 : les notaires du dossier, dès l'offre (facultatif). */
+  const n0 = lireNotairesDossier(ex);
+  const [voirNot, setVoirNot] = useState(aDesNotaires(n0));
+  const [notaires, setNotaires] = useState<NotairesDossier>(aDesNotaires(n0) ? n0 : notairesParDefaut(d));
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const ecart = montant && a.prix ? a.prix - montant : null;
-  const honoSi = honorairesPour(bien.donnees || {}, montant);
+  const honoSi = honorairesPour(d, montant);
   const netSi = montant && honoSi !== null ? montant - honoSi : null;
+  const honoAccord = honoTape ? hono : honoSi ?? a.hono;
   const qui = choix?.mode === 'crm' ? choix.o.nom : choix?.mode === 'libre' ? choix.nom.trim() : '';
   const avecPret = fin === 'pret' || fin === 'relais';
   const dejaPasse = !!jusquau && jusquau < aujourdhui();
@@ -778,6 +853,7 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
   async function valider() {
     if (!qui) { setErreur('Qui fait l’offre ?'); return; }
     if (!montant) { setErreur('Le montant de l’offre ?'); return; }
+    if (!existante && dejaAcceptee && honoAccord === null) { setErreur('Tes honoraires sur ce dossier ? Mets 0 s’il n’y en a pas.'); return; }
     setOccupe(true); setErreur('');
     try {
       const f = fichier ? await deposerPiece(bien.id, 'offre', fichier) : null;
@@ -785,6 +861,8 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
         qui, clientId: choix?.mode === 'crm' ? choix.o.clientId : null, rechercheId: choix?.mode === 'crm' ? choix.o.rechercheId : null,
         montant, recue, jusquau, financement: fin || null, apport, pret: avecPret ? pret : null, accord: avecPret ? accord.trim() : '', conditions: conditions.trim(), fichier: f,
         dejaAcceptee: !existante && dejaAcceptee,
+        hono: !existante && dejaAcceptee ? { prix: montant, hono: honoAccord, charge } : null,
+        notaires: voirNot ? notaires : null,
       };
       if (existante) { await modifierOffre(bien, existante, saisie); onFait(null); return; }
       const ligne = await enregistrerOffre(bien, saisie, proprio);
@@ -806,8 +884,9 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
         <div className={b.groupeT}><Ic n="euro" t={14} />L’offre</div>
         <div className={b.g3}>
           <Ch lib="Montant proposé"><SaisieNombre v={montant} euros unite="€" off={false} onChange={setMontant} /></Ch>
-          <Ch lib="Reçue le"><input className={s.input} type="date" value={recue} onChange={e => setRecue(e.target.value)} /></Ch>
-          <Ch lib="Valable jusqu’au"><input className={s.input} type="date" value={jusquau} onChange={e => setJusquau(e.target.value)} /></Ch>
+          <ChampJour lib="Reçue le" v={recue} onChange={setRecue} raccourcis={rDuJour()} />
+          <ChampJour lib="Valable jusqu’au" v={jusquau} onChange={setJusquau} vide="Sans délai" effacer depuis="Depuis sa réception"
+            raccourcis={rApres(recue, [['Sous 3 jours', 3], ['Sous 5 jours', 5], ['Sous une semaine', 7], ['Sous 10 jours', 10]])} />
         </div>
         {ecart !== null && a.prix && (
           <div className={b.calc}>
@@ -817,6 +896,7 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
         )}
         <ChG lib="Financement"><Pills options={[{ v: 'comptant', l: 'Comptant' }, { v: 'pret', l: 'Prêt' }, { v: 'relais', l: 'Prêt relais' }]} v={fin} onChange={x => setFin(fin === x ? '' : x)} /></ChG>
         {!fin && <div className={b.calc}>Pas encore dit ? Laisse vide : rien ne s’affichera sur l’offre.</div>}
+        {fin === 'comptant' && <div className={b.calc}>Achat comptant : le compromis n’aura pas de condition suspensive de prêt.</div>}
         <div className={b.g3}>
           <Ch lib="Apport"><SaisieNombre v={apport} euros unite="€" off={false} onChange={setApport} /></Ch>
           {avecPret && <Ch lib="Prêt demandé"><SaisieNombre v={pret} euros unite="€" off={false} onChange={setPret} /></Ch>}
@@ -829,11 +909,29 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
           <input type="file" accept=".pdf,image/*" onChange={e => setFichier(e.target.files?.[0] || null)} />
         </label>
       </div>
+      {/* V3.172 : les notaires, dès l'offre — le compromis les reprendra. */}
+      {voirNot ? (
+        <Section ic="balance" c="#34496e" f="#eef2f8" titre="Les notaires du dossier">
+          <BlocNotaires v={notaires} onChange={setNotaires} />
+        </Section>
+      ) : (
+        <button type="button" className={b.ajoutSection} onClick={() => setVoirNot(true)}>
+          <span className={b.ajoutSectionIc}><Ic n="balance" t={16} /></span>
+          <span><b>Les notaires du dossier</b><small>Vendeur, acquéreur, ou un notaire commun · facultatif, le compromis les reprendra</small></span>
+          <Ic n="plus" t={15} e={2.4} />
+        </button>
+      )}
       {!existante && (
         <label className={`${b.caseL} ${b.caseAccord}`} data-on={dejaAcceptee ? 'oui' : 'non'}>
           <input type="checkbox" checked={dejaAcceptee} onChange={e => setDejaAcceptee(e.target.checked)} />
           <span><b>Le vendeur a déjà accepté</b><small>Une offre convenue avant d’être notée : elle arrive acceptée, sans relance. Il restera « Le compromis est signé ».</small></span>
         </label>
+      )}
+      {!existante && dejaAcceptee && (
+        <Section ic="euro" c="#a07c28" f="#fbf6e9" titre="Tes honoraires sur ce dossier">
+          <BlocHonoraires prix={montant} hono={honoAccord} charge={charge} mandat={honoSi}
+            onHono={x => { setHono(x); setHonoTape(true); }} onCharge={setCharge} onMandat={() => setHonoTape(false)} />
+        </Section>
       )}
       {/* V3.48 : seulement depuis « En vente » ou « En pause » — une offre de
           secours sous compromis ne défait pas le compromis. */}
@@ -853,6 +951,179 @@ export function FenOffre({ bien, pour, existante, options, recherches, proprio, 
       )}
       <Erreur t={erreur} />
     </Fenetre>
+  );
+}
+
+/* ══ L'offre est acceptée (V3.172) ═════════════════════════════════════
+   Alexandre : « au moment de l'offre, il propose le prix ; ensuite, s'il n'y
+   a pas de contre-offre, quand j'appuie sur valider l'offre, faut que j'aie
+   une demande : quels sont vos honoraires négociés sur ce dossier. Ça
+   affiche le net vendeur, charge acheteur ou charge vendeur : le prix final
+   moins la com ». « Il accepte », sur la carte de l'offre, ouvre cette
+   fenêtre ; les honoraires, à la charge de qui, le net vendeur et les
+   notaires restent avec l'offre, et le compromis les reprend. `edition` :
+   les honoraires d'une offre déjà acceptée, corrigés depuis sa carte. */
+export type AccordOffre = { le: string; accord: AccordHono; notaires: NotairesDossier | null };
+export function FenAcceptation({ bien, offre, edition, autres = [], onFermer, onValider }: {
+  bien: BienVente; offre: SuiviVente; edition?: boolean;
+  /* Les offres déjà acceptées : elles passeront « retirées ». */
+  autres?: string[];
+  onFermer: () => void; onValider: (x: AccordOffre) => Promise<void>;
+}) {
+  const d = bien.donnees || {};
+  const od = (offre.donnees || {}) as Record<string, unknown>;
+  const ech = echangesDe(offre);
+  /* Le prix convenu : la dernière proposition, celle que l'on accepte. */
+  const prix = edition ? montantActuel(offre) : ech[ech.length - 1]?.montant || offre.montant || 0;
+  const avant = lireHono(od, prix);
+  const mandat = honorairesPour(d, prix);
+  const [hono, setHono] = useState<number | null>(avant ? avant.hono : mandat ?? argentBien(d).hono);
+  const [charge, setCharge] = useState<'acquereur' | 'vendeur'>(avant ? avant.charge : d.charge === 'vendeur' ? 'vendeur' : 'acquereur');
+  const [le, setLe] = useState(edition && typeof od.reponse_le === 'string' && od.reponse_le ? od.reponse_le : aujourdhui());
+  const n0 = lireNotairesDossier(od);
+  const [voirNot, setVoirNot] = useState(aDesNotaires(n0));
+  const [notaires, setNotaires] = useState<NotairesDossier>(aDesNotaires(n0) ? n0 : notairesParDefaut(d));
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const qui = offre.qui || 'l’acquéreur';
+  async function valider() {
+    if (hono === null) { setErreur('Tes honoraires sur ce dossier ? Mets 0 s’il n’y en a pas.'); return; }
+    if (!le) { setErreur('Le jour de l’accord ?'); return; }
+    setOccupe(true); setErreur('');
+    try { await onValider({ le, accord: { prix, hono, charge }, notaires: voirNot ? notaires : null }); }
+    catch (e) { setErreur((e as Error).message); setOccupe(false); }
+  }
+  return (
+    <Fenetre sur={`L’offre de ${qui}`} couleur="#15803d" titre={edition ? 'Les honoraires du dossier' : 'L’offre est acceptée'} sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
+      pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : edition ? 'Enregistrer' : 'Valider l’acceptation'}</button></>}>
+      <Section ic="accord" c="#15803d" f="#f0fdf4" titre="L’accord">
+        <div className={b.g2}>
+          <div className={b.chF}>
+            <span>Prix convenu</span>
+            <div className={b.prixAccord}>
+              <b>{euros(prix)}</b>
+              <small>{ech.length > 1 && offre.montant && offre.montant !== prix ? `Offre de départ ${euros(offre.montant)} · ${ech.length - 1} contre-proposition${ech.length > 2 ? 's' : ''}` : 'Le montant de l’offre'}</small>
+            </div>
+          </div>
+          <ChampJour lib="Acceptée le" v={le} onChange={setLe} raccourcis={rDuJour()} />
+        </div>
+      </Section>
+      <Section ic="euro" c="#a07c28" f="#fbf6e9" titre="Tes honoraires sur ce dossier">
+        <BlocHonoraires prix={prix} hono={hono} charge={charge} mandat={mandat} onHono={setHono} onCharge={setCharge} onMandat={() => setHono(mandat)} />
+      </Section>
+      {voirNot ? (
+        <Section ic="balance" c="#34496e" f="#eef2f8" titre="Les notaires du dossier">
+          <BlocNotaires v={notaires} onChange={setNotaires} />
+        </Section>
+      ) : (
+        <button type="button" className={b.ajoutSection} onClick={() => setVoirNot(true)}>
+          <span className={b.ajoutSectionIc}><Ic n="balance" t={16} /></span>
+          <span><b>Les notaires du dossier</b><small>Vendeur, acquéreur, ou un notaire commun · facultatif, le compromis les reprendra</small></span>
+          <Ic n="plus" t={15} e={2.4} />
+        </button>
+      )}
+      {!edition && autres.length > 0 && (
+        <div className={b.avertir}><Ic n="info" t={15} />{`L’offre de ${autres.join(', ')} était déjà acceptée : elle passera « retirée ».`}</div>
+      )}
+      {!edition && (
+        <div className={b.reste}>
+          <div className={b.resteT}>Le CRM s’occupe du reste</div>
+          <div><Ic n="historique" t={15} />{`« Offre acceptée » dans le suivi${bien.client_id ? ' du vendeur' : ''}${offre.client_id ? `${bien.client_id ? ' et' : ''} de ${qui}` : ''}, avec les honoraires et le net vendeur côté vendeur`}</div>
+          <div><Ic n="fleche" t={15} />Sur la carte de l’offre, ensuite : « Le compromis est signé → », qui reprend tout ça</div>
+        </div>
+      )}
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
+
+/* ══ Les notaires d'une offre (V3.172), depuis sa carte ═════════════════ */
+export function FenNotaires({ bien, offre, onFermer, onFait }: { bien: BienVente; offre: SuiviVente; onFermer: () => void; onFait: (b: BienVente | null) => void }) {
+  const n0 = lireNotairesDossier(offre.donnees);
+  const [notaires, setNotaires] = useState<NotairesDossier>(aDesNotaires(n0) ? n0 : notairesParDefaut(bien.donnees || {}));
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState('');
+  async function valider() {
+    setOccupe(true); setErreur('');
+    try { await majSuivi(offre.id, { donnees: { ...(offre.donnees || {}), ...donneesNotaires(notaires) } }); onFait(null); }
+    catch (e) { setErreur((e as Error).message); setOccupe(false); }
+  }
+  return (
+    <Fenetre sur={`L’offre de ${offre.qui || 'l’acquéreur'}`} couleur="#34496e" titre="Les notaires du dossier" sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
+      pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
+        <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Enregistrer'}</button></>}>
+      <div className={b.calc}>Le notaire du vendeur, celui de l’acquéreur, ou un seul pour les deux. Le compromis les reprendra.</div>
+      <BlocNotaires v={notaires} onChange={setNotaires} />
+      <Erreur t={erreur} />
+    </Fenetre>
+  );
+}
+
+/* ── Les honoraires négociés, et le net vendeur qui s'en déduit (V3.172) ──
+   Le net vendeur, c'est toujours le prix moins les honoraires. À la charge
+   de l'acquéreur, le prix les comprend (le pourcentage se lit sur le net,
+   comme la mention de l'annonce) ; à celle du vendeur, il les paie dessus. */
+function BlocHonoraires({ prix, hono, charge, mandat, onHono, onCharge, onMandat, origine }: {
+  prix: number | null; hono: number | null; charge: 'acquereur' | 'vendeur'; mandat: number | null;
+  onHono: (n: number | null) => void; onCharge: (c: 'acquereur' | 'vendeur') => void; onMandat: () => void;
+  /* D'où ils viennent (« Notés à l'acceptation de l'offre »). */
+  origine?: string;
+}) {
+  const net = prix && hono !== null ? prix - hono : null;
+  const base = charge === 'acquereur' ? net : prix;
+  const taux = hono !== null && base ? (hono / base) * 100 : null;
+  return (
+    <>
+      <div className={b.g2}>
+        <Ch lib="Honoraires négociés"><SaisieNombre v={hono} euros unite="€ TTC" off={false} onChange={onHono} /></Ch>
+        <ChG lib="À la charge de"><Pills options={[{ v: 'acquereur', l: 'L’acquéreur' }, { v: 'vendeur', l: 'Le vendeur' }]} v={charge} onChange={onCharge} /></ChG>
+      </div>
+      {(origine || (mandat !== null && hono !== mandat)) && (
+        <div className={b.calc}>
+          {origine}
+          {mandat !== null && hono !== mandat && <>{origine ? ' · ' : ''}<button type="button" className={b.lien} onClick={onMandat}>{`Ceux du mandat sur ce prix : ${euros(mandat)} TTC`}</button></>}
+        </div>
+      )}
+      <div className={b.netV}>
+        <div><small>{charge === 'acquereur' ? 'Prix, honoraires compris' : 'Prix de vente'}</small><b>{prix ? euros(prix) : '—'}</b></div>
+        <span className={b.netOp} aria-hidden="true">−</span>
+        <div><small>{`Honoraires${taux !== null ? ` · ${pourcent(taux)}` : ''}`}</small><b>{hono !== null ? euros(hono) : '—'}</b></div>
+        <span className={b.netOp} aria-hidden="true">=</span>
+        <div className={b.netRes}><small>Net vendeur</small><b>{net !== null ? euros(net) : '—'}</b></div>
+      </div>
+      <div className={b.calc}>{charge === 'acquereur'
+        ? 'À la charge de l’acquéreur : le prix les comprend, le vendeur touche le prix moins les honoraires.'
+        : 'À la charge du vendeur : il les paie sur le prix de vente.'}</div>
+    </>
+  );
+}
+
+/* ── Les notaires du dossier : un chacun, ou un notaire commun (V3.172) ── */
+const notairesParDefaut = (d: Donnees): NotairesDossier => ({ vendeur: txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null, acquereur: null, commun: false });
+function BlocNotaires({ v, onChange }: { v: NotairesDossier; onChange: (n: NotairesDossier) => void }) {
+  const [notaires, setNotaires] = useState<ContactNotaire[] | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    lireNotaires().then(l => { if (vivant) setNotaires(l); }).catch(() => { if (vivant) setNotaires([]); });
+    return () => { vivant = false; };
+  }, []);
+  const ajoute = (c: ContactNotaire) => setNotaires(l => [...(l || []), c]);
+  return (
+    <div className={b.notairesBloc}>
+      <Pills options={[{ v: 'deux', l: 'Un notaire chacun' }, { v: 'commun', l: 'Un notaire commun' }]} v={v.commun ? 'commun' : 'deux'}
+        onChange={x => onChange(x === 'commun'
+          ? { vendeur: v.vendeur || v.acquereur, acquereur: v.vendeur || v.acquereur, commun: true }
+          : { vendeur: v.vendeur, acquereur: v.commun ? null : v.acquereur, commun: false })} />
+      {v.commun ? (
+        <ChoixNotaire lib="Le notaire des deux parties" couleur="#34496e" v={v.vendeur} onChange={n => onChange({ vendeur: n, acquereur: n, commun: true })} notaires={notaires} onCree={ajoute} />
+      ) : (
+        <div className={b.g2}>
+          <ChoixNotaire lib="Notaire du vendeur" couleur="#a07c28" v={v.vendeur} onChange={n => onChange({ ...v, vendeur: n })} notaires={notaires} onCree={ajoute} />
+          <ChoixNotaire lib="Notaire de l’acquéreur" couleur="#1d4ed8" v={v.acquereur} onChange={n => onChange({ ...v, acquereur: n })} notaires={notaires} onCree={ajoute} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -934,7 +1205,11 @@ const dateLongue = (ymd: string) => (ymd ? new Date(`${ymd}T12:00:00`).toLocaleD
    et « si on veut modifier, un pop-up qui s'affiche, joli, avec des
    icônes ». La même fenêtre sert aux deux : la signature (le bien passe
    « Sous compromis ») et, ensuite, « Compléter le compromis » depuis la
-   carte (`existant` : la ligne du compromis). */
+   carte (`existant` : la ligne du compromis).
+   V3.172 : elle reprend ce que l'offre sait déjà, tout restant modifiable —
+   les honoraires négociés à l'acceptation (avec le rappel du net vendeur),
+   le financement (comptant : pas de condition de prêt), les notaires. Et
+   les dates se choisissent dans le calendrier du CRM. */
 export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onFermer, onFait }: {
   bien: BienVente; offres: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente | null) => void;
   /* Depuis la carte d'une offre, c'est elle. */
@@ -952,30 +1227,46 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
   const meilleure = candidates.find(o => o.id === (tx('offre') || choisie)) || candidates.find(o => o.statut === 'acceptee') || [...candidates].sort((x, y) => (prixRetenu(y) || 0) - (prixRetenu(x) || 0))[0];
   const [offreId, setOffreId] = useState(meilleure?.id || '');
   const offre = offres.find(o => o.id === offreId) || null;
+  const odDe = (o: SuiviVente | null) => (o?.donnees || {}) as Record<string, unknown>;
   const [prix, setPrix] = useState<number | null>(typeof ex.prix === 'number' ? ex.prix : prixRetenu(offre) || a.prix);
   const [signe, setSigne] = useState(tx('signe') || aujourdhui());
   const [sru, setSru] = useState(existant ? tx('sru') : plusJours(aujourdhui(), 11));
   const [pretL, setPretL] = useState(existant ? tx('pretLimite') : plusJours(aujourdhui(), 45));
-  const [acte, setActe] = useState(existant ? tx('acte') : plusJours(aujourdhui(), 90));
+  const [acte, setActe] = useState(existant ? tx('acte') : rMois(aujourdhui(), 3));
   const hDefaut = (p: number | null) => honorairesPour(d, p) ?? a.hono;
-  const [hono, setHono] = useState<number | null>(typeof ex.hono === 'number' ? ex.hono : hDefaut(prix));
-  /* Les notaires : ceux déjà choisis ; sinon le texte d'avant (« Son notaire » du bien, le notaire de l'acquéreur écrit à la main). */
-  const [notV, setNotV] = useState<NotaireChoisi | null>(lireNotaire(ex.notaireVendeur) || (txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null));
-  const [notA, setNotA] = useState<NotaireChoisi | null>(lireNotaire(ex.notaireAcquereur) || (tx('notaireAcq') ? { id: null, nom: tx('notaireAcq') } : null));
-  const [notaires, setNotaires] = useState<ContactNotaire[] | null>(null);
-  useEffect(() => {
-    let vivant = true;
-    lireNotaires().then(l => { if (vivant) setNotaires(l); }).catch(() => { if (vivant) setNotaires([]); });
-    return () => { vivant = false; };
-  }, []);
-  const ajouteNotaire = (c: ContactNotaire) => setNotaires(l => [...(l || []), c]);
+  /* Les honoraires : ceux du compromis ; sinon ceux négociés à l'acceptation
+     de l'offre (V3.172) ; sinon ceux du mandat sur ce prix. Notés ou tapés,
+     ils ne suivent plus le prix. */
+  const honoOffre = (o: SuiviVente | null) => lireHono(odDe(o), prixRetenu(o) || 0);
+  const h0 = typeof ex.hono === 'number' ? { hono: ex.hono, charge: ex.charge === 'vendeur' ? 'vendeur' as const : ex.charge === 'acquereur' ? 'acquereur' as const : null, src: 'compromis' as const }
+    : honoOffre(offre) ? { ...honoOffre(offre)!, src: 'offre' as const } : null;
+  const [hono, setHono] = useState<number | null>(h0 ? h0.hono : hDefaut(prix));
+  const [honoFixe, setHonoFixe] = useState(!!h0);
+  const [honoSrc, setHonoSrc] = useState<'compromis' | 'offre' | 'mandat'>(h0 ? h0.src : 'mandat');
+  const [charge, setCharge] = useState<'acquereur' | 'vendeur'>(h0?.charge || (d.charge === 'vendeur' ? 'vendeur' : 'acquereur'));
+  /* Le financement : celui du compromis, sinon celui de l'offre (V3.172). */
+  const finDe = (x: unknown): 'comptant' | 'pret' | 'relais' | '' => (x === 'comptant' || x === 'pret' || x === 'relais' ? x : '');
+  const [fin, setFin] = useState<'comptant' | 'pret' | 'relais' | ''>(finDe(ex.financement) || finDe(odDe(offre).financement));
+  const finVientDeLOffre = !finDe(ex.financement) && !!finDe(odDe(offre).financement) && fin === finDe(odDe(offre).financement);
+  const comptant = fin === 'comptant';
+  /* Les notaires : ceux du compromis ; sinon ceux notés avec l'offre ; sinon
+     le texte d'avant (« Son notaire » du bien, le notaire de l'acquéreur
+     écrit à la main). */
+  const notairesInit = (o: SuiviVente | null): NotairesDossier => {
+    const c = lireNotairesDossier(ex);
+    if (aDesNotaires(c)) return c;
+    const n = lireNotairesDossier(odDe(o));
+    if (aDesNotaires(n)) return n;
+    return { vendeur: txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null, acquereur: tx('notaireAcq') ? { id: null, nom: tx('notaireAcq') } : null, commun: false };
+  };
+  const [notaires, setNotaires] = useState<NotairesDossier>(() => notairesInit(offre));
+  const notairesDeLOffre = !aDesNotaires(lireNotairesDossier(ex)) && aDesNotaires(lireNotairesDossier(odDe(offre)));
 
   /* Les rappels : proposés d'après les dates, cochés d'office s'ils sont à venir. */
   const acquereur = offre?.qui || tx('acquereur') || 'l’acquéreur';
   const titre = bien.titre || titreBien(d);
   const pourProprio = bien.client_id || null;
   const pourAcq = offre?.client_id || null;
-  const comptant = (offre?.donnees as Record<string, unknown> | undefined)?.financement === 'comptant';
   const rappelsAvant = (ex.rappels && typeof ex.rappels === 'object' ? ex.rappels : {}) as Record<string, string>;
   const rappelsLe = (ex.rappelsLe && typeof ex.rappelsLe === 'object' ? ex.rappelsLe : {}) as Record<string, string>;
   type Def = { cle: CleRappel; ic: string; c: string; f: string; t: string; base: string; ecart: number; client: string | null; note: (le: string) => string };
@@ -1007,8 +1298,10 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
     const garde = existant && rappelsLe[x.cle] && x.base === basesAvant[x.cle] ? rappelsLe[x.cle] : '';
     const le = c.le || garde || (x.base ? plusJours(x.base, x.ecart) : '');
     const passe = !!le && le < aujourdhui();
-    const on = !dejaVendu && (c.on ?? (!!le && !passe && !!x.client && !(x.cle === 'pret' && comptant)));
-    return { ...x, le, passe, on };
+    /* Comptant : pas de condition de prêt, donc pas de rappel (V3.172). */
+    const sansObjet = x.cle === 'pret' && comptant;
+    const on = !dejaVendu && !sansObjet && (c.on ?? (!!le && !passe && !!x.client));
+    return { ...x, le, passe, on, sansObjet };
   });
   const majR = (k: string, v: { on?: boolean; le?: string }) => setChoixR(o => ({ ...o, [k]: { ...o[k], ...v } }));
   /* Et ensuite (V3.47) : la recherche de l'acquéreur en pause, les autres offres refusées. */
@@ -1020,18 +1313,29 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
   const [erreur, setErreur] = useState('');
   const changerOffre = (id: string) => {
     setOffreId(id);
-    const p = prixRetenu(offres.find(x => x.id === id));
-    if (p) { setPrix(p); setHono(hDefaut(p)); }
+    const o = offres.find(x => x.id === id) || null;
+    const p = prixRetenu(o);
+    if (p) setPrix(p);
+    /* Les honoraires, le financement et les notaires de cette offre-là. */
+    if (honoSrc !== 'compromis') {
+      const h = honoOffre(o);
+      if (h) { setHono(h.hono); setCharge(h.charge); setHonoFixe(true); setHonoSrc('offre'); }
+      else { setHono(hDefaut(p || prix)); setHonoFixe(false); setHonoSrc('mandat'); }
+    }
+    if (!finDe(ex.financement)) setFin(finDe(odDe(o).financement));
+    if (!aDesNotaires(lireNotairesDossier(ex))) setNotaires(notairesInit(o));
   };
-  const majSigne = (x: string) => { setSigne(x); setSru(plusJours(x, 11)); setPretL(plusJours(x, 45)); setActe(plusJours(x, 90)); };
+  const majSigne = (x: string) => { setSigne(x); if (!x) return; setSru(plusJours(x, 11)); setPretL(plusJours(x, 45)); setActe(rMois(x, 3)); };
+  const majPrix = (x: number | null) => { setPrix(x); if (!honoFixe) setHono(hDefaut(x)); };
+  const net = prix && hono !== null ? prix - hono : null;
   async function valider() {
     if (!prix) { setErreur('Le prix de vente ?'); return; }
     if (!signe) { setErreur('La date de signature ?'); return; }
     setOccupe(true); setErreur('');
     try {
       const infos = {
-        offre: offre?.id || null, acquereur: offre?.qui || tx('acquereur') || null, prix, signe, sru, pretLimite: pretL, acte, hono,
-        notaireVendeur: notV, notaireAcquereur: notA, notaireAcq: notA?.nom || '',
+        offre: offre?.id || null, acquereur: offre?.qui || tx('acquereur') || null, prix, signe, sru, pretLimite: comptant ? '' : pretL, acte, hono,
+        charge, net, financement: fin || null, ...donneesNotaires(notaires),
       };
       const liste: Rappel[] = rappels.map(r => ({ cle: r.cle, on: r.on && !!r.le, le: r.le, clientId: r.client, note: r.note(r.le) }));
       const rappelsLeNouv = Object.fromEntries(rappels.filter(r => r.on && r.le).map(r => [r.cle, r.le]));
@@ -1057,14 +1361,16 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
       /* La relance « réponse à donner » de cette offre n'a plus d'objet. */
       if (offre) await cloreRelanceOffre(bien, offre);
       /* Le compromis, dans le Suivi du vendeur et de l'acquéreur (V3.47) :
-         la date de signature, le prix, les dates qui comptent, les notaires. */
-      const dates = [sru ? `fin de la rétractation le ${jourSuivi(sru)}` : '', pretL ? `condition de prêt jusqu’au ${jourSuivi(pretL)}` : '', acte ? `acte prévu le ${jourSuivi(acte)}` : '']
+         la date de signature, le prix, les dates qui comptent, les notaires ;
+         V3.172 : le comptant, et côté vendeur les honoraires et le net. */
+      const dates = [sru ? `fin de la rétractation le ${jourSuivi(sru)}` : '', comptant ? 'achat comptant, sans condition de prêt' : pretL ? `condition de prêt jusqu’au ${jourSuivi(pretL)}` : '', acte ? `acte prévu le ${jourSuivi(acte)}` : '']
         .filter(Boolean).join(' · ');
       const lesDates = dates ? dates.charAt(0).toUpperCase() + dates.slice(1) : null;
-      const not = ligneNotaires(notV, notA);
+      const n = donneesNotaires(notaires);
+      const not = ligneNotaires(lireNotaire(n.notaireVendeur), lireNotaire(n.notaireAcquereur));
       const quiAcq = offre?.qui || tx('acquereur');
       await noterJalon(bien, 'compromis', {
-        vendeur: pourProprio ? { clientId: pourProprio, titre: `✍️ Compromis signé le ${jourSuivi(signe)}`, texte: [`${titre} · ${eurosSuivi(prix)}${quiAcq ? ` · acquéreur : ${quiAcq}` : ''}`, lesDates, not] } : null,
+        vendeur: pourProprio ? { clientId: pourProprio, titre: `✍️ Compromis signé le ${jourSuivi(signe)}`, texte: [`${titre} · ${eurosSuivi(prix)}${quiAcq ? ` · acquéreur : ${quiAcq}` : ''}`, lesDates, not, ligneHono({ prix, hono, charge })] } : null,
         acquereur: offre?.client_id ? { clientId: offre.client_id, rechercheId: offre.recherche_id, titre: `✍️ Compromis signé le ${jourSuivi(signe)}`,
           texte: [`${titre} · ${eurosSuivi(prix)}`, lesDates, not, pause ? 'Sa recherche est en pause pendant le compromis : la veille s’arrête. Elle reprend si le compromis tombe.' : null] } : null,
       });
@@ -1073,10 +1379,14 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
   }
   const nomDe = (id: string | null) => (id && clientsNoms?.[id]) || '';
   const DATES = [
-    { ic: 'bouclier', c: '#b45309', f: '#fff7ed', lib: 'Fin de la rétractation', aide: '10 jours après la remise du compromis', v: sru, set: setSru },
-    { ic: 'banque', c: '#1d4ed8', f: '#eff6ff', lib: 'Condition de prêt jusqu’au', aide: 'En général 45 à 60 jours', v: pretL, set: setPretL },
-    { ic: 'plume', c: '#6d28d9', f: '#f5f3ff', lib: 'Acte prévu le', aide: 'Environ trois mois après', v: acte, set: setActe },
+    { cle: 'sru', ic: 'bouclier', c: '#b45309', f: '#fff7ed', lib: 'Fin de la rétractation', aide: '10 jours après la remise du compromis', v: sru, set: setSru,
+      raccourcis: rApres(signe, [['10 jours après', 10], ['11 jours après', 11], ['15 jours après', 15]]) },
+    { cle: 'pret', ic: 'banque', c: '#1d4ed8', f: '#eff6ff', lib: 'Condition de prêt jusqu’au', aide: 'En général 45 à 60 jours', v: pretL, set: setPretL,
+      raccourcis: rApres(signe, [['30 jours après', 30], ['45 jours après', 45], ['60 jours après', 60]]) },
+    { cle: 'acte', ic: 'plume', c: '#6d28d9', f: '#f5f3ff', lib: 'Acte prévu le', aide: 'Environ trois mois après', v: acte, set: setActe,
+      raccourcis: signe ? [{ lib: '2 mois après', k: rMois(signe, 2) }, { lib: '3 mois après', k: rMois(signe, 3) }, { lib: '4 mois après', k: rMois(signe, 4) }] : [] },
   ];
+  const dateOffre = (o: SuiviVente | null) => { const r = odDe(o).reponse_le; return typeof r === 'string' && r ? ` du ${dateLongue(r)}` : ''; };
   return (
     <Fenetre sur={existant ? `Le compromis · ${acquereur}` : 'Le bien passe « Sous compromis »'} couleur={etapeDe('compromis').c}
       titre={existant ? 'Compléter le compromis' : 'Le compromis est signé'} sous={resume(bien)} occupe={occupe} onFermer={onFermer} large
@@ -1095,38 +1405,56 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
         </Section>
       )}
       <Section ic="doc" c="#2d5c8f" f="#eff4fb" titre="Le compromis">
-        <div className={b.g3}>
-          <Ch lib="Signé le"><input className={s.input} type="date" value={signe} onChange={e => majSigne(e.target.value)} /></Ch>
-          <Ch lib="Prix de vente"><SaisieNombre v={prix} euros unite="€" off={false} onChange={x => { setPrix(x); setHono(hDefaut(x)); }} /></Ch>
-          <Ch lib="Honoraires de l’agence"><SaisieNombre v={hono} euros unite="€ TTC" off={false} onChange={setHono} /></Ch>
+        <div className={b.g2}>
+          <ChampJour lib="Signé le" v={signe} onChange={majSigne} raccourcis={rDuJour()} />
+          <Ch lib="Prix de vente"><SaisieNombre v={prix} euros unite="€" off={false} onChange={majPrix} /></Ch>
+        </div>
+      </Section>
+      <Section ic="euro" c="#a07c28" f="#fbf6e9" titre="Les honoraires et le net vendeur">
+        <BlocHonoraires prix={prix} hono={hono} charge={charge} mandat={hDefaut(prix)}
+          origine={honoSrc === 'offre' ? `Notés à l’acceptation de l’offre${dateOffre(offre)}` : undefined}
+          onHono={x => { setHono(x); setHonoFixe(true); }} onCharge={setCharge} onMandat={() => { setHono(hDefaut(prix)); setHonoFixe(false); setHonoSrc('mandat'); }} />
+      </Section>
+      <Section ic="banque" c="#1d4ed8" f="#eff6ff" titre="Le financement">
+        <Pills options={[{ v: 'comptant', l: 'Comptant' }, { v: 'pret', l: 'Avec un prêt' }, { v: 'relais', l: 'Prêt relais' }]} v={fin} onChange={x => setFin(fin === x ? '' : x)} />
+        <div className={b.calc}>
+          {comptant ? 'Achat comptant : pas de condition suspensive de prêt, ni de date pour elle.' : fin ? 'Avec une condition suspensive de prêt : sa date est juste dessous.' : 'Pas encore dit : la condition de prêt reste proposée.'}
+          {finVientDeLOffre ? ' Repris de l’offre.' : ''}
         </div>
       </Section>
       <Section ic="calendrier" c="#15803d" f="#f0fdf4" titre="Les dates">
         <div className={b.datesC}>
-          {DATES.map(x => (
-            <label key={x.lib} className={b.dateC} style={{ ['--c' as string]: x.c, ['--f' as string]: x.f } as React.CSSProperties}>
-              <span className={b.dateCT}><span className={b.dateCIc}><Ic n={x.ic} t={15} /></span><span className={b.dateCL}>{x.lib}</span></span>
-              <input className={s.input} type="date" value={x.v} onChange={e => x.set(e.target.value)} />
-              <small>{x.aide}</small>
-            </label>
-          ))}
+          {DATES.map(x => (x.cle === 'pret' && comptant ? (
+            <div key={x.cle} className={b.dateC} data-sans="oui" style={{ ['--c' as string]: x.c, ['--f' as string]: '#f8fafc' } as React.CSSProperties}>
+              <span className={b.dateCT}><span className={b.dateCIc}><Ic n={x.ic} t={15} /></span><span className={b.dateCL}>Condition de prêt</span></span>
+              <b className={b.dateSans}>Aucune · achat comptant</b>
+              <small>Change le financement au-dessus s’il y a un prêt.</small>
+            </div>
+          ) : (
+            <ChampJour key={x.cle} lib={x.lib} v={x.v} onChange={x.set} vide="À renseigner" effacer raccourcis={x.raccourcis} depuis="Depuis la signature"
+              cellule={bt => (
+                <div className={b.dateC} style={{ ['--c' as string]: x.c, ['--f' as string]: x.f } as React.CSSProperties}>
+                  <span className={b.dateCT}><span className={b.dateCIc}><Ic n={x.ic} t={15} /></span><span className={b.dateCL}>{x.lib}</span></span>
+                  {bt}
+                  <small>{x.aide}</small>
+                </div>
+              )} />
+          )))}
         </div>
         {!existant ? <div className={b.calc}>Calculées depuis la signature : ajuste-les à ce qui est écrit dans le compromis.</div>
-          : (!sru || !pretL || !acte) && signe ? (
-            <button type="button" className={b.notaireAjout} onClick={() => { if (!sru) setSru(plusJours(signe, 11)); if (!pretL) setPretL(plusJours(signe, 45)); if (!acte) setActe(plusJours(signe, 90)); }}>
+          : (!sru || (!pretL && !comptant) || !acte) && signe ? (
+            <button type="button" className={b.notaireAjout} onClick={() => { if (!sru) setSru(plusJours(signe, 11)); if (!pretL && !comptant) setPretL(plusJours(signe, 45)); if (!acte) setActe(rMois(signe, 3)); }}>
               <Ic n="calendrier" t={13} />{`Calculer depuis la signature du ${dateLongue(signe)}`}
             </button>
           ) : null}
       </Section>
       <Section ic="balance" c="#34496e" f="#eef2f8" titre="Les notaires">
-        <div className={b.g2}>
-          <ChoixNotaire lib="Notaire du vendeur" couleur="#a07c28" v={notV} onChange={setNotV} notaires={notaires} onCree={ajouteNotaire} />
-          <ChoixNotaire lib="Notaire de l’acquéreur" couleur="#1d4ed8" v={notA} onChange={setNotA} notaires={notaires} onCree={ajouteNotaire} />
-        </div>
+        {notairesDeLOffre && <div className={b.calc}>Repris de l’offre : modifie-les si besoin.</div>}
+        <BlocNotaires v={notaires} onChange={setNotaires} />
       </Section>
       {!dejaVendu && <Section ic="horloge" c="#c2410c" f="#fff7ed" titre="Les rappels, dans tes Relances">
         <div className={b.rappels}>
-          {rappels.map(r => (
+          {rappels.filter(r => !r.sansObjet).map(r => (
             <div key={r.cle} className={b.rappel} data-on={r.on ? 'oui' : 'non'} style={{ ['--c' as string]: r.c, ['--f' as string]: r.f } as React.CSSProperties}>
               <label className={b.rappelCase}>
                 <input type="checkbox" checked={r.on} disabled={!r.client || !r.le} onChange={e => majR(r.cle, { on: e.target.checked })} />
@@ -1134,10 +1462,10 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
                 <span className={b.rappelTx}>
                   <b>{r.t}</b>
                   <small>{!r.le ? 'Mets d’abord la date au-dessus.' : !r.client ? 'Relie le propriétaire ou l’acquéreur à une fiche du CRM pour recevoir ce rappel.'
-                    : r.passe ? 'Cette date est déjà passée.' : r.cle === 'pret' && comptant ? 'Achat comptant : pas forcément utile.' : `Chez ${nomDe(r.client) || 'le contact'}`}</small>
+                    : r.passe ? 'Cette date est déjà passée.' : `Chez ${nomDe(r.client) || 'le contact'}`}</small>
                 </span>
               </label>
-              <input className={`${s.input} ${b.rappelDate}`} type="date" value={r.le} disabled={!r.on} onChange={e => majR(r.cle, { le: e.target.value })} aria-label={`Date : ${r.t}`} />
+              <ChampJour lib={`Date : ${r.t}`} v={r.le} onChange={k => majR(r.cle, { le: k })} off={!r.on} cellule={bt => <div className={b.rappelDate}>{bt}</div>} />
             </div>
           ))}
         </div>
@@ -1461,7 +1789,7 @@ export function FenVendu({ bien, compromis, offres = [], proprio = null, prevues
       {correction && <div className={b.calc}>Une date, un prix ou des honoraires saisis à tort : corrige-les ici. L’étape ne change pas, et l’historique du bien garde l’ancienne et la nouvelle valeur.</div>}
       <Section ic="plume" c="#6d28d9" f="#f5f3ff" titre="L’acte">
         <div className={b.g3}>
-          <Ch lib="Acte signé le"><input className={s.input} type="date" value={date} onChange={e => setDate(e.target.value)} /></Ch>
+          <ChampJour lib="Acte signé le" v={date} onChange={setDate} raccourcis={rDuJour()} />
           <Ch lib="Prix de vente"><SaisieNombre v={prix} euros unite="€" off={false} onChange={changerPrix} /></Ch>
           <Ch lib="Honoraires encaissés (TTC)"><SaisieNombre v={sansHono ? null : hono} euros unite="€ TTC" off={sansHono} ph={sansHono ? 'Sans honoraires' : undefined} onChange={x => { setHono(x); setHonoTape(true); }} /></Ch>
         </div>
@@ -1592,7 +1920,8 @@ export function FenRaison({ bien, etape, titre, sur, prevues = [], offres = [], 
       )}
       {choix.length > 0 && <Pills options={choix.map(x => ({ v: x, l: x }))} v={raison} onChange={setRaison} />}
       <Ch lib="La raison"><input className={s.input} value={raison} onChange={e => setRaison(e.target.value)} placeholder="En quelques mots" /></Ch>
-      {(etape === 'suspendu' || etape === 'a_suivre') && <Ch lib={etape === 'a_suivre' ? 'Le recontacter vers le' : 'Reprise prévue le'}><input className={s.input} type="date" value={reprise} onChange={e => setReprise(e.target.value)} /></Ch>}
+      {(etape === 'suspendu' || etape === 'a_suivre') && <ChampJour lib={etape === 'a_suivre' ? 'Le recontacter vers le' : 'Reprise prévue le'} v={reprise} onChange={setReprise} vide="Pas de date" effacer
+        raccourcis={[{ lib: 'Dans une semaine', k: plusJours(aujourdhui(), 7) }, { lib: 'Dans un mois', k: rMois(aujourdhui(), 1) }, { lib: 'Dans trois mois', k: rMois(aujourdhui(), 3) }, { lib: 'Dans six mois', k: rMois(aujourdhui(), 6) }]} />}
       {miseDeCote && reprise && reprise >= aujourdhui() && <div className={b.calc}>{bien.client_id ? `Une relance le ${jourSuivi(reprise)} pour le recontacter, et une ligne dans son suivi.` : 'Relie le propriétaire à sa fiche pour recevoir une relance à cette date.'}</div>}
       {rdvAVenir && (
         <div className={b.rappels}>
@@ -1923,12 +2252,13 @@ export type VisiteADeplacer = { qui: string; ymd: string; heure: string; crm?: V
 export function FenDeplacerVisite({ bien, v, onFermer, onFait }: { bien: BienVente; v: VisiteADeplacer; onFermer: () => void; onFait: () => void }) {
   const dl = (v.libre?.donnees || {}) as Record<string, unknown>;
   const [date, setDate] = useState(v.ymd || aujourdhui());
-  const [heure, setHeure] = useState(v.heure || '');
+  /* V3.172 : l'heure de l'agenda en montre toujours une — sans heure notée, 10 h. */
+  const [heure, setHeure] = useState(v.heure || '10:00');
   const [duree, setDuree] = useState<number>(v.crm ? Number(v.crm.duree_min) || 45 : Number(dl.duree) || 45);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const dureeAvant = v.crm ? Number(v.crm.duree_min) || 45 : Number(dl.duree) || 45;
-  const pareil = date === v.ymd && heure === v.heure && duree === dureeAvant;
+  const pareil = date === v.ymd && heure === (v.heure || '10:00') && duree === dureeAvant;
   async function valider() {
     if (!date) { setErreur('La nouvelle date ?'); return; }
     if (v.libre && !heure) { setErreur('L’heure de la visite ?'); return; }
@@ -1945,11 +2275,8 @@ export function FenDeplacerVisite({ bien, v, onFermer, onFait }: { bien: BienVen
       pied={<><button type="button" className={s.btn} disabled={occupe} onClick={onFermer}>Annuler</button>
         <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={valider}><Ic n="check" t={15} e={2.4} />{occupe ? 'Enregistrement…' : 'Déplacer la visite'}</button></>}>
       <div className={b.calc}>{`Prévue le ${v.ymd ? jourSuivi(v.ymd) : '?'}${v.heure ? ` à ${v.heure.replace(':', ' h ')}` : ''}.`}</div>
-      <div className={b.g3}>
-        <Ch lib="Nouvelle date"><input className={s.input} type="date" value={date} onChange={e => setDate(e.target.value)} /></Ch>
-        <Ch lib="Heure"><input className={s.input} type="time" value={heure} onChange={e => setHeure(e.target.value)} /></Ch>
-        <Ch lib="Durée"><select className={b.select} value={duree} onChange={e => setDuree(Number(e.target.value))}>{[30, 45, 60, 90].map(x => <option key={x} value={x}>{`${x} min`}</option>)}</select></Ch>
-      </div>
+      {/* V3.172 : le jour, l'heure et la durée de l'agenda, plutôt que les champs du navigateur. */}
+      <ChoixQuand date={date} heure={heure} duree={duree} onDate={setDate} onHeure={setHeure} onDuree={setDuree} durees={DUREES_VISITE} />
       <AlerteCreneau date={date} heure={heure} duree={duree} sauf={{ visite: v.crm?.id, suivi: v.libre?.id }} />
       <div className={b.calc}>{v.crm
         ? 'Son rappel dans tes Relances suit la nouvelle date, et son suivi dit « Visite déplacée ». Le mail de rappel pourra repartir depuis la page Visites.'

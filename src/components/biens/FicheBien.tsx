@@ -8,7 +8,7 @@ import { num, txt, liste, modele, modeSignature, lirePersonnes } from '@/lib/act
 import { ISSUES, issueDe, visitePasseeParis, type Issue } from '@/lib/visites';
 import CompteRenduVisite, { enregistrerCompteRendu } from '@/components/shared/CompteRenduVisite';
 import {
-  ETAPES_BIEN, PARCOURS, permisBien, apresReponse, argentBien, montantActuel, avantMandat, controleAnnonce, mentionsAnnonce, villeAffichee, dateCourte, dateLongue, etapeDe, etageTexte, joursAvant,
+  ETAPES_BIEN, PARCOURS, permisBien, apresReponse, argentBien, echangesDe, montantActuel, avantMandat, controleAnnonce, mentionsAnnonce, villeAffichee, dateCourte, dateLongue, etapeDe, etageTexte, joursAvant,
   lireDossier, lireObservations, lirePhotos, lirePieces, m2, nomExpo, nomProprio, passoire, pourcent, titreBien,
   type BienVente, type Donnees, type EtapeVente, type Observation, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
@@ -19,13 +19,14 @@ import VisiteSurPlace from './VisiteSurPlace';
 import { reformulerAnnonce } from './annonce-ia';
 import { BarreOnglets, CorpsOnglet } from '@/components/shared/OngletsGlissants';
 import {
-  FenAnnulerMandat, FenCompromis, FenCompromisTombe, FenDefinirEstimation, FenDeplacerVisite, FenGuide, FenNouvelleVente, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
-  type ChoixA, type CycleEstimation, type OptionAcheteur,
+  FenAcceptation, FenAnnulerMandat, FenCompromis, FenCompromisTombe, FenDefinirEstimation, FenDeplacerVisite, FenGuide, FenNotaires, FenNouvelleVente, FenEstimation, FenMandat, FenNote, FenOffre, FenPrix, FenRaison, FenVendu, FenVisite, JaugeEstimation, lireEstim,
+  type AccordOffre, type ChoixA, type CycleEstimation, type OptionAcheteur,
 } from './FenetresBien';
 import type { ChoixGuide } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, fiable, recherchesRappro, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
-  MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneNotaires, lireNotaire, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterOffreAcceptee, retirerAutresAcceptees, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
+  MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneHono, ligneNotaires, lireHono, lireNotaire, lireNotairesDossier, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterNegociation, noterOffreAcceptee, retirerAutresAcceptees,
+  donneesHono, donneesNotaires, aDesNotaires, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
 import { exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
@@ -86,7 +87,9 @@ import { BlocDernierement, BlocProchaines, CartePourLaVisite, CarteVisites, Kpis
 /* V3.91 : Surfaces est une sous-rubrique de « Le bien » (SousVue), plus un onglet. */
 type Onglet = 'apercu' | 'photos' | 'bien' | 'visites' | 'acheteurs' | 'documents' | 'historique';
 type Fen =
-  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente } | { k: 'tombe' } | { k: 'revente' } | { k: 'vendu'; correction?: boolean } | { k: 'prix' } | { k: 'visite'; pour?: ChoixA } | { k: 'note' }
+  | { k: 'mandat' } | { k: 'estimation' } | { k: 'estim' } | { k: 'offre'; pour?: ChoixA; existante?: SuiviVente } | { k: 'compromis'; offre?: string; existant?: SuiviVente }
+  /* V3.172 : « Il accepte » demande les honoraires négociés ; les notaires d'une offre. */
+  | { k: 'accepte'; offre: SuiviVente; edition?: boolean } | { k: 'notaires'; offre: SuiviVente } | { k: 'tombe' } | { k: 'revente' } | { k: 'vendu'; correction?: boolean } | { k: 'prix' } | { k: 'visite'; pour?: ChoixA } | { k: 'note' }
   | { k: 'deplacer'; v: VisiteU } | { k: 'point' }
   | { k: 'raison'; etape: EtapeVente; titre: string; sur: string } | { k: 'acheteurs'; liste: Acheteur[] } | { k: 'annulerMandat'; vers?: EtapeVente }
   | { k: 'diffusion'; premiere?: boolean };
@@ -943,8 +946,10 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
         titre = `Compromis signé${str('signe') ? ` le ${dateLongue(str('signe'))}` : ''}${typeof d.prix === 'number' ? ` · ${euros(d.prix)}` : ''}`;
         detail = [
           str('acquereur') ? `Acquéreur : ${str('acquereur')}` : '',
-          maj([str('sru') ? `rétractation jusqu’au ${dateCourte(str('sru'))}` : '', str('pretLimite') ? `prêt jusqu’au ${dateCourte(str('pretLimite'))}` : '', str('acte') ? `acte prévu le ${dateCourte(str('acte'))}` : ''].filter(Boolean).join(' · ')),
+          maj([str('sru') ? `rétractation jusqu’au ${dateCourte(str('sru'))}` : '', str('financement') === 'comptant' ? 'achat comptant, sans condition de prêt' : str('pretLimite') ? `prêt jusqu’au ${dateCourte(str('pretLimite'))}` : '', str('acte') ? `acte prévu le ${dateCourte(str('acte'))}` : ''].filter(Boolean).join(' · ')),
           ligneNotaires(lireNotaire(d.notaireVendeur), lireNotaire(d.notaireAcquereur)) || '',
+          /* V3.172 : les honoraires et le net vendeur, notés au compromis. */
+          typeof d.hono === 'number' && typeof d.prix === 'number' ? ligneHono({ prix: d.prix, hono: d.hono, charge: d.charge === 'vendeur' ? 'vendeur' : 'acquereur' }) || '' : '',
         ].filter(Boolean).join('\n');
       } else if (e === 'vendu') {
         /* V3.47 : l'acte authentique, qui a vendu, qui a acheté — comme dans le Suivi des contacts. */
@@ -998,11 +1003,29 @@ export function evenements(bien: BienVente, det: DetailBien, clients: Record<str
       else if (d.estimation === true) l.push({ cle: x.id, le: x.le, ic: 'etiquette', ton: 'ic_violet', titre: d.avant ? 'Estimation revue' : 'Estimation', detail: sans('Estimation :'), genre: 'etapes' });
       else l.push({ cle: x.id, le: x.le, ic: 'bulle', ton: 'ic_gris', titre: 'Note', detail: x.commentaire || '', genre: 'notes', suppr: x.id });
     } else if (x.type === 'offre') {
+      /* V3.172 (Alexandre : « sur la fiche du bien aussi, avec l'historique
+         s'il y a plusieurs contre-offres ») : l'offre, puis chaque tour de la
+         négociation à sa date, puis sa fin (acceptée, refusée, retirée). Un
+         clic sur l'avatar ouvre la fiche de l'acquéreur. */
+      const qui = x.qui || 'l’acquéreur';
+      const chez = chezLui(x.client_id);
+      const fin = str('financement') === 'comptant' ? 'comptant' : str('financement') === 'relais' ? 'prêt relais' : str('financement') === 'pret' ? 'avec un prêt' : '';
       l.push({ cle: x.id, le: x.le, ic: 'euro', ton: 'ic_or', titre: `Offre de ${euros(x.montant || 0)} · ${x.qui || 'un acquéreur'}`,
-        detail: [str('jusquau') ? `Valable jusqu’au ${dateCourte(str('jusquau'))}` : '', str('conditions')].filter(Boolean).join(' · '), genre: 'offres', puce: PUCE_OFFRE[x.statut || 'en_attente'] });
-      if (str('reponse_le') && x.statut && x.statut !== 'en_attente') {
-        l.push({ cle: x.id + '-r', le: `${str('reponse_le')}T18:00:00`, ic: x.statut === 'acceptee' ? 'check' : 'euro', ton: x.statut === 'acceptee' ? 'ic_vert' : 'ic_gris',
-          titre: `Réponse à l’offre de ${x.qui || 'l’acquéreur'} : ${(PUCE_OFFRE[x.statut]?.l || x.statut).toLowerCase()}`, detail: [x.statut === 'contre' && typeof d.contre === 'number' ? `Contre-offre du vendeur à ${euros(d.contre)}` : '', x.statut === 'acceptee' && montantActuel(x) !== x.montant ? `Accord à ${euros(montantActuel(x))}` : '', x.commentaire || ''].filter(Boolean).join(' · '), genre: 'offres' });
+        detail: [str('jusquau') ? `Valable jusqu’au ${dateCourte(str('jusquau'))}` : '', fin ? maj(fin) : '', str('conditions')].filter(Boolean).join(' · '), genre: 'offres', puce: PUCE_OFFRE[x.statut || 'en_attente'], chez });
+      const ech = echangesDe(x);
+      ech.slice(1).forEach((y, i) => {
+        const prec = ech[i];
+        l.push({ cle: `${x.id}-e${i + 1}`, le: `${y.le}T14:${String(10 + i).padStart(2, '0')}:00`, ic: y.par === 'vendeur' ? 'retour' : 'euro', ton: y.par === 'vendeur' ? 'ic_bleu' : 'ic_or', genre: 'offres', chez,
+          titre: y.par === 'vendeur' ? `Contre-offre du vendeur : ${euros(y.montant)}` : `Nouvelle proposition de ${qui} : ${euros(y.montant)}`,
+          detail: y.par === 'vendeur' ? `En réponse à l’offre de ${qui} à ${euros(prec.montant)}` : `En réponse à la contre-offre de ${euros(prec.montant)}` });
+      });
+      if (str('reponse_le') && (x.statut === 'acceptee' || x.statut === 'refusee' || x.statut === 'retiree')) {
+        const m = montantActuel(x);
+        const h = x.statut === 'acceptee' ? lireHono(d, m) : null;
+        const renonce = x.statut === 'retiree' && ech[ech.length - 1]?.par === 'vendeur';
+        l.push({ cle: x.id + '-r', le: `${str('reponse_le')}T18:00:00`, ic: x.statut === 'acceptee' ? 'check' : 'retour', ton: x.statut === 'acceptee' ? 'ic_vert' : 'ic_gris', genre: 'offres', chez,
+          titre: x.statut === 'acceptee' ? `Offre de ${qui} acceptée à ${euros(m)}` : x.statut === 'refusee' ? `Offre de ${qui} refusée` : d.compromisTombe ? `Offre de ${qui} : compromis tombé` : renonce ? `${maj(qui)} renonce après la contre-offre` : `Offre de ${qui} retirée`,
+          detail: [x.statut === 'acceptee' && ech.length > 1 && x.montant ? `Offre de départ : ${euros(x.montant)}` : '', h ? ligneHono(h) || '' : '', x.commentaire || ''].filter(Boolean).join('\n') });
       }
     } else if (x.type === 'envoi') {
       /* Des pièces du dossier envoyées par mail (V3.30). */
@@ -1278,20 +1301,32 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
      « réponse à donner » du propriétaire. */
   async function repondreOffre(o: SuiviVente, r: Reponse) {
     /* V3.48 : une seule offre acceptée à la fois. L'autre passe « retirée »,
-       après confirmation. */
+       après confirmation (V3.172 : la fenêtre d'acceptation le dit déjà). */
     const autres = r.k === 'accepte' ? offres.filter(y => y.id !== o.id && y.statut === 'acceptee') : [];
     if (autres.length && !confirm(`L’offre de ${autres.map(y => y.qui || 'un acquéreur').join(', ')} était déjà acceptée. Elle passera « retirée ». Continuer ?`)) return;
-    try {
-      if (autres.length) await retirerAutresAcceptees(bien, offres, o.id);
-      const { statut, donnees } = apresReponse(o, r, jourParis());
-      const maj = await majSuivi(o.id, { statut, donnees });
-      if (r.k !== 'rouvrir') await cloreRelanceOffre(bien, o);
-      /* Acceptée : une ligne dans le Suivi du vendeur et de l'acquéreur ;
-         l'acceptation annulée aussi (V3.47). */
-      if (r.k === 'accepte') await noterOffreAcceptee(bien, maj);
-      if (r.k === 'rouvrir' && o.statut === 'acceptee') await noterAcceptationAnnulee(bien, maj);
-      await apres();
-    } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
+    try { await reponseOffre(o, r); } catch (e) { setMessage({ t: (e as Error).message, ok: false }); }
+  }
+  /* L'écriture de la réponse ; une erreur remonte (la fenêtre d'acceptation l'affiche). */
+  async function reponseOffre(o: SuiviVente, r: Reponse, accord?: AccordOffre) {
+    const autres = r.k === 'accepte' ? offres.filter(y => y.id !== o.id && y.statut === 'acceptee') : [];
+    if (autres.length) await retirerAutresAcceptees(bien, offres, o.id);
+    const { statut, donnees } = apresReponse(o, r, accord?.le || jourParis());
+    /* V3.172 : les honoraires négociés, le net vendeur et les notaires, avec l'offre. */
+    const maj = await majSuivi(o.id, { statut, donnees: accord ? { ...donnees, ...donneesHono(accord.accord), ...(accord.notaires ? donneesNotaires(accord.notaires) : {}) } : donnees });
+    if (r.k !== 'rouvrir') await cloreRelanceOffre(bien, o);
+    /* Acceptée : une ligne dans le Suivi du vendeur et de l'acquéreur ;
+       l'acceptation annulée aussi (V3.47) ; V3.172 : chaque tour de la
+       négociation aussi. */
+    if (r.k === 'accepte') await noterOffreAcceptee(bien, maj);
+    else if (r.k === 'rouvrir') { if (o.statut === 'acceptee') await noterAcceptationAnnulee(bien, maj); }
+    else await noterNegociation(bien, o, r);
+    await apres();
+  }
+  /* V3.172 : les honoraires d'une offre déjà acceptée, corrigés depuis sa carte. */
+  async function corrigerAccord(o: SuiviVente, x: AccordOffre) {
+    const avant = (o.donnees || {}) as Record<string, unknown>;
+    await majSuivi(o.id, { donnees: { ...avant, ...donneesHono(x.accord), reponse_le: x.le || avant.reponse_le, ...(x.notaires ? donneesNotaires(x.notaires) : {}) } });
+    await apres();
   }
   async function joindreLeCompromis(l: SuiviVente, f: File) {
     setMessage({ t: 'Envoi du compromis signé…', ok: true });
@@ -1851,6 +1886,20 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
   })();
   const vs = (d as Record<string, unknown>).venteSuivante as { id?: string; reference?: string | null } | undefined;
   const venteSuivante = vs?.id && liste.biens.some(x => x.id === vs.id) ? { id: vs.id, reference: vs.reference || null } : null;
+  /* Un notaire sur une carte : son téléphone et son mail à jour, sa fiche. */
+  const carteNotaire = (role: NotaireCarte['role'], n: NotaireChoisi | null): NotaireCarte | null => {
+    if (!n) return null;
+    const vif = n.id ? liste.clients[n.id] : null;
+    return {
+      role, nom: n.nom, etude: n.etude, tel: (vif?.telephones || []).find(Boolean) || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
+      onFiche: n.id ? () => ouvrirClient(n.id!) : undefined,
+    };
+  };
+  /* V3.172 : les notaires notés avec une offre, avant le compromis. */
+  const notairesOffre = (o: SuiviVente) => {
+    const n = lireNotairesDossier(o.donnees);
+    return { liste: [carteNotaire('vendeur', n.vendeur), carteNotaire('acquereur', n.commun ? null : n.acquereur)].filter((x): x is NotaireCarte => !!x), commun: n.commun };
+  };
   const compromisDe = (o: SuiviVente): InfosCompromis | null => {
     if (e !== 'compromis' && e !== 'vendu') return null;
     /* Le dernier compromis seulement : un compromis tombé puis refait sur
@@ -1859,27 +1908,30 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
     if (!l || (l.donnees?.offre ? l.donnees.offre !== o.id : offres.filter(y => y.statut === 'acceptee').length !== 1)) return null;
     const c = (l.donnees || {}) as Record<string, unknown>;
     const t = (k: string) => (typeof c[k] === 'string' && c[k] ? String(c[k]) : undefined);
-    /* Les notaires (V3.45) : les contacts choisis ; sinon le texte d'avant
-       (« Son notaire » du bien, le notaire de l'acquéreur écrit à la main). */
-    const carte = (role: NotaireCarte['role'], n: NotaireChoisi | null): NotaireCarte | null => {
-      if (!n) return null;
-      const vif = n.id ? liste.clients[n.id] : null;
-      return {
-        role, nom: n.nom, etude: n.etude, tel: (vif?.telephones || []).find(Boolean) || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
-        onFiche: n.id ? () => ouvrirClient(n.id!) : undefined,
-      };
-    };
+    /* Les notaires (V3.45) : les contacts choisis ; sinon ceux notés avec
+       l'offre (V3.172) ; sinon le texte d'avant (« Son notaire » du bien, le
+       notaire de l'acquéreur écrit à la main). */
+    const nC = lireNotairesDossier(c);
+    const nO = aDesNotaires(nC) ? null : lireNotairesDossier(o.donnees);
+    const commun = nO ? nO.commun : nC.commun;
     const notaires = [
-      carte('vendeur', lireNotaire(c.notaireVendeur) || (txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null)),
-      carte('acquereur', lireNotaire(c.notaireAcquereur) || (t('notaireAcq') ? { id: null, nom: t('notaireAcq')! } : null)),
+      carteNotaire('vendeur', nC.vendeur || nO?.vendeur || (txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null)),
+      commun ? null : carteNotaire('acquereur', nC.acquereur || nO?.acquereur || (t('notaireAcq') ? { id: null, nom: t('notaireAcq')! } : null)),
     ].filter((x): x is NotaireCarte => !!x);
+    /* V3.172 : le financement du compromis, sinon celui de l'offre ; les
+       honoraires du compromis, sinon ceux de l'acceptation. */
+    const od = (o.donnees || {}) as Record<string, unknown>;
+    const financement = typeof c.financement === 'string' ? c.financement : od.financement;
+    const hO = lireHono(od, montantActuel(o));
     const ids = (c.rappels && typeof c.rappels === 'object' ? c.rappels : {}) as Record<string, unknown>;
     const dates = (c.rappelsLe && typeof c.rappelsLe === 'object' ? c.rappelsLe : {}) as Record<string, unknown>;
     const rappels = Object.keys(ids).filter(k => typeof dates[k] === 'string').map(k => ({ cle: k, le: String(dates[k]) })).sort((p, q) => p.le.localeCompare(q.le));
     const chemin = t('chemin');
     return {
       signe: t('signe') || l.le.slice(0, 10), sru: t('sru'), pretLimite: t('pretLimite'), acte: t('acte'), prix: typeof c.prix === 'number' ? c.prix : null,
-      venduLe: e === 'vendu' ? bien.vendu_le : null, hono: typeof c.hono === 'number' ? c.hono : null, notaires, rappels,
+      venduLe: e === 'vendu' ? bien.vendu_le : null, hono: typeof c.hono === 'number' ? c.hono : hO ? hO.hono : null, notaires, rappels,
+      comptant: financement === 'comptant', notaireCommun: commun,
+      charge: c.charge === 'vendeur' || c.charge === 'acquereur' ? c.charge : hO ? hO.charge : null,
       piece: chemin ? String(c.nom || 'compromis.pdf') : undefined,
       onPiece: chemin ? () => ouvrirPiece(chemin, String(c.nom || 'compromis.pdf')) : undefined,
       onJoindre: f => { void joindreLeCompromis(l, f); },
@@ -2052,8 +2104,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
         detail: v.source === 'crm' ? `Acheteur suivi${n ? `, ${n} % de ses critères` : ''}` : 'Hors CRM',
         quand: [v.ymd ? jourCourt(v.ymd) : '', v.heure ? v.heure.replace(':', ' h ') : ''].filter(Boolean).join(', ') };
     }),
-    ...offresOuvertes.filter(x => typeof x.donnees?.jusquau === 'string' && x.donnees.jusquau).map(x => ({
-      cle: 'ao-' + x.id, genre: 'offres' as const, titre: `Réponse à l’offre de ${euros(x.montant || 0)}`, tri: `${String(x.donnees.jusquau)}23:59`,
+    /* V3.172 : seulement quand c'est au vendeur de répondre (une contre-offre
+       attend l'acquéreur, pas le vendeur), et sur la dernière proposition. */
+    ...offresOuvertes.filter(x => (x.statut || 'en_attente') === 'en_attente' && typeof x.donnees?.jusquau === 'string' && x.donnees.jusquau).map(x => ({
+      cle: 'ao-' + x.id, genre: 'offres' as const, titre: `Réponse à l’offre de ${euros(montantActuel(x))}`, tri: `${String(x.donnees.jusquau)}23:59`,
       detail: `${x.qui || 'L’acquéreur'} attend la réponse`, quand: `avant le ${dateCourte(String(x.donnees.jusquau))}`,
     })),
   ].sort((p, q) => q.tri.localeCompare(p.tri)).map(x => ({ cle: x.cle, genre: x.genre, titre: x.titre, detail: x.detail, quand: x.quand }));
@@ -2226,8 +2280,21 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
             {avant && <CarteAcheteurs acheteurs={acheteurs} mode={mode} onVoir={() => setOnglet('acheteurs')} />}
           </Kpis>
           )}
+          {/* V3.172 : le nom de l'acquéreur ouvre sa fiche ; le montant est la
+              dernière proposition, et une contre-offre dit qui doit répondre. */}
           {offresOuvertes.map(o => (
-            <div key={o.id} className={b.encart}><b>{`Offre de ${o.qui || 'un acquéreur'} : ${euros(o.montant || 0)}`}</b>{typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}</div>
+            <div key={o.id} className={`${b.encart} ${b.encartOffre}`}>
+              <span>
+                <b>
+                  {'Offre de '}
+                  {o.client_id ? <button type="button" className={b.encartLien} onClick={() => { void ouvrirClient(o.client_id!); }} title="Ouvrir sa fiche">{o.qui || 'l’acquéreur'}</button> : o.qui || 'un acquéreur'}
+                  {` : ${euros(montantActuel(o))}`}
+                </b>
+                {o.statut === 'contre' ? ' · contre-offre du vendeur, à l’acquéreur de répondre'
+                  : typeof o.donnees?.jusquau === 'string' && o.donnees.jusquau ? ` · réponse attendue le ${dateCourte(String(o.donnees.jusquau))}` : ''}
+              </span>
+              <button type="button" className={b.encartVoir} onClick={() => setOnglet('visites')}>Voir l’offre</button>
+            </div>
           ))}
           {/* « Qui pourrait l'acheter » n'est plus répété ici (V3.30) : la carte
               « Acheteurs potentiels » juste au-dessus dit combien, et qui ; la
@@ -2292,8 +2359,14 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
             }}
             actOffre={x => {
               const doc = docDeLOffre(x);
+              const nOf = notairesOffre(x);
               return {
-                onReponse: p.repondreOffre ? r => repondreOffre(x, r) : undefined,
+                /* V3.172 : « Il accepte » demande d'abord les honoraires négociés. */
+                onReponse: p.repondreOffre ? r => (r.k === 'accepte' ? setFen({ k: 'accepte', offre: x }) : repondreOffre(x, r)) : undefined,
+                onAcquereur: x.client_id ? () => { void ouvrirClient(x.client_id!); } : undefined,
+                onHonoraires: p.repondreOffre && x.statut === 'acceptee' ? () => setFen({ k: 'accepte', offre: x, edition: true }) : undefined,
+                notaires: nOf.liste, notaireCommun: nOf.commun,
+                onNotaires: p.repondreOffre ? () => setFen({ k: 'notaires', offre: x }) : undefined,
                 onDoc: () => offreEcrite(x, doc),
                 doc: doc ? docOffre(doc) : null,
                 onPiece: typeof x.donnees?.chemin === 'string' && x.donnees.chemin ? () => ouvrirPiece(String(x.donnees.chemin), String(x.donnees.nom || 'offre.pdf')) : undefined,
@@ -2427,6 +2500,10 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
         });
       }} />}
       {fen?.k === 'offre' && <FenOffre bien={bien} pour={fen.pour} existante={fen.existante} options={options} recherches={liste.recherches} proprio={proprio} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'accepte' && <FenAcceptation bien={bien} offre={fen.offre} edition={fen.edition}
+        autres={fen.edition ? [] : offres.filter(y => y.id !== fen.offre.id && y.statut === 'acceptee').map(y => y.qui || 'un acquéreur')}
+        onFermer={() => setFen(null)} onValider={x => (fen.edition ? corrigerAccord(fen.offre, x) : reponseOffre(fen.offre, { k: 'accepte' }, x))} />}
+      {fen?.k === 'notaires' && <FenNotaires bien={bien} offre={fen.offre} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} existant={fen.existant} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {guide && <FenGuide titre={guide.titre} sur={`${etapeDe(e).lib}${bien.archive ? ' · archivé' : ''}`} couleur={etapeDe(e).c} texte={guide.texte} choix={guide.choix} onFermer={() => setGuide(null)} />}
       {fen?.k === 'revente' && <FenNouvelleVente bien={bien} references={liste.biens.map(x => x.reference)} acquereur={offreRetenue?.client_id ? liste.clients[offreRetenue.client_id] || null : null}
