@@ -5,6 +5,7 @@ import { enLettres } from '@/lib/mandat';
 import { PERSONNE_VIDE, type Champ, type ChampSimple, type Donnees, type Personne } from '@/lib/actes';
 import { Croix, Ic } from './ApercuActe';
 import AjoutBien from './ChoixBienCrm';
+import SaisieAdresse, { adresseProposee, type AdresseChoisie } from '@/components/shared/SaisieAdresse';
 import s from './Documents.module.css';
 
 /* ═══ Les champs de l'éditeur ═════════════════════════════════════════════
@@ -200,8 +201,15 @@ function CartePersonne({ id, nom, p, complet, off, peutRetirer, onChange, onReti
   const champ = (k: keyof Personne, lib: string, o: { type?: string; large?: boolean; ph?: string; requis?: boolean; mode?: 'email' | 'tel' } = {}) => (
     <div className={`${s.ch} ${o.large ? s.large : ''}`}>
       <label className={s.chLib} htmlFor={`${id}-${k}`}>{lib}</label>
-      <input id={`${id}-${k}`} className={`${s.input} ${o.requis && !p[k] ? s.inputManque : ''}`} type={o.type || 'text'} disabled={off}
-        inputMode={o.mode} autoComplete="off" value={p[k]} placeholder={o.ph} onChange={e => onChange(k, e.target.value)} />
+      {/* V3.175 : l'adresse se propose pendant la frappe (la base adresse
+          nationale) ; on peut toujours l'écrire à la main. */}
+      {k === 'adresse' ? (
+        <SaisieAdresse id={`${id}-${k}`} v={p[k]} off={off} placeholder={o.ph} etiquette={lib}
+          classeChamp={`${s.input} ${o.requis && !p[k] ? s.inputManque : ''}`} onChange={x => onChange(k, x)} />
+      ) : (
+        <input id={`${id}-${k}`} className={`${s.input} ${o.requis && !p[k] ? s.inputManque : ''}`} type={o.type || 'text'} disabled={off}
+          inputMode={o.mode} autoComplete="off" value={p[k]} placeholder={o.ph} onChange={e => onChange(k, e.target.value)} />
+      )}
     </div>
   );
   return (
@@ -297,11 +305,32 @@ function ChampLignes({ c, d, v, onChange, off }: { c: Extract<Champ, { t: 'ligne
   );
 }
 
+/* Une adresse choisie, rangée dans les cases d'un document : la rue
+   (« adresse »), le code postal (« cp ») et la ville. Une ville seule (on a
+   tapé un code postal) ne touche pas à la rue. */
+function partiesAdresse(p: AdresseChoisie, cases: string[]): Record<string, string> {
+  const x: Record<string, string> = {};
+  if (p.type !== 'municipality') x.adresse = p.name || adresseProposee(p);
+  /* Seulement les cases que la question a : une offre n'a pas de code postal. */
+  if (p.postcode && cases.includes('cp')) x.cp = p.postcode;
+  if (p.city && cases.includes('ville')) x.ville = p.city;
+  return x;
+}
+
 /* ── La saisie d'une question simple (V3.154) ──
    Partagée par les questions d'une étape et celles d'une carte « groupes ». */
-function SaisieSimple({ c, id, v, manque, off, onChange }: {
+function SaisieSimple({ c, id, v, manque, off, onChange, onAdresse }: {
   c: ChampSimple; id: string; v: unknown; manque: boolean; off: boolean; onChange: (x: unknown) => void;
+  /* V3.175 : l'adresse d'un bien (« adresse », avec « cp » et « ville » à
+     côté) se propose pendant la frappe ; le choix remplit les trois cases. */
+  onAdresse?: (p: AdresseChoisie) => void;
 }) {
+  if (c.t === 'texte' && c.cle === 'adresse' && onAdresse) {
+    return (
+      <SaisieAdresse id={id} v={typeof v === 'string' ? v : ''} off={off} etiquette={c.lib} onChange={onChange} onChoisir={onAdresse}
+        classeChamp={`${s.input} ${manque ? s.inputManque : ''}`} placeholder={c.exemple ? `Ex : ${c.exemple} — tape le début` : 'Tape le début : 12 rue de Silly…'} />
+    );
+  }
   if (c.t === 'zone') return <ZoneTexte id={id} v={typeof v === 'string' ? v : ''} manque={manque} off={off} exemple={c.exemple} onChange={onChange} />;
   if (c.t === 'nombre' || c.t === 'euros') return <ChampNombre id={id} euros={c.t === 'euros'} unite={c.unite} v={v} off={off} manque={manque} onChange={onChange} />;
   return (
@@ -352,7 +381,8 @@ function ChampGroupes({ c, d, v, onChange, off }: {
                 return (
                   <div key={q.cle} className={`${s.ch} ${q.large || q.t === 'zone' ? s.large : ''}`}>
                     <label className={s.chLib} htmlFor={id}>{q.lib}</label>
-                    <SaisieSimple c={q} id={id} v={g[q.cle]} manque={!!q.requis && estVide(g[q.cle])} off={off} onChange={x => maj(i, q.cle, x)} />
+                    <SaisieSimple c={q} id={id} v={g[q.cle]} manque={!!q.requis && estVide(g[q.cle])} off={off} onChange={x => maj(i, q.cle, x)}
+                      onAdresse={p => onChange(cartes.map((y, j) => (j === i ? { ...y, ...partiesAdresse(p, c.champs.map(z => z.cle)) } : y)))} />
                     {q.aide && <div className={s.chAide}>{q.aide}</div>}
                   </div>
                 );
@@ -388,7 +418,12 @@ const IC_TYPE: Record<string, string> = {
    carte — son dessin en pastille, son titre en gros, la saisie dans le même
    cadre — et prend un dessin par défaut s'il n'en a pas. `sansLib` : le
    libellé est déjà le titre du bloc (« Les vendeurs »). */
-export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c: Champ; d: Donnees; maj: Maj; off: boolean; bloc?: boolean; sansLib?: boolean }) {
+export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false, voisins }: {
+  c: Champ; d: Donnees; maj: Maj; off: boolean; bloc?: boolean; sansLib?: boolean;
+  /* V3.175 : les autres questions de l'étape (une adresse choisie remplit
+     le code postal et la ville s'ils y sont). */
+  voisins?: string[];
+}) {
   if (c.si && !c.si(d)) return null;
   if (c.t === 'titre') return <div className={s.secT}>{c.ic && <span className={s.secTic}><Ic n={c.ic} t={14} /></span>}{c.lib}</div>;
   if (c.t === 'guide') {
@@ -421,7 +456,8 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false }: { c
 
   let controle: React.ReactNode = null;
   if (c.t === 'texte' || c.t === 'date' || c.t === 'heure' || c.t === 'zone' || c.t === 'nombre' || c.t === 'euros') {
-    controle = <SaisieSimple c={c} id={id} v={v} manque={manque} off={off} onChange={x => maj(c.cle, x)} />;
+    controle = <SaisieSimple c={c} id={id} v={v} manque={manque} off={off} onChange={x => maj(c.cle, x)}
+      onAdresse={voisins ? p => { for (const [k, x] of Object.entries(partiesAdresse(p, voisins))) maj(k, x); } : undefined} />;
   } else if (c.t === 'groupes') {
     controle = <ChampGroupes c={c} d={d} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'choix') {

@@ -14,6 +14,7 @@ import {
   SIGNATURE_OUVERTE, appelSignature, colonnesListe, finaliser, identiteDuJour, lienFichier, ligneRegistreDe, montrerPdf, nomFichier, quand, signatureOuverte,
   supprimerBrouillon, tableSignaturesAbsente, type DocumentRow,
 } from './outils';
+import { signalerDocActif, signalerFicheOuverte, retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import s from './Documents.module.css';
 import b from '@/components/biens/Biens.module.css';
 
@@ -33,6 +34,31 @@ import b from '@/components/biens/Biens.module.css';
    questions prennent toute la largeur, et la saisie va plus vite : le
    texte n'est plus réécrit à chaque frappe). Les deux réglages sont
    retenus dans ce navigateur. */
+
+/* ── V3.175 : passer sur une fiche et revenir au même endroit ──
+   Alexandre : « laisser en bas les fiches ouvertes, pour switcher sur un
+   client récupérer des éléments, et quand on revient, que ce soit la même
+   page ». L'éditeur laisse la barre du bas visible et s'y met (« Doc
+   juridique »). Parti par la barre (ou le menu), il retient son étape et
+   où en était la colonne des questions (dans cet onglet) ; fermé par son
+   bouton retour, il oublie : rouvert depuis la liste, il repart du début,
+   comme avant. */
+type Place = { etape: number; top: number };
+const clePlace = (id: string) => `emi-doc-place:${id}`;
+function lirePlace(id: string, nb: number): Place {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(clePlace(id)) || 'null') as Partial<Place> | null;
+    if (!v || typeof v.etape !== 'number') return { etape: 0, top: 0 };
+    return { etape: Math.max(0, Math.min(Math.max(0, nb - 1), Math.round(v.etape))), top: Math.max(0, Number(v.top) || 0) };
+  } catch { return { etape: 0, top: 0 }; }
+}
+function oublierPlace(id: string) {
+  try { sessionStorage.removeItem(clePlace(id)); } catch { /* sans mémoire, tant pis */ }
+}
+/* La saisie pas encore enregistrée quand l'éditeur se ferme par la barre :
+   elle part aussitôt, et reste ici le temps du voyage — rouvert avant que
+   la base l'ait, l'éditeur la reprend au lieu de la copie lue avant. */
+const saisiesEnRoute = new Map<string, Donnees>();
 
 /* La part des questions dans la largeur, quand l'aperçu est là. */
 const PART_DEFAUT = 0.5;
@@ -85,6 +111,7 @@ function BlocEtape({ e, i, n, d, maj, off, reperes, anime = false }: {
 }) {
   const gs = groupes(e.champs, d);
   const placees = gs.some(g => g.champs.some(c => c.cle === e.reperesApres));
+  const voisins = e.champs.map(c => c.cle);
   return (
     <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
       <div className={s.etapeTete}>
@@ -107,7 +134,7 @@ function BlocEtape({ e, i, n, d, maj, off, reperes, anime = false }: {
           <div className={s.grille}>
             {g.champs.map(c => (
               <Fragment key={c.cle}>
-                <ChampActe c={c} d={d} maj={maj} off={off} bloc sansLib={(c.t === 'personnes' || c.t === 'groupes') && !!g.titre && g.titre.lib === c.lib} />
+                <ChampActe c={c} d={d} maj={maj} off={off} bloc voisins={voisins} sansLib={(c.t === 'personnes' || c.t === 'groupes') && !!g.titre && g.titre.lib === c.lib} />
                 {c.cle === e.reperesApres && <Reperes l={reperes} />}
               </Fragment>
             ))}
@@ -150,11 +177,16 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
   const [row, setRow] = useState<DocumentRow>(doc);
   /* V3.145 : ce qui se déduit des réponses (Modele.deduire), dès l'ouverture —
      une offre d'avant n'avait que son prix, son total s'en déduit. */
+  /* V3.175 : une saisie encore en route (l'éditeur quitté par la barre du
+     bas juste après une frappe) passe avant la copie lue. */
+  const [enRoute] = useState(() => (doc.statut === 'brouillon' ? saisiesEnRoute.get(doc.id) || null : null));
   const [d, setD] = useState<Donnees>(() => {
-    const x = { ...(doc.donnees || {}) };
+    const x = { ...(enRoute || doc.donnees || {}) };
     return m?.deduire ? m.deduire(x, '') : x;
   });
-  const [etape, setEtape] = useState(0);
+  /* V3.175 : rouvert depuis la barre du bas, à l'étape laissée. */
+  const [placeDepart] = useState<Place>(() => lirePlace(doc.id, m?.etapes.length || 0));
+  const [etape, setEtape] = useState(placeDepart.etape);
   const [vue, setVue] = useState<'form' | 'apercu'>('form');
   /* Étape par étape, ou tout sur une page : le choix est retenu (dans ce
      navigateur) d'un document à l'autre. */
@@ -165,7 +197,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
     setMode(x);
     try { localStorage.setItem('documents.mode', x); } catch { /* sans mémoire, tant pis */ }
   };
-  const [enreg, setEnreg] = useState<Enreg>('ok');
+  const [enreg, setEnreg] = useState<Enreg>(enRoute ? 'attente' : 'ok');
   const [identite, setIdentite] = useState<IdentiteAgence>(doc.identite || IDENTITE_DEFAUT);
   const [erreurIdentite, setErreurIdentite] = useState('');
   const [fin, setFin] = useState(false);
@@ -254,7 +286,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
   const dernier = useRef<Donnees>(d);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enVol = useRef<Promise<boolean> | null>(null);
-  const aEnregistrer = useRef(false);
+  const aEnregistrer = useRef(!!enRoute);
   /* La raison du dernier enregistrement raté (V3.50 : la finalisation la dit). */
   const erreurEnreg = useRef('');
 
@@ -306,7 +338,75 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
     window.addEventListener('beforeunload', avant);
     return () => window.removeEventListener('beforeunload', avant);
   }, []);
-  useEffect(() => () => { if (minuterie.current) clearTimeout(minuterie.current); }, []);
+  /* V3.175 : quitté sans son bouton retour (un clic sur une fiche de la
+     barre du bas, le menu, la recherche) : la saisie pas encore partie
+     part maintenant — avant, elle était perdue. */
+  const enregistrerRef = useRef(enregistrer);
+  useEffect(() => { enregistrerRef.current = enregistrer; }, [enregistrer]);
+  useEffect(() => {
+    /* Une saisie reprise d'un voyage précédent : à renvoyer. */
+    if (enRoute) minuterie.current = setTimeout(() => { enregistrerRef.current(); }, 300);
+    const id = doc.id;
+    return () => {
+      if (minuterie.current) clearTimeout(minuterie.current);
+      if (!aEnregistrer.current) return;
+      const partie = dernier.current;
+      saisiesEnRoute.set(id, partie);
+      void enregistrerRef.current().then(ok => { if (ok && saisiesEnRoute.get(id) === partie) saisiesEnRoute.delete(id); });
+    };
+  }, [doc.id, enRoute]);
+
+  /* ── V3.175 : dans la barre « Fiches ouvertes » ── */
+  const titreBarre = m ? m.titreDoc(d) : row.titre || 'Document';
+  const [titreVu, setTitreVu] = useState(titreBarre);
+  useEffect(() => {
+    if (titreBarre === titreVu) return;
+    const t = setTimeout(() => setTitreVu(titreBarre), 1000);
+    return () => clearTimeout(t);
+  }, [titreBarre, titreVu]);
+  useEffect(() => {
+    signalerFicheOuverte({ k: 'document', id: row.id, titre: titreVu, sous: 'Doc juridique' });
+  }, [row.id, titreVu]);
+  useEffect(() => {
+    signalerDocActif(row.id);
+    return () => signalerDocActif(null);
+  }, [row.id]);
+
+  /* Retenir l'étape et la position de la colonne des questions. Tant que
+     la position retenue n'est pas remise, c'est elle qu'on garde (sinon
+     un éditeur remonté aussitôt la lirait à zéro). */
+  const etapeRef = useRef(etape);
+  const placePrete = useRef(!placeDepart.top);
+  useEffect(() => {
+    etapeRef.current = etape;
+    const top = placePrete.current ? formRef.current?.scrollTop || 0 : placeDepart.top;
+    try { sessionStorage.setItem(clePlace(row.id), JSON.stringify({ etape, top })); } catch { /* sans mémoire */ }
+  }, [etape, row.id, placeDepart]);
+  useEffect(() => {
+    const zone = formRef.current;
+    if (!zone) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const garder = () => {
+      if (t || !placePrete.current) return;
+      t = setTimeout(() => {
+        t = null;
+        /* Parti entre-temps : la colonne détachée dirait zéro. */
+        if (!zone.isConnected) return;
+        try { sessionStorage.setItem(clePlace(row.id), JSON.stringify({ etape: etapeRef.current, top: zone.scrollTop })); } catch { /* sans mémoire */ }
+      }, 250);
+    };
+    zone.addEventListener('scroll', garder, { passive: true });
+    return () => { zone.removeEventListener('scroll', garder); if (t) clearTimeout(t); };
+  }, [row.id]);
+  /* Rouvert : la colonne revient où elle était (deux essais : le temps que
+     les questions se posent). */
+  useEffect(() => {
+    if (!placeDepart.top) return;
+    const poser = () => formRef.current?.scrollTo({ top: placeDepart.top });
+    const r = requestAnimationFrame(poser);
+    const t = setTimeout(() => { poser(); placePrete.current = true; }, 180);
+    return () => { cancelAnimationFrame(r); clearTimeout(t); };
+  }, [placeDepart]);
 
   async function fermer() {
     if (minuterie.current) clearTimeout(minuterie.current);
@@ -314,6 +414,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
       const ok = await enregistrer();
       if (!ok && !confirm('La dernière modification n’a pas pu être enregistrée.\n\nFermer quand même ?')) return;
     }
+    oublierPlace(row.id);
     onFermer();
   }
 
@@ -327,9 +428,13 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
     /* Plus rien à enregistrer : il part. */
     if (minuterie.current) clearTimeout(minuterie.current);
     aEnregistrer.current = false;
+    saisiesEnRoute.delete(row.id);
     setTravail('supprimer');
     try {
       await supprimerBrouillon(row, ligne);
+      /* V3.175 : il sort aussi de la barre du bas. */
+      oublierPlace(row.id);
+      retirerFicheOuverte('document', row.id);
       await onSupprime?.(row.id);
     } catch (e) {
       setMessage({ t: 'La suppression a échoué : ' + (e as Error).message, ok: false });
@@ -392,7 +497,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
 
   if (!m) {
     return (
-      <div className={s.ed}>
+      <div className={`${s.ed} ${s.edDock}`}>
         <div className={s.edBarre}>
           <button type="button" className={s.edRetour} onClick={onFermer}><Ic n="retour" t={16} /><span>{retourLib || 'Documents'}</span></button>
         </div>
@@ -663,7 +768,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
 
   return (
     <ContexteActe.Provider value={contexteActe}>
-    <div className={s.ed} role="dialog" aria-modal="true" aria-label={row.titre || m.titre}>
+    <div className={`${s.ed} ${s.edDock}`} role="dialog" aria-modal="true" aria-label={row.titre || m.titre}>
       {/* ── La barre du haut ── */}
       <div className={s.edBarre}>
         <button type="button" className={s.edRetour} onClick={fermer}><Ic n="retour" t={16} /><span>{retourLib || 'Documents'}</span></button>
