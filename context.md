@@ -1515,7 +1515,7 @@ les cases à cocher, la réponse du vendeur, le certificat.
   par un fil, chacune avec sa bulle (bleue : bon ; orangée : une réponse obligatoire manque ;
   pointillés : facultative), « Facultatif » ou « À compléter » à côté du numéro. Les titres d'une
   étape deviennent des intertitres ; les petites saisies qui se suivent se rangent sur une ligne
-  (« Fait à », « Le ») ; un Oui / Non devient deux boutons, un autre choix des pastilles avec leur
+  (« Fait à », « Le » ; jusqu'à trois, quatre font deux lignes de deux) ; un Oui / Non devient deux boutons, un autre choix des pastilles avec leur
   dessin (l'explication de celle choisie dessous).
 - Nouveau dans les modèles (`commun.ts`) : `question` (une info facultative posée en Oui / Non ;
   « Non » la vide), `avec` (l'adresse dessinée avec son code postal et sa ville), `rapides` (les
