@@ -1527,6 +1527,14 @@ les cases à cocher, la réponse du vendeur, le certificat.
   Non ; la durée, les périodes et la limite se choisissent d'un clic. Ailleurs : les précisions du
   mandat de recherche, de l'offre (et le notaire de l'acquéreur), la remarque du bon de visite ;
   l'adresse avec sa ville (offre, bon de visite) et avec code postal et ville (avenant).
+- Puis (Alexandre : « les informations facultatives, dans le même style, partout ») : une question
+  peut ouvrir plusieurs saisies (`question` + `avec` : « Préciser sa forme, son capital et son
+  RCS ? » ; « Non » les vide toutes). Société d'un mandat de vente, de recherche, d'un avenant de
+  recherche, confrère d'une délégation : la forme, le capital, l'immatriculation, la qualité du
+  signataire ; le prix minimum des associés d'une SCI ; les critères essentiels (mandat et avenant
+  de recherche) ; le nom du vendeur et l'agence du vendeur (offre), l'agence du vendeur (bon de
+  visite) ; l'adresse du bien et la formule d'appel (courrier de reconduction). D'un clic : la
+  durée du mandat de recherche, les périodes du courrier, la part du confrère (30, 40, 50 %).
 
 ### V3.176 — 12 octobre 2026 · Les notaires d'un dossier : tous les e-mails, et « Modifier »
 
