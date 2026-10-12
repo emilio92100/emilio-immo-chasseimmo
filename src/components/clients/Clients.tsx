@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { signalerEchec, verifie } from '@/lib/ecritures';
 import { toutLire } from '@/lib/registre';
@@ -35,7 +35,7 @@ import { estTri } from '@/lib/relances';
 import { BarreSelection, CaseLigne, CaseTout, ConfirmerLot, STYLE_CHOISI, type Avancement } from '@/components/shared/Selection';
 import { STATUTS_LOT, archiverContact, changerStatutContact, effacerContact, empecheSuppression, type StatutLot } from '@/lib/supprimer-contacts';
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
-import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
+import { retirerFicheOuverte, signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import { lireParcours, parcoursVide } from '@/lib/parcours';
 
 const STATUTS = [
@@ -99,6 +99,41 @@ function lireCats(v: string | null): Categorie[] {
    descendant. Les compteurs, « Tout cocher » et la recherche portent
    toujours sur la liste entière. */
 const PAQUET = 60;
+
+/* ── V3.179 : revenir sur Contacts tel qu'on l'a laissé ──
+   Alexandre : « je mets Prospect, ce qu'il cherche, je descends, j'ouvre une
+   fiche ; je ferme avec la croix et tout est remis à zéro […] il faudrait que
+   ça crée une fiche "Mes contacts", et quand on revient dessus, que ce soit à
+   l'identique ». En quittant la liste, on range ce qui la règle (statuts,
+   logement, ce qu'il cherche, recherche tapée, type archivé, lignes
+   dessinées, hauteur) ; la catégorie l'était déjà (`vue.clients`, V3.24).
+   Ouvrir une fiche d'ici pose le bloc « Mes contacts » dans la barre du bas.
+   Le retour (la croix ou le bouton retour de la fiche, ce bloc, le retour du
+   navigateur) arrive avec « ?retour=1 » (AppLayout) : la liste reprend tout.
+   Arrivé par le menu, Contacts s'ouvre comme avant, sur « Actifs ». */
+const CLE_RETOUR = 'contacts.retour';
+type Retour = { statuts: string[]; sit: string; fa: FiltresA; search: string; typeArch: string; n: number; haut: number; hautZone: number };
+const chaines = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+const nombres = (v: unknown) => (Array.isArray(v) ? v.map(Number).filter(x => Number.isFinite(x) && x > 0) : []);
+const positif = (v: unknown) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null; };
+function lireRetour(): Retour | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('page') !== 'clients' || p.get('retour') !== '1') return null;
+    const r = JSON.parse(sessionStorage.getItem(CLE_RETOUR) || 'null');
+    if (!r || typeof r !== 'object' || !Array.isArray(r.statuts)) return null;
+    const f = r.fa && typeof r.fa === 'object' ? r.fa : {};
+    return {
+      statuts: chaines(r.statuts), sit: typeof r.sit === 'string' ? r.sit : 'toutes',
+      fa: { types: chaines(f.types), pieces: nombres(f.pieces), chambres: nombres(f.chambres), surfMin: positif(f.surfMin), surfMax: positif(f.surfMax), budMin: positif(f.budMin), budMax: positif(f.budMax), villes: chaines(f.villes) },
+      search: typeof r.search === 'string' ? r.search : '', typeArch: typeof r.typeArch === 'string' ? r.typeArch : 'tous',
+      n: positif(r.n) || PAQUET, haut: positif(r.haut) || 0, hautZone: positif(r.hautZone) || 0,
+    };
+  } catch { return null; }
+}
+/* Ce qui défile : le <main> à l'ordinateur, la zone qui le contient au téléphone (AppLayout). */
+const defileurs = () => { const m = document.querySelector('main'); return [m, m?.parentElement || null] as const; };
 /* Le bas de la liste approche : le paquet suivant. Observé dans la zone qui
    défile (le contenu du CRM, pas la fenêtre), avec une avance d'un écran ;
    le bouton reste là si l'observateur manque. */
@@ -507,6 +542,8 @@ export default function Clients({ onNavigate, fenetre }: {
 }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  /* V3.179 : de retour d'une fiche, la liste telle qu'on l'avait laissée. */
+  const [retour] = useState<Retour | null>(() => (fenetre ? null : lireRetour()));
   /* V3.50 : la lecture des contacts a échoué. Avant, la page disait
      « Aucun contact pour l'instant », comme si la base était vide. */
   const [erreurLecture, setErreurLecture] = useState('');
@@ -520,7 +557,7 @@ export default function Clients({ onNavigate, fenetre }: {
      compte à jour au fil des appels. */
   const [triIds, setTriIds] = useState<string[]>([]);
   /* V3.77 : dans « Archivés », le type regardé (les vendeurs archivés…). */
-  const [typeArch, setTypeArch] = useState<TypeContact | 'tous'>('tous');
+  const [typeArch, setTypeArch] = useState<TypeContact | 'tous'>(() => (retour?.typeArch as TypeContact | 'tous') || 'tous');
   const majTri = useCallback((ids: string[]) => {
     setTriIds(l => (l.length === ids.length && l.every((x, i) => x === ids[i]) ? l : ids));
   }, []);
@@ -569,13 +606,17 @@ export default function Clients({ onNavigate, fenetre }: {
   }
   const [details, setDetails] = useState<Record<string, DetailDossier>>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const replieFiltre = useRef(false);
+  /* De retour d'une fiche, on ne replie rien : on reprend. */
+  const replieFiltre = useRef(!!retour);
   /* En trois secondes la souris a bougé : on retient sa dernière position,
      dans une référence, pour ne pas redessiner la liste à chaque pixel. */
   const souris = useRef({ x: 0, y: 0 });
   /* On arrive sur les dossiers en cours, pas sur la liste entière : c'est
      eux qu'on vient voir. Les autres onglets restent à un clic. */
-  const [filtre, setFiltre] = useState('actif');
+  /* V3.179 : les statuts se combinent (« Actifs » + « Prospects ») ; une
+     liste vide, c'est « Tous les statuts ». */
+  const [statuts, setStatuts] = useState<string[]>(() => retour?.statuts || ['actif']);
+  const dansStatut = (c: Client) => !statuts.length || statuts.includes(String(c.statut));
   /* Les catégories (types de contact) allumées, au-dessus du statut des
      acheteurs. Elles se cumulent : « Acheteurs » + « Propriétaires » montre
      les deux. « Tous » et « Archivés » sont seuls.
@@ -626,10 +667,10 @@ export default function Clients({ onNavigate, fenetre }: {
   /* Les biens de la rubrique Biens, pour les cartes des vendeurs. */
   const [biensV, setBiensV] = useState<BienDuContact[]>([]);
   /* Le second filtre, croisé avec le premier : « Actifs » + « Propriétaires ». */
-  const [filtreSit, setFiltreSit] = useState('toutes');
+  const [filtreSit, setFiltreSit] = useState(() => retour?.sit || 'toutes');
   /* V3.75 : ce qu'ils cherchent (pièces, chambres, surface, budget, ville). */
-  const [fa, setFa] = useState<FiltresA>(FILTRES_A_VIDES);
-  const [search, setSearch] = useState('');
+  const [fa, setFa] = useState<FiltresA>(() => retour?.fa || FILTRES_A_VIDES);
+  const [search, setSearch] = useState(() => retour?.search || '');
   /* Venue du « + » ou de « Nouveau contact » : la fenêtre est ouverte dès
      le premier affichage, sans montrer la liste une fraction de seconde. */
   const [showModal, setShowModal] = useState(() => !!fenetre || intentions.nouveauClient);
@@ -781,7 +822,7 @@ export default function Clients({ onNavigate, fenetre }: {
     if (!replieFiltre.current) {
       replieFiltre.current = true;
       const acheteurs = merged.filter(c => estAcheteur(c));
-      if (acheteurs.length > 0 && !acheteurs.some(c => c.statut === 'actif')) setFiltre('tous');
+      if (acheteurs.length > 0 && !acheteurs.some(c => c.statut === 'actif')) setStatuts([]);
       if (merged.length > 0 && acheteurs.length === 0) setCats(['tous']);
     }
 
@@ -958,7 +999,7 @@ export default function Clients({ onNavigate, fenetre }: {
   const avantCriteres = clients.filter(c => {
     if (!avecAcheteurs || !estAcheteur(c) || estArchive(c)) return false;
     if (seulsNonFiltres && !sansCriteres(c)) return false;
-    const matchStatut = filtre === 'tous' || c.statut === filtre;
+    const matchStatut = dansStatut(c);
     const sit = situationDe(c);
     const matchSit = filtreSit === 'toutes'
       || (filtreSit === 'proprietaire' ? (sit === 'proprietaire' || sit === 'vendeur') : sit === filtreSit);
@@ -981,7 +1022,7 @@ export default function Clients({ onNavigate, fenetre }: {
      parmi les actifs, pas dans toute la base. */
   const nbParSituation = (k: string) => clients
     .filter(c => estAcheteur(c) && !estArchive(c) && (!seulsNonFiltres || sansCriteres(c)))
-    .filter(c => filtre === 'tous' || c.statut === filtre)
+    .filter(dansStatut)
     .filter(c => { const s = situationDe(c); return k === 'toutes' || (k === 'proprietaire' ? (s === 'proprietaire' || s === 'vendeur') : s === k); })
     .length;
 
@@ -991,7 +1032,7 @@ export default function Clients({ onNavigate, fenetre }: {
     const { data, error: e } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
     if (e || !data) { setError(e ? `Sa fiche n’a pas pu être ouverte : ${e.message}` : 'Ce contact n’existe plus.'); setDoublon(null); return; }
     setDoublon(null); setShowModal(false); setForm(initForm); setCrit(CRIT_VIDE);
-    onNavigate('fiche', data);
+    versFiche(data as Client);
   }
 
   async function handleCreate(e: React.FormEvent, forcer = false) {
@@ -1149,8 +1190,8 @@ export default function Clients({ onNavigate, fenetre }: {
       /* On le montre dans sa catégorie. */
       if (data) setCats([acheteur ? (form.critPlusTard ? 'non_filtre' : 'acheteur') : (form.types.find(k => k !== 'acheteur') as Categorie) || 'tous']);
       /* Un prospect créé pendant qu'on regarde les « Actifs » disparaissait
-         aussitôt : on montre son statut. */
-      if (data && acheteur && filtre !== 'tous' && filtre !== form.statut) setFiltre('tous');
+         aussitôt : on ajoute son statut à ceux qu'on regarde (V3.179). */
+      if (data && acheteur && statuts.length && !statuts.includes(form.statut)) setStatuts(l => [...l, form.statut]);
       if (data && acheteur) setFiltreSit('toutes');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erreur lors de la création');
@@ -1188,9 +1229,61 @@ export default function Clients({ onNavigate, fenetre }: {
 
   /* V3.136 — la liste par paquets (voir `SuiteListe`). La clé dit de quelle
      liste il s'agit : en changer repart des 60 premières. */
-  const cleListe = [importes ? 'importes' : cats.join('+'), filtre, filtreSit, search, JSON.stringify(fa), tri.cle, tri.sens, triL.cle, triL.sens, typeArchVu].join('|');
+  const cleListe = [importes ? 'importes' : cats.join('+'), statuts.join(','), filtreSit, search, JSON.stringify(fa), tri.cle, tri.sens, triL.cle, triL.sens, typeArchVu].join('|');
   const nMontres = montres.cle === cleListe ? montres.n : PAQUET;
   const voirSuite = () => setMontres({ cle: cleListe, n: nMontres + PAQUET });
+
+  /* V3.179 — Ce que l'on range en quittant la liste, tenu à jour à chaque
+     dessin ; rangé au démontage, avant que la liste ne quitte l'écran (la
+     hauteur est encore la bonne). */
+  const reglage = useRef({ statuts, sit: filtreSit, fa, search, typeArch: typeArch as string, n: nMontres });
+  reglage.current = { statuts, sit: filtreSit, fa, search, typeArch, n: nMontres };
+  useLayoutEffect(() => () => {
+    if (fenetre) return;
+    const [m, z] = defileurs();
+    const memo: Retour = { ...reglage.current, haut: m?.scrollTop || 0, hautZone: z?.scrollTop || 0 };
+    try { sessionStorage.setItem(CLE_RETOUR, JSON.stringify(memo)); } catch { /* sans mémoire : on reviendra sur « Actifs » */ }
+  }, []);
+  /* Le retour lu, l'adresse perd son « retour=1 » (un F5 ne le rejoue pas).
+     Puis, la liste relue, autant de lignes qu'on en avait, et la même hauteur. */
+  useEffect(() => {
+    if (!retour) return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      p.delete('retour');
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}?${p.toString()}`);
+    } catch { /* l'adresse garde son retour=1 */ }
+  }, [retour]);
+  const reprise = useRef(retour);
+  const [poser, setPoser] = useState<Retour | null>(null);
+  useEffect(() => {
+    const r = reprise.current;
+    if (loading || !r) return;
+    reprise.current = null;
+    setMontres({ cle: cleListe, n: Math.max(PAQUET, r.n) });
+    setPoser(r);
+  }, [loading]);
+  useEffect(() => {
+    if (!poser) return;
+    const r = poser;
+    const id = requestAnimationFrame(() => { const [m, z] = defileurs(); m?.scrollTo({ top: r.haut }); z?.scrollTo({ top: r.hautZone }); });
+    return () => cancelAnimationFrame(id);
+  }, [poser]);
+  /* Ouvrir une fiche d'ici : le bloc « Mes contacts » dans la barre du bas,
+     et l'adresse de la liste dit « retour » avant que la fiche ne s'empile
+     dessus (le retour du navigateur ramène aussi la liste telle quelle). */
+  function versFiche(c: Client) {
+    if (!fenetre) {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        if (p.get('page') === 'clients') { p.set('retour', '1'); window.history.replaceState(window.history.state, '', `${window.location.pathname}?${p.toString()}`); }
+      } catch { /* le retour du navigateur ramènera Contacts sur « Actifs » */ }
+      const cat = cats.map(k => (k === 'archives' ? 'Archivés' : k === 'tri' ? 'Tri à faire' : CATEGORIES.find(x => x.cle === k)?.lib || '')).filter(Boolean).join(' + ');
+      const st = avecAcheteurs && statuts.length ? STATUTS.filter(x => statuts.includes(x.key)).map(x => x.label).join(' + ') : '';
+      signalerFicheOuverte({ k: 'contacts', id: 'contacts', titre: 'Mes contacts', sous: [cat, st].filter(Boolean).join(' · ') || undefined });
+    }
+    onNavigate('fiche', c);
+  }
 
   /* V3.88 — La sélection : ce qui est affiché (pour « Tout sélectionner »),
      et les contacts cochés, où qu'ils soient. */
@@ -1818,7 +1911,7 @@ export default function Clients({ onNavigate, fenetre }: {
       {avecAcheteurs && <div className="ligne-entre">
         <FiltresAcheteurs base={avantCriteres as never[]} f={fa} onF={setFa} n={filtered.length}
           statut={{
-            v: filtre, tout: 'tous', onChange: setFiltre,
+            v: statuts, tout: 'tous', onChange: setStatuts,
             options: STATUTS.map(x => ({ k: x.key, l: x.key === 'tous' ? 'Tous les statuts' : x.label, n: nbParStatut(x.key), c: x.color || undefined })),
           }}
           logement={{
@@ -1863,15 +1956,15 @@ export default function Clients({ onNavigate, fenetre }: {
               {filtered.length === 0 ? (
                 <div className={styles.empty}>
                   <div className={styles.emptyIcon}>👥</div>
-                  <div className={styles.emptyTitle}>{nbFiltresA(fa) ? 'Aucun acheteur ne demande cela' : search || filtre !== 'tous' || filtreSit !== 'toutes' || seulsNonFiltres ? 'Aucun acheteur ici' : 'Aucun acheteur pour l\'instant'}</div>
-                  <div className={styles.emptySub}>{nbFiltresA(fa) ? `Parmi les ${avantCriteres.length} acheteurs de ce statut, aucun ne correspond à « Ce qu’il cherche ».` : seulsNonFiltres ? 'Tous tes acheteurs ont leurs critères.' : filtre !== 'tous' ? 'Change de statut, juste au-dessus.' : 'Clique sur « + Nouveau contact » pour commencer.'}</div>
+                  <div className={styles.emptyTitle}>{nbFiltresA(fa) ? 'Aucun acheteur ne demande cela' : search || statuts.length > 0 || filtreSit !== 'toutes' || seulsNonFiltres ? 'Aucun acheteur ici' : 'Aucun acheteur pour l\'instant'}</div>
+                  <div className={styles.emptySub}>{nbFiltresA(fa) ? `Parmi les ${avantCriteres.length} acheteurs ${statuts.length > 1 ? 'de ces statuts' : 'de ce statut'}, aucun ne correspond à « Ce qu’il cherche ».` : seulsNonFiltres ? 'Tous tes acheteurs ont leurs critères.' : statuts.length > 0 ? 'Change de statut, juste au-dessus.' : 'Clique sur « + Nouveau contact » pour commencer.'}</div>
                   {nbFiltresA(fa) > 0 && <button type="button" className={styles.btnSecondary} style={{ marginTop: 12 }} onClick={() => setFa(FILTRES_A_VIDES)}>Effacer « Ce qu’il cherche »</button>}
                 </div>
               ) : (
             /* V3.152 : un autre statut, une autre catégorie — la liste change en
                cascade (Cascade.tsx), comme les onglets. Pas la recherche tapée :
                elle filtre sur place, lettre après lettre. */
-            <Cascade cle={`${cats.join('+')}:${filtre}:${filtreSit}`} style={{ display: 'flex', flexDirection: 'column' }}>
+            <Cascade cle={`${cats.join('+')}:${statuts.join(',')}:${filtreSit}`} style={{ display: 'flex', flexDirection: 'column' }}>
               {/* Les en-têtes : posés sur le fond, pas dans une barre — ils cadrent
                   l'œil sans transformer la page en tableur. */}
               <div className={`${styles.entete} ligne-entre`}>
@@ -1924,7 +2017,7 @@ export default function Clients({ onNavigate, fenetre }: {
                 <span className={styles.colSig}>Signal</span>
               </div>
 
-              <div className={styles.list} key={`${cats.join('+')}:${filtre}:${filtreSit}:${search}:${JSON.stringify(fa)}`}>
+              <div className={styles.list} key={`${cats.join('+')}:${statuts.join(',')}:${filtreSit}:${search}:${JSON.stringify(fa)}`}>
                 {ordonne.slice(0, nMontres).map((client, rang) => {
                   const st = stats[client.id];
                   const sig = signalDe(client, st);
@@ -1938,7 +2031,7 @@ export default function Clients({ onNavigate, fenetre }: {
                       key={client.id}
                       className={`${styles.ligne} ligne-entre ${ouvert ? styles.ligneOuverte : ''} sel-ligne`}
                       style={{ animationDelay: `${Math.min(rang, 9) * 28}ms`, ...(clos ? { background: '#fbfcfe' } : {}), ...(choisis.has(client.id) ? STYLE_CHOISI : {}) }}
-                      onClick={() => onNavigate('fiche', client)}
+                      onClick={() => versFiche(client)}
                       onMouseEnter={e => entrer(client.id, e)}
                       onMouseMove={bouger}
                       onMouseLeave={sortir}
@@ -2109,7 +2202,7 @@ export default function Clients({ onNavigate, fenetre }: {
                     )}
                   </span>
                 )} />
-              {autres.slice(0, nMontres).map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => onNavigate('fiche', c)} onBien={id => onNavigate('biens', { bien: id })}
+              {autres.slice(0, nMontres).map(c => <LigneContact key={c.id} x={c} biens={biensDe(c.id)} derniere={derniere(c)} onOuvrir={() => versFiche(c)} onBien={id => onNavigate('biens', { bien: id })}
                 selection={{ on: choisis.has(c.id), mode: modeChoix, onBasculer: () => basculerChoix(c.id) }} />)}
               {autres.length > nMontres && <SuiteListe reste={autres.length - nMontres} onSuite={voirSuite} />}
             </Cascade>
@@ -2201,7 +2294,7 @@ export default function Clients({ onNavigate, fenetre }: {
                         <div className={styles.ficheTrait} />
                         <div className={styles.ficheActions}>
                           <button className={`${styles.ficheBtn} ${styles.ficheBtnFort}`}
-                            onClick={e => { e.stopPropagation(); onNavigate('fiche', client); }}>Ouvrir la fiche</button>
+                            onClick={e => { e.stopPropagation(); versFiche(client); }}>Ouvrir la fiche</button>
                           {client.emails?.[0] && (
                             <a className={styles.ficheBtn} href={`mailto:${client.emails[0]}`}
                               onClick={e => e.stopPropagation()} title={client.emails[0]}>✉️</a>

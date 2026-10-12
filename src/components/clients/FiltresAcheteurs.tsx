@@ -88,11 +88,15 @@ const plusieurs = (l: string[], u: string) => (l.length === 1 ? l[0] : l.length 
 
 type Panneau = 'statut' | 'logement' | 'type' | 'pieces' | 'chambres' | 'surface' | 'budget' | 'ville' | null;
 
-/* Un choix unique (le statut, le logement) : sa valeur « tout », ses options et leurs chiffres. */
+/* Un choix unique (le logement) : sa valeur « tout », ses options et leurs chiffres. */
 export type ChoixUnique = {
   v: string; tout: string; onChange: (v: string) => void;
   options: { k: string; l: string; n: number; c?: string; aide?: string; dans?: boolean }[];
 };
+/* V3.179 — Le statut se combine (Alexandre : « pouvoir choisir Actif et
+   Prospect ; un clic coche, on rappuie pour décocher ») : la liste des
+   statuts choisis, vide pour « Tous les statuts ». */
+export type ChoixMulti = Omit<ChoixUnique, 'v' | 'onChange'> & { v: string[]; onChange: (v: string[]) => void };
 
 function Puce({ l, n, on, onClick }: { l: string; n?: number; on: boolean; onClick: () => void }) {
   return (
@@ -106,7 +110,7 @@ function Puce({ l, n, on, onClick }: { l: string; n?: number; on: boolean; onCli
 export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: {
   /* Les acheteurs avant ces critères (statut, logement et recherche texte déjà appliqués). */
   base: Acheteur[]; f: FiltresA; onF: (f: FiltresA) => void; n: number;
-  statut: ChoixUnique; logement: ChoixUnique;
+  statut: ChoixMulti; logement: ChoixUnique;
 }) {
   const [ouvert, setOuvert] = useState<Panneau>(null);
   const [qVille, setQVille] = useState('');
@@ -121,6 +125,11 @@ export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: 
   const combien = (g: Partial<FiltresA>) => base.filter(c => correspond(c, { ...f, ...g })).length;
   const actifs = nbFiltresA(f) + (logement.v !== logement.tout ? 1 : 0);
   const libDe = (c: ChoixUnique) => (c.v === c.tout ? '' : c.options.find(o => o.k === c.v)?.l || '');
+  /* Un ou deux statuts : leurs noms (« Prospects + Actifs ») ; au-delà, leur nombre. */
+  const libStatut = (() => {
+    const l = statut.options.filter(o => statut.v.includes(o.k)).map(o => o.l);
+    return l.length > 2 ? `${l.length} statuts` : l.join(' + ');
+  })();
 
   /* Les types et les villes proposés : ceux des acheteurs affichés, du plus
      demandé au moins demandé, et ceux déjà choisis. */
@@ -150,8 +159,7 @@ export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: 
     <div className={`${b.aff} ${s.saisieVive}`} style={{ margin: '-4px 0 0' }}>
       <div className={`${b.affL} ${l.ligne}`} role="toolbar" aria-label="Affiner la liste des acheteurs" data-defile="fondu">
         <span className={b.affT}><Ic n="cible" t={15} />Affiner</span>
-        {([['statut', 'Statut', 'drapeau', statut], ['logement', 'Logement', 'cle', logement]] as const).map(([p, l, ic, c]) => {
-          const v = libDe(c);
+        {([['statut', 'Statut', 'drapeau', libStatut], ['logement', 'Logement', 'cle', libDe(logement)]] as const).map(([p, l, ic, v]) => {
           return (
             <button key={p} type="button" className={`${b.affB} ${v ? b.affOn : ''} ${ouvert === p ? b.affOuvert : ''}`}
               aria-expanded={ouvert === p} onClick={() => basculer(p)}>
@@ -176,8 +184,40 @@ export default function FiltresAcheteurs({ base, f, onF, n, statut, logement }: 
       {actifs > 0 && <div className={b.affNBas}>{resultat}</div>}
       {ouvert && (
         <div className={b.affP}>
-          {(ouvert === 'statut' || ouvert === 'logement') && (() => {
-            const c = ouvert === 'statut' ? statut : logement;
+          {/* V3.179 : le statut se coche comme les types — le panneau reste
+              ouvert, chaque clic ajoute ou retire ; « Tous les statuts » vide
+              le choix. */}
+          {ouvert === 'statut' && (() => {
+            const tout = statut.options.find(o => o.k === statut.tout);
+            return (
+              <>
+                <div className={s.pills}>
+                  {statut.options.filter(o => o.k !== statut.tout && (o.n > 0 || statut.v.includes(o.k))).map(o => {
+                    const on = statut.v.includes(o.k);
+                    return (
+                      <button key={o.k} type="button" className={`${s.pill} ${on ? s.pillOn : ''}`} aria-pressed={on}
+                        onClick={() => statut.onChange(basculerDans(statut.v, o.k))}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                          {o.c && <i style={{ width: 8, height: 8, borderRadius: '50%', background: o.c, flexShrink: 0 }} />}
+                          {o.l}
+                          <i style={{ fontStyle: 'normal', color: '#94a3b8', fontWeight: 800 }}>{o.n}</i>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {tout && (
+                    <button type="button" className={`${s.pill} ${!statut.v.length ? s.pillOn : ''}`} aria-pressed={!statut.v.length}
+                      onClick={() => statut.onChange([])}>
+                      <span>{tout.l}<i style={{ fontStyle: 'normal', marginLeft: 7, color: '#94a3b8', fontWeight: 800 }}>{tout.n}</i></span>
+                    </button>
+                  )}
+                </div>
+                <p className={b.affAide}>Plusieurs statuts se combinent : un clic en ajoute un, un second clic le retire.</p>
+              </>
+            );
+          })()}
+          {ouvert === 'logement' && (() => {
+            const c = logement;
             const aide = c.options.find(o => o.k === c.v)?.aide;
             return (
               <>
