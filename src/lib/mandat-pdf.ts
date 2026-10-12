@@ -1110,6 +1110,12 @@ export type Certificat = {
   /* Les empreintes des versions déjà scellées (une par signature
      précédente) : chacune reste vérifiable. */
   versions?: { x: string; empreinte: string }[];
+  /* V3.178 — Le nom de cette version-ci (« complète, signée par Maxime
+     JULIENNE et Charlotte ROSENZWEIG, le 12/10/2026 »). Alexandre : « dans
+     les preuves techniques, on ne voit que le premier mandant, pas Élodie ».
+     Elle y était — c'est la dernière version, celle du certificat — mais la
+     ligne disait seulement « celle-ci ». */
+  version?: string;
   /* Un autre document que le mandat de recherche (Documents juridiques,
      signé en ligne ou sur place) : ses mots à lui. Absent : ceux du
      mandat de recherche, à l'identique. `roles` : la qualité de chaque
@@ -1134,6 +1140,9 @@ export type SignataireCertif = {
      unique (le bon de visite) : son adresse e-mail n'est pas vérifiée. */
   sansCode?: boolean;
 };
+
+/* « Paul », « Paul et Marie », « Paul, Marie et Jean ». */
+export const etListe = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l[l.length - 1]}` : l[0] || '');
 
 export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8Array> {
   const id = c.identite || IDENTITE_DEFAUT;
@@ -1308,7 +1317,7 @@ export async function pdfSigne(mandat: Uint8Array, c: Certificat): Promise<Uint8
     ligne(`Version ${i + 1}`, v.x);
     ligne('Son empreinte SHA-256', v.empreinte, { mono: true });
   });
-  if (c.versions?.length) ligne(`Version ${c.versions.length + 1}`, 'celle-ci, reçue avec ce certificat');
+  if (c.versions?.length) ligne(`Version ${c.versions.length + 1}`, c.version ? `${c.version} — celle-ci, reçue avec ce certificat` : 'celle-ci, reçue avec ce certificat');
   ligne(`Empreinte SHA-256 (p. 1 à ${nbMandat})`, c.empreinte, { mono: true });
 
   const note = c.doc ? c.doc.note : sgn

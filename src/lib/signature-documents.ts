@@ -41,7 +41,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { PDFDocument } from 'pdf-lib';
 import { modele, pdfDocument, txt, num, aRetractation, demandeExpresse, type Donnees, type Modele, type CaseSignature } from './actes';
-import { pdfSigne, type SignataireCertif, type CadreSigne } from './mandat-pdf';
+import { etListe, pdfSigne, type SignataireCertif, type CadreSigne } from './mandat-pdf';
 import { dateLongue, dateCourte, heureParis, masquerEmail, DELAI_COSIGNATURE } from './mandat';
 import { envoyerMail, gabarit, echappe, ALERTES, CRM } from './mandat-serveur';
 import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
@@ -529,7 +529,8 @@ export async function sceller(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[],
   const fabriquer = (certif: number) => pdfDocument(m, d, identite, { signature: {
     signes, dernier, agenceLe: doc.signature!.agence_le, signatureAgence: griffeAgence, pagesEnTout: n => n + certif, mention,
   } });
-  const version = `${complet ? 'version complète' : `signée par ${faits.map(nomSig).join(', ')}`}, le ${dateCourte(dernier)}`;
+  /* V3.178 : la version complète dit aussi qui l'a signée. */
+  const version = `${complet ? 'complète, signée par ' : 'signée par '}${etListe(faits.map(nomSig))}, le ${dateCourte(dernier)}`;
   const precedentes = [...(doc.signature.versions || []), ...(doc.signature.empreinte ? [{ x: doc.signature.version || 'version précédente', empreinte: doc.signature.empreinte }] : [])]
     .filter((v, i, t) => t.findIndex(w => w.empreinte === v.empreinte) === i);
   const cases = casesDe(m, doc);
@@ -552,7 +553,7 @@ export async function sceller(sb: SupabaseClient, doc: DocSigne, sigs: SigDoc[],
     numero, mandant: { nom: signataires[0]?.nom || m.pour(d), adresse: '', email: signataires[0]?.email || '', telephone: '' },
     signeLe: dernier, ip: '', appareil: '', empreinte,
     deroule: derouleCommun(doc, sigs, identite), executionImmediate: d.execution === 'oui', agenceLe: doc.signature!.agence_le,
-    identite, signataires, versions: precedentes,
+    identite, signataires, versions: precedentes, version,
     doc: {
       entete, titre: entete, court: entete.charAt(0).toLowerCase() + entete.slice(1),
       tampon: m.garde(d).titre.toLocaleUpperCase('fr-FR'),

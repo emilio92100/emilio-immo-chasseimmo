@@ -29,7 +29,7 @@ import {
   redigerMandat, resumeMandat, dateLongue, dateCourte, heureParis, finRetractationPour, DELAI_COSIGNATURE, RETRACTATION_JOURS,
   type Mandant, type Contenu, type Societe,
 } from './mandat';
-import { pdfMandat, pdfSigne, type SignataireCadre, type SignataireCertif } from './mandat-pdf';
+import { etListe, pdfMandat, pdfSigne, type SignataireCadre, type SignataireCertif } from './mandat-pdf';
 import { envoyerMail, gabarit, echappe } from './mandat-serveur';
 import { HOTE_ESPACE, partieAleatoire, poignee } from './jeton';
 import type { IdentiteAgence } from './agence';
@@ -241,7 +241,8 @@ export async function sceller(sb: SupabaseClient, l: LigneMandat, cos: Co[]): Pr
   });
   /* Chaque version scellée garde son nom (« signée par Paul Martin, le
      27/09/2026 ») : la suivante la cite avec son empreinte. */
-  const version = `${complet ? 'version complète' : `signée par ${faits.map(c => c.nom).join(', ')}`}, le ${dateCourte(dernier)}`;
+  /* V3.178 : la version complète dit aussi qui l'a signée. */
+  const version = `${complet ? 'complète, signée par ' : 'signée par '}${etListe(faits.map(c => c.nom))}, le ${dateCourte(dernier)}`;
   const versions = [...(l.contenu.versions || []), ...(l.empreinte ? [{ x: l.contenu.version || 'version précédente', empreinte: l.empreinte }] : [])]
     .filter((v, i, t) => t.findIndex(w => w.empreinte === v.empreinte) === i);
   const signataires: SignataireCertif[] = [
@@ -256,7 +257,7 @@ export async function sceller(sb: SupabaseClient, l: LigneMandat, cos: Co[]): Pr
     numero: l.numero, mandant: { nom: nomDe(m), adresse: m.adresse, email: m.email, telephone: m.telephone },
     signeLe: l.signe_le || dernier, ip: l.ip || '', appareil: l.appareil || '', empreinte,
     deroule: derouleCommun(l, cos), executionImmediate: !!l.execution_immediate, agenceLe: l.contenu.agenceLe || null,
-    identite, signataires, versions,
+    identite, signataires, versions, version,
   });
   let seul = await fabriquer(1);
   let empreinte = createHash('sha256').update(seul).digest('hex');
