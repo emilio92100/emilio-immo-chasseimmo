@@ -119,7 +119,7 @@ const ETAPES: Etape[] = [
       { t: 'texte', cle: 'description', lib: 'Le bien', ic: 'doc', large: true, exemple: 'appartement de 4 pièces, 92 m², 3e étage' },
       { t: 'euros', cle: 'prix', lib: 'Prix annoncé', ic: 'etiquette' },
       { t: 'texte', cle: 'reference', lib: 'Référence de l’annonce', ic: 'liste' },
-      { t: 'texte', cle: 'agenceVendeur', lib: 'Agence du vendeur', ic: 'agence', si: d => d.role === 'acquereur', exemple: 'Agence du Parc, Boulogne', aide: 'Si le bien est proposé par une autre agence.' },
+      { t: 'texte', cle: 'agenceVendeur', lib: 'Agence du vendeur', ic: 'agence', si: d => d.role === 'acquereur', exemple: 'Agence du Parc, Boulogne', question: 'Le bien est-il proposé par une autre agence ?' },
       { t: 'titre', cle: 't-quand', lib: 'Quand', ic: 'calendrier', si: d => !plusieurs(d) },
       { t: 'date', cle: 'dateVisite', lib: 'Date de la visite', ic: 'calendrier', requis: true },
       { t: 'heure', cle: 'heure', lib: 'Heure', ic: 'horloge' },

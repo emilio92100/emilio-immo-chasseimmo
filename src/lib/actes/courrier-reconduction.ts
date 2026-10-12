@@ -39,9 +39,9 @@ const ETAPES: Etape[] = [
       { t: 'texte', cle: 'mandatNom', lib: 'Le mandat, en toutes lettres', ic: 'plume', large: true, exemple: 'un mandat de vente exclusif', aide: 'Tel qu’il apparaît dans la phrase « vous nous avez confié … ».' },
       { t: 'texte', cle: 'mandatNumero', lib: 'N° du mandat', ic: 'livre', requis: true },
       { t: 'date', cle: 'mandatDate', lib: 'Signé le', ic: 'calendrier', requis: true },
-      { t: 'texte', cle: 'bien', lib: 'Le bien', ic: 'lieu', large: true, si: d => d.quoi !== 'recherche', exemple: '12 rue des Lilas, 92100 Boulogne-Billancourt' },
+      { t: 'texte', cle: 'bien', lib: 'Le bien', ic: 'lieu', large: true, si: d => d.quoi !== 'recherche', exemple: '12 rue des Lilas, 92100 Boulogne-Billancourt', question: 'Rappeler l’adresse du bien ?' },
       { t: 'titre', cle: 't-duree', lib: 'Sa durée', ic: 'calendrier' },
-      { t: 'nombre', cle: 'periode', lib: 'Il se poursuit par périodes de', ic: 'boucle', unite: 'mois', requis: true },
+      { t: 'nombre', cle: 'periode', lib: 'Il se poursuit par périodes de', ic: 'boucle', unite: 'mois', requis: true, rapides: [3, 6, 12] },
       { t: 'date', cle: 'finMax', lib: 'Au plus tard jusqu’au', ic: 'drapeau', aide: 'La limite totale prévue au mandat.' },
       { t: 'choix', cle: 'resiliation', lib: 'Le mandat peut être arrêté', ic: 'balance', options: [
         { v: 'art78', l: 'Par recommandé, 15 jours de préavis', ic: 'doc' }, { v: 'libre', l: 'Par recommandé ou e-mail, 15 jours de préavis', ic: 'mail' },
@@ -54,7 +54,7 @@ const ETAPES: Etape[] = [
       { t: 'texte', cle: 'destNom', lib: 'Nom', ic: 'personne', large: true, requis: true, exemple: 'Madame Claire MARTIN et Monsieur Paul MARTIN' },
       { t: 'zone', cle: 'destAdresse', lib: 'Adresse', ic: 'lieu', large: true, exemple: '12 rue des Lilas\n92100 Boulogne-Billancourt' },
       { t: 'texte', cle: 'destEmail', lib: 'E-mail', ic: 'mail', large: true },
-      { t: 'texte', cle: 'appel', lib: 'Formule d’appel', ic: 'bulle', exemple: 'Madame, Monsieur,' },
+      { t: 'texte', cle: 'appel', lib: 'Formule d’appel', ic: 'bulle', exemple: 'Chère Madame, cher Monsieur,', question: 'Une autre formule d’appel que « Madame, Monsieur, » ?' },
       { t: 'choix', cle: 'envoi', lib: 'Envoyé par', ic: 'envoyer', tuiles: true, options: [
         { v: 'email', l: 'E-mail dédié', ic: 'ecran' }, { v: 'lrar', l: 'Recommandé', ic: 'doc' }, { v: 'lettre', l: 'Lettre simple', ic: 'plume' },
       ], aide: 'La loi accepte une lettre ou un e-mail, à condition qu’ils ne servent qu’à ça. Garde la preuve de l’envoi : un e-mail envoyé ou un recommandé, c’est plus sûr qu’une lettre simple.' },

@@ -136,9 +136,10 @@ const ETAPES: Etape[] = [
       { t: 'titre', cle: 't-ag', lib: 'Son agence', ic: 'agence' },
       { t: 'texte', cle: 'confNom', lib: 'Nom de l’agence', ic: 'agence', requis: true, exemple: 'Agence du Parc' },
       { t: 'texte', cle: 'confSociete', lib: 'Société', ic: 'immeuble', requis: true, exemple: 'PARC IMMOBILIER' },
-      { t: 'texte', cle: 'confForme', lib: 'Forme', ic: 'immeuble', exemple: 'SARL' },
-      { t: 'texte', cle: 'confCapital', lib: 'Capital', ic: 'euro', exemple: '10 000 €' },
       { t: 'texte', cle: 'confSiege', lib: 'Siège', ic: 'lieu', large: true, requis: true, exemple: '4 place du Parc, 92100 Boulogne-Billancourt' },
+      /* V3.177 : la forme, le capital et le RCS, facultatifs : une question Oui / Non. */
+      { t: 'texte', cle: 'confForme', lib: 'Forme', ic: 'immeuble', exemple: 'SARL', question: 'Préciser sa forme, son capital et son RCS ?', avec: ['confCapital', 'confRcs'] },
+      { t: 'texte', cle: 'confCapital', lib: 'Capital', ic: 'euro', exemple: '10 000 €' },
       { t: 'texte', cle: 'confRcs', lib: 'RCS', ic: 'doc', exemple: 'RCS Nanterre 812 345 678' },
       { t: 'titre', cle: 't-carte', lib: 'Sa carte et ses garanties', ic: 'carte' },
       { t: 'texte', cle: 'confCarte', lib: 'Carte professionnelle n°', ic: 'carte', requis: true, exemple: 'CPI 9201 2019 000 012 345' },
@@ -150,7 +151,7 @@ const ETAPES: Etape[] = [
       { t: 'texte', cle: 'confRcp', lib: 'Assurance de responsabilité civile professionnelle', ic: 'balance', large: true, requis: true, exemple: 'MMA IARD, police n° 123 456 789' },
       { t: 'titre', cle: 't-sig', lib: 'Qui signe pour elle', ic: 'plume' },
       { t: 'personnes', cle: 'delegataires', lib: 'Le signataire', ic: 'personne', un: 'Signataire', min: 1, max: 1, complet: false, nomCarte: () => 'Celui qui signe pour le confrère' },
-      { t: 'texte', cle: 'confQualite', lib: 'Sa qualité', ic: 'bureau', exemple: 'gérant' },
+      { t: 'texte', cle: 'confQualite', lib: 'Sa qualité', ic: 'bureau', exemple: 'gérant', question: 'Préciser la qualité du signataire ?' },
     ],
   },
   {
@@ -173,7 +174,7 @@ const ETAPES: Etape[] = [
   {
     id: 'honoraires', titre: 'Le partage des honoraires', court: 'Les honoraires', sous: 'Ce qui revient au confrère quand l’acquéreur vient de lui, et qui encaisse.', vers: 'Honoraires', reperesApres: 'encaisse', ic: 'euro',
     champs: [
-      { t: 'nombre', cle: 'partage', lib: 'Part du confrère', ic: 'pourcent', unite: '% des honoraires HT', requis: true, aide: 'Le reste te revient. 50 % est l’usage le plus courant.' },
+      { t: 'nombre', cle: 'partage', lib: 'Part du confrère', ic: 'pourcent', unite: '% des honoraires HT', requis: true, rapides: [30, 40, 50], aide: 'Le reste te revient. 50 % est l’usage le plus courant.' },
       { t: 'choix', cle: 'encaisse', lib: 'Qui encaisse les honoraires ?', ic: 'banque', tuiles: true, options: [
         { v: 'delegant', l: 'Toi', aide: 'Tu reverses sa part sur sa facture. Le plus sûr : c’est toi qui détiens le mandat.', ic: 'agence' },
         { v: 'delegataire', l: 'Le confrère', aide: 'Il te reverse ta part sur ta facture.', ic: 'accord' },
