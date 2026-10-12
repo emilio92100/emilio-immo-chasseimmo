@@ -1499,6 +1499,25 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.175 — 12 octobre 2026 · Les docs juridiques : la barre du bas reste, la recherche d'adresse
+
+- Alexandre : « quand le document s'ouvre, laisser en bas les fiches ouvertes, pour switcher sur
+  un client récupérer des éléments ; marqué doc juridique ; et quand on revient, la même page ».
+  L'éditeur (`EditeurDocument`, classe `edDock`) s'arrête au-dessus de la barre « Fiches
+  ouvertes » : la barre pose sa hauteur dans `--fiches-h` (0 au téléphone, où elle n'est pas).
+  Le document s'y met (`k: 'document'`, « Doc juridique » dessous, le titre du document suivi
+  à la seconde) ; `EVT_DOC_ACTIF` dit lequel est à l'écran. Un clic sur son bloc le rouvre
+  (`documents` + `{ ouvrir }`), à la même étape et à la même hauteur de la colonne des questions
+  (sessionStorage `emi-doc-place:<id>`) ; fermé par son bouton retour, il oublie et repart du
+  début, comme avant. Supprimé, il sort de la barre. L'éditeur d'un bien couvre toujours tout.
+- Quitté sans son bouton retour (la barre, le menu, la recherche), l'éditeur envoie tout de
+  suite la saisie pas encore partie (avant : perdue si l'on partait dans les 0,8 s) ; rouvert
+  avant que la base l'ait, il la reprend (`saisiesEnRoute`).
+- La recherche d'adresse dans les documents (`SaisieAdresse`, nouvelles options `onChoisir`,
+  `id`, `off`) : l'adresse d'une personne (vendeur, acquéreur…), l'adresse du bien d'un mandat,
+  d'un avenant, d'une offre, d'un bon de visite (et ses autres biens). Choisie, elle remplit le
+  code postal et la ville quand l'étape les demande (`voisins`) ; on peut toujours écrire à la main.
+
 ### V3.174 — 11 octobre 2026 · Les notaires : « c'est fait », la recherche par l'étude, le formulaire ; les types de contact
 
 - « C'est fait », en haut à droite : `src/lib/succes.ts` (`annoncerSucces`) et
