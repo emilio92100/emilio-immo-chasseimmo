@@ -22,13 +22,17 @@ import styles from './FichesOuvertes.module.css';
        Alexandre : « quand le document s'ouvre, laisser en bas les fiches
        ouvertes, pour switcher sur un client et revenir sur la même page »).
        L'éditeur laisse la barre visible, et dit quel document est à l'écran
-       (EVT_DOC_ACTIF) ; un clic sur son bloc le rouvre à la même étape.
+       (EVT_DOC_ACTIF) ; un clic sur son bloc le rouvre à la même étape ;
+     · la liste des contacts : Clients, quand on ouvre une fiche depuis elle
+       (V3.179 — « que ça crée une fiche Mes contacts, et quand on revient
+       dessus, que ce soit à l'identique ») : un clic la rouvre avec ses
+       statuts, ses critères et sa hauteur.
 
    Les blocs se rangent à la main : on en attrape un et on le fait glisser
    (au doigt : un appui un peu long, puis glisser). L'ordre est gardé. */
 
 export type FicheOuverte = {
-  k: 'contact' | 'bien' | 'carte' | 'relances' | 'document';
+  k: 'contact' | 'bien' | 'carte' | 'relances' | 'document' | 'contacts';
   id: string;
   titre: string;
   sous?: string;
@@ -68,7 +72,7 @@ export const MAX_FICHES = 10;
 export function lireFiches(): FicheOuverte[] {
   try {
     const v = JSON.parse(localStorage.getItem(CLE) || '[]');
-    return Array.isArray(v) ? v.filter(x => x && (x.k === 'contact' || x.k === 'bien' || x.k === 'carte' || x.k === 'relances' || x.k === 'document') && typeof x.id === 'string').slice(0, MAX_FICHES) : [];
+    return Array.isArray(v) ? v.filter(x => x && (x.k === 'contact' || x.k === 'bien' || x.k === 'carte' || x.k === 'relances' || x.k === 'document' || x.k === 'contacts') && typeof x.id === 'string').slice(0, MAX_FICHES) : [];
   } catch { return []; }
 }
 export function ecrireFiches(l: FicheOuverte[]) {
@@ -291,6 +295,10 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
                   : f.k === 'document'
                   ? <span className={`${styles.vignette} ${styles.vignetteDoc}`}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z" /><path d="M14 2.5V8h5.5" /><path d="m9 15 2 2 4-4" /></svg>
+                    </span>
+                  : f.k === 'contacts'
+                  ? <span className={`${styles.vignette} ${styles.vignetteCarte}`}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" /><path d="M18.5 14.2A6.5 6.5 0 0 1 21.5 20" /></svg>
                     </span>
                   : f.k === 'relances'
                   ? <span className={`${styles.vignette} ${styles.vignetteCarte}`}>

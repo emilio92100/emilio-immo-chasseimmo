@@ -256,6 +256,13 @@ export default function AppLayout() {
     if (page === 'relances' && data && typeof data === 'object' && (data as { retour?: boolean }).retour) {
       window.history.replaceState(null, '', `${window.location.pathname}?page=relances&retour=1`);
     }
+    /* V3.179 — De même pour Contacts : fermer une fiche (×, « Tout fermer »,
+       le bouton retour) ou toucher le bloc « Mes contacts » rouvre la liste
+       telle qu'on l'avait laissée (Clients, `lireRetour`). Le menu de gauche,
+       lui, l'ouvre comme avant. */
+    if (page === 'clients' && data && typeof data === 'object' && (data as { retour?: boolean }).retour) {
+      window.history.replaceState(null, '', `${window.location.pathname}?page=clients&retour=1`);
+    }
     /* V3.138 — Le retour à l'agenda (Alexandre : « quand on fait retour, on
        ne revient pas sur la fiche qui était ouverte depuis l'agenda ») :
        l'agenda a noté, en partant, le jour, la vue et le rendez-vous ouvert
@@ -290,6 +297,8 @@ export default function AppLayout() {
     /* Relances (V3.102) : rouverte sur la tuile et la relance laissées. Déjà
        à l'écran, le bloc ne la recharge pas. */
     if (f.k === 'relances') { if (pageRef.current !== 'relances') handleNavigate('relances', { retour: true }); return; }
+    /* La liste des contacts (V3.179) : rouverte telle qu'on l'avait laissée. */
+    if (f.k === 'contacts') { if (pageRef.current !== 'clients') handleNavigate('clients', { retour: true }); return; }
     /* Un document juridique (V3.175) : rouvert dans l'éditeur, à l'étape
        laissée. Déjà à l'écran, le bloc ne le recharge pas. */
     if (f.k === 'document') { if (!(pageRef.current === 'documents' && docActifRef.current === f.id)) handleNavigate('documents', { ouvrir: f.id }); return; }
@@ -329,7 +338,7 @@ export default function AppLayout() {
   const fermerContact = useCallback((f?: FicheOuverte) => {
     if (f?.depuis === 'relances') handleNavigate('relances', { retour: true });
     else if (f?.depuis === 'agenda') handleNavigate('agenda', { retour: true });
-    else handleNavigate('clients');
+    else handleNavigate('clients', { retour: true });
   }, [handleNavigate]);
   const ficheAffichee = ficheClient ? fiches.find(x => x.k === 'contact' && x.id === ficheClient.id) : undefined;
   const fermerFiche = useCallback((f: FicheOuverte) => {
@@ -398,7 +407,7 @@ export default function AppLayout() {
         </main>
         {/* Les fiches ouvertes : on passe d'un contact ou d'un bien à l'autre. */}
         <FichesOuvertes fiches={fiches}
-          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : activePage === 'relances' ? { k: 'relances', id: 'relances' } : activePage === 'documents' && docActif ? { k: 'document', id: docActif } : null}
+          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : activePage === 'relances' ? { k: 'relances', id: 'relances' } : activePage === 'clients' ? { k: 'contacts', id: 'contacts' } : activePage === 'documents' && docActif ? { k: 'document', id: docActif } : null}
           onOuvrir={ouvrirFiche}
           onRanger={setFiches}
           onFermer={fermerFiche}
