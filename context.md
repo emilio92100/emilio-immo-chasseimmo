@@ -1499,6 +1499,22 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.176 — 12 octobre 2026 · Les notaires d'un dossier : tous les e-mails, et « Modifier »
+
+- Alexandre : « sur ce dossier, deux personnes s'en occupent : je veux voir leurs deux mails, avec
+  le numéro ; et quand on fait Modifier, il y a juste Changer, on ne peut pas modifier les infos ».
+- `NotaireChoisi` gagne `emails` (tous ; `email` reste le premier) et `dossier` (coordonnées
+  corrigées sur ce dossier : elles passent avant la fiche du contact). `notaireAJour` (outils.ts)
+  dit ce qu'on montre : ce qui est corrigé sur le dossier, sinon la fiche du contact à jour,
+  sinon ce qui a été noté au choix. La carte de l'offre et celle du compromis l'utilisent, et les
+  fenêtres (« Les notaires du dossier », « Compléter le compromis ») s'ouvrent dessus (`aJour`).
+- La carte : l'étude, l'adresse, chaque numéro, et chaque e-mail en entier (un clic pour écrire).
+  Sous compromis, « Modifier » rouvre « Compléter le compromis ».
+- Dans la fenêtre, le notaire choisi a « Modifier » au-dessus de « Changer » : nom, étude,
+  adresse (recherche d'adresse), téléphones et e-mails (une ligne chacun, « Ajouter un e-mail » —
+  le clerc qui suit le dossier). Case « Ajouter aussi les nouveaux numéros et e-mails à sa fiche
+  de contact » (`completerFicheNotaire` : ajoute, ne retire rien ; écrit l'étude et son adresse).
+
 ### V3.175 — 12 octobre 2026 · Les docs juridiques : la barre du bas reste, la recherche d'adresse
 
 - Alexandre : « quand le document s'ouvre, laisser en bas les fiches ouvertes, pour switcher sur
