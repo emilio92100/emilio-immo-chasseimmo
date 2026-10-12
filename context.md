@@ -1499,6 +1499,35 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.177 — 12 octobre 2026 · Les docs juridiques en fil, le menu des rubriques à gauche (maquette B2)
+
+- Alexandre a choisi la maquette B2 (« le menu foncé sur la gauche, avec les évaluations »), après
+  « je n'aime pas les modules, les blocs tout seuls, les blocs facultatifs dépliés d'office ;
+  plutôt des questions : Oui, ça s'affiche ; Non, rien n'est déplié ». Toutes les questions de
+  tous les documents passent par `documents/FilQuestions.tsx` ; les réponses, les clés et le texte
+  imprimé ne changent pas.
+- `MenuRubriques` (ordinateur, au-dessus de 1100 px ; le fil des étapes du haut reste au
+  téléphone) : les étapes, leur dessin, « Complet » ou « N à compléter » ; sous l'étape ouverte, ses
+  questions avec leur état — un clic y descend (`viser`). En haut, le soleil / la lune : menu sombre
+  ou clair (`documents.menu`, dans ce navigateur). En bas, « Aperçu du document » : l'aperçu est
+  masqué tant qu'on ne l'a pas demandé (`documents.apercu` ≠ « montre »).
+- `EtapeFil` : chaque étape sur une feuille blanche, ses questions numérotées (2.1, 2.2…) reliées
+  par un fil, chacune avec sa bulle (bleue : bon ; orangée : une réponse obligatoire manque ;
+  pointillés : facultative), « Facultatif » ou « À compléter » à côté du numéro. Les titres d'une
+  étape deviennent des intertitres ; les petites saisies qui se suivent se rangent sur une ligne
+  (« Fait à », « Le ») ; un Oui / Non devient deux boutons, un autre choix des pastilles avec leur
+  dessin (l'explication de celle choisie dessous).
+- Nouveau dans les modèles (`commun.ts`) : `question` (une info facultative posée en Oui / Non ;
+  « Non » la vide), `avec` (l'adresse dessinée avec son code postal et sa ville), `rapides` (les
+  valeurs courantes d'un nombre, d'un clic : 3, 6, 9, 12 mois).
+- Mandat de vente : la copropriété (tantièmes, lots, Carrez) passe dans l'étape du bien, juste
+  après la désignation (l'étape « copro » n'existe plus ; ses repères suivent) ; « Description »
+  devient « La désignation du bien », avec ce qu'elle est ; le notaire du vendeur, les précisions,
+  les meubles, la précision sur les honoraires et la clause particulière sont des questions Oui /
+  Non ; la durée, les périodes et la limite se choisissent d'un clic. Ailleurs : les précisions du
+  mandat de recherche, de l'offre (et le notaire de l'acquéreur), la remarque du bon de visite ;
+  l'adresse avec sa ville (offre, bon de visite) et avec code postal et ville (avenant).
+
 ### V3.176 — 12 octobre 2026 · Les notaires d'un dossier : tous les e-mails, et « Modifier »
 
 - Alexandre : « sur ce dossier, deux personnes s'en occupent : je veux voir leurs deux mails, avec
