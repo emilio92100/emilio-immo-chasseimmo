@@ -1499,6 +1499,30 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.179 — 13 octobre 2026 · Les acheteurs : plusieurs statuts à la fois, et Contacts retrouvé tel quel
+
+- Alexandre : « dans Acheteurs, au statut, on ne peut pas choisir Actif et Prospect ; un clic
+  doit le prendre, et si on rappuie, ça le retire ». Le statut (`Clients.tsx`, `statuts: string[]`,
+  vide = « Tous les statuts » ; on arrive toujours sur « Actifs ») se coche comme les types : le
+  panneau reste ouvert, chaque clic ajoute ou retire. Le bouton dit « Prospects + Actifs », puis
+  « 3 statuts ». Les compteurs du logement suivent les statuts choisis. Un acheteur créé avec un
+  autre statut que ceux regardés : son statut s'ajoute (avant : on repassait sur « Tous »).
+- Le logement reste un choix unique (« pour propriétaire, ça va »). `ChoixMulti` dans
+  `FiltresAcheteurs.tsx`.
+- Puis : « je mets Prospect, ce qu'il cherche, je descends, j'ouvre une fiche ; je ferme avec la
+  croix et tout est remis à zéro […] que ça crée une fiche Mes contacts, et quand on revient
+  dessus, que ce soit à l'identique ». En quittant la liste (démontage, `useLayoutEffect` : la
+  hauteur est encore la bonne), Clients range dans la session (`contacts.retour`) les statuts, le
+  logement, ce qu'il cherche, la recherche tapée, le type archivé, le nombre de lignes dessinées et
+  la hauteur (le `<main>`, et la zone qui le contient au téléphone). La catégorie l'était déjà
+  (`vue.clients`). Ouvrir une fiche d'ici (`versFiche`) pose le bloc « Mes contacts » dans la barre
+  du bas (`k: 'contacts'`, sous-titre « Acheteurs · Prospects + Actifs ») et marque l'adresse
+  `?retour=1` avant que la fiche ne s'empile.
+- Le retour reprend tout : la croix ou le bouton retour de la fiche (`fermerContact` →
+  `handleNavigate('clients', { retour: true })`), le bloc « Mes contacts », le retour du
+  navigateur. Arrivé par le menu de gauche, Contacts s'ouvre comme avant, sur « Actifs ». Même
+  principe que Relances (V3.102).
+
 ### V3.178 — 13 octobre 2026 · Le certificat nomme qui a signé la version complète
 
 - Alexandre, sur le mandat de vente n° 999 signé par deux mandants : « dans les preuves
