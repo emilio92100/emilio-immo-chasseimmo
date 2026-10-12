@@ -44,7 +44,7 @@ const ETAPES: Etape[] = [
     id: 'bien', titre: 'Le bien', court: 'Le bien', sous: 'Le bien visé, son vendeur, son prix annoncé.', vers: 'Le bien', ic: 'maison',
     champs: [
       { t: 'titre', cle: 't-bien', lib: 'Le bien', ic: 'maison' },
-      { t: 'texte', cle: 'adresse', lib: 'Adresse du bien', ic: 'lieu', large: true, requis: true },
+      { t: 'texte', cle: 'adresse', lib: 'Adresse du bien', ic: 'lieu', large: true, requis: true, avec: ['ville'] },
       { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
       { t: 'zone', cle: 'description', lib: 'Le bien', ic: 'doc', large: true, exemple: 'un appartement de 4 pièces au 3e étage, avec une cave (lots n° 12 et 31)' },
       { t: 'titre', cle: 't-vendeur', lib: 'Le vendeur', ic: 'personne' },
@@ -108,8 +108,8 @@ const ETAPES: Etape[] = [
       { t: 'date', cle: 'validite', lib: 'Offre valable jusqu’au', ic: 'calendrier', requis: true },
       { t: 'heure', cle: 'validiteHeure', lib: 'À', ic: 'horloge' },
       { t: 'nombre', cle: 'delai', lib: 'Avant-contrat signé dans les', ic: 'chrono', unite: 'jours suivant l’acceptation' },
-      { t: 'texte', cle: 'notaire', lib: 'Notaire de l’acquéreur', ic: 'balance', large: true, exemple: 'Me Leroy, notaire à Paris' },
-      { t: 'zone', cle: 'note', lib: 'Une précision ?', ic: 'plume', large: true },
+      { t: 'texte', cle: 'notaire', lib: 'Notaire de l’acquéreur', ic: 'balance', large: true, exemple: 'Me Leroy, notaire à Paris', question: 'Veux-tu préciser le notaire de l’acquéreur ?' },
+      { t: 'zone', cle: 'note', lib: 'Une précision', ic: 'plume', large: true, question: 'Une précision à ajouter ?' },
     ],
   },
   {

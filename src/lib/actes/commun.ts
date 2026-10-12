@@ -96,12 +96,23 @@ export function fichePersonne(p: Personne, ic: Icone = 'personne', pied?: string
 /* `ic` : le pictogramme affiché à l'écran (voir components/documents/pictos.ts
    et ICONES) ; il ne s'imprime jamais. */
 export type Option = { v: string; l: string; aide?: string; ic?: string };
-type Base = { cle: string; lib: string; aide?: string; exemple?: string; large?: boolean; requis?: boolean; si?: (d: Donnees) => boolean; ic?: string };
+type Base = { cle: string; lib: string; aide?: string; exemple?: string; large?: boolean; requis?: boolean; si?: (d: Donnees) => boolean; ic?: string;
+  /* V3.177 — Alexandre : « des blocs facultatifs dès le départ, ça rajoute de
+     la grandeur ; plutôt : Souhaitez-vous préciser le notaire du vendeur ?
+     Oui, ça s'affiche ; Non, rien n'est déplié ». Une info facultative devient
+     cette question Oui / Non ; la saisie ne s'ouvre que sur « Oui », et
+     « Non » la vide. Déjà remplie, elle est ouverte. */
+  question?: string;
+  /* V3.177 : d'autres questions simples de l'étape, dessinées avec celle-ci
+     (l'adresse, son code postal, sa ville). Elles ne font plus une question à part. */
+  avec?: string[] };
 /* Une question simple, à une seule saisie : elle peut aussi vivre dans une
    carte d'un champ « groupes » (V3.154). */
 export type ChampSimple =
   | (Base & { t: 'texte' | 'zone' | 'date' | 'heure' })
-  | (Base & { t: 'nombre' | 'euros'; unite?: string });
+  | (Base & { t: 'nombre' | 'euros'; unite?: string;
+      /* V3.177 : les valeurs courantes, à choisir d'un clic (3, 6, 9, 12 mois) ; la saisie reste libre. */
+      rapides?: number[] });
 export type Champ =
   | ChampSimple
   | (Base & { t: 'choix'; options: Option[]; tuiles?: boolean })

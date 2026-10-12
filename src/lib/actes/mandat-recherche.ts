@@ -196,7 +196,7 @@ const ETAPES: Etape[] = [
       { t: 'choix', cle: 'represente', lib: 'L’un représente l’autre ?', ic: 'plume', si: d => d.qui === 'couple', options: [
         { v: 'non', l: 'Non, les deux signent', ic: 'couple' }, { v: '0', l: 'Le premier représente le second', ic: 'fleche' }, { v: '1', l: 'Le second représente le premier', ic: 'retour' },
       ], aide: 'Seulement avec une procuration écrite, jointe au mandat.' },
-      { t: 'zone', cle: 'noteAcquereurs', lib: 'Une précision ?', ic: 'plume', large: true, aide: 'Note libre, imprimée sous les acheteurs.' },
+      { t: 'zone', cle: 'noteAcquereurs', lib: 'Une précision', ic: 'plume', large: true, question: 'Une précision à imprimer sous les acheteurs ?' },
     ],
   },
   {
@@ -261,7 +261,7 @@ const ETAPES: Etape[] = [
       { t: 'nombre', cle: 'suite', lib: 'Pas d’achat sans toi d’un bien présenté, pendant le mandat et', ic: 'chrono', unite: 'mois après', aide: 'Un bien que tu lui as présenté ou fait visiter. 12 mois au plus.' },
       { t: 'choix', cle: 'infoJointe', lib: 'Joindre l’information précontractuelle', ic: 'info', options: [{ v: 'oui', l: 'Oui', ic: 'trombone' }, { v: 'non', l: 'Non, remise à part', ic: 'envoyer' }],
         aide: 'Avec un particulier, elle est obligatoire avant la signature. Jointe, elle forme la 2e partie du document.' },
-      { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, aide: 'Imprimée telle quelle, avant les signatures.' },
+      { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, question: 'Ajouter une clause particulière ?', aide: 'Imprimée telle quelle, avant les signatures.' },
     ],
   },
   {

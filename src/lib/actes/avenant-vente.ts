@@ -81,7 +81,7 @@ const ETAPES: Etape[] = [
       { t: 'texte', cle: 'conjoint', lib: 'Le conjoint, qui avait donné son accord', ic: 'couple', large: true, si: aConjoint,
         aide: 'Le bien est le logement de la famille : le conjoint signe aussi l’avenant.' },
       { t: 'titre', cle: 't-b', lib: 'Le bien', ic: 'maison' },
-      { t: 'texte', cle: 'adresse', lib: 'Adresse', ic: 'lieu', large: true, requis: true },
+      { t: 'texte', cle: 'adresse', lib: 'L’adresse du bien', ic: 'lieu', large: true, requis: true, avec: ['cp', 'ville'] },
       { t: 'texte', cle: 'cp', lib: 'Code postal', ic: 'mail' },
       { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
     ],
@@ -112,7 +112,7 @@ const ETAPES: Etape[] = [
       { t: 'date', cle: 'finActuelle', lib: 'Il devait finir le', ic: 'calendrier', si: d => change(d, 'duree') },
       { t: 'date', cle: 'finNouvelle', lib: 'Il finira le', ic: 'chrono', requis: true, si: d => change(d, 'duree') },
       { t: 'titre', cle: 't-bien', lib: 'Le bien', ic: 'maison', si: d => change(d, 'bien') },
-      { t: 'zone', cle: 'description', lib: 'Description', ic: 'doc', large: true, si: d => change(d, 'bien'), aide: 'Reprise du mandat : corrige-la ou complète-la.' },
+      { t: 'zone', cle: 'description', lib: 'La désignation du bien', ic: 'doc', large: true, si: d => change(d, 'bien'), aide: 'La phrase du mandat qui dit ce qui est vendu, reprise du mandat : corrige-la ou complète-la.' },
       { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', ic: 'pourcent', si: d => change(d, 'bien') && estCopro(d), options: TANTIEMES_BASES },
       champTotalTantiemes(d => change(d, 'bien') && estCopro(d)),
       { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 40, large: true, si: d => change(d, 'bien') && estCopro(d), icone: iconeLot, colonnes: [

@@ -290,22 +290,42 @@ const ETAPES: Etape[] = [
       ], aide: 'Seulement avec une procuration écrite, jointe au mandat.' },
       { t: 'titre', cle: 't-plus', lib: 'À savoir aussi', ic: 'info' },
       { t: 'choix', cle: 'fiscal', lib: 'Résidence fiscale en France ?', ic: 'fiscal', options: ouiNon() },
-      { t: 'texte', cle: 'notaire', lib: 'Notaire du vendeur', ic: 'balance', large: true, exemple: 'Me Durand, notaire à Boulogne-Billancourt', aide: 'Facultatif. Pour une succession : le notaire qui la règle.' },
-      { t: 'zone', cle: 'noteVendeurs', lib: 'Une précision ?', ic: 'plume', large: true, aide: 'Note libre, imprimée sous les vendeurs. Ex : « M. Martin est l’interlocuteur pour les visites. »' },
+      { t: 'texte', cle: 'notaire', lib: 'Notaire du vendeur', ic: 'balance', large: true, exemple: 'Me Durand, notaire à Boulogne-Billancourt',
+        question: 'Veux-tu préciser le notaire du vendeur ?', aide: 'Pour une succession : le notaire qui la règle.' },
+      { t: 'zone', cle: 'noteVendeurs', lib: 'Une précision', ic: 'plume', large: true, question: 'Une précision à imprimer sous les vendeurs ?',
+        aide: 'Ex : « M. Martin est l’interlocuteur pour les visites. »' },
     ],
   },
   {
-    id: 'bien', titre: 'Le bien', court: 'Le bien', sous: 'Ce qui sera vendu, tel que l’acte le décrira.', vers: 'Le bien', ic: 'maison',
+    /* V3.177 — Alexandre : « les tantièmes, il faut les mettre juste après le
+       bien, c'est plus logique ». La copropriété (ses lots, ses tantièmes, la
+       surface Carrez) est dans l'étape du bien, après sa désignation. */
+    id: 'bien', titre: 'Le bien', court: 'Le bien', sous: 'Ce qui sera vendu, tel que l’acte le décrira : l’adresse, la désignation, les lots.', vers: 'Le bien', ic: 'maison',
     champs: [
-      { t: 'choix', cle: 'nature', lib: 'Nature', ic: 'maison', tuiles: true, options: [
+      { t: 'choix', cle: 'nature', lib: 'Quel type de bien ?', ic: 'maison', tuiles: true, options: [
         { v: 'appartement', l: 'Appartement', ic: 'immeuble' }, { v: 'maison', l: 'Maison', ic: 'maison' },
         { v: 'terrain', l: 'Terrain', ic: 'terrain' }, { v: 'autre', l: 'Autre', ic: 'plus' },
       ] },
-      { t: 'titre', cle: 't-adresse', lib: 'Où il se trouve', ic: 'lieu' },
-      { t: 'texte', cle: 'adresse', lib: 'Adresse', ic: 'lieu', large: true, requis: true, exemple: '12 rue des Lilas' },
+      { t: 'texte', cle: 'adresse', lib: 'Où se trouve-t-il ?', ic: 'lieu', large: true, requis: true, exemple: '12 rue des Lilas', avec: ['cp', 'ville'],
+        aide: 'Tape le début : l’adresse se propose, le code postal et la ville se remplissent.' },
       { t: 'texte', cle: 'cp', lib: 'Code postal', ic: 'mail', requis: true },
       { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
-      { t: 'zone', cle: 'description', lib: 'Description', ic: 'doc', large: true, requis: true, exemple: 'un appartement de 4 pièces au 3e étage avec ascenseur : entrée, séjour, cuisine, deux chambres, salle de bains, WC' },
+      /* V3.177 — « Description, c'est quoi ? » : la phrase du mandat qui dit ce qui est vendu. */
+      { t: 'zone', cle: 'description', lib: 'La désignation du bien', ic: 'doc', large: true, requis: true, exemple: 'un appartement de 4 pièces au 3e étage avec ascenseur : entrée, séjour, cuisine, deux chambres, salle de bains, WC',
+        aide: 'La phrase du mandat qui dit ce qui est vendu : le type de bien, les pièces, l’étage. Les lots de copropriété se notent juste après.' },
+      { t: 'titre', cle: 't-lots', lib: 'La copropriété', ic: 'lots', si: d => d.nature !== 'terrain' },
+      { t: 'choix', cle: 'copro', lib: 'Est-il en copropriété ?', ic: 'immeuble', si: d => d.nature !== 'terrain', options: ouiNon(),
+        aide: 'Une maison peut l’être aussi (maisons groupées autour de parties communes).' },
+      { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', ic: 'pourcent', si: estCopro, options: TANTIEMES_BASES,
+        aide: 'C’est le règlement de copropriété qui le fixe : regarde sur le titre de propriété ou un appel de charges.' },
+      champTotalTantiemes(estCopro),
+      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 40, large: true, si: estCopro, icone: iconeLot, colonnes: [
+        { cle: 'numero', lib: 'N° du lot', exemple: '12' },
+        { cle: 'nature', lib: 'Ce que c’est', exemple: 'l’appartement, une cave, un parking…' },
+        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${totalTantiemes(d)}` },
+      ], aide: 'Un lot par ligne : le logement, puis la cave, le parking… Un lot compté sur un autre total : écris-le en entier dans sa case (12/500).' },
+      { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', ic: 'regle', unite: 'm²', si: estCopro, aide: 'Celle du lot principal, mesurée par un professionnel.' },
+      { t: 'texte', cle: 'carrezPar', lib: 'Mesurée par', ic: 'personne', si: estCopro, exemple: 'Diag Expert, le 3 septembre 2026' },
       { t: 'titre', cle: 't-surf', lib: 'Surfaces et cadastre', ic: 'regle' },
       { t: 'nombre', cle: 'surfaceHab', lib: 'Surface habitable', ic: 'regle', unite: 'm²', si: d => d.nature !== 'terrain' && !estCopro(d),
         aide: 'Indicative : hors copropriété, la loi Carrez ne s’applique pas. Si tu l’indiques, elle doit rester exacte.' },
@@ -316,30 +336,8 @@ const ETAPES: Etape[] = [
         { v: 'libre', l: 'Libre', ic: 'cle' }, { v: 'vendeur', l: 'Libéré par le vendeur', ic: 'sac' }, { v: 'loue', l: 'Loué', ic: 'bail' },
       ] },
       { t: 'zone', cle: 'bail', lib: 'Le bail', ic: 'bail', large: true, si: d => d.occupation === 'loue', exemple: 'bail d’habitation du 1er mars 2024, loyer de 1 450 € par mois hors charges' },
-      { t: 'texte', cle: 'meubles', lib: 'Meubles vendus avec le bien', ic: 'canape', large: true, exemple: 'cuisine équipée' },
-      { t: 'zone', cle: 'noteBien', lib: 'Une précision ?', ic: 'plume', large: true },
-    ],
-  },
-  {
-    id: 'copro', titre: 'La copropriété', court: 'Copropriété', sous: 'Les lots vendus, leurs tantièmes, la surface Carrez.', vers: 'Le bien', ic: 'immeuble',
-    champs: [
-      { t: 'guide', cle: 'g-terrain', si: d => d.nature === 'terrain', titre: () => 'Un terrain : rien à remplir ici', points: () => [
-        { ic: 'terrain', x: 'Un terrain n’est pas en copropriété. Passe à l’étape suivante.' },
-      ] },
-      { t: 'choix', cle: 'copro', lib: 'En copropriété ?', ic: 'immeuble', si: d => d.nature !== 'terrain', options: [{ v: 'oui', l: 'Oui', ic: 'immeuble' }, { v: 'non', l: 'Non', ic: 'maison' }],
-        aide: 'Une maison peut l’être aussi (maisons groupées autour de parties communes).' },
-      { t: 'titre', cle: 't-lots', lib: 'Les lots', ic: 'lots', si: estCopro },
-      { t: 'choix', cle: 'tantiemesBase', lib: 'Les tantièmes sont comptés sur', ic: 'pourcent', si: estCopro, options: TANTIEMES_BASES,
-        aide: 'C’est le règlement de copropriété qui le fixe : regarde sur le titre de propriété ou un appel de charges.' },
-      champTotalTantiemes(estCopro),
-      { t: 'lignes', cle: 'lots', lib: 'Les lots vendus', ic: 'lots', un: 'Lot', max: 40, large: true, si: estCopro, icone: iconeLot, colonnes: [
-        { cle: 'numero', lib: 'N° du lot', exemple: '12' },
-        { cle: 'nature', lib: 'Ce que c’est', exemple: 'l’appartement, une cave, un parking…' },
-        { cle: 'tantiemes', lib: 'Tantièmes', exemple: '145', nombre: true, suffixe: d => `/ ${totalTantiemes(d)}` },
-      ], aide: 'Un lot par ligne : le logement, puis la cave, le parking… Un lot compté sur un autre total : écris-le en entier dans sa case (12/500).' },
-      { t: 'titre', cle: 't-carrez', lib: 'La surface Carrez', ic: 'regle', si: estCopro },
-      { t: 'nombre', cle: 'carrez', lib: 'Surface loi Carrez', ic: 'regle', unite: 'm²', si: estCopro, aide: 'Celle du lot principal, mesurée par un professionnel.' },
-      { t: 'texte', cle: 'carrezPar', lib: 'Mesurée par', ic: 'personne', si: estCopro, exemple: 'Diag Expert, le 3 septembre 2026' },
+      { t: 'texte', cle: 'meubles', lib: 'Meubles vendus avec le bien', ic: 'canape', large: true, exemple: 'cuisine équipée', question: 'Des meubles vendus avec le bien ?' },
+      { t: 'zone', cle: 'noteBien', lib: 'Une précision', ic: 'plume', large: true, question: 'Une précision sur le bien ?' },
     ],
   },
   {
@@ -351,14 +349,14 @@ const ETAPES: Etape[] = [
         { v: 'exclusif', l: 'Exclusif', aide: 'Toi seul, pendant la durée du mandat.', ic: 'cadenas' },
       ] },
       { t: 'titre', cle: 't-duree', lib: 'La durée', ic: 'calendrier' },
-      { t: 'nombre', cle: 'duree', lib: 'Durée', ic: 'chrono', unite: 'mois', requis: true,
+      { t: 'nombre', cle: 'duree', lib: 'Durée', ic: 'chrono', unite: 'mois', requis: true, rapides: [3, 6, 9, 12],
         aide: 'La phrase « passé un délai de trois mois… » (art. 78 du décret de 1972) reste même pour un mandat plus court : la loi l’attache à l’exclusivité, à la clause pénale et à la clause « pas de vente en direct ». Elle ne joue que si le mandat dure plus de trois mois.' },
       { t: 'choix', cle: 'dureeMode', lib: 'À son terme', ic: 'drapeau', tuiles: true, options: [
         { v: 'fixe', l: 'Il prend fin', aide: 'Sans suite : on en signe un autre si besoin.', ic: 'drapeau' },
         { v: 'prorogation', l: 'Il se poursuit', aide: 'Par périodes, jusqu’à une limite totale.', ic: 'boucle' },
       ] },
-      { t: 'nombre', cle: 'periode', lib: 'Par périodes de', ic: 'boucle', unite: 'mois', si: d => d.dureeMode === 'prorogation' },
-      { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', ic: 'drapeau', unite: 'mois au total', si: d => d.dureeMode === 'prorogation' },
+      { t: 'nombre', cle: 'periode', lib: 'Par périodes de', ic: 'boucle', unite: 'mois', si: d => d.dureeMode === 'prorogation', rapides: [3, 6, 12] },
+      { t: 'nombre', cle: 'dureeMax', lib: 'Dans la limite de', ic: 'drapeau', unite: 'mois au total', si: d => d.dureeMode === 'prorogation', rapides: [12, 18, 24] },
     ],
   },
   {
@@ -379,7 +377,7 @@ const ETAPES: Etape[] = [
       { t: 'euros', cle: 'semiMontant', lib: 'Honoraires réduits', ic: 'euro', unite: '€ TTC', si: d => d.type === 'semi' && d.semiDirect === 'reduits' },
       /* V3.52 : imprimée juste sous les honoraires, et reprise dans
          l'information précontractuelle. */
-      { t: 'zone', cle: 'honoNote', lib: 'Précision sur les honoraires', ic: 'plume', large: true,
+      { t: 'zone', cle: 'honoNote', lib: 'Précision sur les honoraires', ic: 'plume', large: true, question: 'Une précision sur les honoraires ?',
         aide: 'Imprimée juste sous les honoraires. Par exemple : comment ils baissent si le prix baisse. Une ligne par paragraphe.' },
     ],
   },
@@ -412,7 +410,7 @@ const ETAPES: Etape[] = [
         ...(d.dureeMode === 'prorogation' ? [{ ic: 'boucle', x: 'L’annexe « la reconduction du mandat », parce qu’il se poursuit par périodes (la loi l’exige). Choisis « Il prend fin » dans la durée pour qu’elle parte.' }] : []),
         ...(retractation(d) ? [{ ic: 'retour', x: 'Le formulaire de rétractation, parce qu’il est signé hors de l’agence ou à distance (obligatoire).' }] : []),
       ] },
-      { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, aide: 'Imprimée telle quelle, avant les signatures.' },
+      { t: 'zone', cle: 'clause', lib: 'Clause particulière', ic: 'plume', large: true, question: 'Ajouter une clause particulière ?', aide: 'Imprimée telle quelle, avant les signatures.' },
     ],
   },
   {
@@ -807,7 +805,7 @@ function reperes(d: Donnees, etape: string): Repere[] {
   if (etape === 'bien') {
     if ((d.nature === 'maison' || d.nature === 'terrain') && !txt(d, 'cadastre')) out.push({ l: 'Conseil', v: 'Pour une maison ou un terrain, les références cadastrales identifient le bien sans ambiguïté.', ton: 'alerte' });
   }
-  if (etape === 'copro') {
+  if (etape === 'bien') {
     if (estCopro(d) && !lignes(d, 'lots').length) out.push({ l: 'Copropriété', v: 'Indique au moins le lot principal : c’est lui que l’acte vendra.', ton: 'alerte' });
     if (estCopro(d) && !num(d, 'carrez')) out.push({ l: 'Loi Carrez', v: 'La surface Carrez sera obligatoire dans l’avant-contrat : autant la demander dès maintenant.' });
   }

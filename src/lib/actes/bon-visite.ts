@@ -114,7 +114,7 @@ const ETAPES: Etape[] = [
     champs: [
       { t: 'titre', cle: 't-bien', lib: 'Le bien visité', ic: 'maison', si: d => !plusieurs(d) },
       { t: 'titre', cle: 't-bien1', lib: 'Le premier bien', ic: 'maison', si: plusieurs },
-      { t: 'texte', cle: 'adresse', lib: 'Adresse du bien', ic: 'lieu', large: true, requis: true },
+      { t: 'texte', cle: 'adresse', lib: 'Adresse du bien', ic: 'lieu', large: true, requis: true, avec: ['ville'] },
       { t: 'texte', cle: 'ville', lib: 'Ville', ic: 'immeuble', requis: true },
       { t: 'texte', cle: 'description', lib: 'Le bien', ic: 'doc', large: true, exemple: 'appartement de 4 pièces, 92 m², 3e étage' },
       { t: 'euros', cle: 'prix', lib: 'Prix annoncé', ic: 'etiquette' },
@@ -135,7 +135,7 @@ const ETAPES: Etape[] = [
     id: 'engagements', titre: 'Engagements', court: 'Engagements', sous: 'Ce que les visiteurs acceptent en signant.', vers: 'Engagements', ic: 'accord',
     champs: [
       { t: 'nombre', cle: 'duree', lib: 'Pas d’achat en direct pendant', ic: 'chrono', unite: 'mois', si: d => d.role !== 'acquereur' },
-      { t: 'zone', cle: 'note', lib: 'Une remarque ?', ic: 'plume', large: true },
+      { t: 'zone', cle: 'note', lib: 'Une remarque', ic: 'plume', large: true, question: 'Une remarque à ajouter ?' },
     ],
   },
   {
