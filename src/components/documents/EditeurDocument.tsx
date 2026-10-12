@@ -1,11 +1,12 @@
 'use client';
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { IDENTITE_DEFAUT, type IdentiteAgence } from '@/lib/agence';
 import { STATUTS, modele, pdfDocument, electronique, modeSignature, surPlaceSansCode, versEtape, type Champ, type Donnees, type Etape, type Repere } from '@/lib/actes';
 import ApercuActe, { Croix, Ic } from './ApercuActe';
 import FenetreConfirmer from './FenetreConfirmer';
-import { ChampActe, ContexteActe, manquesEtape } from './ChampsActe';
+import { ContexteActe, manquesEtape } from './ChampsActe';
+import { EtapeFil, MenuRubriques } from './FilQuestions';
 import FilEtapes from './FilEtapes';
 import { chercherQuestion, type Cible } from './versQuestion';
 import { FenetreProjet, dernierEnvoi } from './EnvoiProjet';
@@ -87,79 +88,6 @@ function champNumeroRegistre(reg: EtatRegistre): Champ {
   };
 }
 
-/* Les questions d'une étape, en blocs : un bloc par titre (V3.18, comme
-   l'éditeur des biens). Un titre masqué ne coupe pas : ses questions restent
-   sous le titre d'avant. */
-type Groupe = { titre: Extract<Champ, { t: 'titre' }> | null; champs: Champ[] };
-function groupes(champs: Champ[], d: Donnees): Groupe[] {
-  const out: Groupe[] = [];
-  for (const c of champs) {
-    if (c.t === 'titre') { if (!c.si || c.si(d)) out.push({ titre: c, champs: [] }); continue; }
-    if (!out.length) out.push({ titre: null, champs: [] });
-    out[out.length - 1].champs.push(c);
-  }
-  const vu = (c: Champ) => !c.si || c.si(d);
-  return out.filter(g => g.champs.some(vu));
-}
-
-/* Une étape : son en-tête (dessin, « Étape 3 sur 8 », la jauge), puis ses
-   blocs de questions, chaque question dans sa carte ; les repères suivent la
-   question qu'ils commentent. `anime` : en « étape par étape », elle glisse
-   en place. */
-function BlocEtape({ e, i, n, d, maj, off, reperes, anime = false }: {
-  e: Etape; i: number; n: number; d: Donnees; maj: (cle: string, v: unknown) => void; off: boolean; reperes: Repere[]; anime?: boolean;
-}) {
-  const gs = groupes(e.champs, d);
-  const placees = gs.some(g => g.champs.some(c => c.cle === e.reperesApres));
-  const voisins = e.champs.map(c => c.cle);
-  return (
-    <section className={`${s.etape} ${b.etape} ${anime ? b.etapeEntre : ''}`} data-etape={e.id}>
-      <div className={s.etapeTete}>
-        <span className={`${s.etapeIc} ${b.etapeIcVif}`}>{e.ic ? <Ic n={e.ic} t={22} /> : i + 1}</span>
-        <div className={b.etapeTeteTxt}>
-          <div className={s.etapeN}>{`Étape ${i + 1} sur ${n}`}</div>
-          <h2 className={s.etapeT}>{e.titre}</h2>
-          <p className={s.etapeS}>{e.sous}</p>
-          {anime && <span className={b.etapeJauge} aria-hidden="true"><i style={{ width: `${Math.round(((i + 1) / n) * 100)}%` }} /></span>}
-        </div>
-      </div>
-      {gs.map((g, k) => (
-        <div key={g.titre?.cle || `g${k}`} className={b.sect}>
-          {g.titre && (
-            <div className={b.sectT}>
-              <span className={b.sectIc}><Ic n={g.titre.ic || 'plus'} t={16} /></span>
-              <div><b>{g.titre.lib}</b>{g.titre.aide && <small>{g.titre.aide}</small>}</div>
-            </div>
-          )}
-          <div className={s.grille}>
-            {g.champs.map(c => (
-              <Fragment key={c.cle}>
-                <ChampActe c={c} d={d} maj={maj} off={off} bloc voisins={voisins} sansLib={(c.t === 'personnes' || c.t === 'groupes') && !!g.titre && g.titre.lib === c.lib} />
-                {c.cle === e.reperesApres && <Reperes l={reperes} />}
-              </Fragment>
-            ))}
-          </div>
-        </div>
-      ))}
-      {!placees && <Reperes l={reperes} />}
-    </section>
-  );
-}
-
-/* Les repères d'une étape : le calcul, et ce qui mérite un second regard. */
-function Reperes({ l }: { l: Repere[] }) {
-  if (!l.length) return null;
-  return (
-    <div className={`${s.reperes} ${s.large}`} aria-label="Repères">
-      {l.map((r, i) => (
-        <div key={i} className={`${s.repere} ${r.ton === 'alerte' ? s.repereAlerte : r.ton === 'ok' ? s.repereOk : ''}`}>
-          <span>{r.l}</span><b>{r.v}</b>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, retourLib, onSupprime }: {
   doc: DocumentRow;
   onFermer: () => void;
@@ -187,6 +115,10 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
   /* V3.175 : rouvert depuis la barre du bas, à l'étape laissée. */
   const [placeDepart] = useState<Place>(() => lirePlace(doc.id, m?.etapes.length || 0));
   const [etape, setEtape] = useState(placeDepart.etape);
+  /* V3.177 : les questions facultatives auxquelles on a répondu « Oui » sans
+     encore rien écrire (une réponse écrite les garde ouvertes d'elle-même). */
+  const [ouverts, setOuverts] = useState<Record<string, boolean>>({});
+  const ouvrir = useCallback((cle: string, oui: boolean) => setOuverts(o => ({ ...o, [cle]: oui })), []);
   const [vue, setVue] = useState<'form' | 'apercu'>('form');
   /* Étape par étape, ou tout sur une page : le choix est retenu (dans ce
      navigateur) d'un document à l'autre. */
@@ -228,8 +160,17 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
     try { const x = Number(localStorage.getItem('documents.partage')); return x >= 0.2 && x <= 0.8 ? x : PART_DEFAUT; } catch { return PART_DEFAUT; }
   });
   const [cache, setCache] = useState<boolean>(() => {
-    try { return localStorage.getItem('documents.apercu') === 'cache'; } catch { return false; }
+    /* V3.177 : masqué tant qu'on ne l'a pas demandé (« Aperçu du document », en bas du menu). */
+    try { return localStorage.getItem('documents.apercu') !== 'montre'; } catch { return true; }
   });
+  /* V3.177 : le menu des rubriques, sombre ou clair (retenu dans ce navigateur). */
+  const [menuClair, setMenuClair] = useState<boolean>(() => {
+    try { return localStorage.getItem('documents.menu') === 'clair'; } catch { return false; }
+  });
+  const choisirMenu = (clair: boolean) => {
+    setMenuClair(clair);
+    try { localStorage.setItem('documents.menu', clair ? 'clair' : 'sombre'); } catch { /* sans mémoire, tant pis */ }
+  };
   const garderPart = (x: number) => {
     setPart(x);
     try { localStorage.setItem('documents.partage', x.toFixed(3)); } catch { /* sans mémoire, tant pis */ }
@@ -815,6 +756,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
 
       {/* ── Le fil des étapes : le dessin de chacune, une coche verte quand
           elle est complète (V3.18, comme l'éditeur des biens) ── */}
+      <div className={s.edFilTel}>
       <FilEtapes actif={etape}>
         {etapes.map((e, i) => {
           const n = manquesParEtape[i];
@@ -829,6 +771,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
           );
         })}
       </FilEtapes>
+      </div>
 
       {/* ── Téléphone : Questions / Aperçu ── */}
       <div className={s.edOnglets} role="group" aria-label="Affichage">
@@ -836,11 +779,16 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
         <button type="button" aria-pressed={vue === 'apercu'} onClick={() => setVue('apercu')}><Ic n="doc" t={15} />Aperçu</button>
       </div>
 
+      <div className={s.edMilieu}>
+      {/* ── V3.177 : à gauche, les rubriques et leurs questions (ordinateur) ── */}
+      <MenuRubriques etapes={etapes} actif={etape} manques={manquesParEtape} d={dm} type={m.titre} titre={m.titreDoc(d)}
+        onAller={aller} onQuestion={(i, cle) => viser({ etape: i, cle })}
+        clair={menuClair} onClair={choisirMenu} apercu={!cache} onApercu={montrerApercu} />
       <div className={`${s.edCorps} ${s.edCorpsDoc}`} data-vue={vue} data-apercu={cache ? 'cache' : undefined} ref={corpsRef}
         style={{ ['--part' as string]: `${(part * 100).toFixed(2)}%` } as React.CSSProperties}>
         {/* ── Les questions ── */}
         <div className={s.edForm} ref={formRef} onScroll={mode === 'tout' ? suivreDefilement : undefined}>
-          <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive} ${s.saisieDoc}`}>
+          <div className={`${s.edFormIn} ${b.edFormIn} ${s.saisieVive} ${s.saisieDoc} ${s.saisieFil}`}>
             {row.statut === 'pret' && !row.signature && (
               <div className={s.lecture}>
                 <span>{`Document figé ${quand(row.finalise_le)} : c’est ce PDF qu’on ${m.courrier ? 'envoie' : 'fait signer'}. Pour changer quelque chose, repasse-le en brouillon.`}</span>
@@ -869,8 +817,8 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
             {erreurIdentite && <div className={s.erreur}>{`${erreurIdentite} L’aperçu utilise l’identité par défaut ; la finalisation la relira.`}</div>}
 
             {mode === 'tout'
-              ? etapes.map((e, i) => <BlocEtape key={e.id} e={e} i={i} n={etapes.length} d={d} maj={maj} off={off} reperes={reperesParEtape[i] || []} />)
-              : <BlocEtape key={etapes[etape].id} e={etapes[etape]} i={etape} n={etapes.length} d={d} maj={maj} off={off} reperes={reperesParEtape[etape] || []} anime />}
+              ? etapes.map((e, i) => <EtapeFil key={e.id} e={e} i={i} n={etapes.length} d={d} maj={maj} off={off} reperes={reperesParEtape[i] || []} ouverts={ouverts} onOuvert={ouvrir} />)
+              : <EtapeFil key={etapes[etape].id} e={etapes[etape]} i={etape} n={etapes.length} d={d} maj={maj} off={off} reperes={reperesParEtape[etape] || []} anime ouverts={ouverts} onOuvert={ouvrir} />}
 
             <div className={s.suite}>
               {mode === 'etapes' && etape > 0 ? <button type="button" className={s.btn} onClick={() => aller(etape - 1)}><Ic n="retour" t={15} />{etapes[etape - 1].court || etapes[etape - 1].titre}</button> : <span />}
@@ -914,6 +862,7 @@ export default function EditeurDocument({ doc, onFermer, onMaj, onFinalise, reto
                   pied={`${identite.nom} · ${identite.societe}, ${identite.forme} · carte professionnelle ${identite.carte}`} />)}
           </div>
         )}
+      </div>
       </div>
 
       {/* ── Téléphone : précédent / suivant sous le pouce ── */}

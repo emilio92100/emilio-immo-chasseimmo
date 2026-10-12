@@ -56,7 +56,39 @@ function ChampNombre({ id, euros, unite, v, onChange, off, manque }: {
   );
 }
 
-function ChampChoix({ c, v, onChange, off }: { c: Extract<Champ, { t: 'choix' }>; v: unknown; onChange: (x: string) => void; off: boolean }) {
+/* V3.177 — Les questions en fil (maquette B2) : un Oui / Non devient deux
+   boutons côte à côte ; un autre choix, des pastilles avec leur dessin, et
+   l'explication de celle choisie dessous. */
+export const estOuiNon = (c: Extract<Champ, { t: 'choix' }>) =>
+  c.options.length === 2 && c.options[0].v === 'oui' && c.options[1].v === 'non';
+function ChoixFil({ c, v, onChange, off }: { c: Extract<Champ, { t: 'choix' }>; v: unknown; onChange: (x: string) => void; off: boolean }) {
+  if (estOuiNon(c)) {
+    return (
+      <div className={s.filOuiNon} role="radiogroup" aria-label={c.lib}>
+        {c.options.map(o => (
+          <button key={o.v} type="button" role="radio" aria-checked={v === o.v} disabled={off} onClick={() => onChange(o.v)}>
+            <Ic n={o.v === 'oui' ? 'check' : 'croix'} t={13} e={2.8} />{o.l}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  const choisie = c.options.find(o => o.v === v);
+  return (
+    <>
+      <div className={s.filPills} role="radiogroup" aria-label={c.lib}>
+        {c.options.map(o => (
+          <button key={o.v} type="button" role="radio" aria-checked={v === o.v} disabled={off} title={o.aide}
+            className={s.filPill} onClick={() => onChange(o.v)}>{o.ic && <Ic n={o.ic} t={16} />}<span>{o.l}</span></button>
+        ))}
+      </div>
+      {choisie?.aide && <div className={s.filChoixAide}>{choisie.aide}</div>}
+    </>
+  );
+}
+
+function ChampChoix({ c, v, onChange, off, fil = false }: { c: Extract<Champ, { t: 'choix' }>; v: unknown; onChange: (x: string) => void; off: boolean; fil?: boolean }) {
+  if (fil) return <ChoixFil c={c} v={v} onChange={onChange} off={off} />;
   if (c.tuiles) {
     return (
       <div className={s.tuiles} role="radiogroup" aria-label={c.lib}>
@@ -332,6 +364,21 @@ function SaisieSimple({ c, id, v, manque, off, onChange, onAdresse }: {
     );
   }
   if (c.t === 'zone') return <ZoneTexte id={id} v={typeof v === 'string' ? v : ''} manque={manque} off={off} exemple={c.exemple} onChange={onChange} />;
+  if ((c.t === 'nombre' || c.t === 'euros') && c.rapides?.length) {
+    /* V3.177 : les valeurs courantes d'un clic (« 3 mois », « 6 mois »…), la saisie à côté. */
+    const n = nombreDe(v);
+    const u = (c.unite || '').split(' ')[0];
+    return (
+      <div className={s.rapidesL}>
+        <div className={s.rapides} role="group" aria-label={c.lib}>
+          {c.rapides.map(x => (
+            <button key={x} type="button" className={s.rapide} aria-pressed={n === x} disabled={off} onClick={() => onChange(x)}>{`${x}${u ? ` ${u}` : ''}`}</button>
+          ))}
+        </div>
+        <div className={s.rapideSaisie}><ChampNombre id={id} euros={c.t === 'euros'} unite={c.unite} v={v} off={off} manque={manque} onChange={onChange} /></div>
+      </div>
+    );
+  }
   if (c.t === 'nombre' || c.t === 'euros') return <ChampNombre id={id} euros={c.t === 'euros'} unite={c.unite} v={v} off={off} manque={manque} onChange={onChange} />;
   return (
     <input id={id} className={`${s.input} ${manque ? s.inputManque : ''}`} disabled={off} autoComplete="off"
@@ -408,7 +455,7 @@ function ChampGroupes({ c, d, v, onChange, off }: {
 }
 
 /* Le dessin d'une question qui n'en a pas (V3.18, éditeur des documents). */
-const IC_TYPE: Record<string, string> = {
+export const IC_TYPE: Record<string, string> = {
   texte: 'plume', zone: 'doc', date: 'calendrier', heure: 'horloge', nombre: 'regle', euros: 'euro',
   choix: 'info', cases: 'check', personnes: 'personne', lignes: 'lots', groupes: 'lots',
 };
@@ -418,11 +465,14 @@ const IC_TYPE: Record<string, string> = {
    carte — son dessin en pastille, son titre en gros, la saisie dans le même
    cadre — et prend un dessin par défaut s'il n'en a pas. `sansLib` : le
    libellé est déjà le titre du bloc (« Les vendeurs »). */
-export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false, voisins }: {
+export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false, voisins, fil = false }: {
   c: Champ; d: Donnees; maj: Maj; off: boolean; bloc?: boolean; sansLib?: boolean;
   /* V3.175 : les autres questions de l'étape (une adresse choisie remplit
      le code postal et la ville s'ils y sont). */
   voisins?: string[];
+  /* V3.177 : dans le fil des questions (FilQuestions.tsx) — la saisie seule ;
+     le fil dessine la question, son numéro et son aide. */
+  fil?: boolean;
 }) {
   if (c.si && !c.si(d)) return null;
   if (c.t === 'titre') return <div className={s.secT}>{c.ic && <span className={s.secTic}><Ic n={c.ic} t={14} /></span>}{c.lib}</div>;
@@ -461,7 +511,7 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false, voisi
   } else if (c.t === 'groupes') {
     controle = <ChampGroupes c={c} d={d} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'choix') {
-    controle = <ChampChoix c={c} v={v} off={off} onChange={x => maj(c.cle, x)} />;
+    controle = <ChampChoix c={c} v={v} off={off} fil={fil} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'cases') {
     controle = <ChampCases c={c} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   } else if (c.t === 'personnes') {
@@ -470,6 +520,7 @@ export function ChampActe({ c, d, maj, off, bloc = false, sansLib = false, voisi
     controle = <ChampLignes c={c} d={d} v={v} off={off} onChange={x => maj(c.cle, x)} />;
   }
 
+  if (fil) return <div className={s.filCh} data-cle={c.cle}>{controle}</div>;
   const carte = c.t === 'choix' || c.t === 'cases' || (bloc && !cartes);
   return (
     <div className={`${s.ch} ${large ? s.large : ''} ${carte ? s.chQ : ''} ${bloc && cartes ? s.chPers : ''}`} data-cle={c.cle}>
