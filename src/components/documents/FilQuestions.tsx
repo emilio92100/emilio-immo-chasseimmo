@@ -132,7 +132,11 @@ function QuestionFil({ it, n, d, maj, off, voisins, ouverts, onOuvert }: {
   const etat = etatItem(it, d);
   const fac = facultatif(it);
   const question = estSimple(c) && c.question ? c.question : '';
-  const ouvert = !question || !estVide(d[c.cle]) || ouverts[c.cle] === true;
+  /* Une question facultative ouvre aussi les saisies dessinées avec elle
+     (la forme, le capital et le RCS d'une société) ; « Non » les vide toutes. */
+  const toutes: Champ[] = [c, ...it.avec];
+  const ouvert = !question || toutes.some(x => !estVide(d[x.cle])) || ouverts[c.cle] === true;
+  const vider = () => { for (const x of toutes) if (!estVide(d[x.cle])) maj(x.cle, x.t === 'nombre' || x.t === 'euros' ? null : ''); };
   const saisie = <ChampActe c={c} d={d} maj={maj} off={off} voisins={voisins} fil />;
   const titreLib = 'lib' in c ? c.lib : '';
   const titre = question || titreLib;
@@ -158,7 +162,7 @@ function QuestionFil({ it, n, d, maj, off, voisins, ouverts, onOuvert }: {
                 <Ic n="check" t={13} e={2.8} />Oui
               </button>
               <button type="button" role="radio" aria-checked={!ouvert} disabled={off}
-                onClick={() => { onOuvert(c.cle, false); if (!estVide(d[c.cle])) maj(c.cle, c.t === 'nombre' || c.t === 'euros' ? null : ''); }}>
+                onClick={() => { onOuvert(c.cle, false); vider(); }}>
                 <Ic n="croix" t={12} e={2.8} />Non
               </button>
             </div>
@@ -166,12 +170,25 @@ function QuestionFil({ it, n, d, maj, off, voisins, ouverts, onOuvert }: {
           {question
             ? ouvert && (
               <div className={s.filDepli}>
-                <label className={s.filLib} htmlFor={`ch-${c.cle}`}>{titreLib}</label>
-                {saisie}
+                {it.avec.length > 0 ? (
+                  <div className={s.filRangee} style={{ marginTop: 0 }}>
+                    {toutes.map(x => (
+                      <div key={x.cle} className={s.filRangeeCh}>
+                        <label className={s.filLib} htmlFor={`ch-${x.cle}`}>{'lib' in x ? x.lib : ''}</label>
+                        <ChampActe c={x} d={d} maj={maj} off={off} voisins={voisins} fil />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <label className={s.filLib} htmlFor={`ch-${c.cle}`}>{titreLib}</label>
+                    {saisie}
+                  </>
+                )}
               </div>
             )
             : courte(c) && !('rapides' in c && c.rapides?.length) ? <div className={s.filCourt}>{saisie}</div> : saisie}
-          {it.avec.length > 0 && (
+          {!question && it.avec.length > 0 && (
             <div className={s.filAvec}>
               {it.avec.map(a => (
                 <div key={a.cle}>
