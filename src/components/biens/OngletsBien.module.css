@@ -346,6 +346,10 @@ i.aRenseigner { cursor: default; text-decoration: none; color: #94a3b8; }
   .notaireActs { width: 100%; padding-left: 42px; }
 }
 .notaireTels a:hover { color: #1a2332; text-decoration: underline; text-underline-offset: 2px; }
+/* V3.176 : les e-mails du notaire, un par ligne, en entier. */
+.notaireTx .notaireMails { display: flex; flex-direction: column; gap: 1px; }
+.notaireMails a { color: #34496e; font-weight: 600; text-decoration: none; word-break: break-all; }
+.notaireMails a:hover { color: #1a2332; text-decoration: underline; text-underline-offset: 2px; }
 .notaireActs { display: flex; gap: 5px; flex-shrink: 0; }
 .rondC { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e3e8f0; background: #fff; color: #34496e; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; text-decoration: none; }
 .rondC:hover { border-color: #c9a84c; color: #1a2332; }

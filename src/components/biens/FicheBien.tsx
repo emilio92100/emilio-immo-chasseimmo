@@ -26,7 +26,7 @@ import type { ChoixGuide } from './FenetresBien';
 import {
   SEUIL_CORRESPOND, SEUIL_LISTE, acheteursTries, fiable, recherchesRappro, annulerVisiteCRM, annulerVisiteLibre, chargerFiche, cloreRelanceOffre, creerAvenantVente, creerDocument, enregistrerBien,
   MESSAGE_VENDU_SUPPR, cloreRelancesEstimation, creerFicheAcheteur, creerFicheProprio, deposerPiece, doublonsContact, ficheClient, personneVide, joindreCompromis, joindreOffreSignee, ligneHono, ligneNotaires, lireHono, lireNotaire, lireNotairesDossier, majBien, majSuivi, marquerVendeur, nomClient, noterAcceptationAnnulee, noterNegociation, noterOffreAcceptee, retirerAutresAcceptees,
-  donneesHono, donneesNotaires, aDesNotaires, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
+  donneesHono, donneesNotaires, aDesNotaires, notaireAJour, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
 import { exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
@@ -1886,16 +1886,15 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
   })();
   const vs = (d as Record<string, unknown>).venteSuivante as { id?: string; reference?: string | null } | undefined;
   const venteSuivante = vs?.id && liste.biens.some(x => x.id === vs.id) ? { id: vs.id, reference: vs.reference || null } : null;
-  /* Un notaire sur une carte : son téléphone et son mail à jour, sa fiche. */
-  const carteNotaire = (role: NotaireCarte['role'], n: NotaireChoisi | null): NotaireCarte | null => {
-    if (!n) return null;
-    const vif = n.id ? liste.clients[n.id] : null;
-    const tels = (vif?.telephones || []).filter((x): x is string => !!x && !!x.trim());
+  /* Un notaire sur une carte : ses numéros et ses e-mails à jour, sa fiche.
+     V3.176 : tous ses e-mails ; ceux corrigés sur ce dossier passent avant
+     sa fiche (notaireAJour). */
+  const notaireVif = (n: NotaireChoisi) => notaireAJour(n, n.id ? liste.clients[n.id] : null);
+  const carteNotaire = (role: NotaireCarte['role'], n0: NotaireChoisi | null): NotaireCarte | null => {
+    if (!n0) return null;
+    const n = notaireVif(n0);
     return {
-      role, nom: n.nom, etude: n.etude, tel: tels[0] || n.tel, email: (vif?.emails || []).find(Boolean) || n.email,
-      tels: tels.length ? tels : n.tels,
-      /* V3.174 : l'adresse de l'étude (« Son étude » du contact), sinon celle notée. */
-      adresse: String(((vif?.pro || {}) as { adresseEtude?: unknown }).adresseEtude || '').trim() || (vif?.adresse || '').trim() || n.adresse,
+      role, nom: n.nom, etude: n.etude, tel: n.tel, email: n.email, tels: n.tels, emails: n.emails, adresse: n.adresse,
       onFiche: n.id ? () => ouvrirClient(n.id!) : undefined,
     };
   };
@@ -2507,8 +2506,8 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
       {fen?.k === 'accepte' && <FenAcceptation bien={bien} offre={fen.offre} edition={fen.edition}
         autres={fen.edition ? [] : offres.filter(y => y.id !== fen.offre.id && y.statut === 'acceptee').map(y => y.qui || 'un acquéreur')}
         onFermer={() => setFen(null)} onValider={x => (fen.edition ? corrigerAccord(fen.offre, x) : reponseOffre(fen.offre, { k: 'accepte' }, x))} />}
-      {fen?.k === 'notaires' && <FenNotaires bien={bien} offre={fen.offre} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
-      {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} existant={fen.existant} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'notaires' && <FenNotaires bien={bien} offre={fen.offre} aJour={notaireVif} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
+      {fen?.k === 'compromis' && <FenCompromis bien={bien} offres={offres} choisie={fen.offre} existant={fen.existant} aJour={notaireVif} clientsNoms={Object.fromEntries(Object.values(liste.clients).map(x => [x.id, nomClient(x)]))} onFermer={() => setFen(null)} onFait={r => apres(r)} />}
       {guide && <FenGuide titre={guide.titre} sur={`${etapeDe(e).lib}${bien.archive ? ' · archivé' : ''}`} couleur={etapeDe(e).c} texte={guide.texte} choix={guide.choix} onFermer={() => setGuide(null)} />}
       {fen?.k === 'revente' && <FenNouvelleVente bien={bien} references={liste.biens.map(x => x.reference)} acquereur={offreRetenue?.client_id ? liste.clients[offreRetenue.client_id] || null : null}
         onFermer={() => setFen(null)} onFait={r => { setFen(null); onMaj(r); onRecharger(); onOuvrir?.(r.id); }} />}

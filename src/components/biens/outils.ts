@@ -1326,14 +1326,21 @@ export async function modifierOffre(b: BienVente, o: SuiviVente, x: SaisieOffre)
    directe…) ; `tel` reste le premier. V3.174 : l'adresse de l'étude vit où
    la fiche du contact l'attend, `pro.adresseEtude` (« Son étude ») ; la
    colonne `adresse` n'est qu'un repli (la V3.173 l'y écrivait). */
-export type NotaireChoisi = { id: string | null; nom: string; etude?: string; tel?: string; email?: string; adresse?: string; tels?: string[] };
+export type NotaireChoisi = { id: string | null; nom: string; etude?: string; tel?: string; email?: string; adresse?: string; tels?: string[];
+  /* V3.176 — Alexandre : « sur ce dossier, deux personnes s'en occupent :
+     je veux voir leurs deux mails, et pouvoir modifier les infos ». Tous
+     les e-mails (le notaire, son clerc…) ; `email` reste le premier.
+     `dossier` : les coordonnées ont été corrigées sur ce dossier — elles
+     passent avant celles de la fiche du contact. */
+  emails?: string[]; dossier?: boolean };
 export type ContactNotaire = { id: string; prenom: string | null; nom: string | null; emails: string[] | null; telephones: string[] | null; pro?: unknown; adresse?: string | null };
+const nonVides = (l: unknown): string[] => (Array.isArray(l) ? l.map(x => String(x ?? '').trim()).filter(Boolean) : []);
 export const notaireDepuisContact = (c: ContactNotaire): NotaireChoisi => {
   const pro = (c.pro && typeof c.pro === 'object' ? c.pro : {}) as Record<string, unknown>;
-  const tels = (c.telephones || []).filter((t): t is string => !!t && !!t.trim());
+  const tels = nonVides(c.telephones), emails = nonVides(c.emails);
   return {
     id: c.id, nom: nomClient(c), etude: typeof pro.etude === 'string' ? pro.etude : '',
-    tel: tels[0] || '', tels, email: (c.emails || []).find(Boolean) || '',
+    tel: tels[0] || '', tels, email: emails[0] || '', emails,
     adresse: (typeof pro.adresseEtude === 'string' && pro.adresseEtude.trim()) || (c.adresse || '').trim(),
   };
 };
@@ -1341,12 +1348,51 @@ export const lireNotaire = (x: unknown): NotaireChoisi | null => {
   if (!x || typeof x !== 'object') return null;
   const o = x as Record<string, unknown>;
   if (typeof o.nom !== 'string' || !o.nom) return null;
-  const tels = Array.isArray(o.tels) ? o.tels.map(String).filter(t => !!t.trim()) : [];
+  const tels = nonVides(o.tels), emails = nonVides(o.emails);
+  const email = String(o.email || '').trim() || emails[0] || '';
   return {
-    id: typeof o.id === 'string' ? o.id : null, nom: o.nom, etude: String(o.etude || ''), tel: String(o.tel || '') || tels[0] || '', email: String(o.email || ''),
+    id: typeof o.id === 'string' ? o.id : null, nom: o.nom, etude: String(o.etude || ''), tel: String(o.tel || '') || tels[0] || '', email,
     adresse: String(o.adresse || ''), tels: tels.length ? tels : o.tel ? [String(o.tel)] : [],
+    emails: emails.length ? emails : email ? [email] : [], ...(o.dossier === true ? { dossier: true } : {}),
   };
 };
+export const telsNotaire = (n: NotaireChoisi) => (n.tels?.length ? n.tels : n.tel ? [n.tel] : []);
+export const emailsNotaire = (n: NotaireChoisi) => (n.emails?.length ? n.emails : n.email ? [n.email] : []);
+/* V3.176 — Un notaire tel qu'on le montre : les coordonnées corrigées sur ce
+   dossier, sinon celles de sa fiche, à jour (un numéro ajouté sur sa fiche
+   se voit sur toutes ses ventes), sinon celles notées au moment du choix. */
+export type FicheNotaire = { telephones?: (string | null)[] | null; emails?: (string | null)[] | null; pro?: unknown; adresse?: string | null };
+export function notaireAJour(n: NotaireChoisi, vif: FicheNotaire | null | undefined): NotaireChoisi {
+  const tels0 = telsNotaire(n), mails0 = emailsNotaire(n);
+  if (!vif || n.dossier) return { ...n, tels: tels0, tel: tels0[0] || '', emails: mails0, email: mails0[0] || '' };
+  const pro = (vif.pro && typeof vif.pro === 'object' ? vif.pro : {}) as Record<string, unknown>;
+  const tv = nonVides(vif.telephones), mv = nonVides(vif.emails);
+  const tels = tv.length ? tv : tels0, mails = mv.length ? mv : mails0;
+  return {
+    ...n, tels, tel: tels[0] || '', emails: mails, email: mails[0] || '',
+    etude: (typeof pro.etude === 'string' && pro.etude.trim()) || n.etude,
+    adresse: (typeof pro.adresseEtude === 'string' && pro.adresseEtude.trim()) || (vif.adresse || '').trim() || n.adresse,
+  };
+}
+/* V3.176 — « Les ajouter aussi à sa fiche » : les numéros et les e-mails
+   nouveaux rejoignent la fiche du contact (rien n'en est retiré), l'étude et
+   son adresse s'y écrivent. */
+export async function completerFicheNotaire(id: string, n: NotaireChoisi): Promise<void> {
+  const { data, error } = await supabase.from('clients').select('telephones, emails, pro').eq('id', id).maybeSingle();
+  if (error) throw new Error('Sa fiche n’a pas pu être lue : ' + error.message);
+  if (!data) throw new Error('Sa fiche n’existe plus dans tes contacts.');
+  const c = data as { telephones: string[] | null; emails: string[] | null; pro: unknown };
+  const chiffres = (x: string) => x.replace(/[^\d+]/g, '');
+  const tels = nonVides(c.telephones);
+  for (const x of telsNotaire(n)) if (x.trim() && !tels.some(y => chiffres(y) === chiffres(x))) tels.push(x.trim());
+  const mails = nonVides(c.emails);
+  for (const x of emailsNotaire(n)) { const v = x.trim().toLowerCase(); if (v && !mails.some(y => y.toLowerCase() === v)) mails.push(v); }
+  const pro: Record<string, unknown> = { ...(c.pro && typeof c.pro === 'object' ? c.pro as Record<string, unknown> : {}) };
+  if (n.etude?.trim()) pro.etude = n.etude.trim();
+  if (n.adresse?.trim()) pro.adresseEtude = n.adresse.trim();
+  const { error: e2 } = await supabase.from('clients').update({ telephones: tels, emails: mails, pro }).eq('id', id).select('id').single();
+  if (e2) throw new Error('Sa fiche n’a pas été mise à jour : ' + e2.message);
+}
 /* V3.172 — Les notaires du dossier, dès l'offre. Alexandre : « où je mets
    les infos du notaire ? notaire acheteur, vendeur, notaire commun ? Je suis
    obligé d'aller dans compromis alors qu'il faudrait avant ». Ils vivent

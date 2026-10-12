@@ -714,8 +714,9 @@ export function CarteVisiteB({ v, prochaine, onCR, onAnnuler, onDoc, onFiche, on
    moitiés se suivent. */
 export type DocOffre = { etat: 'prepa' | 'pret' | 'signe'; detail: string; onOuvrir: () => void; onPdf?: () => void };
 export type NotaireCarte = { role: 'vendeur' | 'acquereur'; nom: string; etude?: string; tel?: string; email?: string; onFiche?: () => void;
-  /* V3.173 : l'adresse de l'étude, et tous ses numéros. */
-  adresse?: string; tels?: string[] };
+  /* V3.173 : l'adresse de l'étude, et tous ses numéros. V3.176 : tous ses
+     e-mails (le notaire, son clerc…), écrits en entier. */
+  adresse?: string; tels?: string[]; emails?: string[] };
 export type InfosCompromis = {
   signe?: string; sru?: string; pretLimite?: string; acte?: string; prix?: number | null; venduLe?: string | null;
   /* V3.45 : ce que le compromis porte aussi — les deux notaires, les rappels
@@ -1045,6 +1046,12 @@ function NotairesListe({ notaires, commun, onModifier, onRenseigner, toujours, c
                 {(n.tels?.length ? n.tels : [n.tel || '']).map((x, i) => <Fragment key={x}>{i ? ' · ' : ''}<a href={`tel:${sansEsp(x)}`}>{x}</a></Fragment>)}
               </span>
             )}
+            {/* V3.176 : chaque e-mail, en entier, s'écrit d'un clic. */}
+            {n && (n.emails?.length || n.email) && (
+              <span className={o.notaireMails}>
+                {(n.emails?.length ? n.emails : [n.email || '']).map(x => <a key={x} href={`mailto:${x}`}>{x}</a>)}
+              </span>
+            )}
           </div>
           {n && (
             <div className={o.notaireActs}>
@@ -1062,7 +1069,7 @@ function NotairesListe({ notaires, commun, onModifier, onRenseigner, toujours, c
 /* Les notaires du compromis, et l'exemplaire signé (V3.45). */
 function NotairesCompromis({ c }: { c: InfosCompromis }) {
   return (
-    <NotairesListe notaires={c.notaires || []} commun={c.notaireCommun} onRenseigner={c.onCompleter} toujours>
+    <NotairesListe notaires={c.notaires || []} commun={c.notaireCommun} onRenseigner={c.onCompleter} onModifier={c.onCompleter} toujours>
       <div className={o.compromisPdf}>
         <Ic n="doc" t={14} />
         {c.piece ? (

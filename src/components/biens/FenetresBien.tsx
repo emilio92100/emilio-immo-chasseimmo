@@ -13,14 +13,14 @@ import { signalerEchec } from '@/lib/ecritures';
 import { etatDiffusion } from '@/lib/diffusion';
 import { SaisieNombre, lireClients } from './ChampsBien';
 import { CalendrierJour, ChoixQuand } from '@/components/pages/PageAgenda';
-import { ListeCoordonnees } from '@/components/shared/ListeCoordonnees';
+import { ListeCoordonnees, lignesDe, nettoyer } from '@/components/shared/ListeCoordonnees';
 import SaisieAdresse from '@/components/shared/SaisieAdresse';
 import { annoncerSucces } from '@/lib/succes';
 import { signalerMaj } from '@/lib/intentions';
 import {
   ajouterSuivi, annulerMandatNote, changerEtape, cloreRelancesEstimation, estimationMiseDeCote, noterRdvEstimation, planifierEstimation, poserDansBien, type FaitRdv, cloreRappelsCompromis, cloreRelanceOffre, compromisTombe, creerNotaire, deposerPiece, enregistrerBien, enregistrerOffre, eurosSuivi, lireNotaires,
   corrigerActe, creneauxPris, deplacerVisiteCRM, deplacerVisiteLibre, creerFicheProprio, donneesProprio, doublonsContact, marquerVendeur, finaliserAcquereur, finaliserTransactionsAcquereur, ligneNotaires, lireNotaire, majPrixDansAnnonces, majSuivi, modifierOffre, nomClient, notaireDepuisContact, noterJalon, nouvelleVente, offresTombees, retirerAutresAcceptees, annulerVisitesPrevues, solderDemandesDuBien, pauseAcquereur, poserRappels, refuserAutresOffres, vendeurSigne, visiteAcheteur, visiteExterne,
-  aDesNotaires, donneesNotaires, ligneHono, lireHono, lireNotairesDossier,
+  aDesNotaires, donneesNotaires, ligneHono, lireHono, lireNotairesDossier, completerFicheNotaire, emailsNotaire, telsNotaire,
   type AccordHono, type CleRappel, type ClientMini, type CreneauPris, type VisiteRow, type ContactNotaire, type NotaireChoisi, type NotairesDossier, type Rappel, type RechercheMini, type SuiteTombe,
 } from './outils';
 import s from '@/components/documents/Documents.module.css';
@@ -1043,8 +1043,12 @@ export function FenAcceptation({ bien, offre, edition, autres = [], onFermer, on
 }
 
 /* ══ Les notaires d'une offre (V3.172), depuis sa carte ═════════════════ */
-export function FenNotaires({ bien, offre, onFermer, onFait }: { bien: BienVente; offre: SuiviVente; onFermer: () => void; onFait: (b: BienVente | null) => void }) {
-  const n0 = lireNotairesDossier(offre.donnees);
+export function FenNotaires({ bien, offre, aJour, onFermer, onFait }: {
+  bien: BienVente; offre: SuiviVente; onFermer: () => void; onFait: (b: BienVente | null) => void;
+  /* V3.176 : le notaire tel que la carte le montre (sa fiche à jour). */
+  aJour?: (n: NotaireChoisi) => NotaireChoisi;
+}) {
+  const n0 = notairesAJour(lireNotairesDossier(offre.donnees), aJour);
   const [notaires, setNotaires] = useState<NotairesDossier>(aDesNotaires(n0) ? n0 : notairesParDefaut(bien.donnees || {}));
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -1104,6 +1108,8 @@ function BlocHonoraires({ prix, hono, charge, mandat, onHono, onCharge, onMandat
 }
 
 /* ── Les notaires du dossier : un chacun, ou un notaire commun (V3.172) ── */
+const notairesAJour = (x: NotairesDossier, aJour?: (n: NotaireChoisi) => NotaireChoisi): NotairesDossier =>
+  (aJour ? { ...x, vendeur: x.vendeur && aJour(x.vendeur), acquereur: x.acquereur && aJour(x.acquereur) } : x);
 const notairesParDefaut = (d: Donnees): NotairesDossier => ({ vendeur: txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null, acquereur: null, commun: false });
 function BlocNotaires({ v, onChange }: { v: NotairesDossier; onChange: (n: NotairesDossier) => void }) {
   const [notaires, setNotaires] = useState<ContactNotaire[] | null>(null);
@@ -1144,15 +1150,45 @@ export const prixRetenu = (o: SuiviVente | null | undefined): number | null => (
    directe ») : dans cet ordre, une ligne par numéro. */
 type NouveauNotaire = { prenom: string; nom: string; etude: string; adresse: string; tels: string[]; email: string };
 const memeNumero = (a: string, z: string) => !!a && a.replace(/[^\d+]/g, '') === z.replace(/[^\d+]/g, '');
+/* V3.176 — Alexandre : « quand on fait Modifier, il y a juste Changer : on ne
+   peut pas modifier les infos du notaire ; sur ce dossier, deux personnes
+   s'en occupent, je veux leurs deux mails ». « Modifier » corrige le notaire
+   choisi pour ce dossier : son nom, l'étude, son adresse, tous les numéros,
+   tous les e-mails (le notaire, son clerc…). Ce qui est corrigé ici passe
+   avant sa fiche (`dossier`) ; « Les ajouter aussi à sa fiche » y ajoute les
+   nouveaux numéros et e-mails. */
+type EditionNotaire = { nom: string; etude: string; adresse: string; tels: string[]; emails: string[]; fiche: boolean };
 function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
   lib: string; couleur: string; v: NotaireChoisi | null; onChange: (n: NotaireChoisi | null) => void;
   notaires: ContactNotaire[] | null; onCree: (c: ContactNotaire) => void;
 }) {
   const [q, setQ] = useState('');
   const [nouveau, setNouveau] = useState<NouveauNotaire | null>(null);
+  const [edition, setEdition] = useState<EditionNotaire | null>(null);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState('');
   const t = sansAccent(q.trim());
+  const majE = (x: Partial<EditionNotaire>) => setEdition(n => (n ? { ...n, ...x } : n));
+  async function validerEdition() {
+    if (!v || !edition) return;
+    if (!edition.nom.trim()) { setErreur('Son nom ?'); return; }
+    const tels = nettoyer(edition.tels, 'tel'), emails = nettoyer(edition.emails, 'mail');
+    const n: NotaireChoisi = {
+      ...v, nom: edition.nom.trim(), etude: edition.etude.trim(), adresse: edition.adresse.trim(),
+      tels, tel: tels[0] || '', emails, email: emails[0] || '', dossier: true,
+    };
+    if (edition.fiche && v.id) {
+      setOccupe(true); setErreur('');
+      try {
+        await completerFicheNotaire(v.id, n);
+        annoncerSucces({ titre: 'Fiche du notaire mise à jour', detail: `${n.nom} — les nouveaux numéros et e-mails y sont`, ic: 'balance' });
+        signalerMaj();
+      } catch (e) { setErreur((e as Error).message); setOccupe(false); return; }
+      setOccupe(false);
+    }
+    setErreur('');
+    onChange(n); setEdition(null);
+  }
   const liste = (notaires || []).filter(c => !t || sansAccent(`${c.prenom || ''} ${c.nom || ''} ${(c.pro as { etude?: string } | null)?.etude || ''}`).includes(t)).slice(0, 5);
   const majN = (x: Partial<NouveauNotaire>) => setNouveau(n => (n ? { ...n, ...x } : n));
   async function creer() {
@@ -1175,22 +1211,51 @@ function ChoixNotaire({ lib, couleur, v, onChange, notaires, onCree }: {
     catch (e) { setErreur((e as Error).message); }
     setOccupe(false);
   }
-  const telsDe = (n: NotaireChoisi) => (n.tels && n.tels.length ? n.tels : n.tel ? [n.tel] : []);
   return (
     <div className={b.notaire} style={{ ['--c' as string]: couleur } as React.CSSProperties}>
       <div className={b.notaireT}>{lib}</div>
-      {v ? (
+      {v && edition ? (
+        <div className={b.notaireNouveau}>
+          <div className={b.notaireNouveauT}><Ic n="crayon" t={13} />Modifier ses infos<small>pour ce dossier</small></div>
+          <Ch lib="Nom"><input className={s.input} value={edition.nom} onChange={e => majE({ nom: e.target.value })} placeholder="Ex : Me Durand" /></Ch>
+          <Ch lib="L’étude"><input className={s.input} value={edition.etude} onChange={e => majE({ etude: e.target.value })} placeholder="Ex : Étude Durand & Associés" /></Ch>
+          <div className={b.chF}>
+            <span>Adresse de l’étude</span>
+            <SaisieAdresse v={edition.adresse} onChange={x => majE({ adresse: x })} classeChamp={s.input} etiquette="Adresse de l’étude" />
+          </div>
+          <ListeCoordonnees genre="tel" etiquette="Téléphones" valeurs={edition.tels} onChange={x => majE({ tels: x })}
+            classeBloc={b.notaireTels} classeEtiquette={b.notaireLib} classeChamp={s.input}
+            exemples={{ premier: 'Le standard de l’étude', autres: 'Une ligne directe' }} />
+          <ListeCoordonnees genre="mail" etiquette="E-mails" valeurs={edition.emails} onChange={x => majE({ emails: x })}
+            classeBloc={b.notaireTels} classeEtiquette={b.notaireLib} classeChamp={s.input}
+            exemples={{ premier: 'Ex : m.durand@notaires.fr', autres: 'Ex : le clerc qui suit le dossier' }} />
+          {v.id && (
+            <label className={b.caseL}><input type="checkbox" checked={edition.fiche} onChange={e => majE({ fiche: e.target.checked })} />Ajouter aussi les nouveaux numéros et e-mails à sa fiche de contact</label>
+          )}
+          <Erreur t={erreur} />
+          <div className={b.notaireBtns}>
+            <button type="button" className={s.btn} disabled={occupe} onClick={() => { setEdition(null); setErreur(''); }}>Annuler</button>
+            <button type="button" className={`${s.btn} ${s.btnNavy}`} disabled={occupe} onClick={validerEdition}><Ic n="check" t={14} e={2.4} />{occupe ? 'Enregistrement…' : 'Valider'}</button>
+          </div>
+        </div>
+      ) : v ? (
         <div className={b.notaireChoisi}>
           <span className={b.notaireAv}><Ic n="balance" t={17} /></span>
           <div>
             <b>{v.nom}</b>
             {v.etude && <small className={b.notaireEtude}>{v.etude}</small>}
             {v.adresse && <small><Ic n="lieu" t={12} />{v.adresse}</small>}
-            {telsDe(v).map(x => <small key={x}><Ic n="telephone" t={12} />{x}</small>)}
-            {v.email && <small><Ic n="mail" t={12} />{v.email}</small>}
-            {!v.etude && !v.adresse && !telsDe(v).length && !v.email && <small>{v.id ? 'Contact du CRM' : 'Pas encore dans tes contacts'}</small>}
+            {telsNotaire(v).map(x => <small key={x}><Ic n="telephone" t={12} />{x}</small>)}
+            {emailsNotaire(v).map(x => <small key={x} className={b.notaireMail}><Ic n="mail" t={12} />{x}</small>)}
+            {!v.etude && !v.adresse && !telsNotaire(v).length && !emailsNotaire(v).length && <small>{v.id ? 'Contact du CRM' : 'Pas encore dans tes contacts'}</small>}
           </div>
-          <button type="button" className={b.notaireChanger} onClick={() => onChange(null)}>Changer</button>
+          <div className={b.notaireBoutons}>
+            <button type="button" className={b.notaireChanger} data-ton="modifier"
+              onClick={() => { setErreur(''); setEdition({ nom: v.nom, etude: v.etude || '', adresse: v.adresse || '', tels: lignesDe(telsNotaire(v)), emails: lignesDe(emailsNotaire(v)), fiche: false }); }}>
+              <Ic n="crayon" t={12} />Modifier
+            </button>
+            <button type="button" className={b.notaireChanger} onClick={() => onChange(null)}>Changer</button>
+          </div>
         </div>
       ) : nouveau ? (
         <div className={b.notaireNouveau}>
@@ -1248,7 +1313,7 @@ const dateLongue = (ymd: string) => (ymd ? new Date(`${ymd}T12:00:00`).toLocaleD
    les honoraires négociés à l'acceptation (avec le rappel du net vendeur),
    le financement (comptant : pas de condition de prêt), les notaires. Et
    les dates se choisissent dans le calendrier du CRM. */
-export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onFermer, onFait }: {
+export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, aJour, onFermer, onFait }: {
   bien: BienVente; offres: SuiviVente[]; onFermer: () => void; onFait: (b: BienVente | null) => void;
   /* Depuis la carte d'une offre, c'est elle. */
   choisie?: string;
@@ -1256,6 +1321,8 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
   existant?: SuiviVente | null;
   /* Les noms des contacts (propriétaire, acquéreur), pour dire où vont les rappels. */
   clientsNoms?: Record<string, string>;
+  /* V3.176 : le notaire tel que la carte le montre (sa fiche à jour). */
+  aJour?: (n: NotaireChoisi) => NotaireChoisi;
 }) {
   const d = bien.donnees || {};
   const a = argentBien(d);
@@ -1292,9 +1359,9 @@ export function FenCompromis({ bien, offres, choisie, existant, clientsNoms, onF
      écrit à la main). */
   const notairesInit = (o: SuiviVente | null): NotairesDossier => {
     const c = lireNotairesDossier(ex);
-    if (aDesNotaires(c)) return c;
+    if (aDesNotaires(c)) return notairesAJour(c, aJour);
     const n = lireNotairesDossier(odDe(o));
-    if (aDesNotaires(n)) return n;
+    if (aDesNotaires(n)) return notairesAJour(n, aJour);
     return { vendeur: txt(d, 'notaire') ? { id: null, nom: txt(d, 'notaire') } : null, acquereur: tx('notaireAcq') ? { id: null, nom: tx('notaireAcq') } : null, commun: false };
   };
   const [notaires, setNotaires] = useState<NotairesDossier>(() => notairesInit(offre));

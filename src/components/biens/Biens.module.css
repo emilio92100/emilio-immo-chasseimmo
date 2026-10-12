@@ -1350,6 +1350,12 @@ button.pillRouge svg { color: white !important; }
 .notaireChoisi small { display: flex; align-items: flex-start; gap: 6px; line-height: 1.4; }
 .notaireChoisi small svg { flex-shrink: 0; margin-top: 2px; color: #94a3b8; }
 .notaireChoisi .notaireEtude { font-weight: 700; color: #34496e; }
+/* V3.176 : chaque e-mail en entier (coupé n'importe où plutôt que caché),
+   et « Modifier » au-dessus de « Changer ». */
+.notaireChoisi .notaireMail { word-break: break-all; }
+.notaireBoutons { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; align-self: flex-start; }
+.notaireChanger[data-ton='modifier'] { display: inline-flex; align-items: center; gap: 5px; color: #34496e; }
+.notaireChanger[data-ton='modifier']:hover { color: #a07c28; }
 /* Le nouveau notaire : un petit titre, puis l'étude, l'adresse, la personne, les numéros, l'e-mail. */
 .notaireNouveau { padding: 12px; border-radius: 13px; background: #fff; border: 1px solid #e3e8f0; }
 .notaireNouveauT { display: flex; align-items: center; gap: 6px; font: 800 13px 'Plus Jakarta Sans', sans-serif; color: #1a2332; }
