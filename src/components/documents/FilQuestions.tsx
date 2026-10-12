@@ -50,16 +50,25 @@ export function itemsFil(champs: Champ[], d: Donnees): ItemFil[] {
   for (const c of champs) if (c.t !== 'titre' && c.t !== 'guide' && vu(c) && c.avec) for (const k of c.avec) prises.add(k);
   const out: ItemFil[] = [];
   let tampon: ChampSimple[] = [];
+  /* Une suite de petites saisies : une ligne jusqu'à trois ; quatre font
+     deux lignes de deux (« Fait à » reste avec « Le »). */
   const vider = () => {
-    if (tampon.length === 1) out.push({ k: 'q', cle: tampon[0].cle, c: tampon[0], avec: [] });
-    else if (tampon.length) out.push({ k: 'rangee', cle: tampon[0].cle, champs: tampon });
+    const n = tampon.length;
+    const tailles = n <= 3 ? [n] : n === 4 ? [2, 2] : n === 5 ? [3, 2] : Array.from({ length: Math.ceil(n / 3) }, (_, i) => Math.min(3, n - i * 3));
+    let i = 0;
+    for (const t of tailles) {
+      const l = tampon.slice(i, i + t);
+      i += t;
+      if (l.length === 1) out.push({ k: 'q', cle: l[0].cle, c: l[0], avec: [] });
+      else if (l.length) out.push({ k: 'rangee', cle: l[0].cle, champs: l });
+    }
     tampon = [];
   };
   for (const c of champs) {
     if (!vu(c) || prises.has(c.cle)) continue;
     if (c.t === 'titre') { vider(); out.push({ k: 'section', cle: c.cle, lib: c.lib }); continue; }
     if (c.t === 'guide') { vider(); if (c.points(d).length) out.push({ k: 'guide', cle: c.cle, c }); continue; }
-    if (petit(c)) { tampon.push(c); if (tampon.length === 3) vider(); continue; }
+    if (petit(c)) { tampon.push(c); continue; }
     vider();
     const avec = (c.avec || []).map(k => champs.find(x => x.cle === k)).filter((x): x is ChampSimple => !!x && estSimple(x) && vu(x));
     out.push({ k: 'q', cle: c.cle, c, avec });
