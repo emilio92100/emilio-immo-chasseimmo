@@ -10,17 +10,21 @@ import { useEffect, useRef, useState } from 'react';
 import { Ic } from '@/components/documents/ApercuActe';
 import s from './SaisieAdresse.module.css';
 
-type Proposee = { properties?: { label?: string; name?: string; postcode?: string; city?: string; type?: string } };
+export type AdresseChoisie = { label?: string; name?: string; postcode?: string; city?: string; type?: string };
+type Proposee = { properties?: AdresseChoisie };
 export function adresseProposee(p: NonNullable<Proposee['properties']>): string {
   const ville = [p.postcode, p.city].filter(Boolean).join(' ');
   if (p.type === 'municipality') return ville || p.label || '';
   return [p.name || p.label || '', ville].filter(Boolean).join(', ');
 }
 
-export default function SaisieAdresse({ v, onChange, classeChamp, placeholder = 'Tape le début : 12 rue de Silly…', etiquette }: {
+export default function SaisieAdresse({ v, onChange, onChoisir, classeChamp, placeholder = 'Tape le début : 12 rue de Silly…', etiquette, id, off }: {
   v: string; onChange: (x: string) => void;
+  /* V3.175 : une adresse en plusieurs cases (la rue, le code postal, la
+     ville — les documents juridiques) : la proposition choisie, à ranger. */
+  onChoisir?: (p: AdresseChoisie) => void;
   /* La classe des champs du formulaire qui l'accueille, pour lui ressembler. */
-  classeChamp?: string; placeholder?: string; etiquette?: string;
+  classeChamp?: string; placeholder?: string; etiquette?: string; id?: string; off?: boolean;
 }) {
   const [sug, setSug] = useState<Proposee[]>([]);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,13 +44,14 @@ export default function SaisieAdresse({ v, onChange, classeChamp, placeholder = 
     }, 250);
   };
   const choisir = (f: Proposee) => {
-    onChange(adresseProposee(f.properties || {}));
+    if (onChoisir) onChoisir(f.properties || {});
+    else onChange(adresseProposee(f.properties || {}));
     derniere.current = '';
     setSug([]);
   };
   return (
     <div className={s.adr}>
-      <input className={classeChamp} value={v} autoComplete="off" placeholder={placeholder} aria-label={etiquette}
+      <input id={id} className={classeChamp} value={v} autoComplete="off" placeholder={placeholder} aria-label={etiquette} disabled={off}
         onChange={e => taper(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setSug([]); }} onBlur={() => setTimeout(() => setSug([]), 180)} />
       {sug.length > 0 && (
         <ul className={s.sug} role="listbox" aria-label="Adresses proposées">
