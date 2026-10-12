@@ -1499,6 +1499,19 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.178 — 13 octobre 2026 · Le certificat nomme qui a signé la version complète
+
+- Alexandre, sur le mandat de vente n° 999 signé par deux mandants : « dans les preuves
+  techniques, on ne voit que la version signée par Maxime JULIENNE, pas Élodie ». Le certificat
+  était juste : la signature d'Élodie est dans la **dernière version** (la 2), celle que le
+  certificat accompagne et dont l'empreinte est « Empreinte SHA-256 (p. 1 à 9) ». La version 1
+  est le scellement intermédiaire après le premier signataire. Mais sa ligne disait seulement
+  « celle-ci, reçue avec ce certificat », sans nom.
+- Désormais (documents juridiques et mandat de recherche à plusieurs) : « Version 2 — complète,
+  signée par Maxime Jean JULIENNE et Charlotte Elodie ROSENZWEIG, le 12/10/2026 — celle-ci, reçue
+  avec ce certificat ». `Certificat.version` (mandat-pdf.ts), `etListe` (« A, B et C ») ; le nom
+  d'une version intermédiaire s'écrit aussi avec « et ». Un document déjà scellé ne change pas.
+
 ### V3.177 — 12 octobre 2026 · Les docs juridiques en fil, le menu des rubriques à gauche (maquette B2)
 
 - Alexandre a choisi la maquette B2 (« le menu foncé sur la gauche, avec les évaluations »), après
