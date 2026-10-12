@@ -31,7 +31,7 @@ import styles from './AppLayout.module.css';
 import '@/styles/crm-mobile.css';
 import type { Client } from '@/lib/supabase';
 import { reprendreSuspendus } from '@/lib/suspension';
-import FichesOuvertes, { type FicheOuverte, EVT_FICHE_OUVERTE, EVT_BIEN_ACTIF, lireFiches, ecrireFiches, ajouterFiche } from '@/components/layout/FichesOuvertes';
+import FichesOuvertes, { type FicheOuverte, EVT_FICHE_OUVERTE, EVT_BIEN_ACTIF, EVT_DOC_ACTIF, lireFiches, ecrireFiches, ajouterFiche } from '@/components/layout/FichesOuvertes';
 import { nomFoyer } from '@/lib/foyer';
 import { signalerEchec } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
@@ -93,6 +93,10 @@ export default function AppLayout() {
      (le serveur ne la connaît pas), puis gardée à chaque changement. */
   const [fiches, setFiches] = useState<FicheOuverte[]>([]);
   const [bienActif, setBienActif] = useState<string | null>(null);
+  /* V3.175 : le document juridique ouvert dans l'éditeur (Documents). */
+  const [docActif, setDocActif] = useState<string | null>(null);
+  const docActifRef = useRef<string | null>(null);
+  useEffect(() => { docActifRef.current = docActif; }, [docActif]);
   const fichesLues = useRef(false);
   /* Le tiroir de navigation du téléphone (le bouton ☰ de la barre du haut). */
   const [menuOuvert, setMenuOuvert] = useState(false);
@@ -170,9 +174,13 @@ export default function AppLayout() {
     fichesLues.current = true;
     const ouverte = (e: Event) => setFiches(l => ajouterFiche(l, (e as CustomEvent<FicheOuverte>).detail));
     const actif = (e: Event) => setBienActif((e as CustomEvent<string | null>).detail);
+    const docOuvert = (e: Event) => setDocActif((e as CustomEvent<string | null>).detail);
     window.addEventListener(EVT_FICHE_OUVERTE, ouverte);
     window.addEventListener(EVT_BIEN_ACTIF, actif);
-    return () => { window.removeEventListener(EVT_FICHE_OUVERTE, ouverte); window.removeEventListener(EVT_BIEN_ACTIF, actif); };
+    window.addEventListener(EVT_DOC_ACTIF, docOuvert);
+    return () => {
+      window.removeEventListener(EVT_FICHE_OUVERTE, ouverte); window.removeEventListener(EVT_BIEN_ACTIF, actif); window.removeEventListener(EVT_DOC_ACTIF, docOuvert);
+    };
   }, []);
   useEffect(() => { if (fichesLues.current) ecrireFiches(fiches); }, [fiches]);
 
@@ -282,6 +290,9 @@ export default function AppLayout() {
     /* Relances (V3.102) : rouverte sur la tuile et la relance laissées. Déjà
        à l'écran, le bloc ne la recharge pas. */
     if (f.k === 'relances') { if (pageRef.current !== 'relances') handleNavigate('relances', { retour: true }); return; }
+    /* Un document juridique (V3.175) : rouvert dans l'éditeur, à l'étape
+       laissée. Déjà à l'écran, le bloc ne le recharge pas. */
+    if (f.k === 'document') { if (!(pageRef.current === 'documents' && docActifRef.current === f.id)) handleNavigate('documents', { ouvrir: f.id }); return; }
     const { data, error } = await supabase.from('clients').select('*').eq('id', f.id).maybeSingle();
     if (error) { signalerEchec('L’ouverture de la fiche', error.message); return; }
     if (!data) { setFiches(l => l.filter(x => !(x.k === 'contact' && x.id === f.id))); return; }
@@ -325,12 +336,14 @@ export default function AppLayout() {
     setFiches(l => l.filter(x => !(x.k === f.k && x.id === f.id)));
     if (f.k === 'contact' && activePage === 'fiche' && ficheClient?.id === f.id) fermerContact(f);
     else if (f.k === 'bien' && activePage === 'biens' && bienActif === f.id) handleNavigate('biens');
-  }, [activePage, ficheClient?.id, bienActif, handleNavigate, fermerContact]);
+    else if (f.k === 'document' && activePage === 'documents' && docActif === f.id) handleNavigate('documents');
+  }, [activePage, ficheClient?.id, bienActif, docActif, handleNavigate, fermerContact]);
   const toutFermer = useCallback(() => {
     setFiches([]);
     if (activePage === 'fiche' && ficheClient) fermerContact(ficheAffichee);
     else if (activePage === 'biens' && bienActif) handleNavigate('biens');
-  }, [activePage, ficheClient, ficheAffichee, bienActif, handleNavigate, fermerContact]);
+    else if (activePage === 'documents' && docActif) handleNavigate('documents');
+  }, [activePage, ficheClient, ficheAffichee, bienActif, docActif, handleNavigate, fermerContact]);
 
   const renderPage = () => {
     if (activePage === 'fiche') {
@@ -385,7 +398,7 @@ export default function AppLayout() {
         </main>
         {/* Les fiches ouvertes : on passe d'un contact ou d'un bien à l'autre. */}
         <FichesOuvertes fiches={fiches}
-          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : activePage === 'relances' ? { k: 'relances', id: 'relances' } : null}
+          active={activePage === 'fiche' && ficheClient ? { k: 'contact', id: ficheClient.id } : activePage === 'biens' && bienActif ? { k: 'bien', id: bienActif } : activePage === 'carte' ? { k: 'carte', id: 'carte' } : activePage === 'relances' ? { k: 'relances', id: 'relances' } : activePage === 'documents' && docActif ? { k: 'document', id: docActif } : null}
           onOuvrir={ouvrirFiche}
           onRanger={setFiches}
           onFermer={fermerFiche}

@@ -96,6 +96,9 @@
 /* La carte (V3.27) : son bloc la rouvre là où on l'a laissée. */
 .vignetteCarte { background: var(--emilio-fond, #2e4166); color: #e8c96a; }
 .on .vignetteCarte { background: rgba(255, 255, 255, .14); }
+/* V3.175 : un document juridique ouvert. */
+.vignetteDoc { background: #fbf4e1; color: #8a6a1f; }
+.on .vignetteDoc { background: rgba(255, 255, 255, .14); color: #e8c96a; }
 
 /* Ranger les blocs en les faisant glisser (V3.27). Les autres s'écartent en
    douceur ; celui qu'on tient suit le pointeur, soulevé. */

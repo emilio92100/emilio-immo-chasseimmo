@@ -17,13 +17,18 @@ import styles from './FichesOuvertes.module.css';
        sur son bloc la rouvre là où on l'avait laissée (V3.27) ;
      · les relances : PageRelances, de la même façon (V3.102) — un clic
        rouvre Relances sur la même tuile, posée sur la relance qu'on
-       traitait.
+       traitait ;
+     · un document juridique : l'éditeur, à son ouverture (V3.175 —
+       Alexandre : « quand le document s'ouvre, laisser en bas les fiches
+       ouvertes, pour switcher sur un client et revenir sur la même page »).
+       L'éditeur laisse la barre visible, et dit quel document est à l'écran
+       (EVT_DOC_ACTIF) ; un clic sur son bloc le rouvre à la même étape.
 
    Les blocs se rangent à la main : on en attrape un et on le fait glisser
    (au doigt : un appui un peu long, puis glisser). L'ordre est gardé. */
 
 export type FicheOuverte = {
-  k: 'contact' | 'bien' | 'carte' | 'relances';
+  k: 'contact' | 'bien' | 'carte' | 'relances' | 'document';
   id: string;
   titre: string;
   sous?: string;
@@ -39,6 +44,10 @@ export type FicheOuverte = {
 
 export const EVT_FICHE_OUVERTE = 'emilio:fiche-ouverte';
 export const EVT_BIEN_ACTIF = 'emilio:bien-actif';
+export const EVT_DOC_ACTIF = 'emilio:doc-actif';
+export function signalerDocActif(id: string | null) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<string | null>(EVT_DOC_ACTIF, { detail: id }));
+}
 export function signalerFicheOuverte(f: FicheOuverte) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent<FicheOuverte>(EVT_FICHE_OUVERTE, { detail: f }));
 }
@@ -59,7 +68,7 @@ export const MAX_FICHES = 10;
 export function lireFiches(): FicheOuverte[] {
   try {
     const v = JSON.parse(localStorage.getItem(CLE) || '[]');
-    return Array.isArray(v) ? v.filter(x => x && (x.k === 'contact' || x.k === 'bien' || x.k === 'carte' || x.k === 'relances') && typeof x.id === 'string').slice(0, MAX_FICHES) : [];
+    return Array.isArray(v) ? v.filter(x => x && (x.k === 'contact' || x.k === 'bien' || x.k === 'carte' || x.k === 'relances' || x.k === 'document') && typeof x.id === 'string').slice(0, MAX_FICHES) : [];
   } catch { return []; }
 }
 export function ecrireFiches(l: FicheOuverte[]) {
@@ -236,9 +245,24 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
     return undefined;
   };
 
+  /* V3.175 : la hauteur de la barre, pour les écrans plein écran qui la
+     laissent visible (l'éditeur d'un document s'arrête au-dessus). Nulle
+     au téléphone, où la barre n'est pas. */
+  const barre = useRef<HTMLElement>(null);
+  const aDesFiches = fiches.length > 0;
+  useEffect(() => {
+    const racine = document.documentElement;
+    const poser = () => racine.style.setProperty('--fiches-h', `${barre.current?.offsetHeight || 0}px`);
+    poser();
+    const ro = typeof ResizeObserver !== 'undefined' && barre.current ? new ResizeObserver(poser) : null;
+    if (ro && barre.current) ro.observe(barre.current);
+    window.addEventListener('resize', poser);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', poser); racine.style.setProperty('--fiches-h', '0px'); };
+  }, [aDesFiches]);
+
   if (!fiches.length) return null;
   return (
-    <nav className={styles.barre} aria-label="Fiches ouvertes">
+    <nav className={styles.barre} aria-label="Fiches ouvertes" ref={barre}>
       <span className={styles.titre}>Fiches ouvertes<i>{fiches.length}</i></span>
       {cache.gauche > 0 && (
         <button type="button" className={styles.fleche} onClick={() => defiler(-1)} aria-label={`Voir les ${cache.gauche} fiche${cache.gauche > 1 ? 's' : ''} à gauche`}>
@@ -263,6 +287,10 @@ export default function FichesOuvertes({ fiches, active, onOuvrir, onFermer, onT
                   : f.k === 'carte'
                   ? <span className={`${styles.vignette} ${styles.vignetteCarte}`}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-2.5 6 2.5 6-2.5v14.5l-6 2.5-6-2.5-6 2.5z" /><path d="M9 3.5v14.5" /><path d="M15 6v14.5" /></svg>
+                    </span>
+                  : f.k === 'document'
+                  ? <span className={`${styles.vignette} ${styles.vignetteDoc}`}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z" /><path d="M14 2.5V8h5.5" /><path d="m9 15 2 2 4-4" /></svg>
                     </span>
                   : f.k === 'relances'
                   ? <span className={`${styles.vignette} ${styles.vignetteCarte}`}>
