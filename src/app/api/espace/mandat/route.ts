@@ -80,6 +80,13 @@ const CODES_MAX = 6;
 const ECART_ENVOIS_S = 45;
 const BUCKET = 'mandats';
 const SIGNATURE_AGENCE = 'agence/signature.png';
+/* V3.183 — Les lignes de l'historique de l'espace, dans l'ordre du parcours.
+   « Mandat de recherche — … » dans le CRM (Ce qu'il a fait dans son espace). */
+const EVT_INVITATION = 'Invitation ouverte, avant l’ouverture du mandat';
+const EVT_RESUME = 'A commencé : résumé de sa recherche affiché (étape 1 sur 3)';
+const EVT_TEXTE = 'A ouvert le texte complet du mandat';
+/* Avant la V3.183 : la seule ligne, posée dès l'invitation. */
+const EVT_ANCIEN = 'Mandat de recherche affiché';
 
 const hacher = (code: string, id: string) => createHash('sha256').update(`${code}:${id}:${SECRET}`).digest('hex');
 const egal = (a: string, b: string) => {
@@ -340,6 +347,13 @@ export async function POST(req: NextRequest) {
 
     const evt = (type: string, detail: string | null) =>
       ecritServeur('Le suivi de l’espace', sb.from('espace_evenements').insert({ recherche_id: recherche.id, client_id: recherche.client_id, bien_id: null, type, detail }));
+    /* Une même ligne au plus une fois par demi-heure : il peut ouvrir, fermer, rouvrir. */
+    const uneLigne = async (detail: string) => {
+      const ilYA30 = new Date(Date.now() - 30 * 60_000).toISOString();
+      const { data: deja } = await sb.from('espace_evenements').select('id')
+        .eq('recherche_id', recherche.id).eq('type', 'mandat').eq('detail', detail).gte('created_at', ilYA30).limit(1).maybeSingle();
+      if (!deja) await evt('mandat', detail);
+    };
     const nomClient = `${client.prenom || ''} ${client.nom || ''}`.trim() || 'Un client';
     const lienCrm = `${CRM()}/?page=fiche&client=${encodeURIComponent(recherche.client_id)}`;
 
@@ -358,16 +372,31 @@ export async function POST(req: NextRequest) {
       /* ── il ouvre le parcours ─────────────────────────────── */
       case 'afficher': {
         if (etatMandat(recherche) === 'valide') return NextResponse.json({ ok: true, etat: 'valide' });
-        /* Une ligne par demi-heure : il peut ouvrir, fermer, rouvrir. */
-        const ilYA30 = new Date(Date.now() - 30 * 60_000).toISOString();
-        const { data: deja } = await sb.from('espace_evenements').select('id')
-          .eq('recherche_id', recherche.id).eq('type', 'mandat').gte('created_at', ilYA30).limit(1).maybeSingle();
-        if (!deja) await evt('mandat', 'Mandat de recherche affiché');
+        /* V3.183 — Alexandre : « j'ai juste vu le message de rappel, je n'ai
+           pas appuyé sur Continuer, et l'historique dit Mandat de recherche
+           affiché ». Cette ouverture-là, c'est l'invitation (« Confirmez votre
+           recherche avec Alexandre »), pas le mandat : elle le dit. Le résumé
+           (« Commencer ») et le texte complet ont chacun leur ligne, plus bas. */
+        await uneLigne(EVT_INVITATION);
         /* La version du jour : si Alexandre a changé le taux depuis que la
            page est ouverte, l'écran se met à jour avant que le client lise.
            L'identité de l'agence aussi (Paramètres › Agence) : le client lit
            celle qui sera imprimée. */
         return NextResponse.json({ ok: true, recherche: rechercheDepuis(recherche), identite: await lireIdentiteAgence(sb) });
+      }
+
+      /* ── V3.183 : il appuie sur « Commencer » : le résumé de sa recherche (étape 1 sur 3) ── */
+      case 'commencer': {
+        if (etatMandat(recherche) === 'valide') return NextResponse.json({ ok: true, etat: 'valide' });
+        await uneLigne(EVT_RESUME);
+        return NextResponse.json({ ok: true });
+      }
+
+      /* ── V3.183 : « Lire le mandat complet » / « Le relire » ── */
+      case 'texte': {
+        if (etatMandat(recherche) === 'valide') return NextResponse.json({ ok: true, etat: 'valide' });
+        await uneLigne(EVT_TEXTE);
+        return NextResponse.json({ ok: true });
       }
 
       /* ── ses coordonnées, puis le code ─────────────────────── */
@@ -525,8 +554,11 @@ export async function POST(req: NextRequest) {
         const id = idLigne;
         const deroule = [...(reprise?.deroule || [])];
         if (!reprise) {
+          /* V3.183 : le moment où il a vu le résumé de son mandat (« Commencer »),
+             ou, pour un parcours commencé avant, l'ancienne ligne « affiché ». */
           const { data: vu } = await sb.from('espace_evenements').select('created_at')
-            .eq('recherche_id', recherche.id).eq('type', 'mandat').order('created_at', { ascending: false }).limit(1).maybeSingle();
+            .eq('recherche_id', recherche.id).eq('type', 'mandat').in('detail', [EVT_RESUME, EVT_ANCIEN])
+            .order('created_at', { ascending: false }).limit(1).maybeSingle();
           if (vu?.created_at) deroule.push({ t: vu.created_at, x: 'Mandat affiché dans son espace personnel, récapitulatif lu' });
           deroule.push({ t: maintenant, x: body.certifie === true
             ? (cosV.length || societe
