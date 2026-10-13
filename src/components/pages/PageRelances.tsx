@@ -129,6 +129,7 @@ function sansNom(reste: string, nom: string): string {
 }
 function origineDe(r: any, typeAction?: string | null): Origine {
   if (r.type === 'auto') return { lib: 'Biens présentés', ico: 'envoi' };
+  if (r.type === 'message_client' && String(r.note || '').startsWith('Annonce envoyée')) return { lib: 'Annonce du client', ico: 'bulle' };
   if (r.type === 'message_client') return { lib: 'Message du client', ico: 'bulle' };
   const pre = prefixeDe(r.note);
   if (pre) return pre.o;
