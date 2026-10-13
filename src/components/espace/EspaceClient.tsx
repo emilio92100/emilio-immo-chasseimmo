@@ -13,6 +13,8 @@ import { correspondance, type LigneCorr, type Correspondance } from '@/lib/corre
 import CarteEspace, { CATS_ESPACE, type BienCarte, type CatEspace } from './CarteEspace';
 import Decouverte, { GalerieGlisse, CSS_DECOUVERTE, type ActionsFiche, type AvisDecouverte } from './Decouverte';
 import Bienvenue from './Bienvenue';
+import { CarteAnnonce, EnvoiAnnonce, ListeAnnonces, CSS_ANNONCES, type ResultatEnvoi } from './Annonces';
+import type { AnnonceEspace } from '@/lib/annonces-client';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -61,6 +63,9 @@ type Bien = {
   /* V3.114 : un bien de l'agence (une copie d'un de ses biens en vente).
      Le visiter ne demande jamais de mandat de recherche. */
   agence?: boolean;
+  /* V3.184 : né d'une annonce qu'il a envoyée — quand, son mot, et l'avis
+     qu'Alexandre a laissé en la retenant. */
+  proposeeLe?: string | null; sonMot?: string | null; avisConseiller?: string | null;
 };
 const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis')
   : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : v.etat === 'pause' ? 'En pause' : 'Sous compromis');
@@ -148,6 +153,9 @@ type Props = {
   mesVisites?: VisiteE[];
   /** Ce que ses visites non abouties ont appris (les 3 raisons qui reviennent le plus). */
   apprisClient?: string[];
+  /** V3.184 : les annonces qu'il a envoyées d'ici, la plus récente d'abord.
+      null : la table n'existe pas encore (SQL pas passé), la carte se tait. */
+  annonces?: AnnonceEspace[] | null;
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -182,6 +190,16 @@ const decoupeTexte = (t?: string | null): string[] => {
   return sortie;
 };
 const MOIS = ['janv.','févr.','mars','avril','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+
+/* V3.184 : quand il a envoyé une annonce — « aujourd'hui », « hier », « le 10 oct. ». */
+function dateAnnonce(d: string) {
+  const x = new Date(d); if (isNaN(x.getTime())) return '';
+  const minuit = (v: Date) => new Date(v.getFullYear(), v.getMonth(), v.getDate()).getTime();
+  const j = Math.round((minuit(new Date()) - minuit(x)) / 86400000);
+  if (j <= 0) return 'aujourd’hui';
+  if (j === 1) return 'hier';
+  return `le ${x.getDate()} ${MOIS[x.getMonth()]}`;
+}
 
 /* « 3 oct. » — la date d'un rendez-vous, en trois mots sur une carte. */
 function dateCourte(d: string) {
@@ -698,6 +716,11 @@ const T: Record<string, string[]> = {
   /* V3.68 : les chambres, l'orientation. */
   lit:['M3 18.5V7','M3 14h18v4.5','M21 14v-2.5A2.5 2.5 0 0 0 18.5 9H11v5','c:7,11.3,1.8'],
   boussole:['c:12,12,9','m15.5 8.5-2 5-5 2 2-5z'],
+  /* V3.184 : « Une annonce repérée ? » — le lien, ajouter, l'appareil photo, la galerie. */
+  lien:['M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2','M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2'],
+  plus:['M12 5v14','M5 12h14'],
+  photo:['M4 8h3l2-3h6l2 3h3v11H4z','c:12,13,3.5'],
+  galerie:['M5.5 4.5h13a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2z','c:9,10,1.8','m20.5 16-5-5-8 8.5'],
 };
 
 /* Le chasseur qui suit le dossier — affiché en haut de l'espace. */
@@ -1013,8 +1036,11 @@ function useNotifications(token: string) {
 /* ══ composant ════════════════════════════════════ */
 const SANS_APPRIS: string[] = [];
 
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit, mesVisites, apprisClient = SANS_APPRIS }: Props) {
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit, mesVisites, apprisClient = SANS_APPRIS, annonces: annoncesInit = null }: Props) {
   const [vue, setVue] = useState('accueil');
+  /* V3.184 : ses annonces envoyées ; une nouvelle s'ajoute sans recharger. */
+  const [annonces, setAnnonces] = useState<AnnonceEspace[] | null>(annoncesInit);
+  useEffect(() => { setAnnonces(annoncesInit); }, [annoncesInit]);
   const [biens, setBiens] = useState(biensInit);
   /* Pour les rappels qui partent après coup (« Découvrir ») : la liste du moment. */
   const biensRef = useRef(biens);
@@ -1942,6 +1968,46 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     }} />);
   }
 
+  /* ── « Une annonce repérée ? » (V3.184) ──
+     Il colle un lien, ou prend une photo ; Alexandre la regarde dans le CRM
+     et lui répond ici. Le même lien déjà envoyé, ou un bien déjà dans ses
+     biens : on le lui dit, rien ne repart. */
+  const peutEnvoyerAnnonce = enCours && !finDite;
+  function ouvrirEnvoiAnnonce() {
+    montrer(<EnvoiAnnonce Ico={Ico} onFermer={fermer} onEnvoyer={async (d): Promise<ResultatEnvoi> => {
+      const r = await envoyer('annonce', d);
+      if (r?.ok && typeof r.dansVosBiens === 'string') {
+        const b = biensRef.current.find(x => x.id === r.dansVosBiens);
+        montrer(<GrandOk titre="Ce bien est déjà dans vos biens"
+          texte="Alexandre vous l’avait déjà envoyé : vous le retrouvez dans votre espace, avec votre avis."
+          bouton={b ? 'Voir le bien' : 'Parfait'}
+          onFermer={() => { fermer(); if (b) window.setTimeout(() => ouvrirBien(b), 340); }} />, 'pleine');
+        return 'ok';
+      }
+      if (r?.ok && r.annonce) {
+        const a = r.annonce as AnnonceEspace;
+        setAnnonces(l => [a, ...(l || []).filter(x => x.id !== a.id)]);
+        if (r.deja) {
+          montrer(<GrandOk titre="Vous la lui avez déjà envoyée"
+            texte={`C’était ${dateAnnonce(a.le)}. ${a.statut === 'nouveau' ? 'Alexandre la regarde : il vous dit vite ce qu’il en pense.' : 'Sa réponse est sur votre accueil, dans « Votre dernière annonce ».'}`}
+            onFermer={fermer} />, 'pleine');
+          return 'ok';
+        }
+        montrer(<GrandOk titre="C’est envoyé à Alexandre"
+          texte="Il la regarde avec le même soin que les biens qu’il vous présente, et vous dit ce qu’il en pense."
+          rappel="Vous suivez sa réponse sur votre accueil&nbsp;: retenue, elle rejoint vos biens&nbsp;; écartée, il vous dit pourquoi."
+          onFermer={fermer} />, 'pleine');
+        return 'ok';
+      }
+      return r?.error === 'trop' ? 'trop' : r?.error === 'lien' ? 'lien' : r?.error === 'photo' ? 'photo' : 'erreur';
+    }} />);
+  }
+  const carteAnnonce = annonces && (peutEnvoyerAnnonce || annonces.length > 0)
+    ? <CarteAnnonce annonces={annonces} peutEnvoyer={peutEnvoyerAnnonce} Ico={Ico}
+        onEnvoyer={ouvrirEnvoiAnnonce} onToutes={() => aller('annonces')}
+        onAide={() => montrer(<Explication a={AIDES.annonce} onFermer={fermer} />, 'pleine')} />
+    : null;
+
   const maxLues = Math.max(1, ...semaine.map(s => s.lues));
   const moment = momentParis();
   /* Les pastilles du menu : ce qu'il reste à voir, à faire, à venir. */
@@ -1951,7 +2017,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   return (
     <>
-      <style>{CSS + CSS_MANDAT + CSS_DECOUVERTE}</style>
+      <style>{CSS + CSS_MANDAT + CSS_DECOUVERTE + CSS_ANNONCES}</style>
 
       {/* L'en-tête. Sur téléphone : la marque et la date, le bonjour, la
           recherche en une ligne et son badge vivant. Sur ordinateur, le menu
@@ -2073,7 +2139,18 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                 return x ? <CarteAvisAccueil b={x.b} v={x.v} onRepondre={repondreEtDire}
                   onOuvrir={() => ouvrirBien(x.b)} onVoir={() => aller('visites')} /> : null;
               })()}
-              onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')} />
+              onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')}
+              /* V3.184 : « Une annonce repérée ? » — après les nouveaux biens
+                 au téléphone, en haut de la colonne de droite sur ordinateur. */
+              carteAnnonce={carteAnnonce} />
+          )}
+          {vue === 'annonces' && (
+            <Vue icone="lien" titre="Vos annonces envoyées" aller={aller}
+              sous="Ce qu’Alexandre en a pensé, la plus récente d’abord.">
+              <ListeAnnonces annonces={annonces || []} peutEnvoyer={peutEnvoyerAnnonce} Ico={Ico}
+                onEnvoyer={ouvrirEnvoiAnnonce}
+                onBien={id => { const b = biens.find(x => x.id === id); if (b) ouvrirBien(b); }} />
+            </Vue>
           )}
           {vue === 'neufs' && (
             <Vue icone="etoile" titre="Nouveaux biens pour vous" aller={aller}
@@ -2443,7 +2520,7 @@ function useRepartition(ref: React.RefObject<HTMLDivElement | null>): Repartitio
    biens qui attendent son avis, ses derniers retours ; puis, à côté sur
    ordinateur et en dessous sur téléphone, sa visite, sa recherche, le marché
    et son conseiller. */
-function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite, onDecouvrir, nbDecouvrir }: any) {
+function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, semaine, maxLues, aller, onBienvenue, onEcran, motEcran, onNotif, onAide, onFin, visites, onOuvrir, onAvis, onFiltre, plusieurs, enCours, mandatPret, avisVisite, onDecouvrir, nbDecouvrir, carteAnnonce }: any) {
   const lues = passage?.totalLues ?? passage?.lues;
   /* La dernière recherche : son chiffre à elle, et son moment (« aujourd'hui
      à 14 h 34 »). C'est ce que « Aujourd'hui pour vous » doit montrer. */
@@ -2637,6 +2714,9 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
               </>
               : <RienDeNeuf passage={passage} aVoir={vus.length + donnes.length > 0} aller={aller} enCours={enCours} achat={achat || null} />}
             {vus.length > 0 && <AvisAttendus biens={vus} onOuvrir={onOuvrir} />}
+            {/* V3.184 : au téléphone, après les nouveaux biens et les avis
+                attendus, avant la carte de ses biens et sa recherche. */}
+            {carteAnnonce && <div className="ac-tel ra-tel">{carteAnnonce}</div>}
             {/* Au téléphone (V3.28), la carte coiffe « Vos derniers retours » et
                 s'y fond : elle était tout en bas, après la visite. Sans retour,
                 elle se pose seule au même endroit. */}
@@ -2658,6 +2738,9 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
           {visites?.length > 0 && (
             <VisiteCourte v={visites[0]} autres={visites.length - 1} onVoir={() => aller('visites')} />
           )}
+          {/* V3.184 : sur ordinateur, en haut de la colonne de droite, à côté
+              des nouveaux biens (au téléphone : à gauche, sous eux). */}
+          {carteAnnonce && <div className="ac-pc">{carteAnnonce}</div>}
           {/* La carte de ses biens : en haut de la colonne de droite, sur
               ordinateur. Au téléphone, elle est plus haut (voir à gauche). */}
           {apercu && <div className="ac-pc">{apercu}</div>}
@@ -3135,6 +3218,14 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
               ].filter(Boolean).join(' · ')}</span>
               <span className="prix tab">{PRIX(b.prix)}</span>
               {b.prix && b.hono ? <span className="hono-c">{`+ ${EUR(b.hono)} de nos honoraires`}</span> : null}
+              {/* V3.184 : né d'une annonce qu'il a envoyée, avec l'avis d'Alexandre. */}
+              {b.proposeeLe && <span className="ra-pp"><Ico n="lien" t={12} /><span>{`Vous nous l’aviez envoyée ${dateAnnonce(b.proposeeLe)}`}</span></span>}
+              {b.avisConseiller && (
+                <span className="mon-com fait">
+                  <span className="mc-t">{'L’avis d’Alexandre'}</span>
+                  <span className="mc-c">{`« ${b.avisConseiller} »`}</span>
+                </span>
+              )}
               {b.visitePrevue && !b.visiteFaite && (
                 <span className="rdv-l"><Ico n="calendrier" t={13} />
                   Visite le {dateCourte(b.visitePrevue.date)}
@@ -4498,6 +4589,14 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             <span>{`« ${b.vente.note} »`}</span>
           </div>
         )}
+        {/* V3.184 : un bien né d'une annonce qu'il a envoyée lui-même. */}
+        {b.proposeeLe && (
+          <div className="ra-propose">
+            <b><Ico n="lien" t={14} /><span>{`Vous nous l’aviez envoyée ${dateAnnonce(b.proposeeLe)}`}</span></b>
+            {b.avisConseiller && <span><i>{'L’avis d’Alexandre\u00a0: '}</i>{`«\u00a0${b.avisConseiller}\u00a0»`}</span>}
+            {b.sonMot && <span><i>{'Votre mot\u00a0: '}</i>{`«\u00a0${b.sonMot}\u00a0»`}</span>}
+          </div>
+        )}
         {corr && (
           <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
             <AnneauNote note={corr.note} />
@@ -5536,6 +5635,17 @@ function ProchaineVisite({ v, autres, token, onBien, titre = 'Votre prochaine vi
    lues », lues par qui, et pour quoi faire ? Chacun a son explication, derrière
    un point d'interrogation. On dit ce que le chiffre est, et ce qu'il n'est pas. */
 const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: string; puces: string[] }> = {
+  /* V3.184 : le « ? » de « Une annonce repérée ? » (texte validé par Alexandre). */
+  annonce: {
+    ico: 'lien', sur: 'Une annonce repérée', titre: 'Vous avez vu un bien qui vous plaît ailleurs\u00a0?',
+    texte: 'Envoyez-le à Alexandre : il le regarde avec le même soin que les biens qu’il vous présente, et vous dit ce qu’il en pense.',
+    puces: [
+      'Collez le lien de l’annonce : SeLoger, Leboncoin, le site d’une agence… Pas de lien ? Vous avez vu une affiche en vitrine ou un panneau « À vendre » ? Prenez-le en photo, depuis votre téléphone.',
+      'Il vérifie le prix, le quartier, la copropriété, et appelle l’agence si besoin.',
+      'Vous suivez sa réponse sur votre accueil : retenue, elle rejoint vos biens ; écartée, il vous dit pourquoi.',
+      'Cela ne vous engage à rien : c’est une question, comme un message.',
+    ],
+  },
   /* V3.145 : le « ? » du prix d'un bien (texte validé par Alexandre). */
   prix: {
     ico: 'euro', sur: 'Le prix', titre: 'Prix demandé pour ce bien.',
