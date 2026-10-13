@@ -15,6 +15,8 @@ import FenetreBien, { LigneListe, BasLigne, BoutonBas, BoutonPied, LienPied, Res
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
 import FenetreIndispo from './FenetreIndispo';
+import SuiviAgence from './SuiviAgence';
+import { chargerSuivis, type Suivis } from '@/lib/suivi-agence';
 
 /* V3.165 : le picto de chaque réponse (plus d'émoji dans les nouvelles lignes). */
 const ICONES_R: Record<string, string> = {
@@ -151,7 +153,8 @@ interface Props {
   onChange?: () => void;
   onMail: (bienId: string) => void;
   onFiche: (bienId: string) => void;
-  onVisite: (bienId: string) => void;
+  /** V3.182 : `pre`, un créneau validé dans « Mon suivi avec l'agence » (la date, l'heure, le contact). */
+  onVisite: (bienId: string, pre?: { date: string; heure: string; contact: string }) => void;
   /** Envoi groupé par mail : ouvre la fenêtre de mail du dossier avec ces biens. */
   onMailGroupe?: (ids: string[]) => void;
   /** Change quand la fiche vient d'envoyer un mail : la liste se recharge. */
@@ -231,6 +234,27 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
   }, [vise, chargement, biens]);
 
   const recharge = () => { setTick(t => t + 1); onChange?.(); };
+
+  /* V3.182 — « Mon suivi avec l'agence » sous chaque bien présenté : les
+     notes et les appels, relus avec la liste (SuiviAgence.tsx). */
+  const [suivis, setSuivis] = useState<Suivis | null>(null);
+  const [tickSuivi, setTickSuivi] = useState(0);
+  useEffect(() => {
+    if (mode !== 'presentes' || chargement) return;
+    let vivant = true;
+    chargerSuivis(biens.map(b => b.id)).then(r => { if (vivant) setSuivis(r); });
+    return () => { vivant = false; };
+  }, [biens, mode, chargement, tickSuivi]);
+  const suiviDe = (b: any, seul?: boolean) => {
+    if (mode !== 'presentes' || !suivis) return null;
+    return (
+      <SuiviAgence b={b} lignes={suivis.parBien[b.id] || []} absent={suivis.absent} visite={suivis.visites[b.id]}
+        clientId={clientId} rechercheId={rechercheId} veutVisiter={b.badge_retour === 'souhaite_visiter'} seul={seul}
+        onChange={() => setTickSuivi(n => n + 1)}
+        onValider={(c, contact) => onVisite(b.id, { date: c.date, heure: c.heure, contact })}
+        onIndispo={() => setIndispoDe(b)} />
+    );
+  };
 
   async function demanderPdf(bienId: string) {
     await verifie('La demande de fiche PDF', supabase.from('biens').update({
@@ -483,6 +507,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             {b.pdf_message}
           </div>
         )}
+        {suiviDe(b, true)}
       </>
     );
   };
@@ -634,7 +659,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               droite={mode === 'selection'
                 ? <BoutonVite onClick={() => setEnvoi(b)} titre="Envoyer ce bien au client"><Icone nom="envoyer" taille={15} epaisseur={2} />Envoyer</BoutonVite>
                 : undefined}
-              bas={mode === 'presentes' ? basPresente(b) : basSelection(b)} />
+              bas={mode === 'presentes' ? <>{basPresente(b)}{suiviDe(b)}</> : basSelection(b)} />
           </Fragment>
         );
       })}

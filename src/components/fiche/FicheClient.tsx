@@ -1348,6 +1348,8 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   const [showConfirmDeleteBien, setShowConfirmDeleteBien] = useState(false);
   const [showConfirmVisite, setShowConfirmVisite] = useState<string|null>(null);
   const [pendingBienId, setPendingBienId] = useState('');
+  /* V3.182 : le créneau validé dans « Mon suivi avec l'agence » (planifierVisite). */
+  const prePlan = useRef<{ date: string; heure: string; contact: string } | null>(null);
   const [ficheBienId, setFicheBienId] = useState('');
   const [editBienForm, setEditBienForm] = useState<any>(null);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -2824,8 +2826,12 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     return bienVisitable(biens.filter(b => ids.includes(b.id)), compromisAccepte.current);
   }
 
-  async function planifierVisite(bienId: string) {
+  /* V3.182 : `pre`, un créneau validé dans « Mon suivi avec l'agence »
+     (onglet Présentés) — la fenêtre s'ouvre à cette date, cette heure, avec
+     le contact de l'agence (`prePlan`, gardé pour « Remplacer »). */
+  async function planifierVisite(bienId: string, pre?: { date: string; heure: string; contact: string }) {
     compromisAccepte.current = new Set();
+    prePlan.current = pre || null;
     if (!(await venteAgenceVisitable([bienId]))) return;
     // Vérifier si une visite à venir existe déjà pour ce bien
     const existante = visites.find(v => v.bien_id === bienId && v.statut === 'a_venir');
@@ -2834,7 +2840,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     setPendingBienId(bienId);
     return;
     }
-    setPlanVisiteForm({ bien_ids: [bienId], ...QUAND_VISITE(), contact: '', notes: '' });
+    setPlanVisiteForm({ bien_ids: [bienId], ...QUAND_VISITE(), ...(pre ? { date: pre.date, heure: pre.heure } : {}), contact: pre?.contact || '', notes: '' });
     setAjoutVisite(false);
     setShowPlanVisite(true);
   }
@@ -2849,7 +2855,8 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     if (visiteId && !(await verifie('Le remplacement de la visite', supabase.from('visites').delete().eq('id', visiteId).select('id'), { ligne: true }))) { setShowConfirmVisite(null); return; }
     setShowConfirmVisite(null);
     await load();
-    setPlanVisiteForm({ bien_ids: bienId ? [bienId] : [], ...QUAND_VISITE(), contact: '', notes: '' });
+    const pre = prePlan.current;
+    setPlanVisiteForm({ bien_ids: bienId ? [bienId] : [], ...QUAND_VISITE(), ...(pre ? { date: pre.date, heure: pre.heure } : {}), contact: pre?.contact || '', notes: '' });
     setAjoutVisite(false);
     setShowPlanVisite(true);
   }
@@ -5338,7 +5345,7 @@ ${signatureMail()}`,
             onMail={async (id) => { await load(); openEnvoiBien(id); }}
             rafraichir={versionBiens}
             onFiche={(id) => openFicheBien(id)}
-            onVisite={(id) => planifierVisite(id)}
+            onVisite={(id, pre) => planifierVisite(id, pre)}
           /></div>
         )}
 
