@@ -945,7 +945,8 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             <span><span className="k"><Ic n="check" t={14} /></span><span>Il vous ouvre aussi les biens qui ne sont pas sur les portails.</span></span>
             <span><span className="k"><Ic n="check" t={14} /></span><span>Il reste à vos côtés jusqu’à la signature chez le notaire.</span></span>
           </div>
-          <button type="button" className="btn or mdt-plein" onClick={() => setEtape('recap')}>
+          {/* V3.183 : « Commencer » a sa ligne dans l'historique (le résumé affiché). */}
+          <button type="button" className="btn or mdt-plein" onClick={() => { setEtape('recap'); void envoyer('mandat', { etape: 'commencer' }); }}>
             {raison === 'visite' ? 'Confirmer ma recherche · 2 min' : 'Commencer · 2 min'}
           </button>
           {aide}
@@ -997,7 +998,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
               <div className="d">{numero ? 'non exclusif : vous restez libre de chercher de votre côté' : 'non exclusif · son numéro s’affiche à l’étape 3'}</div>
             </div>
           </div>
-          <button type="button" className="btn fant mdt-plein" onClick={() => { setRetourLecture('recap'); setEtape('lecture'); }}>
+          <button type="button" className="btn fant mdt-plein" onClick={() => { setRetourLecture('recap'); setEtape('lecture'); void envoyer('mandat', { etape: 'texte' }); }}>
             <Ic n="doc" t={16} /><span>Lire le mandat complet</span>
           </button>
           <button type="button" className="btn or mdt-plein" onClick={() => setEtape('coord')}>Continuer</button>
@@ -1125,7 +1126,7 @@ export default function SignatureMandat({ mandat, raison, envoyer, onFermer, onS
             <span className="bx">{lu && <Ic n="check" t={14} />}</span>
             <span>J’ai lu mon mandat de recherche et je l’accepte.</span>
           </button>
-          <button type="button" className="mdt-relire" onClick={() => { setRetourLecture('signer'); setEtape('lecture'); }}>Le relire</button>
+          <button type="button" className="mdt-relire" onClick={() => { setRetourLecture('signer'); setEtape('lecture'); void envoyer('mandat', { etape: 'texte' }); }}>Le relire</button>
 
           <div className="mdt-q">Quand la recherche commence-t-elle&nbsp;?</div>
           <div className="mdt-choix2">
