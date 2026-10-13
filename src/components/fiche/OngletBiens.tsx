@@ -17,6 +17,7 @@ import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
 import FenetreIndispo from './FenetreIndispo';
 import SuiviAgence from './SuiviAgence';
 import { chargerSuivis, type Suivis } from '@/lib/suivi-agence';
+import type { AnnonceCrm } from './AnnoncesClient';
 
 /* V3.165 : le picto de chaque réponse (plus d'émoji dans les nouvelles lignes). */
 const ICONES_R: Record<string, string> = {
@@ -245,6 +246,24 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     chargerSuivis(biens.map(b => b.id)).then(r => { if (vivant) setSuivis(r); });
     return () => { vivant = false; };
   }, [biens, mode, chargement, tickSuivi]);
+  /* V3.184 : les biens nés d'une annonce que le client a envoyée depuis son
+     espace — quand, son mot, et l'avis laissé en la retenant. Sans la table,
+     la lecture échoue sans bruit. */
+  const [annonces, setAnnonces] = useState<Record<string, AnnonceCrm>>({});
+  useEffect(() => {
+    if (chargement || !biens.length) return;
+    let vivant = true;
+    supabase.from('annonces_client').select('*').in('bien_id', biens.map(b => b.id)).then(({ data, error }) => {
+      if (!vivant || error) return;
+      const m: Record<string, AnnonceCrm> = {};
+      for (const a of (data || []) as AnnonceCrm[]) if (a.bien_id) m[a.bien_id] = a;
+      setAnnonces(m);
+    });
+    return () => { vivant = false; };
+  }, [biens, chargement]);
+  const prenomC = (client?.prenom || '').trim() || 'le client';
+  const leJour = (d?: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '');
+
   const suiviDe = (b: any, seul?: boolean) => {
     if (mode !== 'presentes' || !suivis) return null;
     return (
@@ -320,6 +339,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     /* La ligne d'abord, vérifiée ; les photos ensuite, et seulement si
        personne d'autre ne s'en sert (V3.33) : un bien venu de la veille
        partage ses fichiers avec la proposition, que « Remettre » fait revenir. */
+    /* V3.184 : son annonce (s'il l'avait envoyée) n'est plus retenue : il le
+       lit dans son espace. Sans la table, rien à faire. */
+    if (annonces[b.id]) {
+      const { error: eAn } = await supabase.from('annonces_client').update({ statut: 'ecarte', bien_id: null, decide_le: new Date().toISOString() }).eq('bien_id', b.id);
+      if (eAn) console.error('[annonce du client]', eAn.message);
+    }
     if (!(await verifie('Le retrait du bien', supabase.from('biens').delete().eq('id', b.id).select('id'), { ligne: true }))) { recharge(); return; }
     await effacerPhotosBien([...(b.photos || []), ...(b.plans || [])]);
     recharge();
@@ -435,12 +460,16 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     const quand = [depuisQuand(b.retour_le), par].filter(Boolean).join(', ');
     const aUnMot = !!b.retour_client && b.retour_client !== r.l;
     const visiter = g === 'souhaite_visiter' || g === 'interesse';
+    /* V3.184 : un bien qu'il t'a proposé lui-même — son mot de l'envoi. */
+    const an = annonces[b.id];
     return (
-      <BasLigne couleur={r.c} fond={r.bg} bord={r.bd} icone={ICONES_R[g] || 'horloge'} etat={r.l}
+      <BasLigne couleur={r.c} fond={r.bg} bord={r.bd} icone={ICONES_R[g] || 'horloge'} etat={an ? `${r.l} · son annonce du ${leJour(an.created_at)}` : r.l}
         mot={aUnMot
           ? <>{`« ${b.retour_client} »`}{' '}<small>{`· ${quand}`}</small></>
-          : <small>{g === 'refuse' ? `Pas de mot · ${quand}. Un appel dirait ce qui a bloqué.` : `Pas de mot · ${quand}`}</small>}
-        vide={!aUnMot}
+          : an?.mot
+            ? <>{`« ${an.mot} »`}{' '}<small>{'· son mot quand il te l’a envoyée'}</small></>
+            : <small>{g === 'refuse' ? `Pas de mot · ${quand}. Un appel dirait ce qui a bloqué.` : `Pas de mot · ${quand}`}</small>}
+        vide={!aUnMot && !an?.mot}
         boutons={<>
           <BoutonBas onClick={() => setObs(b)}>Noter son retour</BoutonBas>
           {visiter && <BoutonBas ton="violet" onClick={() => onVisite(b.id)}>Planifier une visite</BoutonBas>}
@@ -450,6 +479,22 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
 
   /* Le bas d'une ligne de la Sélection : la fiche soignée, quand elle est en route. */
   const basSelection = (b: any) => {
+    /* V3.184 : un bien tiré d'une annonce qu'il a envoyée. Envoyé, il arrive
+       chez lui dans « Ça me plaît » (et ici dans « Ça lui plaît »). */
+    const an = annonces[b.id];
+    const pdf = basPdf(b);
+    if (!an) return pdf;
+    return (
+      <>
+        <BasLigne couleur="#a17d2c" fond="#fdfaf1" bord="#ecdcb4" icone="lien"
+          etat={`Proposé par ${prenomC} le ${leJour(an.created_at)}`}
+          mot={an.mot ? <>{`« ${an.mot} »`}{' '}<small>{'· envoyé, il ira dans « Ça lui plaît »'}</small></> : <small>{'Envoyé, il ira directement dans « Ça lui plaît ».'}</small>}
+          vide={!an.mot} />
+        {pdf}
+      </>
+    );
+  };
+  const basPdf = (b: any) => {
     if (b.pdf_message) {
       return <BasLigne couleur="#92400e" fond="#fffbeb" bord="#fde68a" icone="alerte" etat="Fiche soignée" mot={b.pdf_message} vide />;
     }
@@ -470,8 +515,24 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     const r = RETOURS[b.badge_retour] || RETOURS.propose;
     const aRepondu = mode === 'presentes' && b.badge_retour && b.badge_retour !== 'propose';
     const x = mode === 'presentes' ? lireIndispo(b.indispo) : null;
+    const an = annonces[b.id];
     return (
       <>
+        {an && (
+          <div style={{ background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 14, padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', color: '#a17d2c' }}><Icone nom="lien" taille={16} epaisseur={2.1} /></span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: '#7a5d1c' }}>{`Proposé par ${prenomC}`}</span>
+              <span style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600 }}>{`· ${depuisQuand(an.created_at)}, depuis son espace`}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#c2a660' }}>Son annonce</span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 14.5, lineHeight: 1.55, color: an.mot ? NAVY : '#94a3b8', fontWeight: an.mot ? 600 : 500 }}>
+              {an.mot ? `« ${an.mot} »` : 'Pas de mot laissé.'}
+            </div>
+            {(an.aime || []).length > 0 && <div style={{ marginTop: 3, fontSize: 12.5, color: '#64748b' }}>{`Ce qui lui plaît : ${(an.aime || []).join(', ').toLowerCase()}`}</div>}
+            {an.avis && <div style={{ marginTop: 6, fontSize: 13, color: '#475569' }}>{`Ton avis, qu’il lit avec le bien : « ${an.avis} »`}</div>}
+          </div>
+        )}
         {x && (
           <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>

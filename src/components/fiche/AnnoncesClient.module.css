@@ -1,0 +1,76 @@
+/* « Proposées par <prénom> » — en haut de l'onglet Veille (V3.184).
+   Les mêmes lignes que les biens de la veille (FenetreBien.module.css), avec
+   un liseré doré : c'est le client qui les a trouvées. */
+
+.bloc { display: flex; flex-direction: column; gap: 9px; margin-bottom: 8px; }
+.tete { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.teteIc { width: 30px; height: 30px; border-radius: 9px; background: #fdfaf1; border: 1px solid #ecdcb4; color: #a17d2c;
+  display: inline-flex; align-items: center; justify-content: center; }
+.titre { font-size: 16px; font-weight: 800; color: #34496e; letter-spacing: -.2px; }
+.nb { font-size: 11px; font-weight: 800; color: #a17d2c; background: #fdfaf1; border: 1px solid #ecdcb4; border-radius: 20px; padding: 1px 8px; }
+.lienEc { margin-left: auto; background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 9px; padding: 5px 11px;
+  font: inherit; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; }
+.lienEc:hover { background: #eef2f7; }
+.note { margin: -2px 0 2px; font-size: 13px; color: #94a3b8; line-height: 1.5; }
+
+.carte { background: white; border: 1px solid #e3e8f0; border-left: 4px solid #c9a84c; border-radius: 15px; overflow: hidden;
+  transition: box-shadow .16s ease, opacity .2s ease; }
+.carte:hover { box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 10px 24px -16px rgba(16,24,40,.45); }
+.carte[data-attente="oui"] { opacity: .45; pointer-events: none; }
+
+.haut { display: flex; align-items: flex-start; gap: 14px; padding: 12px 14px 12px 10px; min-width: 0; }
+.photo { position: relative; flex: 0 0 auto; width: 112px; height: 80px; border-radius: 11px; overflow: hidden; background: #eef2f8; }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sans { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #b6c1d1; }
+.nbPh { position: absolute; right: 5px; bottom: 5px; display: inline-flex; align-items: center; gap: 3px;
+  background: rgba(12,18,30,.68); color: white; border-radius: 7px; padding: 2px 6px; font-size: 10.5px; font-weight: 800; }
+
+.texte { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ligne1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.ligne1 b { font-size: 15px; font-weight: 800; color: #1a2332; letter-spacing: -.1px; }
+.etiq { font-size: 11.5px; font-weight: 700; border-radius: 7px; padding: 2px 8px; border: 1px solid #e3e8f0; background: #f7f9fc; color: #64748b; white-space: nowrap; }
+.etiq[data-ton="photo"] { background: #f5f3ff; border-color: #ddd6fe; color: #6d28d9; }
+.etiq[data-ton="deux"] { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.quand { margin-left: auto; font-size: 12.5px; color: #94a3b8; font-weight: 600; white-space: nowrap; }
+.url { font-size: 13px; font-weight: 700; color: #2563eb; text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.url:hover { text-decoration: underline; }
+.aide { font-size: 12.5px; color: #8896a8; line-height: 1.5; }
+.mot { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; padding: 8px 12px; border-radius: 11px; background: #fdfaf1; border: 1px solid #f1e6c8;
+  font-size: 14px; line-height: 1.5; color: #1a2332; font-weight: 600; }
+.mot i { font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: #a17d2c; }
+.mot small { font-size: 12.5px; color: #64748b; font-weight: 600; }
+.vide { color: #94a3b8; font-weight: 500; }
+.vigs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.vig { width: 64px; height: 48px; border-radius: 8px; overflow: hidden; border: 1px solid #e3e8f0; display: block; }
+.vig img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.pied { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid #eef2f7; background: #fbfcfe; }
+.ressort { flex: 1 1 auto; }
+.bouton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 11px;
+  border: 1px solid #d0d7e3; background: white; color: #34496e; font: inherit; font-size: 13px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; text-decoration: none; transition: box-shadow .15s ease; }
+.bouton:hover { box-shadow: 0 8px 18px -12px rgba(16,24,40,.55); }
+.bouton[data-ton="or"] { background: #c9a84c; border-color: #c9a84c; color: white; font-weight: 800; }
+.bouton[data-ton="navy"] { background: #34496e; border-color: #34496e; color: white; }
+.bouton[data-ton="rouge"] { color: #b91c1c; border-color: #fecaca; }
+.bouton:disabled { opacity: .5; cursor: default; box-shadow: none; }
+.champ { flex: 1 1 260px; min-width: 0; height: 38px; border: 1px solid #d0d7e3; border-radius: 11px; padding: 0 12px;
+  font: inherit; font-size: 13.5px; color: #1a2332; }
+.champ:focus { outline: none; border-color: #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,.18); }
+
+.ecartee { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #f8fafc; border: 1px solid #e3e8f0;
+  border-radius: 12px; padding: 10px 14px; }
+.ecTitre { font-size: 14px; font-weight: 700; color: #64748b; flex: 1 1 180px; }
+.ecRep { font-size: 13px; color: #94a3b8; flex: 2 1 220px; }
+.ecLien { background: #f7f9fc; border: 1px solid #e3e8f0; border-radius: 9px; padding: 5px 11px; font: inherit; font-size: 12px;
+  font-weight: 600; color: #475569; cursor: pointer; text-decoration: none; }
+
+@media (max-width: 640px) {
+  .haut { flex-direction: column; padding: 12px; }
+  .photo { width: 100%; height: 150px; }
+  /* Un lien sans photo : pas de grand cadre vide au téléphone. */
+  .photo[data-vide="oui"] { display: none; }
+  .quand { margin-left: 0; }
+  .pied .ressort { display: none; }
+  .pied > .bouton { flex: 1 1 auto; }
+}

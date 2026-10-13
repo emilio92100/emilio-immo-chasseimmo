@@ -297,6 +297,8 @@ function SecteursListe({ secteurs }: { secteurs: string[] }) {
 }
 
 import OngletVeille from './OngletVeille';
+import type { AnnonceCrm } from './AnnoncesClient';
+import { siteDe, tableAbsente } from '@/lib/annonces-client';
 import OngletBiens from './OngletBiens';
 import DetailBien from './DetailBien';
 import MandatEnLigne from './MandatEnLigne';
@@ -980,12 +982,15 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
 
   const chargerVeilleCount = useCallback(async () => {
     if (!rechercheId) { setVeilleCount(0); return; }
-    const { count } = await supabase
-      .from('veille_propositions')
-      .select('id', { count: 'exact', head: true })
-      .eq('recherche_id', rechercheId)
-      .eq('statut', 'nouveau');
-    setVeilleCount(count || 0);
+    /* V3.184 : plus les annonces que le client a envoyées, pas encore vues
+       (sans la table, la lecture échoue sans bruit). */
+    const [{ count }, an] = await Promise.all([
+      supabase.from('veille_propositions').select('id', { count: 'exact', head: true })
+        .eq('recherche_id', rechercheId).eq('statut', 'nouveau'),
+      supabase.from('annonces_client').select('id', { count: 'exact', head: true })
+        .eq('recherche_id', rechercheId).eq('statut', 'nouveau'),
+    ]);
+    setVeilleCount((count || 0) + (an.error ? 0 : an.count || 0));
   }, [rechercheId]);
 
   useEffect(() => { chargerVeilleCount(); }, [chargerVeilleCount]);
@@ -1330,6 +1335,15 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   const [bienMode, setBienMode] = useState<'url'|'texte'>('url');
   const [texteAnnonce, setTexteAnnonce] = useState('');
   const [photosInput, setPhotosInput] = useState('');
+  /* V3.184 : la fiche qu'on remplit vient d'une annonce envoyée par le client
+     (onglet Veille, « Remplir la fiche »). Le ref sert aux fonctions qui
+     partent juste après (extract), l'état à l'affichage. `lectureRatee` : le
+     site n'a pas laissé lire la page, on passe au texte copié. */
+  const annonceRef = useRef<AnnonceCrm | null>(null);
+  const [depuisAnnonce, setDepuisAnnonce] = useState<AnnonceCrm | null>(null);
+  const [avisAnnonce, setAvisAnnonce] = useState('');
+  const [lectureRatee, setLectureRatee] = useState(false);
+  const [versionVeille, setVersionVeille] = useState(0);
   const [txData, setTxData] = useState<any>({});
   /* L'étape qu'on REGARDE — pas forcément celle où on en est : le rail permet
      de revenir voir ce qu'on a saisi à l'offre sans défaire quoi que ce soit. */
@@ -2687,26 +2701,73 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     setExtracting(false);
   }
 
-  async function extract() {
-    if (!url) return;
+  /* `lien` : celui d'une annonce du client, lu dès l'ouverture de la fenêtre
+     (l'état `url` n'est pas encore à jour à ce moment-là). */
+  async function extract(lien?: string) {
+    const cible = (lien ?? url).trim();
+    if (!cible) return;
     setExtracting(true);
+    /* V3.184 : l'annonce d'un client sur un site qui ne se laisse pas lire
+       (Leboncoin, SeLoger…) : on passe tout de suite au texte copié, le
+       lien déjà mis. */
+    const versLeTexte = () => { setBienMode('texte'); setBienForm(null); setLectureRatee(true); setExtracting(false); };
     try {
-      const res = await fetch('/api/extract-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+      const res = await fetch('/api/extract-bien', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: cible }) });
       const data = await res.json();
+      if (annonceRef.current && (!data.bien || data.partial)) { versLeTexte(); return; }
       if (data.bien) {
         let description = data.bien.description || '';
         if (description && description.trim().length >= 20) {
           const ref = await callReformuler(description);
           if (ref.description) description = ref.description;
         }
-        setBienForm({ ...data.bien, description, url, commission_type: 'pourcentage', commission_val: '', _partial: data.partial, _reason: data.reason });
+        /* Ses photos à lui quand l'annonce n'en donne pas. */
+        const photosLues = Array.isArray(data.bien.photos) && data.bien.photos.length ? data.bien.photos : (annonceRef.current?.photos || []);
+        setBienForm({ ...data.bien, photos: photosLues, description, url: cible, commission_type: 'pourcentage', commission_val: '', _partial: data.partial, _reason: data.reason });
       }
-      else { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
-    } catch { setBienForm({ url, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
+      else { setBienForm({ url: cible, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' }); }
+    } catch {
+      if (annonceRef.current) { versLeTexte(); return; }
+      setBienForm({ url: cible, titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '' });
+    }
     setExtracting(false);
   }
 
   const prixAcq = bienForm ? (bienForm.commission_type === 'pourcentage' ? Math.round((parseFloat(bienForm.prix_vendeur)||0) * (1 + (parseFloat(bienForm.commission_val)||0) / 100)) : (parseFloat(bienForm.prix_vendeur)||0) + (parseFloat(bienForm.commission_val)||0)) : 0;
+
+  /* V3.184 : « Remplir la fiche » d'une annonce envoyée par le client. La
+     fenêtre « Ajouter un bien » s'ouvre, le lien posé et lu tout de suite ;
+     sans lien (ses photos seules), la fiche est à remplir à la main. */
+  function remplirDepuisAnnonce(a: AnnonceCrm) {
+    annonceRef.current = a;
+    setDepuisAnnonce(a); setAvisAnnonce(''); setLectureRatee(false);
+    setTexteAnnonce(''); setPhotosInput(''); setBienMode('url');
+    setUrl(a.url || '');
+    if (a.url) {
+      setBienForm(null);
+      setShowBien(true);
+      void extract(a.url);
+    } else {
+      setBienForm({ url: '', titre: '', prix_vendeur: '', surface: '', nb_pieces: '', ville: '', description: '', commission_type: 'pourcentage', commission_val: '', photos: a.photos || [] });
+      setShowBien(true);
+    }
+  }
+  function fermerAjoutBien() {
+    setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url');
+    annonceRef.current = null; setDepuisAnnonce(null); setAvisAnnonce(''); setLectureRatee(false);
+  }
+  /* L'annonce du client devient « retenue », rattachée au bien (et l'avis
+     d'Alexandre, qu'il lira avec le bien). */
+  async function retenirAnnonce(bienId: string) {
+    const a = annonceRef.current;
+    if (!a) return;
+    const { error } = await supabase.from('annonces_client').update({
+      statut: 'retenu', bien_id: bienId, decide_le: new Date().toISOString(), avis: avisAnnonce.trim() || null,
+    }).eq('id', a.id).select('id');
+    if (error && !tableAbsente(error)) signalerEchec('Son annonce, retenue', error.message);
+    setVersionVeille(v => v + 1);
+    chargerVeilleCount();
+  }
 
   async function saveBien() {
     if (!bienForm) return;
@@ -2714,12 +2775,21 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     // Vérifier doublon URL seulement si une URL est fournie
     if (bienForm.url && bienForm.url.trim()) {
       const { data: ex } = await supabase.from('biens').select('id').eq('recherche_id', rechercheId).eq('url', bienForm.url.trim()).maybeSingle();
+      /* V3.184 : son annonce est déjà un bien du dossier : on l'y rattache. */
+      if (ex && annonceRef.current) {
+        await retenirAnnonce(ex.id);
+        alert('Ce bien (même lien) est déjà dans sa liste : son annonce y est rattachée.');
+        setSaving(false); fermerAjoutBien(); load();
+        return;
+      }
       if (ex) { alert('Ce bien (même URL) est déjà dans la liste !'); setSaving(false); return; }
     }
     // Générer un ID temporaire pour le dossier storage
     const tempId = crypto.randomUUID();
+    /* V3.184 : ses photos à lui, quand la fiche n'en a pas d'autres. */
+    const photosFiche = (bienForm.photos || []).length ? bienForm.photos : (annonceRef.current?.photos || []);
     // Uploader les photos vers Supabase Storage
-    const photosStockees = await uploadPhotosToStorage(bienForm.photos || [], tempId);
+    const photosStockees = await uploadPhotosToStorage(photosFiche, tempId);
     const { data: bienInsere, error: erreurBien } = await supabase.from('biens').insert({
       client_id: client.id,
       recherche_id: rechercheId || null,
@@ -2791,8 +2861,10 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       setSaving(false);
       return;
     }
-    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'', undefined, { rechercheId });
-    setSaving(false); setShowBien(false); setUrl(''); setBienForm(null); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); load();
+    const deSonAnnonce = !!annonceRef.current;
+    if (deSonAnnonce && bienInsere?.id) await retenirAnnonce(bienInsere.id);
+    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}${deSonAnnonce ? ' (son annonce, retenue)' : ''}`, bienForm.url||'', undefined, { rechercheId, bienId: bienInsere?.id || null });
+    setSaving(false); fermerAjoutBien(); load();
   }
 
   async function demanderPdf(bienId: string) {
@@ -5356,6 +5428,9 @@ ${signatureMail()}`,
               clientId={client.id}
               rechercheId={rechercheId}
               onChange={() => { load(); chargerVeilleCount(); }}
+              prenom={client.prenom}
+              onRemplir={remplirDepuisAnnonce}
+              rafraichir={versionVeille}
             />
           </div>
         )}
@@ -5892,8 +5967,28 @@ ${signatureMail()}`,
         <Portail>
         <div className={styles.overlay}>
           <div className={styles.modal} style={{ maxWidth: 720 }}>
-            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏠 Ajouter un bien</h2><button className={styles.modalClose} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>✕</button></div>
+            <div className={styles.modalHeader}><h2 className={styles.modalTitle}>🏠 Ajouter un bien</h2><button className={styles.modalClose} onClick={fermerAjoutBien}>✕</button></div>
             <div className={styles.modalBody}>
+
+              {/* V3.184 : la fiche vient d'une annonce envoyée par le client. */}
+              {depuisAnnonce && (
+                <div style={{ background: '#fdfaf1', border: '1px solid #ecdcb4', borderRadius: 12, padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#a17d2c', letterSpacing: .3 }}>{`📩 Proposée par ${client.prenom || 'le client'}, le ${new Date(depuisAnnonce.created_at).toLocaleDateString('fr-FR')}`}</div>
+                  {depuisAnnonce.mot && <div style={{ fontSize: 14, fontWeight: 600, color: '#1a2332', lineHeight: 1.5 }}>{`« ${depuisAnnonce.mot} »`}</div>}
+                  {(depuisAnnonce.aime || []).length > 0 && <div style={{ fontSize: 12.5, color: '#64748b' }}>{`Ce qui lui plaît : ${(depuisAnnonce.aime || []).join(', ').toLowerCase()}`}</div>}
+                  {(depuisAnnonce.photos || []).length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {(depuisAnnonce.photos || []).map((p, i) => (
+                        <a key={i} href={p} target="_blank" rel="noopener noreferrer"><img src={p} alt="" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 7, border: '1px solid #e3e8f0', display: 'block' }} /></a>
+                      ))}
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{'Ses photos : gardées pour la fiche si l’annonce n’en donne pas.'}</span>
+                    </div>
+                  )}
+                  <label className={styles.lbl} style={{ marginTop: 2 }}>{'Ton avis pour lui '}<span style={{ fontWeight: 400, color: '#94a3b8' }}>{'(facultatif — il le lira avec le bien, dans « Ça me plaît »)'}</span></label>
+                  <textarea className={styles.inp} rows={2} value={avisAnnonce} onChange={e => setAvisAnnonce(e.target.value)} maxLength={600}
+                    placeholder="Ex. : très bon choix. Toujours disponible, toiture refaite en 2021, le vendeur a déjà baissé une fois." style={{ fontFamily: 'inherit', fontSize: 13 }} />
+                </div>
+              )}
 
               {/* Sélecteur mode */}
               <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3 }}>
@@ -5908,7 +6003,7 @@ ${signatureMail()}`,
               {/* MODE URL */}
               {bienMode === 'url' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div><label className={styles.lbl}>URL de l'annonce</label><div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.seloger.com/annonces/..." style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && extract()} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={extract} disabled={extracting||!url}>{extracting ? '⏳...' : '🔍 Extraire'}</button></div><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5 }}>SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Jinka, Orpi, Century 21...</div></div>
+                  <div><label className={styles.lbl}>URL de l'annonce</label><div style={{ display: 'flex', gap: 8 }}><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.seloger.com/annonces/..." style={{ flex: 1 }} onKeyDown={e => e.key === 'Enter' && extract()} /><button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { void extract(); }} disabled={extracting||!url}>{extracting ? '⏳...' : '🔍 Extraire'}</button></div><div style={{ fontSize: 12, color: '#94a3b8', marginTop: 5 }}>SeLoger, LeBonCoin, PAP, Bien'ici, Logic-Immo, Jinka, Orpi, Century 21...</div></div>
                   {bienForm !== null && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       <div style={{ background: bienForm._reason === 'seloger_blocked' ? '#fffbeb' : bienForm.titre ? '#ecfdf5' : '#f8fafc', border: `1px solid ${bienForm._reason === 'seloger_blocked' ? '#fde68a' : bienForm.titre ? '#a7f3d0' : '#e2e8f0'}`, borderRadius: 10, padding: '9px 13px', fontSize: 13, color: bienForm._reason === 'seloger_blocked' ? '#92400e' : bienForm.titre ? '#065f46' : '#64748b' }}>
@@ -5923,9 +6018,16 @@ ${signatureMail()}`,
               {/* MODE TEXTE */}
               {bienMode === 'texte' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {depuisAnnonce && lectureRatee && url ? (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>
+                      {`${siteDe(url)?.nom || 'Le site'} n’a pas laissé lire la page. Ouvre l’annonce, sélectionne tout (Ctrl+A), copie (Ctrl+C), puis colle le texte ici : le lien est déjà mis. `}
+                      <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#92400e', fontWeight: 800 }}>{'Ouvrir l’annonce'}</a>
+                    </div>
+                  ) : (
                   <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1d4ed8' }}>
                     💡 <strong>Comment faire :</strong> Sur la page de l'annonce, sélectionne tout (Ctrl+A), copie (Ctrl+C), colle ici (Ctrl+V). Le système extrait automatiquement toutes les infos.
                   </div>
+                  )}
                   <div><label className={styles.lbl}>Lien de l'annonce <span style={{fontWeight:400,color:'#94a3b8'}}>(optionnel)</span></label><input className={styles.inp} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." /></div>
                   <div><label className={styles.lbl}>Texte copié de l'annonce</label><textarea className={styles.inp} rows={8} value={texteAnnonce} onChange={e => setTexteAnnonce(e.target.value)} placeholder="Ctrl+A sur la page → Ctrl+C → coller ici..." style={{ fontFamily: 'inherit', fontSize: 12 }} /></div>
                   <div>
@@ -5962,7 +6064,7 @@ ${signatureMail()}`,
               )}
 
             </div>
-            <div className={styles.modalFooter}><button className={styles.btn} onClick={() => { setShowBien(false); setBienForm(null); setUrl(''); setTexteAnnonce(''); setPhotosInput(''); setBienMode('url'); }}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
+            <div className={styles.modalFooter}><button className={styles.btn} onClick={fermerAjoutBien}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
           </div>
         </div>
         </Portail>

@@ -8,6 +8,7 @@ import {
 import { telAgence } from '@/lib/rapprochement';
 import FenetreBien, { LigneListe, BoutonPied, Ressort, ChampPied, InfoPied } from './FenetreBien';
 import { champsChauffage } from '@/lib/chauffage';
+import AnnoncesClient, { type AnnonceCrm } from './AnnoncesClient';
 
 /**
  * Onglet Veille — les biens trouvés par la veille, en attente d'arbitrage.
@@ -16,11 +17,21 @@ import { champsChauffage } from '@/lib/chauffage';
  *
  * V3.165 : une ligne par bien ; « Voir en grand » ouvre le bien entier
  * (FenetreBien). On y décide, et la fenêtre passe au bien suivant.
+ *
+ * V3.184 : en tête, les annonces que le client a envoyées depuis son espace
+ * (AnnoncesClient) — « Remplir la fiche » ouvre « Ajouter un bien » dans la
+ * fiche (`onRemplir`).
  */
 
-interface Props { clientId: string; rechercheId: string; onChange?: () => void; }
+interface Props {
+  clientId: string; rechercheId: string; onChange?: () => void;
+  prenom?: string | null;
+  onRemplir?: (a: AnnonceCrm) => void;
+  /** Change quand la fiche vient d'enregistrer un bien tiré d'une annonce du client. */
+  rafraichir?: number;
+}
 
-export default function OngletVeille({ clientId, rechercheId, onChange }: Props) {
+export default function OngletVeille({ clientId, rechercheId, onChange, prenom, onRemplir, rafraichir = 0 }: Props) {
   const [props_, setProps] = useState<any[]>([]);
   const [ecartees, setEcartees] = useState<any[]>([]);
   const [passage, setPassage] = useState<any>(null);
@@ -189,6 +200,10 @@ export default function OngletVeille({ clientId, rechercheId, onChange }: Props)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <StylesEmilio />
+      {onRemplir && (
+        <AnnoncesClient clientId={clientId} rechercheId={rechercheId} prenom={prenom} rafraichir={rafraichir}
+          onRemplir={onRemplir} onChange={onChange} />
+      )}
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
