@@ -349,9 +349,23 @@
 }
 
 /* ─── La colonne Recherche, en pastilles ─── */
-.pastilles { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+/* V3.181 (Alexandre : « fais le plus joli ») : sur deux lignes au besoin,
+   jamais coupées — entre 901 et 1 359 px, « 5 pièces · » était tronqué. */
+.pastilles { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; min-width: 0; overflow: hidden; }
 /* V3.180 — Les indispensables, en petit, sous la recherche. */
 .indisp { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 6px; min-width: 0; }
+/* Trois pastilles et « +N » là où la place le permet ; deux et « +N » sur
+   un petit écran d'ordinateur (901 à 1 120 px). */
+.plusEtroit { display: none !important; }
+@media (min-width: 901px) and (max-width: 1120px) {
+  .indisp3, .plusLarge { display: none !important; }
+  .plusEtroit { display: inline-flex !important; }
+  /* Et la colonne du client un peu plus étroite (V3.181, plus bas). */
+  .ligne, .entete { grid-template-columns: 212px minmax(0, 1fr) auto !important; column-gap: 16px !important; }
+  /* « Dernière modif. » sur une ligne, dans une colonne plus étroite. */
+  .entete > span { letter-spacing: 0.7px; }
+  .entete .triBtn { white-space: nowrap; letter-spacing: 0.5px; }
+}
 
 /* ─── Classer la liste : les en-têtes deviennent des commandes ─── */
 .triBtn, .triFleche {
@@ -538,6 +552,29 @@
    liste prend un cran : lignes plus hautes, nom, pastilles, budget et
    signal plus grands, colonnes un peu plus larges. En dessous, rien ne
    change (la colonne Recherche aurait été écrasée). */
+/* V3.181 — Entre la carte (900 px) et le grand écran (1 360 px), les cinq
+   colonnes ne tenaient pas : la colonne Recherche tombait à 14 px sur une
+   tablette à l'horizontale, à 76 px à 1 100 px, et « 5 pièces · » était
+   coupé à 1 280 px. Alexandre : « fais le plus joli ». La ligne passe sur
+   deux étages : le client à gauche ; la recherche, puis le secteur, au
+   milieu ; le budget, puis le signal, à droite. L'en-tête ne nomme plus que
+   les trois colonnes. */
+@media (min-width: 901px) and (max-width: 1359px) {
+  .ligne {
+    display: grid; grid-template-columns: 236px minmax(0, 1fr) auto;
+    grid-template-areas: "client rech bud" "client sect sig";
+    align-items: center; gap: 9px 20px;
+  }
+  .ligne > .colClient { grid-area: client; width: auto; }
+  .ligne > .colRech { grid-area: rech; padding-right: 0; }
+  .ligne > .colSect { grid-area: sect; width: auto; }
+  .ligne > .colBud { grid-area: bud; width: auto; }
+  .ligne > .colSig { grid-area: sig; width: auto; }
+  .entete { display: grid; grid-template-columns: 236px minmax(0, 1fr) auto; column-gap: 20px; }
+  .entete > .colClient, .entete > .colBud { width: auto; }
+  .entete > .colSect, .entete > .colSig { display: none; }
+}
+
 @media (min-width: 1360px) {
   .list { gap: 9px; }
   .entete { padding: 12px 20px; margin-bottom: 8px; }

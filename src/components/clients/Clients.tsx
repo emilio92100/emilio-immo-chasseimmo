@@ -2136,8 +2136,11 @@ export default function Clients({ onNavigate, fenetre }: {
                         </span>
                         {indisp.length > 0 && (
                           <span className={styles.indisp} style={clos ? { opacity: 0.68 } : undefined}>
-                            {indisp.slice(0, 3).map(x => <span key={x} style={PA_INDISP}><Ico d={D_INDISP} c="#b7832c" t={12} />{x}</span>)}
-                            {indisp.length > 3 && <span style={{ ...PA_INDISP, padding: '2px 7px' }}>{`+${indisp.length - 3}`}</span>}
+                            {/* V3.181 : sur un écran moyen (901 à 1 359 px), la colonne
+                                est étroite : deux pastilles et « +N », sur une seule ligne. */}
+                            {indisp.slice(0, 3).map((x, i) => <span key={x} className={i === 2 ? styles.indisp3 : undefined} style={PA_INDISP}><Ico d={D_INDISP} c="#b7832c" t={12} />{x}</span>)}
+                            {indisp.length > 2 && <span className={styles.plusEtroit} style={{ ...PA_INDISP, padding: '2px 7px' }}>{`+${indisp.length - 2}`}</span>}
+                            {indisp.length > 3 && <span className={styles.plusLarge} style={{ ...PA_INDISP, padding: '2px 7px' }}>{`+${indisp.length - 3}`}</span>}
                           </span>
                         )}
                       </span>
