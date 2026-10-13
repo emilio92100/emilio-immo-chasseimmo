@@ -2071,6 +2071,34 @@ export function ChoixQuand({ date, heure, duree, onDate, onHeure, onDuree, duree
   );
 }
 
+/* V3.182 — La date et l'heure seules, sans durée : un créneau proposé par
+   l'agence (« Noter un appel », SuiviAgence.tsx). Alexandre : « le même
+   design du calendrier et de l'horaire ». Le jour choisi ouvre l'heure ;
+   les minutes choisies referment. */
+export function ChoixDateHeure({ date, heure, onDate, onHeure, ouvrir = null }: {
+  date: string; heure: string; onDate: (k: string) => void; onHeure: (h: string) => void; ouvrir?: null | 'date' | 'heure';
+}) {
+  const [panneau, setPanneau] = useState<null | 'date' | 'heure'>(ouvrir);
+  const [hh, mm] = (heure || '10:00').split(':').map(Number);
+  const debut = depuisCle(date || cleDe(new Date())); debut.setHours(hh || 0, mm || 0, 0, 0);
+  const ecart = Math.round((depuisCle(date || cleDe(new Date())).getTime() - depuisCle(cleDe(new Date())).getTime()) / 86400000);
+  const relatif = ecart === 0 ? 'Aujourd’hui' : ecart === 1 ? 'Demain' : ecart > 1 ? `Dans ${ecart} jours` : `Il y a ${-ecart} jours`;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
+      <StylesAgenda />
+      <div className="ag-quand" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        <BoutonChamp ico="calendrier" etiquette="Date" ouvert={panneau === 'date'} onClick={() => setPanneau(p => (p === 'date' ? null : 'date'))}
+          valeur={maj(jourLong(debut))} aide={relatif} />
+        <BoutonChamp ico="horloge" etiquette="Heure" ouvert={panneau === 'heure'} onClick={() => setPanneau(p => (p === 'heure' ? null : 'heure'))}
+          valeur={heureFr(debut)} aide="choisir l’heure" />
+      </div>
+      {panneau === 'date' && <PanneauCalendrier valeur={date} min={cleDe(new Date())} occupes={{}} onChoisir={k => { onDate(k); setPanneau('heure'); }} />}
+      {panneau === 'heure' && <PanneauHeure valeur={heure} prises={new Set()} onChoisir={onHeure} onFini={() => setPanneau(null)} />}
+      <style>{`@media (max-width: 560px){.ag-quand{grid-template-columns:1fr !important}}`}</style>
+    </div>
+  );
+}
+
 /* V3.165 — Le jour seul, avec le calendrier de « Nouveau rendez-vous » (le
    pense-bête des Relances). Le bouton montre le jour choisi ; un appui ouvre
    le calendrier et ses raccourcis, un jour choisi le referme. */
