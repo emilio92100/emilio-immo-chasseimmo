@@ -13,6 +13,7 @@ import { lireDocumentsEspace, fichierDe, modeDoc, type DocEspace, type MandatDoc
 import { ecritServeur } from '@/lib/ecritures';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { texteChauffage } from '@/lib/chauffage';
+import { annoncePourEspace, tableAbsente, type AnnonceEspace } from '@/lib/annonces-client';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -61,7 +62,11 @@ function trajetDe(situation: string | null | undefined, arrets: { nom?: string }
   return { minutes, arret: arret?.nom || null };
 }
 
-const ETAT = (b: { vu_le?: string | null; badge_retour?: string | null }) => {
+/* V3.184 : `proposee` — une annonce qu'il a envoyée lui-même. Retenue puis
+   envoyée par Alexandre, elle lui plaît déjà (« Ça me plaît ») : ce n'est
+   pas une nouveauté à découvrir, même s'il n'a pas encore ouvert la fiche. */
+const ETAT = (b: { vu_le?: string | null; badge_retour?: string | null }, proposee = false) => {
+  if (proposee && b.badge_retour && b.badge_retour !== 'propose') return 'avis';
   if (!b.vu_le) return 'neuf';
   if (!b.badge_retour || b.badge_retour === 'propose') return 'vu';
   return 'avis';
@@ -119,7 +124,7 @@ export default async function PageEspace({ params, searchParams }: {
     await ecritServeur('Le jeton de la recherche', supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id));
   }
 
-  const [biensRes, passagesRes, totalRes, visitesRes, finRes, coordRes, signRes, reserve] = await Promise.all([
+  const [biensRes, passagesRes, totalRes, visitesRes, finRes, coordRes, signRes, reserve, annoncesRes] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
       .order('envoye_le', { ascending: false, nullsFirst: false }),
     /* Les derniers passages : le tout premier dit « la dernière recherche »,
@@ -150,6 +155,11 @@ export default async function PageEspace({ params, searchParams }: {
     supabase.from('mandats_signatures').select('*').eq('recherche_id', recherche.id)
       .order('created_at', { ascending: false }).limit(1),
     lireReserve(supabase),
+    /* V3.184 : les annonces qu'il a envoyées d'ici (« Une annonce repérée ? »).
+       Avant le SQL (outils/sql/annonces-client.sql), la table n'existe pas :
+       la lecture échoue sans bruit et la carte ne s'affiche pas. */
+    supabase.from('annonces_client').select('*').eq('recherche_id', recherche.id)
+      .order('created_at', { ascending: false }).limit(60),
   ]);
   const tous = totalRes.data || [];
   const totalLues = tous.reduce((t, x) => t + (x.nb_lues || 0), 0);
@@ -264,6 +274,22 @@ export default async function PageEspace({ params, searchParams }: {
   }).map((b) => b.id as string));
   for (const id of copiesIndispo) prevueParBien.delete(id);
 
+  /* V3.184 : ses annonces, et les biens qui en sont nés. `annonces` vaut null
+     quand la table n'existe pas encore : l'espace ne montre alors rien. */
+  type LigneA = { id: string; bien_id?: string | null; statut?: string | null; created_at: string; mot?: string | null; avis?: string | null } & Record<string, unknown>;
+  const lignesA = (annoncesRes.error ? [] : annoncesRes.data || []) as LigneA[];
+  const annonceParBien = new Map<string, LigneA>();
+  for (const a of [...lignesA].reverse()) if (a.bien_id && a.statut === 'retenu') annonceParBien.set(a.bien_id, a);
+  const horsEspace = lignesA.map(a => a.bien_id).filter((x): x is string => !!x && !(biensRes.data || []).some(b => b.id === x));
+  const biensHors = new Map<string, { titre?: string | null; photos?: string[] | null; etape?: string | null }>();
+  if (horsEspace.length) {
+    const { data } = await supabase.from('biens').select('id, titre, photos, etape').in('id', horsEspace);
+    for (const b of (data || []) as { id: string; titre: string | null; photos: string[] | null; etape: string | null }[]) biensHors.set(b.id, b);
+  }
+  const annonces: AnnonceEspace[] | null = annoncesRes.error && tableAbsente(annoncesRes.error) ? null
+    : lignesA.map(a => annoncePourEspace(a as Parameters<typeof annoncePourEspace>[0],
+      a.bien_id ? ((biensRes.data || []).find(b => b.id === a.bien_id) || biensHors.get(a.bien_id) || null) : null));
+
   const biens = (biensRes.data || []).map((b) => ({
     id: b.id,
     titre: b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`,
@@ -304,7 +330,12 @@ export default async function PageEspace({ params, searchParams }: {
     retourPar: b.retour_par || 'client',
     visitePrevue: prevueParBien.get(b.id) || null,
     visiteFaite: faiteParBien.get(b.id) || null,
-    etat: ETAT(b),
+    etat: ETAT(b, annonceParBien.has(b.id)),
+    /* V3.184 : un bien né d'une annonce qu'il a envoyée — quand, son mot, et
+       l'avis qu'Alexandre a laissé en la retenant. */
+    proposeeLe: annonceParBien.get(b.id)?.created_at || null,
+    sonMot: annonceParBien.get(b.id)?.mot || null,
+    avisConseiller: annonceParBien.get(b.id)?.avis || null,
     vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || indispoDe(b) || null,
     offre: (b.bien_vente_id && offreParBien.get(b.bien_vente_id)) || null,
     /* V3.114 : un bien de l'agence. Le visiter ne demande jamais de mandat
@@ -659,6 +690,7 @@ export default async function PageEspace({ params, searchParams }: {
       mandat={{ ...mandat, documents }}
       mesVisites={mesVisites}
       apprisClient={apprisClient}
+      annonces={annonces}
     />
   );
 }
