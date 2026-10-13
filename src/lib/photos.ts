@@ -31,7 +31,7 @@ function hebergees(urls: unknown[]): string[] {
 const cheminDe = (u: string) => { try { return decodeURIComponent(new URL(u).pathname.slice(PREFIXE.length)); } catch { return ''; } };
 
 /** Vrai si une ligne de `table` a encore cette photo (ou si on ne peut pas le savoir). */
-async function encoreUtilisee(table: 'biens' | 'veille_propositions', url: string): Promise<boolean> {
+async function encoreUtilisee(table: 'biens' | 'veille_propositions' | 'annonces_client', url: string): Promise<boolean> {
   /* La colonne est un tableau : on essaie les deux écritures possibles
      (tableau Postgres, puis JSON) ; si aucune ne passe, on garde. */
   for (const v of [`{"${url}"}`, JSON.stringify([url])]) {
@@ -50,6 +50,10 @@ export async function effacerPhotosBien(urls: unknown[]): Promise<void> {
      pour savoir si le lot est partagé. */
   if (await encoreUtilisee('veille_propositions', liste[0])) return;
   if (await encoreUtilisee('biens', liste[0])) return;
+  /* V3.184 : les photos d'une annonce envoyée par le client restent les
+     siennes (son espace les montre) même si le bien tiré d'elle est retiré.
+     Table absente : les deux lectures échouent, on garde (dans le doute). */
+  if (liste[0].includes('/annonces/') && await encoreUtilisee('annonces_client', liste[0])) return;
   const chemins = liste.map(cheminDe).filter(x => !!x && !x.includes('..'));
   for (let i = 0; i < chemins.length; i += 100) {
     const { error } = await supabase.storage.from('photos-biens').remove(chemins.slice(i, i + 100));

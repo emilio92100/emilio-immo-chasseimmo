@@ -146,14 +146,14 @@ export async function ouvrirEspace(
   const ids = recherches.map((r) => r.id);
   const { data: apercu } = await supabase
     .from('biens')
-    .select('recherche_id, vu_le, envoye_le, bien_vente_id')
+    .select('id, recherche_id, vu_le, envoye_le, bien_vente_id')
     .in('recherche_id', ids)
     .eq('etape', 'presente');
 
   /* V3.48 : un bien de l'agence sous compromis, vendu, retiré ou en pause
      n'est pas une nouveauté (l'espace ne le range plus dans « Nouveaux ») :
      le compteur du sélecteur ne le compte pas non plus. */
-  const lignes = (apercu || []) as { recherche_id: string; vu_le: string | null; envoye_le: string | null; bien_vente_id?: string | null }[];
+  const lignes = (apercu || []) as { id: string; recherche_id: string; vu_le: string | null; envoye_le: string | null; bien_vente_id?: string | null }[];
   const bv = Array.from(new Set(lignes.filter((b) => !b.vu_le && b.bien_vente_id).map((b) => b.bien_vente_id as string)));
   const indispo = new Set<string>();
   if (bv.length) {
@@ -163,12 +163,22 @@ export async function ouvrirEspace(
     }
   }
 
+  /* V3.184 : un bien né d'une annonce qu'il a envoyée lui-même n'est pas une
+     nouveauté non plus (il arrive dans « Ça me plaît »). Sans la table
+     (SQL pas passé), la lecture échoue sans bruit : rien n'est retiré. */
+  const proposes = new Set<string>();
+  const nonOuverts = lignes.filter((b) => !b.vu_le).map((b) => b.id);
+  if (nonOuverts.length) {
+    const { data: an, error: eAn } = await supabase.from('annonces_client').select('bien_id').in('bien_id', nonOuverts).eq('statut', 'retenu');
+    if (!eAn) for (const a of (an || []) as { bien_id: string | null }[]) if (a.bien_id) proposes.add(a.bien_id);
+  }
+
   const nonLus: Record<string, number> = {};
   const dernierEnvoi: Record<string, number> = {};
   for (const id of ids) { nonLus[id] = 0; dernierEnvoi[id] = 0; }
 
   for (const b of lignes) {
-    if (!b.vu_le && !(b.bien_vente_id && indispo.has(b.bien_vente_id))) nonLus[b.recherche_id] = (nonLus[b.recherche_id] || 0) + 1;
+    if (!b.vu_le && !proposes.has(b.id) && !(b.bien_vente_id && indispo.has(b.bien_vente_id))) nonLus[b.recherche_id] = (nonLus[b.recherche_id] || 0) + 1;
     const t = b.envoye_le ? new Date(b.envoye_le).getTime() : 0;
     if (t > (dernierEnvoi[b.recherche_id] || 0)) dernierEnvoi[b.recherche_id] = t;
   }

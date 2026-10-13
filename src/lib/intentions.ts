@@ -80,7 +80,7 @@ export function prendreDemandeRendezVous(): string | null {
    changer d'écran, valable une minute, lu par la fiche de ce client-là. */
 export type OuvertureFiche = {
   clientId: string;
-  onglet: 'suivi' | 'presentes' | 'selection' | 'visites' | 'transaction';
+  onglet: 'suivi' | 'presentes' | 'selection' | 'visites' | 'transaction' | 'veille';
   filtre?: 'tout' | 'appel' | 'rdv' | 'note' | 'message' | 'communications' | 'systeme';
   relanceId?: string;
   rechercheId?: string | null;
@@ -128,6 +128,9 @@ export function ouvertureDepuisRelance(r: { id: string; type?: string | null; cl
   /* Sa réponse après une visite (offre, revoir, il réfléchit) : la visite
      est dans l'onglet Visites, avec ses raisons. */
   if (/^(Veut faire une offre|Veut revoir|Il réfléchit)/.test(String(r.note || ''))) return { ...base, onglet: 'visites' };
+  /* V3.184 : une annonce qu'il a envoyée depuis son espace : elle attend
+     dans l'onglet Veille (« Proposées par … »). */
+  if (String(r.note || '').startsWith('Annonce envoyée')) return { ...base, onglet: 'veille' };
   if (r.type === 'message_client' || r.type === 'rappel_client') return { ...base, onglet: 'suivi', filtre: 'message' };
   return { ...base, onglet: 'suivi', filtre: filtreDuSuivi(typeAction) };
 }
