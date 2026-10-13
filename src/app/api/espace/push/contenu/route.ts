@@ -111,7 +111,17 @@ export async function POST(req: NextRequest) {
       .is('vu_le', null)
       .order('envoye_le', { ascending: false, nullsFirst: false });
 
-    const liste = (biens || []) as BienLite[];
+    /* V3.184 : un bien né d'une annonce qu'il a envoyée n'est pas « un
+       nouveau bien » : il est déjà dans « Ça me plaît ». S'il n'y a que lui,
+       la notification dit qu'Alexandre a retenu son annonce. */
+    const tousNonLus = (biens || []) as BienLite[];
+    const proposes = new Set<string>();
+    if (tousNonLus.length) {
+      const { data: an, error: eAn } = await supabase.from('annonces_client').select('bien_id')
+        .in('bien_id', tousNonLus.map((b) => b.id)).eq('statut', 'retenu');
+      if (!eAn) for (const a of (an || []) as { bien_id: string | null }[]) if (a.bien_id) proposes.add(a.bien_id);
+    }
+    const liste = tousNonLus.filter((b) => !proposes.has(b.id));
     const n = liste.length;
 
     /* Le lien ouvre l'espace sur la bonne recherche. Quand le nouveau est
@@ -124,6 +134,15 @@ export async function POST(req: NextRequest) {
 
     /* Il a déjà tout ouvert entre l'envoi et maintenant. Rare, mais ça arrive :
        on ne lui annonce pas un bien qu'il vient de lire. */
+    const retenue = tousNonLus.find((b) => proposes.has(b.id));
+    if (n === 0 && retenue) {
+      return NextResponse.json({
+        titre: 'Alexandre a retenu votre annonce',
+        corps: 'Elle est dans vos biens, avec ce qu’il en pense.',
+        url: `${lien}?r=${retenue.recherche_id}&bien=${retenue.id}`,
+        pastille: 0,
+      });
+    }
     if (n === 0) {
       return NextResponse.json({
         titre: 'Votre espace a été mis à jour',
