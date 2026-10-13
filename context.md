@@ -1515,6 +1515,21 @@ les cases à cocher, la réponse du vendeur, le certificat.
   `exterieur_surface_min` de la recherche active (`CRIT_FIELDS`).
 - Réglé en V3.181 : à 1280 px, la ligne pièces / surface était coupée.
 
+### V3.183 — 13 octobre 2026 · L'historique de l'espace dit ce qui a vraiment été vu du mandat
+
+- Alexandre : « j'ai juste vu le message de rappel (Alexandre vous suivra…), je n'ai pas appuyé
+  sur Continuer, et l'historique dit Mandat de recherche affiché : est-ce que c'est fiable ? ». La
+  ligne s'écrivait dès l'ouverture de l'invitation (« Confirmez votre recherche avec Alexandre »),
+  avant le mandat. Le reste de l'historique était juste (chaque ligne suit son action).
+- Trois lignes, chacune au plus une fois par demi-heure (`uneLigne`, route `/api/espace/mandat`) :
+  « Invitation ouverte, avant l'ouverture du mandat » (`afficher`, à l'ouverture), « A commencé :
+  résumé de sa recherche affiché (étape 1 sur 3) » (`commencer`, le bouton « Commencer »), « A
+  ouvert le texte complet du mandat » (`texte`, « Lire le mandat complet » et « Le relire »).
+  Libellés choisis avec Alexandre (« notification » écarté : ce n'en est pas une).
+- Le certificat (« Mandat affiché dans son espace personnel, récapitulatif lu ») prend l'heure du
+  résumé (`EVT_RESUME`), ou l'ancienne ligne « Mandat de recherche affiché » pour un parcours
+  commencé avant la V3.183 — plus celle de l'invitation.
+
 ### V3.182 — 13 octobre 2026 · « Mon suivi avec l'agence », sous chaque bien présenté
 
 - Alexandre : « quand le client veut visiter, ou même ça lui plaît, un truc interne pour moi :
