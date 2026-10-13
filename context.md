@@ -1513,8 +1513,20 @@ les cases à cocher, la réponse du vendeur, le certificat.
   ou séparée —, gardien, interphone, digicode). Trois au plus, puis « +N » ; tout dans l'infobulle.
   Les souhaités ne s'affichent pas. La liste lit désormais `exigences`, `cuisine_type` et
   `exterieur_surface_min` de la recherche active (`CRIT_FIELDS`).
-- Reste à décider : à 1280 px, la ligne pièces / surface est coupée quand le type s'affiche (déjà
-  avant la V3.180).
+- Réglé en V3.181 : à 1280 px, la ligne pièces / surface était coupée.
+
+### V3.181 — 13 octobre 2026 · La liste des acheteurs entre 901 et 1 359 px
+
+- Entre la carte (≤ 900 px) et le grand écran (≥ 1 360 px), les cinq colonnes fixes (256 + 168 +
+  124 + 150 px) ne laissaient presque rien à « Recherche » : 14 px à 960–1 024 px (tablette à
+  l'horizontale), 76 px à 1 100 px, 256 px à 1 280 px (pastilles coupées, `overflow: hidden` sans
+  retour à la ligne). Alexandre : « fais le plus joli ».
+- Sur cette plage, la ligne passe en grille sur deux étages (`Clients.module.css`, juste avant le
+  bloc ≥ 1 360 px) : le client à gauche (236 px, 212 px jusqu'à 1 120 px) ; au milieu la recherche
+  puis le secteur ; à droite le budget puis le signal. L'en-tête ne nomme que Client, Recherche et
+  Budget max. Les pastilles passent à la ligne au lieu d'être coupées, à toutes les tailles.
+- Indispensables : trois puis « +N », sauf entre 901 et 1 120 px — deux puis « +N » (`.indisp3`,
+  `.plusEtroit`, `.plusLarge`). Rien ne change au téléphone ni au-delà de 1 360 px.
 
 ### V3.179 — 13 octobre 2026 · Les acheteurs : plusieurs statuts à la fois, et Contacts retrouvé tel quel
 
