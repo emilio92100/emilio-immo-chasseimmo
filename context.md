@@ -1515,6 +1515,39 @@ les cases à cocher, la réponse du vendeur, le certificat.
   `exterieur_surface_min` de la recherche active (`CRIT_FIELDS`).
 - Réglé en V3.181 : à 1280 px, la ligne pièces / surface était coupée.
 
+### V3.182 — 13 octobre 2026 · « Mon suivi avec l'agence », sous chaque bien présenté
+
+- Alexandre : « quand le client veut visiter, ou même ça lui plaît, un truc interne pour moi :
+  qui je dois contacter, le compte rendu de ce qui a été dit avec l'agence qui a le mandat ou le
+  propriétaire, les créneaux ». Maquettes (canvas « Suivi des demandes de visite ») : le bloc qui
+  se déplie et la fenêtre « Noter un appel », validées ; la vue d'ensemble dans Visites refusée
+  (« Visites, c'est seulement quand j'ai planifié une visite »). Les « Demandes de visite » en haut
+  de Visites restent comme avant.
+- **SQL à passer** : `outils/sql/suivis-agence.sql` (table `suivis_agence`, une ligne par note ou
+  par appel ; RLS comme les autres). Sans elle, le bloc dit « À activer » et rien ne casse.
+  Interne : l'espace du client ne lit jamais cette table, et rien ne va au journal du client.
+- `fiche/SuiviAgence.tsx` (+ `.module.css`), sous chaque bien de l'onglet Présentés, quel que soit
+  son retour, et dans « Voir en grand » (déplié d'office). Replié : une ligne — l'étape
+  (`etatSuivi` : À appeler, En cours, En attente de l'agence, Créneaux reçus, À rappeler le…,
+  Plus disponible, Visite calée le…, d'après la dernière ligne et la visite à venir), « Sous
+  offre », le début de la dernière note. Déplié (gardé dans la session, `suivi.ouverts`) : le
+  contact (le dernier noté, sinon `agence_nom` / `agence_tel` du bien ; Appeler, E-mail), une note
+  rapide (Entrée ou « Ajouter », sans fenêtre), l'historique en fil (la plus récente en haut ;
+  corbeille par ligne). Le dernier appel noté « Vendu » propose « Le classer « Plus disponible » »
+  (FenetreIndispo).
+- « Noter un appel » : avec qui (agence, propriétaire, autre ; nom, interlocuteur, téléphone,
+  e-mail ; case pour reporter nom et téléphone sur la fiche du bien), l'appel (A répondu, Message
+  laissé, Pas de réponse), le bien (Toujours disponible, Sous offre, Vendu), ce qui a été dit, les
+  créneaux proposés (`ChoixDateHeure`, nouvel export de PageAgenda : le calendrier et l'heure de
+  l'agenda, sans durée), et ensuite (J'attends leur retour ; Rappeler le… → une relance
+  « manuelle » dans Relances, effacée si l'appel n'est pas enregistré).
+- Les créneaux encore à venir du dernier appel qui en a donné portent « Valider ce créneau » :
+  `onVisite(bienId, { date, heure, contact })` → `planifierVisite` (FicheClient, `prePlan` gardé
+  pour « Remplacer ») ouvre « Planifier une visite » à cette date, cette heure, avec le contact.
+  La visite créée fait passer le suivi à « Visite calée ».
+- `lib/suivi-agence.ts` : types, `chargerSuivis` (les lignes et les visites à venir des biens
+  affichés ; table absente reconnue par 42P01 / PGRST205), les mots, `contactDu`, `etatSuivi`.
+
 ### V3.181 — 13 octobre 2026 · La liste des acheteurs entre 901 et 1 359 px
 
 - Entre la carte (≤ 900 px) et le grand écran (≥ 1 360 px), les cinq colonnes fixes (256 + 168 +
