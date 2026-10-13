@@ -1499,6 +1499,23 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.180 — 13 octobre 2026 · Les acheteurs : les indispensables sous la recherche
+
+- Alexandre : « j'ai déjà sélectionné Appartement en haut, pourquoi il le réaffiche ? […] rajouter
+  les indispensables, ce qu'il recherche vraiment, sans cliquer sur la fiche ; pas tous, quelque
+  chose de compact ». Maquettes A (pastilles) et B (une ligne) : **il a choisi A**.
+- La pastille du type se cache quand tous les types de l'acheteur sont déjà choisis dans « Ce qu'il
+  cherche » (`typeVu`) ; « maison ou appart. » reste avec le filtre « appartement » (il dit quelque
+  chose de plus).
+- Sous pièces et surface, en doré (`.indisp`, `PA_INDISP`, picto bouclier coché) : seulement ce
+  qui est marqué « indispensable » dans `recherches.exigences` (`indispensables()`, ordre `INDISP` :
+  parking, ascenseur, extérieur — avec sa surface —, balcon, terrasse, jardin, cave, cuisine — ouverte
+  ou séparée —, gardien, interphone, digicode). Trois au plus, puis « +N » ; tout dans l'infobulle.
+  Les souhaités ne s'affichent pas. La liste lit désormais `exigences`, `cuisine_type` et
+  `exterieur_surface_min` de la recherche active (`CRIT_FIELDS`).
+- Reste à décider : à 1280 px, la ligne pièces / surface est coupée quand le type s'affiche (déjà
+  avant la V3.180).
+
 ### V3.179 — 13 octobre 2026 · Les acheteurs : plusieurs statuts à la fois, et Contacts retrouvé tel quel
 
 - Alexandre : « dans Acheteurs, au statut, on ne peut pas choisir Actif et Prospect ; un clic
