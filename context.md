@@ -201,6 +201,19 @@ l'annonce et les infos de marché.
 Tout le descriptif suit le bien, charges, taxe foncière et plans compris (depuis le 24 septembre
 2026 ; avant, les charges et la taxe foncière se perdaient à ce moment-là).
 
+### `annonces_client` — les annonces envoyées par le client (V3.184)
+
+`outils/sql/annonces-client.sql`. Une ligne par annonce envoyée depuis l'espace (« Une annonce
+repérée ? ») : `client_id`, `recherche_id`, `url` (nettoyé par `lienPropre` : https ajouté, sans
+`#` ni `utm_…`), `portail` (« Leboncoin »… ou l'adresse du site), `photos[]` (bucket `photos-biens`,
+`annonces/<id>/…`), `aime[]` (`AIMES`), `mot`, `statut` (`nouveau` · `retenu` · `ecarte`),
+`reponse` (le mot d'Alexandre quand il l'écarte, lu par le client), `avis` (son avis quand il la
+retient, lu avec le bien), `decide_le`, `bien_id`. RLS + `crm_authentifie`.
+Le déclencheur `annonce_client_presentee` (même fichier) : un bien tiré d'une annonce retenue qui
+passe en `presente` prend `badge_retour = 'interesse'` (« Ça lui plaît ») au lieu de `propose`, quel
+que soit le bouton d'envoi. Outils communs : `src/lib/annonces-client.ts`. Sans la table, rien ne
+s'affiche nulle part (`tableAbsente`).
+
 ### `veille_passages` — le compteur de travail
 
 Une ligne par tour de veille : `recherche_id`, `demarre_le`, `termine_le`, `nb_lues`,
@@ -1498,6 +1511,43 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.184 — 14 octobre 2026 · « Une annonce repérée ? » : le client envoie ses annonces
+
+- Alexandre : « si mon client m'envoie des liens ou des annonces, qu'il puisse le faire depuis son
+  espace […] un lien, ou une photo depuis son téléphone (une affiche en vitrine) ». Maquettes
+  (canvas « Annonces envoyées par le client ») : **il a choisi 1A** — une seule carte, « Envoyer »
+  discret, la dernière annonce dessous. Pas de « Annonce Leboncoin reconnue » sous le lien (« il ne
+  faut rien mettre »). SQL : `outils/sql/annonces-client.sql` (table + déclencheur), à passer.
+- **Espace** (`src/components/espace/Annonces.tsx`) : `CarteAnnonce` — au téléphone après
+  « Nouveaux biens pour vous » (et les avis attendus), avant la carte et le rappel de la recherche ;
+  sur ordinateur en haut de la colonne de droite (`ac-tel` / `ac-pc`). Le « ? » (`AIDES.annonce`,
+  texte validé). Visible tant que la recherche est en cours, ou s'il a déjà des annonces (sans le
+  bouton). `EnvoiAnnonce` : le lien (« Coller »), jusqu'à 4 photos (« Prendre une photo » /
+  « Depuis la galerie » au doigt, « Ajouter une photo » à la souris), réduites à 1 600 px dans le
+  navigateur, « Ce qui vous plaît » (`AIMES`), un mot. Vue `annonces` (« Vos annonces envoyées ») :
+  l'état de chacune (« Alexandre la regarde », « Retenue : il prépare la fiche », « Retenue : dans
+  vos biens » + « Voir le bien », « Pas retenue » + son mot). Un bien né d'une annonce : « Vous nous
+  l'aviez envoyée le … », l'avis d'Alexandre et son mot (fiche et liste) ; jamais une nouveauté
+  (`ETAT` dans page.tsx, `nonLus` dans espace.ts, la notification dit « Alexandre a retenu votre
+  annonce »).
+- **Route** `POST /api/espace/annonce` : le lien fait la serrure ; 15 par jour et par recherche ;
+  photos revérifiées (JPEG, PNG, WebP, 6 Mo) puis rangées ; **le serveur ne lit jamais le lien**
+  (une route publique qui irait chercher l'adresse d'un inconnu serait une porte ouverte). Le même
+  lien déjà envoyé, ou déjà dans ses biens : rien ne s'écrit, on le lui dit. Journal `message_client`
+  (« 📩 Annonce envoyée depuis son espace »), relance `message_client` dont la note commence par
+  « Annonce envoyée » (elle ouvre l'onglet Veille, `ouvertureDepuisRelance` ; « Annonce du client »
+  dans Relances), événement `message`.
+- **CRM** : en tête de l'onglet Veille, « Proposées par <prénom> » (`AnnoncesClient`) — le lien, ses
+  photos, son mot, ce qui lui plaît ; « Écarter… » avec un mot qu'il lit ; « Remplir la fiche »
+  ouvre « Ajouter un bien » (FicheClient `remplirDepuisAnnonce`) : le lien posé et lu tout de suite ;
+  si le site bloque (Leboncoin, SeLoger…), la fenêtre passe au texte copié (Ctrl+A) avec le lien
+  déjà mis ; sans lien, la fiche est à remplir à la main. Ses photos servent si l'annonce n'en
+  donne pas ; « Ton avis pour lui » (facultatif). Enregistrée : l'annonce est `retenu`, le bien en
+  Sélection (« Proposé par … le … »), puis, envoyé, dans « Ça lui plaît · son annonce du … » avec
+  son mot. Le compteur de l'onglet Veille les compte. Retirer le bien rend l'annonce « Pas retenue ».
+  `effacerPhotosBien` garde les photos d'une annonce encore présente.
+- Doublons : seulement le même lien exact (pas un autre site pour le même bien).
 
 ### V3.180 — 13 octobre 2026 · Les acheteurs : les indispensables sous la recherche
 
