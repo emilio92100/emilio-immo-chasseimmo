@@ -350,6 +350,8 @@
 
 /* ─── La colonne Recherche, en pastilles ─── */
 .pastilles { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+/* V3.180 — Les indispensables, en petit, sous la recherche. */
+.indisp { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 6px; min-width: 0; }
 
 /* ─── Classer la liste : les en-têtes deviennent des commandes ─── */
 .triBtn, .triFleche {

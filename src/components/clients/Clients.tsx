@@ -475,6 +475,26 @@ function texteType(v: unknown) {
   return `${court(l[0])} +${l.length - 1}`;
 }
 
+/* V3.180 — Les indispensables (Alexandre : « ce qu'il recherche vraiment,
+   sans cliquer sur la fiche ; s'il n'y a pas les indispensables, on passe au
+   suivant »). Seuls ceux marqués « indispensable » dans ses critères, dans
+   l'ordre où ils comptent le plus. */
+const INDISP: [string, string][] = [
+  ['parking', 'Parking'], ['ascenseur', 'Ascenseur'], ['exterieur', 'Extérieur'], ['balcon', 'Balcon'], ['terrasse', 'Terrasse'],
+  ['jardin', 'Jardin'], ['cave', 'Cave'], ['cuisine', 'Cuisine'], ['gardien', 'Gardien'], ['interphone', 'Interphone'], ['digicode', 'Digicode'],
+];
+function indispensables(c: any): string[] {
+  const ex = c.exigences && typeof c.exigences === 'object' ? c.exigences as Record<string, unknown> : {};
+  return INDISP.filter(([k]) => ex[k] === 'indispensable').map(([k, l]) =>
+    k === 'exterieur' && Number(c.exterieur_surface_min) > 0 ? `Extérieur ${c.exterieur_surface_min} m²+`
+      : k === 'cuisine' && c.cuisine_type ? `Cuisine ${c.cuisine_type === 'ouverte' ? 'ouverte' : 'séparée'}` : l);
+}
+const PA_INDISP: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 7, padding: '2px 8px 2px 6px',
+  fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', background: '#fdf6e9', border: '1px solid #f0dfbd', color: '#8a5d14',
+};
+const D_INDISP = <><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z" /><path d="m8.8 12 2.2 2.2 4.4-4.4" /></>;
+
 /* Un intervalle : « 4 », « 4 – 5 », « 4 min », « 4 max ». */
 function borne(min: unknown, max: unknown) {
   if (min && max) return { valeur: `${min} – ${max}`, note: '' };
@@ -787,7 +807,7 @@ export default function Clients({ onNavigate, fenetre }: {
 
     /* V3.75 : `chambres_min` aussi. La pastille des chambres lisait
        `clients.chambres_min`, l'ancienne colonne qui n'est plus tenue à jour. */
-    const CRIT_FIELDS = ['type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'nb_pieces_min', 'nb_pieces_max', 'chambres_min', 'dpe_max', 'secteurs', 'parking', 'balcon', 'terrasse', 'jardin', 'cave', 'ascenseur'];
+    const CRIT_FIELDS = ['type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'nb_pieces_min', 'nb_pieces_max', 'chambres_min', 'dpe_max', 'secteurs', 'parking', 'balcon', 'terrasse', 'jardin', 'cave', 'ascenseur', 'exigences', 'cuisine_type', 'exterieur_surface_min'];
 
     const merged = clientsList.map(c => {
       const rechs = recherches.filter(r => r.client_id === c.id);
@@ -2024,6 +2044,9 @@ export default function Clients({ onNavigate, fenetre }: {
                   const t = TEINTE[client.statut] || TEINTE.actif;
                   const villes = villesDe(client.secteurs);
                   const clos = (client.statut as string) === 'bien_trouve' || (client.statut as string) === 'perdu';
+                  const indisp = indispensables(client);
+                  const sesTypes = String(client.type_bien || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+                  const typeVu = fa.types.length > 0 && sesTypes.length > 0 && sesTypes.every(x => fa.types.some(y => y.toLowerCase() === x));
                   const ouvert = survol?.id === client.id;
 
                   return (
@@ -2073,9 +2096,10 @@ export default function Clients({ onNavigate, fenetre }: {
                         </span>
                       </span>
 
-                      <span className={styles.colRech} title={phraseRecherche(client)}>
+                      <span className={styles.colRech} title={phraseRecherche(client) + (indisp.length ? `\nIndispensable : ${indisp.join(', ')}` : '')}>
                         <span className={styles.pastilles} style={clos ? { opacity: 0.68 } : undefined}>
-                          <span style={PA_TYPE}><Ico d={D_TYPE} c="#2d5c8f" />{texteType(client.type_bien)}</span>
+                          {/* V3.180 : le type déjà choisi dans « Ce qu'il cherche » ne se répète pas. */}
+                          {!typeVu && <span style={PA_TYPE}><Ico d={D_TYPE} c="#2d5c8f" />{texteType(client.type_bien)}</span>}
                           {(() => {
                             /* V3.75 : les chambres dans la même pastille que les pièces
                                (« 4 pièces · 3 ch. », deux minimums) : on peut filtrer
@@ -2110,6 +2134,12 @@ export default function Clients({ onNavigate, fenetre }: {
                             ) : null;
                           })()}
                         </span>
+                        {indisp.length > 0 && (
+                          <span className={styles.indisp} style={clos ? { opacity: 0.68 } : undefined}>
+                            {indisp.slice(0, 3).map(x => <span key={x} style={PA_INDISP}><Ico d={D_INDISP} c="#b7832c" t={12} />{x}</span>)}
+                            {indisp.length > 3 && <span style={{ ...PA_INDISP, padding: '2px 7px' }}>{`+${indisp.length - 3}`}</span>}
+                          </span>
+                        )}
                       </span>
 
                       <span className={styles.colSect}>
