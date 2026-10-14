@@ -274,13 +274,18 @@ export type Modele = {
   /* V3.145 : un rappel pour celui qui signe (pas l'agence), à l'écran avant
      de signer et dans son mail de confirmation — jamais dans le document.
      L'offre d'achat y met son total, frais d'agence compris. */
-  rappel?: (d: Donnees) => { titre: string; valeur: string; detail: string } | null;
+  rappel?: (d: Donnees) => RappelSignataire | null;
   /* V3.145 : ce qui se déduit des réponses, recalculé par l'éditeur à chaque
      changement (`cle` : le champ qui vient de bouger ; '' à l'ouverture).
      L'offre d'achat en tire le prix proposé au vendeur, depuis le total que
      le client veut mettre, frais d'agence compris. */
   deduire?: (d: Donnees, cle: string) => Donnees;
 };
+
+/* Le rappel montré à celui qui signe (Modele.rappel). V3.189 : `ecart`, ce
+   que son total représente face au prix affiché (« soit 20 000 € de moins
+   que le prix affiché »). */
+export type RappelSignataire = { titre: string; valeur: string; detail: string; ecart?: string };
 
 /* ── Comment le document est signé ──────────────────────────────────────
    À la main (imprimé, « mots rayés nuls », scanné ensuite), en ligne

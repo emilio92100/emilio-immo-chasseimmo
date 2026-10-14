@@ -13,6 +13,7 @@ import Cascade from '@/components/shared/Cascade';
 import { signalerFicheOuverte } from '@/components/layout/FichesOuvertes';
 import FenetrePenseBete, { DEBUT_PENSE_BETE } from './FenetrePenseBete';
 import Curseur from '@/components/shared/Curseur';
+import { estRelanceOffre, TETES_OFFRE } from '@/lib/offres';
 
 /*
  * Les relances : qui recontacter, et quand.
@@ -105,7 +106,13 @@ const sansAccents = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g
 /* `fort` : ce qui passe avant tout le reste du jour — un client qui veut
    faire une offre. L'étiquette est alors pleine, en or. */
 type Origine = { lib: string; ico: string; fort?: boolean };
-const veutOffrir = (r: any) => String(r.note || '').startsWith('Veut faire une offre');
+/* V3.189 : les relances de son offre (à relire, signée à envoyer, en
+   attente de réponse, contre-proposition) passent aussi en tête. */
+const veutOffrir = (r: any) => String(r.note || '').startsWith('Veut faire une offre') || estRelanceOffre(r.note);
+const LIB_OFFRE: [string, string][] = [
+  [TETES_OFFRE.relire, 'Offre à relire'], [TETES_OFFRE.envoyer, 'Offre à envoyer'],
+  [TETES_OFFRE.reponse, 'Offre envoyée'], [TETES_OFFRE.contre, 'Contre-proposition'],
+];
 /* V3.76 — Les relances posées par l'import commencent par leur origine et le
    nom du contact (« Prochain contact repris d'ImmoFacile — Claire Martin ·
    Dernier échange… ») : l'étiquette dit l'origine, le nom est juste au-dessus,
@@ -133,6 +140,10 @@ function origineDe(r: any, typeAction?: string | null): Origine {
   if (r.type === 'message_client') return { lib: 'Message du client', ico: 'bulle' };
   const pre = prefixeDe(r.note);
   if (pre) return pre.o;
+  if (estRelanceOffre(r.note)) {
+    const lib = LIB_OFFRE.find(([t]) => String(r.note).startsWith(`${t} — `))?.[1] || 'Offre d’achat';
+    return { lib, ico: 'euro', fort: true };
+  }
   if (veutOffrir(r)) return { lib: 'Veut faire une offre', ico: 'euro', fort: true };
   if (String(r.note || '').startsWith('Veut revoir')) return { lib: 'Veut revoir', ico: 'oeil' };
   if (String(r.note || '').startsWith('Il réfléchit')) return { lib: 'Il réfléchit', ico: 'horloge' };

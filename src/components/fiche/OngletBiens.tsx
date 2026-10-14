@@ -16,6 +16,7 @@ import { prixDuBien } from '@/lib/honoraires-bien';
 import { lireIndispo, motifIndispo, remettreDispo } from '@/lib/biens-indispo';
 import FenetreIndispo from './FenetreIndispo';
 import SuiviAgence from './SuiviAgence';
+import SonOffre, { useOffres } from './SonOffre';
 import { chargerSuivis, type Suivis } from '@/lib/suivi-agence';
 import type { AnnonceCrm } from './AnnoncesClient';
 
@@ -162,9 +163,12 @@ interface Props {
   rafraichir?: number;
   /** V3.129 : le bien à amener à l'écran et à entourer un instant (Visites › « Voir sur sa fiche »). */
   vise?: string | null;
+  /** V3.189 : « Son offre » sous chaque bien présenté — où ouvrir l'offre, et la transaction. */
+  onDocument?: (id: string, o?: { editer?: boolean }) => void;
+  onTransaction?: () => void;
 }
 
-export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null }: Props) {
+export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, onDocument, onTransaction }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [obs, setObs] = useState<any>(null);
@@ -272,6 +276,18 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         onChange={() => setTickSuivi(n => n + 1)}
         onValider={(c, contact) => onVisite(b.id, { date: c.date, heure: c.heure, contact })}
         onIndispo={() => setIndispoDe(b)} />
+    );
+  };
+
+  /* V3.189 — « Son offre » sous chaque bien présenté qui en a une (SonOffre.tsx). */
+  const offres = useOffres(mode === 'presentes' && !chargement ? clientId : null, biens, tick + rafraichir);
+  const offreDe = (b: any, seul?: boolean) => {
+    if (mode !== 'presentes' || !onDocument) return null;
+    const fil = offres.fil(b.id);
+    if (!fil.length) return null;
+    return (
+      <SonOffre fil={fil} bienId={b.id} client={{ id: clientId, prenom: client?.prenom, civilite: client?.civilite, couple: client?.couple }} seul={seul}
+        onChange={() => { offres.recharger(); recharge(); }} onDocument={onDocument} onTransaction={onTransaction} />
     );
   };
 
@@ -568,6 +584,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
             {b.pdf_message}
           </div>
         )}
+        {offreDe(b, true)}
         {suiviDe(b, true)}
       </>
     );
@@ -720,7 +737,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
               droite={mode === 'selection'
                 ? <BoutonVite onClick={() => setEnvoi(b)} titre="Envoyer ce bien au client"><Icone nom="envoyer" taille={15} epaisseur={2} />Envoyer</BoutonVite>
                 : undefined}
-              bas={mode === 'presentes' ? <>{basPresente(b)}{suiviDe(b)}</> : basSelection(b)} />
+              bas={mode === 'presentes' ? <>{basPresente(b)}{offreDe(b)}{suiviDe(b)}</> : basSelection(b)} />
           </Fragment>
         );
       })}

@@ -1,0 +1,50 @@
+/* « Son offre » (V3.189, SonOffre.tsx) : le dessin de « Mon suivi avec
+   l'agence » (SuiviAgence.module.css), et ce qui lui est propre. */
+
+.bloc { border-left: 3px solid #E68B23; }
+.bloc[data-ton="bleu"] { border-left-color: #22497D; }
+.bloc[data-ton="vert"] { border-left-color: #15803d; background: #f6fcf8; }
+.bloc[data-ton="rouge"] { border-left-color: #dc2626; }
+.bloc[data-ton="violet"] { border-left-color: #5B21B6; background: #fbfaff; }
+.bloc[data-ton="gris"] { border-left-color: #cbd5e1; }
+
+.rang { font-size: 12px; font-weight: 800; color: #6B7A90; white-space: nowrap; }
+
+.montants { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: #e3e8f0; border: 1px solid #e3e8f0; border-radius: 12px; overflow: hidden; }
+.montants > div { background: white; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.montants span { font-size: 11.5px; font-weight: 700; color: #6B7A90; }
+.montants b { font: 800 15px 'Plus Jakarta Sans', sans-serif; color: #13243D; white-space: nowrap; }
+.montants > div:first-child b { color: #A95808; }
+
+.contre { display: flex; flex-direction: column; gap: 7px; padding: 11px 13px; border-radius: 12px; background: #f6f1ff; border: 1px solid #dcd3ee; }
+.contreT { font: 800 12px 'Plus Jakarta Sans', sans-serif; letter-spacing: .4px; text-transform: uppercase; color: #5B21B6; }
+.contreV { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; font-size: 13.5px; font-weight: 600; color: #3D4C63; }
+.contreV b { font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #13243D; }
+
+.aide { font-size: 13px; line-height: 1.5; color: #475569; }
+.note { font-size: 12.5px; font-weight: 600; color: #5B6B82; }
+.gestes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.alerte { padding: 9px 12px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-size: 13px; font-weight: 700; line-height: 1.45; }
+.ok { padding: 9px 12px; border-radius: 10px; background: #E7F6EE; border: 1px solid #bbf7d0; color: #0E6B43; font-size: 13px; font-weight: 700; line-height: 1.45; }
+
+.q { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 6px; border: none; background: none; font: 700 13px 'DM Sans', sans-serif; color: #5B6B82; cursor: pointer; }
+.q:hover { color: #22497D; }
+.qRond { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font: 800 11.5px 'Plus Jakarta Sans', sans-serif; }
+.q[aria-expanded="true"] { color: #22497D; }
+.circuit { list-style: none; margin: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; background: white; border: 1px solid #e3e8f0; border-radius: 12px; }
+.circuit li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: #3D4C63; }
+.circuit li b { color: #13243D; }
+.cN { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 7px; background: #eaf1fb; color: #22497D; font: 800 12px 'Plus Jakarta Sans', sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+
+/* La fenêtre « Réponse du vendeur » */
+.calc { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 11px; background: #fff7ed; border: 1px solid #fed7aa; min-width: 0; }
+.calc span { font-size: 12px; font-weight: 700; color: #8F3F00; }
+.calc b { font: 800 18px 'Plus Jakarta Sans', sans-serif; color: #13243D; white-space: nowrap; }
+.calc small { font-size: 12px; color: #6B7A90; }
+.mail { display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: #eaf1fb; border: 1px solid #c9d6e8; color: #1F4E8C; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.mail svg { margin-top: 2px; }
+
+@media (max-width: 700px) {
+  .montants { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gestes > button { flex: 1 1 auto; }
+}

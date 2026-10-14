@@ -58,7 +58,7 @@ export type DonneesSignerDoc = {
   /* La fin de validité d'une offre d'achat passée (V3.50). */
   finValidite?: string | null;
   /* V3.145 : un rappel pour lui seul, sous « L'essentiel » (Modele.rappel). */
-  rappel?: { titre: string; valeur: string; detail: string } | null;
+  rappel?: { titre: string; valeur: string; detail: string; ecart?: string } | null;
   /* V3.57, « termine » : signé par lui, puis le document a pris fin — le
      jour où il a pris fin (renonciation, annulation), et si c'est un mandat. */
   finLe?: string | null;
@@ -318,7 +318,7 @@ export default function SignatureDocument({ d }: { d: DonneesSignerDoc }) {
           </>
         ) : (
           <>
-            {d.rappel && <p className="mdt-p petit">{`${d.rappel.titre} : ${d.rappel.valeur}${d.rappel.detail ? ` (${d.rappel.detail})` : ''}.`}</p>}
+            {d.rappel && <p className="mdt-p petit">{`${d.rappel.titre} : ${d.rappel.valeur}${d.rappel.detail ? ` (${d.rappel.detail})` : ''}${d.rappel.ecart ? `, ${d.rappel.ecart}` : ''}.`}</p>}
             <button type="button" className="mdt-coche" data-on={lu ? '1' : undefined} onClick={() => setLu(x => !x)}>
               <span className="bx">{lu && <Ic n="check" t={14} />}</span>
               <span>{d.accepter}</span>

@@ -286,6 +286,8 @@ type MailAEnvoyer = {
   /* V3.152 : le pixel d'ouverture de Mailjet, pour ce mail seulement. Coupé
      partout depuis le réglage de la délivrabilité (context.md §8). */
   suiviOuverture?: boolean;
+  /* V3.189 : une copie cachée (l'offre envoyée à l'agence, pour Alexandre). */
+  cci?: string;
 };
 
 /* Rend null si tout va bien, sinon le message d'erreur. */
@@ -308,6 +310,7 @@ export async function envoyerMailSuivi(o: MailAEnvoyer): Promise<{ erreur: strin
         Messages: [{
           From: { Email: FROM_EMAIL, Name: o.deLaPartDe === 'crm' ? 'Emilio · CRM' : o.deLaPartDe === 'agence' ? 'Emilio Immobilier' : FROM_NAME },
           To: [{ Email: o.a, ...(o.nomA ? { Name: o.nomA } : {}) }],
+          ...(o.cci && o.cci.toLowerCase() !== o.a.toLowerCase() ? { Bcc: [{ Email: o.cci }] } : {}),
           ...(o.repondreA ? { ReplyTo: { Email: o.repondreA } } : {}),
           Subject: o.sujet,
           TextPart: o.texte,

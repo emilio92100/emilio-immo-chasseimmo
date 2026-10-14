@@ -136,6 +136,10 @@
 
 /* Le pied : le bon de visite, puis les gestes. */
 .pied { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid #f0f3f7; padding-top: 12px; }
+/* V3.189 : « Son offre » (SonOffre.tsx), collé au bas de la carte. */
+.offre { margin: 2px -18px -16px; }
+.offre > div { border-radius: 0; }
+@media (max-width: 760px) { .offre { margin: 2px -14px -14px; } }
 .bon { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; font: 700 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
 .bonSigne { color: #15803d; }
 .bonASigner { color: #8a6a1f; background: #fbf4e1; border: 1px solid #ecdcb0; border-radius: 99px; padding: 6px 12px; }

@@ -17,7 +17,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export const CLE_ALERTES = 'alertes_mail';
 
 export type CleAlerte =
-  | 'visite' | 'visite_offre' | 'visite_avis'
+  | 'visite' | 'visite_offre' | 'visite_avis' | 'offre_espace'
   | 'mandat_question' | 'mandat_numero' | 'mandat_signe' | 'mandat_renonce' | 'mandat_depasse' | 'document_signe'
   | 'point_auto_recap';
 
@@ -52,6 +52,12 @@ export const ALERTES_MAIL: Alerte[] = [
     objet: '🤔 Paul Martin réfléchit · 4 pièces 106 m²…',
     quand: 'Après une visite, il répond depuis son espace : il veut revoir le bien, il hésite, ou ce n’est pas pour lui.',
     crm: 'L’issue et ses raisons sur la visite (onglet Visites de sa fiche). Revoir : une relance du jour. Il hésite : une relance à J+3.',
+  },
+  {
+    cle: 'offre_espace', groupe: 'clients', titre: 'Son offre, depuis son espace',
+    objet: '💶 Paul Martin a préparé une offre à relire · 480 000 €…',
+    quand: 'Il prépare son offre depuis son espace et te la confie pour relecture, ou il ne donne pas suite à une offre. Une offre qu’il signe seul arrive avec le mail « Signé par tous ».',
+    crm: 'Une relance en tête de Relances, le bloc « Son offre » sur sa visite (onglet Visites de sa fiche), et une ligne dans son suivi.',
   },
   {
     cle: 'mandat_question', groupe: 'mandats', titre: 'Une question sur le mandat',

@@ -8,6 +8,9 @@ import { ecritServeur } from '@/lib/ecritures';
 import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
 import { enveloppeMail } from '@/lib/mail-charte';
 import { avecRemises } from '@/lib/remise-mail';
+import { ALERTES } from '@/lib/mandat-serveur';
+import { lireOffre, noterReponse, fermerSansSuite, offreEnvoyee, offreSigneeParTous } from '@/lib/offres-serveur';
+import { etatDeOffre, lireSuivi } from '@/lib/offres';
 
 /**
  * Les fichiers des documents juridiques (Documents juridiques, dans le CRM).
@@ -25,8 +28,18 @@ import { avecRemises } from '@/lib/remise-mail';
  *   POST { action: 'retirer', id }                             →  { ok, n }     (tous ses fichiers)
  *   POST { action: 'projet', id, destinataires, sujet, message }
  *                                                →  { ok, envoyes, avertissements, envoi, row }
- *   POST { action: 'offre', id, destinataires, sujet, message }   (V3.145)
+ *   POST { action: 'offre', id, destinataires, sujet, message, copie? }   (V3.145)
  *                                                →  { ok, envoyes, avertissements, envoi, row }
+ *        V3.189 : `copie` (par défaut oui) — une copie cachée à Alexandre ;
+ *        puis la suite de l'offre (src/lib/offres-serveur.ts : relances,
+ *        bien « Offre faite »).
+ *   POST { action: 'reponse', id, statut, montant?, limite?, note? }   (V3.189)
+ *        la réponse du vendeur à une offre envoyée : acceptée, refusée, ou
+ *        contre-proposition (`montant` = le prix pour le vendeur). Le client
+ *        reçoit UN mail ; acceptée, la transaction s'ouvre.
+ *   POST { action: 'sans_suite', id }   (V3.189)  l'offre se ferme, rien ne part au client
+ *   POST { action: 'offre_signee', id }   (V3.189)  une offre signée à la main (FenetreSigne) :
+ *        la même suite qu'une signature en ligne (relance « à envoyer », bien « Offre faite »)
  *
  * Tout vit sous documents/<id du document>/ : la route refuse le reste.
  *
@@ -277,15 +290,17 @@ async function traiterPost(req: NextRequest) {
       const html = enveloppeMail({ corps: paras });
       const envoyes: string[] = [];
       const echecs: string[] = [];
+      /* V3.189 : une copie cachée à Alexandre (une seule, sur le premier envoi). */
+      const copie = body.copie !== false;
       for (const a of adresses) {
-        const err = await envoyerMail({ a, sujet, texte: message, html, pj });
+        const err = await envoyerMail({ a, sujet, texte: message, html, pj, ...(copie && !envoyes.length ? { cci: ALERTES() } : {}) });
         if (err) echecs.push(`${a} (${err})`); else envoyes.push(a);
       }
       if (!envoyes.length) return ko(`Le mail n’est pas parti : ${echecs.join(' · ')}`, 502);
 
       const avertissements: string[] = echecs.map(e => `Pas parti à ${e}`);
       const le = new Date().toISOString();
-      const envoi = { le, a: envoyes.map(x => ({ email: x, nom: '' })), sujet, message: message.slice(0, 5000), fichier, offre: true, ...(echecs.length ? { echecs } : {}) };
+      const envoi = { le, a: envoyes.map(x => ({ email: x, nom: '' })), sujet, message: message.slice(0, 5000), fichier, offre: true, ...(copie ? { copie: true } : {}), ...(echecs.length ? { echecs } : {}) };
       const avant = Array.isArray(doc.envois) ? doc.envois : [];
       let row: unknown = null;
       const maj = await sb.from('documents').update({ envois: [...avant, envoi].slice(-ENVOIS_MAX) }).eq('id', id).select('*').maybeSingle();
@@ -321,7 +336,52 @@ async function traiterPost(req: NextRequest) {
           metadata: { document_id: id, offre: true },
         }), avertissements);
       }
+      /* V3.189 : la suite — « à envoyer » a sa réponse, la relance de la
+         veille de l'échéance, le bien « Offre faite ». */
+      const pbS = await offreEnvoyee(sb, { id, donnees: d, client_id: doc.client_id, recherche_id: doc.recherche_id, bien_id: (lu as { bien_id?: string | null }).bien_id || null });
+      if (pbS) avertissements.push(`La suite de l’offre : ${pbS}`);
       return NextResponse.json({ ok: true, envoyes, avertissements, envoi, row });
+    }
+
+    /* ── Une offre signée sur papier (V3.189) : la suite, comme en ligne ── */
+    if (action === 'offre_signee') {
+      const id = String(body.id || '');
+      if (!UUID.test(id)) return ko('Document inconnu');
+      const doc = await lireOffre(sb, id);
+      if (!doc) return ko('Offre introuvable', 404);
+      if (doc.statut !== 'signe') return ko('L’offre n’est pas signée.', 409);
+      const pb = await offreSigneeParTous(sb, { id: doc.id, donnees: doc.donnees, client_id: doc.client_id || null, recherche_id: doc.recherche_id || null, bien_id: doc.bien_id || null });
+      return NextResponse.json({ ok: true, avertissements: pb ? [pb] : [] });
+    }
+
+    /* ── La réponse du vendeur (V3.189) ── */
+    if (action === 'reponse' || action === 'sans_suite') {
+      const id = String(body.id || '');
+      if (!UUID.test(id)) return ko('Document inconnu');
+      const doc = await lireOffre(sb, id);
+      if (!doc) return ko('Offre introuvable', 404);
+      const etat = etatDeOffre(doc);
+      if (etat === 'remplacee' || etat === 'annulee') return ko('Cette offre a été remplacée par une plus récente : réponds sur celle-ci.', 409);
+      if (action === 'sans_suite') {
+        if (lireSuivi(doc.donnees).reponse?.statut === 'acceptee') return ko('Cette offre est acceptée : pour l’arrêter, passe par l’onglet Transaction.', 409);
+        if (doc.statut === 'pret' && doc.signature) return ko('Cette offre est en signature : arrête d’abord sa signature dans Documents, puis note-la sans suite.', 409);
+        const pb = await fermerSansSuite(sb, doc, 'conseiller');
+        if (pb) return ko(`Pas enregistré : ${pb}`, 500);
+        return NextResponse.json({ ok: true, row: await lireOffre(sb, id) });
+      }
+      if (doc.statut !== 'signe') return ko('L’offre n’est pas encore signée : la réponse du vendeur se note une fois l’offre signée et envoyée.', 409);
+      if (lireSuivi(doc.donnees).close?.par === 'client') return ko('Le client n’a pas donné suite à cette offre, depuis son espace : appelle-le avant de noter une réponse.', 409);
+      const statut = body.statut === 'acceptee' || body.statut === 'refusee' || body.statut === 'contre' ? body.statut : null;
+      if (!statut) return ko('Réponse inconnue');
+      const montant = Math.round(Number(body.montant));
+      if (statut === 'contre' && !(Number.isFinite(montant) && montant >= 10_000 && montant <= 100_000_000)) return ko('Le prix de la contre-proposition, pour le vendeur.');
+      const limite = typeof body.limite === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.limite) ? body.limite : null;
+      const note = typeof body.note === 'string' ? body.note.replace(/\s+/g, ' ').trim().slice(0, 500) || null : null;
+      let r;
+      try {
+        r = await noterReponse(sb, doc, { statut, le: new Date().toISOString(), ...(statut === 'contre' ? { montant, limite } : {}), note });
+      } catch (e) { return ko((e as Error).message, 500); }
+      return NextResponse.json({ ok: true, avertissements: r.avertissements, row: await lireOffre(sb, id) });
     }
 
     return ko('Action inconnue');

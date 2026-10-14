@@ -835,6 +835,9 @@ export default function PageDocuments({ onNavigate, intention, onIntention }: {
     /* V3.56 : la copie d'un mandat rétracté en ligne ne l'est pas. */
     delete donnees.retracte_le;
     delete donnees.retracte_en_ligne;
+    /* V3.189 : le suivi d'une offre (son fil, la réponse du vendeur) reste
+       à l'offre d'origine : la copie est une offre neuve. */
+    delete donnees.suivi;
     /* V3.50 : un avenant dupliqué prend le numéro qui suit (comme « Préparer
        un avenant ») : la copie d'un « Avenant n° 1 » signé faisait un second
        « Avenant n° 1 » au même mandat, et deux observations au registre. */

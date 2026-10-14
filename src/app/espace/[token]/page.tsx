@@ -14,6 +14,8 @@ import { ecritServeur } from '@/lib/ecritures';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { texteChauffage } from '@/lib/chauffage';
 import { annoncePourEspace, tableAbsente, type AnnonceEspace } from '@/lib/annonces-client';
+import { offresPourEspace } from '@/lib/offres-serveur';
+import type { OffreEspace, SaisieOffre } from '@/lib/offres';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -341,6 +343,15 @@ export default async function PageEspace({ params, searchParams }: {
     /* V3.114 : un bien de l'agence. Le visiter ne demande jamais de mandat
        de recherche (visiteBloquee, /api/espace/retour). */
     agence: !!b.bien_vente_id,
+    /* V3.189 : ses honoraires sur ce bien, pour le calcul de son offre (le
+       serveur refait le calcul) : rien en inter-cabinet, sinon le taux ou le
+       forfait fixé à l'envoi — comme l'offre d'achat du CRM (defaut). */
+    honoOffre: (() => {
+      const pb = prixDuBien(b);
+      const v = Number(b.commission_val);
+      return !pb.agence && pb.hono > 0 && v > 0 ? { mode: b.commission_type === 'fixe' ? 'forfait' as const : 'taux' as const, val: v } : { mode: 'aucun' as const, val: 0 };
+    })(),
+    offreSuivi: null as OffreEspace | null,
   }));
 
   /* Les rendez-vous à venir, et eux seuls. Une visite passée n'est plus « votre
@@ -570,6 +581,28 @@ export default async function PageEspace({ params, searchParams }: {
       fichier: fichierDe(docRetracte.signe_chemin), renoncer: null, retracteLe: docRetracte.retracte_le,
     };
   }
+  /* ─── V3.189 : ses offres, bien par bien (src/lib/offres-serveur.ts) ───
+     Et qui pré-remplir dans « Faire une offre » : lui, tel qu'il a signé son
+     mandat (naissance comprise), puis ceux qui l'ont signé avec lui — ou le
+     conjoint de sa fiche « couple ». Le premier garde l'adresse e-mail de sa
+     fiche : c'est elle qui le reconnaît parmi les signataires. */
+  try {
+    const offres = await offresPourEspace(supabase, client.id as string, biens.map(b => b.id as string), fiche);
+    for (const b of biens) b.offreSuivi = offres[b.id as string] || null;
+  } catch { /* sans offre lisible, l'espace s'affiche comme avant */ }
+  const mandantSig = derniereSig?.mandant && typeof derniereSig.mandant === 'object' ? derniereSig.mandant as Mandant : null;
+  const emailFiche = (Array.isArray(coord?.emails) ? (coord!.emails as unknown[]).map(e => String(e || '').trim()).find(e => e.includes('@')) : '') || '';
+  const pourOffre = (x: Partial<Mandant>): SaisieOffre['acquereurs'][number] => ({
+    civilite: x.civilite === 'Madame' || x.civilite === 'Monsieur' ? x.civilite : '', prenom: String(x.prenom || ''), nom: String(x.nom || ''),
+    naissanceDate: String(x.naissanceDate || ''), naissanceLieu: String(x.naissanceLieu || ''), adresse: String(x.adresse || ''),
+    email: String(x.email || ''), telephone: String(x.telephone || ''),
+  });
+  const moiOffre = pourOffre({ ...prefill, ...(mandantSig || {}) });
+  if (emailFiche) moiOffre.email = emailFiche;
+  const autresOffre = cosSig.filter(c => c.statut !== 'decline' && c.statut !== 'annule' && c.personne).map(c => pourOffre(c.personne));
+  if (!autresOffre.length && conjointFiche) autresOffre.push(pourOffre({ ...conjointFiche, adresse: conjointFiche.adresse || moiOffre.adresse }));
+  const identiteOffre: SaisieOffre['acquereurs'] = [moiOffre, ...autresOffre.filter(p => p.prenom || p.nom).slice(0, 3)];
+
   /* Son délai de rétractation : 14 jours après sa signature, prolongés si un
      co-signataire signe pendant qu'ils courent. */
   const signesCos = membres.filter(c => c.statut === 'signe' || c.statut === 'retracte').map(c => c.signe_le);
@@ -691,6 +724,7 @@ export default async function PageEspace({ params, searchParams }: {
       mesVisites={mesVisites}
       apprisClient={apprisClient}
       annonces={annonces}
+      identiteOffre={identiteOffre}
     />
   );
 }

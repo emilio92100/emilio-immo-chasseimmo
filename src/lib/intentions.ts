@@ -128,6 +128,9 @@ export function ouvertureDepuisRelance(r: { id: string; type?: string | null; cl
   /* Sa réponse après une visite (offre, revoir, il réfléchit) : la visite
      est dans l'onglet Visites, avec ses raisons. */
   if (/^(Veut faire une offre|Veut revoir|Il réfléchit)/.test(String(r.note || ''))) return { ...base, onglet: 'visites' };
+  /* V3.189 : une relance de son offre (à relire, à envoyer, en attente de
+     réponse, contre-proposition) : le bloc « Son offre » est sous la visite. */
+  if (/^(Offre à relire|Offre signée, à envoyer|Offre en attente de réponse|Contre-proposition à suivre) — /.test(String(r.note || ''))) return { ...base, onglet: 'visites' };
   /* V3.184 : une annonce qu'il a envoyée depuis son espace : elle attend
      dans l'onglet Veille (« Proposées par … »). */
   if (String(r.note || '').startsWith('Annonce envoyée')) return { ...base, onglet: 'veille' };

@@ -16,7 +16,11 @@ import s from './Documents.module.css';
    pièce jointe, et rien d'autre : les honoraires d'Alexandre ne sont pas
    dans l'offre (src/lib/actes/offre-achat.ts), l'agence ne les voit pas.
    L'envoi est noté dans le document, dans le Suivi du client et dans celui
-   du confrère s'il est dans le CRM (/api/documents, action « offre »). */
+   du confrère s'il est dans le CRM (/api/documents, action « offre »).
+
+   V3.189 : l'adresse se reprend du dernier envoi (le même document, ou
+   l'offre d'avant du même fil : `adresse`), et une copie cachée part à
+   Alexandre (décochable) — il garde la trace de ce qui est parti. */
 
 const MAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -39,13 +43,19 @@ export function messageOffre(d: Donnees, signature: string) {
 /* Les offres déjà envoyées de ce document. */
 const offresEnvoyees = (row: DocumentRow) => (Array.isArray(row.envois) ? row.envois : []).filter(e => e.offre);
 
-export function FenetreOffre({ doc, onFermer, onEnvoye }: {
+export function FenetreOffre({ doc, adresse, onFermer, onEnvoye }: {
   doc: DocumentRow;
+  /** L'adresse du dernier envoi du fil (l'offre d'avant), à reprendre. */
+  adresse?: string;
   onFermer: () => void;
   onEnvoye: (r: { row: DocumentRow | null; message: string; ok: boolean }) => void;
 }) {
   const d = doc.donnees || {};
-  const [a, setA] = useState('');
+  const [a, setA] = useState(() => {
+    const l = offresEnvoyees(doc);
+    return l.length ? l[l.length - 1].a.map(x => x.email).join(', ') : adresse || '';
+  });
+  const [copie, setCopie] = useState(true);
   const [objet, setObjet] = useState(() => objetOffre(d));
   const [signature, setSignature] = useState(() => signatureDe({}));
   const [texte, setTexte] = useState<string | null>(null);
@@ -94,7 +104,7 @@ export function FenetreOffre({ doc, onFermer, onEnvoye }: {
     if (!objet.trim() || !message.trim()) { setErreur('L’objet et le message ne peuvent pas être vides.'); return; }
     setEn('envoi'); setErreur('');
     try {
-      const r = await envoyerOffre({ id: doc.id, destinataires: valables, sujet: objet.trim(), message: message.trim() });
+      const r = await envoyerOffre({ id: doc.id, destinataires: valables, sujet: objet.trim(), message: message.trim(), copie });
       onEnvoye({
         row: r.row, ok: !r.avertissements.length,
         message: `Offre envoyée à ${r.envoyes.join(', ')}.${r.avertissements.length ? ` ${r.avertissements.join(' · ')}` : ''}`,
@@ -142,6 +152,10 @@ export function FenetreOffre({ doc, onFermer, onEnvoye }: {
             </div>
             <textarea id="of-texte" className={s.input} rows={10} value={message} onChange={e => setTexte(e.target.value)} />
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#3D4C63', cursor: 'pointer' }}>
+            <input type="checkbox" checked={copie} onChange={e => setCopie(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#22497D' }} />
+            <span>{'M’envoyer une copie cachée'}</span>
+          </label>
           {erreur && <div className={s.erreur}>{erreur}</div>}
         </div>
 

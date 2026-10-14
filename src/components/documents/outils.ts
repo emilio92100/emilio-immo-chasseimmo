@@ -247,8 +247,16 @@ export async function lienFichier(chemin: string, nom?: string): Promise<string>
 }
 
 /* V3.145 : l'offre d'achat signée part à l'agence du vendeur (ou au vendeur). */
-export async function envoyerOffre(o: { id: string; destinataires: string[]; sujet: string; message: string }) {
+export async function envoyerOffre(o: { id: string; destinataires: string[]; sujet: string; message: string; copie?: boolean }) {
   return api<{ envoyes: string[]; avertissements: string[]; envoi: EnvoiProjet; row: DocumentRow | null }>({ action: 'offre', ...o });
+}
+/* V3.189 : la réponse du vendeur (acceptée, refusée, contre-proposition au
+   prix pour le vendeur), et « sans suite ». Voir src/lib/offres-serveur.ts. */
+export async function repondreOffre(o: { id: string; statut: 'acceptee' | 'refusee' | 'contre'; montant?: number | null; limite?: string | null; note?: string | null }) {
+  return api<{ avertissements: string[]; row: DocumentRow | null }>({ action: 'reponse', ...o });
+}
+export async function sansSuiteOffre(id: string) {
+  return api<{ row: DocumentRow | null }>({ action: 'sans_suite', id });
 }
 
 /* Le projet d'un brouillon, en relecture (V3.40) : le serveur fabrique le
@@ -610,6 +618,12 @@ export async function apresSignature(row: DocumentRow, m: Modele, jour: string):
       metadata: { document_id: row.id, jalon: 'mandat', cote: 'vendeur' },
     });
     if (eV) return [pbRegistre, 'La ligne du suivi du vendeur n’a pas pu être ajoutée : ' + eV.message].filter(Boolean).join(' ');
+  }
+  /* V3.189 : une offre d'achat signée à la main : la même suite qu'en ligne
+     (relance « Offre signée, à envoyer », bien « Offre faite »). */
+  if (row.modele === 'offre_achat') {
+    try { await api<{ avertissements: string[] }>({ action: 'offre_signee', id: row.id }); }
+    catch (e) { return [pbRegistre, 'La suite de l’offre (relance, bien) n’a pas pu être notée : ' + (e as Error).message].filter(Boolean).join(' '); }
   }
   if (!m.surRecherche || !row.recherche_id) return pbRegistre;
   const { error } = await supabase.from('recherches').update(m.surRecherche(row.donnees, jour)).eq('id', row.recherche_id);

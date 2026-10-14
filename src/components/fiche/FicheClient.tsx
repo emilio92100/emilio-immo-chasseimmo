@@ -305,6 +305,7 @@ import DetailBien from './DetailBien';
 import MandatEnLigne from './MandatEnLigne';
 import PointAuto from './PointAuto';
 import OngletVisites from './OngletVisites';
+import { useOffres } from './SonOffre';
 import OffresAgence, { lireOffresAgence } from './OffresAgence';
 import type { SuiviVente } from '@/lib/biens-vente';
 import { useBonDeVisite, useEtatsBons, type DepartBon } from '@/components/documents/BonDeVisite';
@@ -1480,6 +1481,12 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   /* V3.157 : le retour du bon ramène sur sa fiche, à l'onglet Visites
      (la fiche reprend d'elle-même sa rubrique et sa hauteur, place-fiche). */
   const bonVisite = useBonDeVisite({ onOuvrir: id => onNavigate('documents', { ouvrir: id, retour: { page: 'fiche', data: client, lib: 'Visites' } }) });
+  /* V3.189 : ses offres, bien par bien — « Son offre » sous ses visites
+     (SonOffre.tsx). Elles s'ouvrent dans Documents (relire : l'éditeur),
+     et le retour ramène ici. */
+  const offresVisites = useOffres(client?.id, biens, versionBiens);
+  const ouvrirOffreDoc = (lib: string) => (id: string, o?: { editer?: boolean }) =>
+    onNavigate('documents', { ...(o?.editer ? { editer: id } : { ouvrir: id }), retour: { page: 'fiche', data: client, lib } });
   const etatBon = useEtatsBons();
   const departBon = (v: any): DepartBon => {
     const b = biens.find(x => x.id === v.bien_id);
@@ -4953,7 +4960,8 @@ ${signatureMail()}`,
             rechercheId={rechercheId}
             onCompteRendu={(v: any) => setCrVisite(v)} onAnnuler={annulerVisite}
             onRecharger={load} onMasques={loadRecherches} onOrganiser={organiserVisite}
-            onBon={(v: any) => { void bonVisite.lancer(departBon(v)); }} bonEnCours={bonVisite.enCours} bonEtat={(v: any) => etatBon(departBon(v))} />
+            onBon={(v: any) => { void bonVisite.lancer(departBon(v)); }} bonEnCours={bonVisite.enCours} bonEtat={(v: any) => etatBon(departBon(v))}
+            clientId={client.id} offres={offresVisites} onDocument={ouvrirOffreDoc('Visites')} onTransaction={() => setTab('transaction')} />
         )}
 
         {/* ═══ TAB TRANSACTION ═══ */}
@@ -5404,6 +5412,7 @@ ${signatureMail()}`,
           <div key="p-presentes" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
             vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null}
+            onDocument={ouvrirOffreDoc('Présentés')} onTransaction={() => setTab('transaction')}
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={async (id) => { await load(); openEnvoiBien(id); }}
             rafraichir={versionBiens}

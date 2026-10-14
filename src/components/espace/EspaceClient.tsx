@@ -15,6 +15,8 @@ import Decouverte, { GalerieGlisse, CSS_DECOUVERTE, type ActionsFiche, type Avis
 import Bienvenue from './Bienvenue';
 import { CarteAnnonce, EnvoiAnnonce, ListeAnnonces, CSS_ANNONCES, type ResultatEnvoi } from './Annonces';
 import type { AnnonceEspace } from '@/lib/annonces-client';
+import FaireOffre, { CarteOffre, CarteOffreAccueil, offreAAccueil, phraseOffre, libelleOffre, ETIQ_TON, CSS_OFFRE, type BienOffre, type HonoOffre, type ModeOffre } from './FaireOffre';
+import { ETATS_CLIENT, FINIES, type OffreEspace, type SaisieOffre } from '@/lib/offres';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -66,6 +68,10 @@ type Bien = {
   /* V3.184 : né d'une annonce qu'il a envoyée — quand, son mot, et l'avis
      qu'Alexandre a laissé en la retenant. */
   proposeeLe?: string | null; sonMot?: string | null; avisConseiller?: string | null;
+  /* V3.189 : ses honoraires sur ce bien (pour le calcul de son offre, que le
+     serveur refait), et son offre du moment (src/lib/offres-serveur.ts). */
+  honoOffre?: HonoOffre;
+  offreSuivi?: OffreEspace | null;
 };
 const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis')
   : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : v.etat === 'pause' ? 'En pause' : 'Sous compromis');
@@ -80,19 +86,31 @@ const phraseVente = (v: NonNullable<Bien['vente']>) => (v.vous
         : 'Ce bien est sous compromis de vente. Si la vente ne se fait pas, il redeviendra disponible ici.');
 /* Où en est son offre (V3.48). Avant, la fiche disait « Offre envoyée » pour
    toujours, même acceptée, refusée ou après le compromis. */
-function etatOffre(b: Bien): { etiq: string; ton: string; ligne: string } | null {
+/* V3.189 : son offre faite d'ici (ou préparée par Alexandre) a son propre
+   fil (`offreSuivi`) : c'est lui qui parle. `fini` : elle s'est arrêtée sans
+   accord — le bien va dans « Pas pour moi », et une nouvelle offre reste possible. */
+function etatOffre(b: Bien): { etiq: string; ton: string; ligne: string; fini?: boolean } | null {
   if (b.vente?.vous) {
     return b.vente.etat === 'vendu' ? { etiq: 'Votre achat', ton: 'fait', ligne: 'La vente est signée : félicitations pour votre achat.' }
       : { etiq: 'Compromis signé', ton: 'fait', ligne: 'Votre compromis est signé. Prochaine étape : la signature définitive chez le notaire.' };
+  }
+  const s = b.offreSuivi;
+  if (s) {
+    const e = ETATS_CLIENT[s.etat];
+    const prep = s.enPreparation && (s.etat === 'contre' || FINIES.includes(s.etat));
+    return {
+      etiq: libelleOffre(s), ton: prep ? 'offre' : ETIQ_TON[e.ton],
+      ligne: phraseOffre(s), fini: FINIES.includes(s.etat) && !s.enPreparation,
+    };
   }
   const o = b.offre;
   if (!o && b.avis !== 'offre_faite') return null;
   const st = o?.statut || 'en_attente';
   if (st === 'acceptee') return { etiq: 'Offre acceptée', ton: 'fait', ligne: 'Le vendeur a accepté votre offre. Prochaine étape : le compromis chez le notaire ; votre conseiller organise la suite avec vous.' };
-  if (st === 'refusee') return { etiq: 'Offre non retenue', ton: 'non', ligne: 'Le vendeur n’a pas retenu votre offre. Votre conseiller en parle avec vous.' };
+  if (st === 'refusee') return { etiq: 'Offre non retenue', ton: 'non', fini: true, ligne: 'Le vendeur n’a pas retenu votre offre. Votre conseiller en parle avec vous.' };
   if (st === 'retiree') return o?.tombe
-    ? { etiq: 'Vente non conclue', ton: 'non', ligne: 'La vente ne s’est finalement pas faite. Votre conseiller fait le point avec vous.' }
-    : { etiq: 'Offre retirée', ton: 'non', ligne: 'Votre offre a été retirée.' };
+    ? { etiq: 'Vente non conclue', ton: 'non', fini: true, ligne: 'La vente ne s’est finalement pas faite. Votre conseiller fait le point avec vous.' }
+    : { etiq: 'Offre retirée', ton: 'non', fini: true, ligne: 'Votre offre a été retirée.' };
   return { etiq: 'Offre envoyée', ton: 'fait', ligne: 'Votre offre est chez le vendeur. Votre conseiller vous prévient dès sa réponse.' };
 }
 /* Un bien de l'agence qu'il ne peut plus visiter ni acheter (vendu à un
@@ -156,6 +174,9 @@ type Props = {
   /** V3.184 : les annonces qu'il a envoyées d'ici, la plus récente d'abord.
       null : la table n'existe pas encore (SQL pas passé), la carte se tait. */
   annonces?: AnnonceEspace[] | null;
+  /** V3.189 : qui pré-remplir dans « Faire une offre » — lui, tel qu'il a
+      signé son mandat (naissance comprise), puis ceux qui l'ont signé avec lui. */
+  identiteOffre?: SaisieOffre['acquereurs'];
 };
 
 /* ══ outils ═══════════════════════════════════════ */
@@ -1035,8 +1056,9 @@ function useNotifications(token: string) {
 
 /* ══ composant ════════════════════════════════════ */
 const SANS_APPRIS: string[] = [];
+const SANS_IDENTITE: SaisieOffre['acquereurs'] = [];
 
-export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit, mesVisites, apprisClient = SANS_APPRIS, annonces: annoncesInit = null }: Props) {
+export default function EspaceClient({ token, client, criteres, biens: biensInit, passage, semaine, visites, recherches, rechercheId, rang, enCours, mandat: mandatInit, mesVisites, apprisClient = SANS_APPRIS, annonces: annoncesInit = null, identiteOffre = SANS_IDENTITE }: Props) {
   const [vue, setVue] = useState('accueil');
   /* V3.184 : ses annonces envoyées ; une nouvelle s'ajoute sans recharger. */
   const [annonces, setAnnonces] = useState<AnnonceEspace[] | null>(annoncesInit);
@@ -1477,7 +1499,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
     montrer(<FicheBien b={b} client={client} crit={crit} onFermer={fermer}
       onCarte={() => { fermer(); allerCarte(b.id); }}
       onAvis={enregistrerAvis} onPartager={partagerBien}
-      visitesB={mesV.filter(x => x.bienId === b.id)} onRepondreVisite={repondreVisite} />, 'fiche');
+      visitesB={mesV.filter(x => x.bienId === b.id)} onRepondreVisite={repondreVisite}
+      onFaireOffre={peutOffrir(b) ? () => ouvrirOffre(b, b.offreSuivi ? { depuis: b.offreSuivi.id, derniere: b.offreSuivi.total } : {}) : undefined}
+      actionsOffre={actionsOffre(b)} />, 'fiche');
   }
 
   /* ── Le mandat de recherche ──
@@ -1638,6 +1662,68 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         onFermer={fermer} />, 'pleine');
     }
     return ok;
+  }
+
+  /* ── Son offre, depuis son espace (V3.189) ──
+     Sur un bien qu'il a visité, pas un bien de l'agence (son offre passe par
+     son conseiller, V3.50), toujours disponible, et sans offre qui court. */
+  const visiteFaitePour = (b: Bien) => !!b.visiteFaite || mesV.some(v => v.bienId === b.id && v.passee);
+  function peutOffrir(b: Bien): boolean {
+    if (b.agence || indispo(b) || b.vente || !visiteFaitePour(b)) return false;
+    const o = b.offreSuivi;
+    if (!o) return b.avis !== 'offre_faite';
+    return FINIES.includes(o.etat) && !o.enPreparation;
+  }
+  const bienOffre = (b: Bien): BienOffre => ({
+    id: b.id,
+    titre: b.titre || [b.pieces ? `${b.pieces} pièces` : '', b.ville || b.secteur].filter(Boolean).join(' · ') || 'Le bien',
+    meta: [b.pieces ? `${b.pieces} pièces` : '', b.surface ? `${b.surface} m²` : '', b.ville || b.secteur].filter(Boolean).join(' · '),
+    photo: (b.photos || [])[0] || null, prix: b.prix, honoOffre: b.honoOffre || { mode: 'aucun', val: 0 },
+  });
+  /* Les offres rendues par le serveur : la carte de chaque bien se met à jour. */
+  function majOffres(offres: Record<string, OffreEspace>) {
+    setBiens(l => l.map(x => {
+      if (!(x.id in offres)) return x;
+      const o = offres[x.id];
+      return { ...x, offreSuivi: o, avis: FINIES.includes(o.etat) && x.avis === 'offre_faite' ? 'visite' : x.avis };
+    }));
+  }
+  function ouvrirOffre(b: Bien, mode: ModeOffre = {}) {
+    montrer(<FaireOffre bien={bienOffre(b)} mode={mode} identite={identiteOffre} saisie={b.offreSuivi?.saisie || null}
+      apportDossier={crit.apport} mandatSigne={mandatRef.current.etat === 'valide' || mandatRef.current.document?.vous === 'signe'}
+      envoyer={envoyer} tel={AGENT.tel} onFermer={fermer}
+      onOffres={o => {
+        majOffres(o);
+        /* Sa dernière visite sans avis porte maintenant « offre » (le serveur l'a noté). */
+        const le = new Date().toISOString();
+        setMesV(l => {
+          const sans = l.filter(v => v.bienId === b.id && v.passee && !v.issue).sort((a, c) => `${c.date}${c.heure || ''}`.localeCompare(`${a.date}${a.heure || ''}`))[0];
+          return sans ? l.map(v => (v.id === sans.id ? { ...v, issue: 'offre' as Issue, issuePar: 'client' as const, issueLe: le } : v)) : l;
+        });
+      }} />, 'pleine mandat');
+  }
+  /* Les gestes de la carte « Votre offre », pour ce bien. */
+  function actionsOffre(b: Bien) {
+    const o = b.offreSuivi;
+    if (!o) return {};
+    return {
+      onAccepter: o.contre ? () => ouvrirOffre(b, { depuis: o.id, derniere: o.total, contre: o.contre, accepter: true }) : undefined,
+      onAutre: () => ouvrirOffre(b, { depuis: o.id, derniere: o.total, contre: o.contre }),
+      onNouvelle: peutOffrir(b) ? () => ouvrirOffre(b, { depuis: o.id, derniere: o.total }) : undefined,
+      onSansSuite: async () => {
+        const retrait = o.etat === 'a_relire';
+        const r = await envoyer('offre', { action: 'sans_suite', id: o.id });
+        if (!r?.ok) return false;
+        if (r.offres) majOffres(r.offres as Record<string, OffreEspace>);
+        montrer(<GrandOk titre="C’est noté"
+          texte={retrait
+            ? 'Votre offre est retirée, et votre conseiller est prévenu. Vous pourrez en faire une autre sur ce bien quand vous voulez.'
+            : 'Votre conseiller est prévenu. La recherche continue, et vous pourrez toujours faire une nouvelle offre sur ce bien.'}
+          rappel="Vous le retrouvez dans « Vos visites », rangé dans « Pas pour moi »."
+          onFermer={fermer} />, 'pleine');
+        return true;
+      },
+    };
   }
 
   /* Le partage s'ouvre par-dessus la fiche, en pop-up : on ne perd pas le bien
@@ -2020,7 +2106,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
 
   return (
     <>
-      <style>{CSS + CSS_MANDAT + CSS_DECOUVERTE + CSS_ANNONCES}</style>
+      <style>{CSS + CSS_MANDAT + CSS_DECOUVERTE + CSS_ANNONCES + CSS_OFFRE}</style>
 
       {/* L'en-tête. Sur téléphone : la marque et la date, le bonjour, la
           recherche en une ligne et son badge vivant. Sur ordinateur, le menu
@@ -2139,8 +2225,16 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
                  en haut de l'accueil pendant 7 jours. */
               avisVisite={(() => {
                 const x = visiteSansAvis(mesV, biens);
-                return x ? <CarteAvisAccueil b={x.b} v={x.v} onRepondre={repondreEtDire}
-                  onOuvrir={() => ouvrirBien(x.b)} onVoir={() => aller('visites')} /> : null;
+                /* V3.189 : son offre, quand il y a du neuf ou un geste à faire. */
+                let bo: Bien | null = null, score = 0;
+                for (const b of biens) { const s = offreAAccueil(b.offreSuivi); if (s > score) { score = s; bo = b; } }
+                return <>
+                  {bo && bo.offreSuivi && <CarteOffreAccueil bien={bienOffre(bo)} o={bo.offreSuivi} indispo={indispo(bo)}
+                    onOuvrir={() => ouvrirBien(bo as Bien)} onVoir={() => aller('visites')} {...actionsOffre(bo)} />}
+                  {x ? <CarteAvisAccueil b={x.b} v={x.v} onRepondre={repondreEtDire}
+                    onOuvrir={() => ouvrirBien(x.b)} onVoir={() => aller('visites')}
+                    onFaireOffre={peutOffrir(x.b) ? () => ouvrirOffre(x.b) : undefined} /> : null}
+                </>;
               })()}
               onAide={(c: string) => montrer(<Explication a={AIDES[c]} onFermer={fermer} />, 'pleine')}
               /* V3.184 : « Une annonce repérée ? » — après les nouveaux biens
@@ -2307,7 +2401,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
           )}
           {vue === 'visites' && (
             <VueVisites biens={biens} mesV={mesV} visites={visites} token={token} apprisClient={apprisClient}
-              aller={aller} onOuvrir={ouvrirBien} onRepondre={repondreEtDire} />
+              aller={aller} onOuvrir={ouvrirBien} onRepondre={repondreEtDire}
+              onFaireOffre={b => (peutOffrir(b) ? () => ouvrirOffre(b, b.offreSuivi ? { depuis: b.offreSuivi.id, derniere: b.offreSuivi.total } : {}) : undefined)}
+              actionsOffre={actionsOffre} />
           )}
         </div>
 
@@ -4053,11 +4149,18 @@ function visiteSansAvis(mesV: VisiteE[], biens: Bien[]): { v: VisiteE; b: Bien }
   return null;
 }
 
+/* V3.189 : les gestes de la carte « Votre offre » (voir actionsOffre). */
+type ActionsOffre = { onAccepter?: () => void; onAutre?: () => void; onNouvelle?: () => void; onSansSuite?: () => Promise<boolean> };
+
 /* Les quatre choix, puis la question qui va avec. */
-function AvisVisite({ v, onRepondre, sansNote, sansSuite }: { v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; sansNote?: boolean;
+function AvisVisite({ v, onRepondre, sansNote, sansSuite, onFaireOffre }: { v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; sansNote?: boolean;
   /* V3.48 : le bien n'est plus disponible — ni offre, ni deuxième visite. */
-  sansSuite?: boolean }) {
+  sansSuite?: boolean;
+  /* V3.189 : il peut préparer son offre lui-même (pas un bien de l'agence). */
+  onFaireOffre?: () => void }) {
   const [choix, setChoix] = useState<Issue | null>(null);
+  /* « Je préfère que mon conseiller m'appelle » : la question d'avant. */
+  const [rappel, setRappel] = useState(false);
   const [motifs, setMotifs] = useState<string[]>([]);
   const [ecrire, setEcrire] = useState(false);
   const [mot, setMot] = useState('');
@@ -4081,12 +4184,29 @@ function AvisVisite({ v, onRepondre, sansNote, sansSuite }: { v: VisiteE; onRepo
         <div className="vv-choix">
           {ISSUES_OK.filter(i => !sansSuite || (i !== 'offre' && i !== 'revoir')).map(i => (
             <button key={i} type="button" className="vv-c" data-a={i}
-              onClick={() => { setChoix(i); setMotifs([]); setEcrire(false); }}>
+              onClick={() => { setChoix(i); setMotifs([]); setEcrire(false); setRappel(false); }}>
               <i><Ico n={ICO_ISSUE[i]} t={17} /></i><span>{ISSUES[i].choix}</span>
             </button>
           ))}
         </div>
         {!sansNote && <div className="vv-libre">{'Rien ne vous oblige à répondre tout de suite.'}</div>}
+      </div>
+    );
+  }
+  /* V3.189 : « Je veux faire une offre » — il la prépare ici, ou son conseiller l'appelle. */
+  if (choix === 'offre' && onFaireOffre && !rappel) {
+    return (
+      <div className="vv-q">
+        <span className="etiq offre"><Ico n={ICO_ISSUE.offre} t={13} />{ISSUES.offre.choix}</span>
+        <div className="apres-avis vv-suite">
+          <div className="aa-t">{'Préparez votre offre ici'}</div>
+          <p className="aa-p">{'En quelques minutes : votre prix, avec le calcul des frais, puis vos informations. Vous la signez vous-même, ou vous la confiez à votre conseiller pour qu’il la relise.'}</p>
+          <div className="ofr-faire">
+            <button type="button" className="btn or" onClick={onFaireOffre}><Ico n="euro" t={16} /><span>Faire mon offre</span></button>
+            <button type="button" className="btn fant" onClick={() => setRappel(true)}><Ico n="tel" t={16} /><span>{'Je préfère que mon conseiller m’appelle'}</span></button>
+          </div>
+          <button type="button" className="vv-retour" onClick={() => setChoix(null)}>Changer de réponse</button>
+        </div>
       </div>
     );
   }
@@ -4173,11 +4293,14 @@ function EtiqVisite({ b, v }: { b: Bien; v: VisiteE }) {
   return <span className={'etiq ' + ETIQ_ISSUE[v.issue]}><Ico n={ICO_ISSUE[v.issue]} t={13} />{ISSUES[v.issue].client}</span>;
 }
 
-function CarteVisite({ b, v, onOuvrir, onRepondre }: { b: Bien; v: VisiteE; onOuvrir: () => void; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean> }) {
+function CarteVisite({ b, v, onOuvrir, onRepondre, onFaireOffre, actionsOffre }: { b: Bien; v: VisiteE; onOuvrir: () => void; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>;
+  /* V3.189 : préparer son offre ; les gestes de la carte « Votre offre ». */
+  onFaireOffre?: () => void; actionsOffre?: ActionsOffre }) {
   const ph = (b.photos || [])[0];
   const quand = v.date ? `visité le ${dateCourte(v.date)}` : 'visité';
+  const o = b.offreSuivi;
   return (
-    <div className={'vv-carte' + (v.issue === 'non' ? ' gris' : '')}>
+    <div className={'vv-carte' + (v.issue === 'non' || etatOffre(b)?.fini ? ' gris' : '')}>
       <button type="button" className="vv-haut" onClick={onOuvrir}>
         <span className="vv-ph">{ph ? <img src={ph} alt="" /> : <Ico n="maison" t={20} />}</span>
         <span className="vv-t">
@@ -4185,7 +4308,15 @@ function CarteVisite({ b, v, onOuvrir, onRepondre }: { b: Bien; v: VisiteE; onOu
           <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur, quand].filter(Boolean).join(' · ')}</span>
         </span>
       </button>
-      {v.issue || etatOffre(b) ? <EtatVisite b={b} v={v} /> : <AvisVisite v={v} onRepondre={onRepondre} sansNote sansSuite={indispo(b)} />}
+      {o ? <CarteOffre o={o} indispo={indispo(b)} sansEtiquette {...(actionsOffre || {})} />
+        : v.issue || etatOffre(b) ? (
+          <>
+            <EtatVisite b={b} v={v} />
+            {onFaireOffre && v.passee && v.issue !== 'non' && (
+              <button type="button" className="ofr-mini" onClick={onFaireOffre}><Ico n="euro" t={14} /><span>{v.issue === 'offre' ? 'Préparer mon offre moi-même' : 'Faire une offre'}</span></button>
+            )}
+          </>
+        ) : <AvisVisite v={v} onRepondre={onRepondre} sansNote sansSuite={indispo(b)} onFaireOffre={onFaireOffre} />}
       {v.compteRendu && (
         <button type="button" className="vv-cr" onClick={onOuvrir}>
           <Ico n="note" t={14} /><span>{'Le compte rendu de votre conseiller'}</span><Ico n="fleche" t={14} />
@@ -4196,7 +4327,7 @@ function CarteVisite({ b, v, onOuvrir, onRepondre }: { b: Bien; v: VisiteE; onOu
 }
 
 /* La carte de l'accueil : sa dernière visite, et la question. */
-function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir }: { b: Bien; v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; onOuvrir: () => void; onVoir: () => void }) {
+function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir, onFaireOffre }: { b: Bien; v: VisiteE; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>; onOuvrir: () => void; onVoir: () => void; onFaireOffre?: () => void }) {
   const auj = jourParis();
   const hier = jourParis(new Date(Date.now() - 86400000));
   const j = (v.date || '').slice(0, 10);
@@ -4213,42 +4344,60 @@ function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir }: { b: Bien; v: 
             <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur].filter(Boolean).join(' · ')}</span>
           </span>
         </button>
-        <AvisVisite v={v} onRepondre={onRepondre} />
+        <AvisVisite v={v} onRepondre={onRepondre} onFaireOffre={onFaireOffre} />
         <button type="button" className="vv-retour" onClick={onVoir}>Voir toutes mes visites</button>
       </div>
     </section>
   );
 }
 
-/* « Vos visites » : quatre rubriques, un bien par ligne, rangé d'après sa
-   dernière visite. Les quatre chiffres du haut s'additionnent. Jamais
-   « retenu » ici : dans l'espace, ce mot désigne les biens que la recherche
-   a retenus pour lui. */
-function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir, onRepondre }: {
+/* « Vos visites » : des rubriques, un bien par ligne, rangé d'après sa
+   dernière visite. Les chiffres du haut s'additionnent. Jamais « retenu »
+   ici : dans l'espace, ce mot désigne les biens que la recherche a retenus
+   pour lui. V3.189 : « Vos offres » en tête — une offre qui court passe
+   avant tout ; celle qui s'arrête sans accord rejoint « Pas pour moi », avec
+   son étiquette, et une nouvelle offre reste possible. */
+function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir, onRepondre, onFaireOffre, actionsOffre }: {
   biens: Bien[]; mesV: VisiteE[]; visites: any[]; token: string; apprisClient: string[];
   aller: (v: string) => void; onOuvrir: (b: Bien) => void;
   onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>;
+  onFaireOffre?: (b: Bien) => (() => void) | undefined;
+  actionsOffre?: (b: Bien) => ActionsOffre;
 }) {
   const cle = (v: VisiteE) => `${v.date || ''}${v.heure || ''}`;
   const parBien = new Map<string, VisiteE[]>();
   mesV.forEach(v => parBien.set(v.bienId, [...(parBien.get(v.bienId) || []), v]));
-  const aVenir: { b: Bien; v: VisiteE }[] = [], avis: { b: Bien; v: VisiteE }[] = [], retenus: { b: Bien; v: VisiteE }[] = [], non: { b: Bien; v: VisiteE }[] = [];
+  type L = { b: Bien; v: VisiteE }[];
+  const offres: L = [], aVenir: L = [], avis: L = [], retenus: L = [], non: L = [];
   parBien.forEach((l, bid) => {
     const b = biens.find(x => x.id === bid);
     if (!b) return;
     const tri = l.slice().sort((a, c) => cle(a).localeCompare(cle(c)));
+    const passees = tri.filter(v => v.passee);
+    const eo = etatOffre(b);
+    if (eo && !eo.fini) { offres.push({ b, v: passees[passees.length - 1] || tri[tri.length - 1] }); return; }
     const future = tri.find(v => !v.passee);
     if (future) { aVenir.push({ b, v: future }); return; }
     const v = tri[tri.length - 1];
-    if (etatOffre(b)) retenus.push({ b, v });
+    if (eo?.fini) non.push({ b, v });
     else if (!v.issue) avis.push({ b, v });
     else if (v.issue === 'non') non.push({ b, v });
     else retenus.push({ b, v });
   });
   aVenir.sort((a, c) => cle(a.v).localeCompare(cle(c.v)));
-  [avis, retenus, non].forEach(l => l.sort((a, c) => cle(c.v).localeCompare(cle(a.v))));
-  const total = aVenir.length + avis.length + retenus.length + non.length;
+  [offres, avis, retenus, non].forEach(l => l.sort((a, c) => cle(c.v).localeCompare(cle(a.v))));
+  const total = offres.length + aVenir.length + avis.length + retenus.length + non.length;
   const minus = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+  const nonOffres = non.some(x => etatOffre(x.b)?.fini);
+  const comptes: [string, number, string][] = [
+    ['À venir', aVenir.length, 'c-prune'], ['Votre avis', avis.length, 'c-or'],
+    ...(offres.length ? [['Offres', offres.length, 'c-vert'] as [string, number, string]] : []),
+    ['En cours', retenus.length, 'c-bleu'], ['Pas pour moi', non.length, 'c-brique'],
+  ];
+  const carte = ({ b, v }: { b: Bien; v: VisiteE }) => (
+    <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre}
+      onFaireOffre={onFaireOffre?.(b)} actionsOffre={actionsOffre?.(b)} />
+  );
 
   return (
     <Vue icone="calendrier" aller={aller} titre="Vos visites"
@@ -4256,10 +4405,17 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
         ? `${total} bien${total > 1 ? 's' : ''} visité${total > 1 ? 's' : ''} ou à visiter avec votre conseiller.`
         : 'Aucune visite pour l’instant. Quand un bien vous plaît, dites « Je veux visiter » sur sa fiche : votre conseiller organise la visite, et elle s’affiche ici.'}>
       {total > 0 && (
-        <div className="vv-comptes">
-          {([['À venir', aVenir.length, 'c-prune'], ['Votre avis', avis.length, 'c-or'], ['En cours', retenus.length, 'c-bleu'], ['Pas pour moi', non.length, 'c-brique']] as [string, number, string][]).map(([t, n, c]) => (
+        <div className={'vv-comptes' + (comptes.length > 4 ? ' cinq' : '')}>
+          {comptes.map(([t, n, c]) => (
             <div key={t} className={'vv-compte ' + c}><b className="tab">{n}</b><span>{t}</span></div>
           ))}
+        </div>
+      )}
+      {offres.length > 0 && (
+        <div className="vv-groupe">
+          <div className="sep"><span>{`Vos offres · ${offres.length}`}</span><i /></div>
+          <p className="vv-note">{'Où en est chacune, et ce que le vendeur a répondu.'}</p>
+          <div className="vv-liste deux">{offres.map(carte)}</div>
         </div>
       )}
       {aVenir.length > 0 && (
@@ -4272,7 +4428,7 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
               const titre = `${i === 0 ? 'Votre prochaine visite' : 'Visite suivante'}${v.revisite ? ' · 2e visite' : ''}`;
               return r
                 ? <ProchaineVisite key={v.id} v={r} autres={0} token={token} titre={titre} onBien={() => onOuvrir(b)} />
-                : <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />;
+                : carte({ b, v });
             })}
           </div>
         </div>
@@ -4281,29 +4437,23 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
         <div className="vv-groupe">
           <div className="sep"><span>{`Votre avis ? · ${avis.length}`}</span><i /></div>
           <p className="vv-note">{'Un geste suffit : c’est ce qui décide de la suite.'}</p>
-          <div className="vv-liste deux">
-            {avis.map(({ b, v }) => <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />)}
-          </div>
+          <div className="vv-liste deux">{avis.map(carte)}</div>
         </div>
       )}
       {retenus.length > 0 && (
         <div className="vv-groupe">
           <div className="sep"><span>{`En cours · ${retenus.length}`}</span><i /></div>
           <p className="vv-note">{'Ceux que vous gardez en tête, et où on en est.'}</p>
-          <div className="vv-liste deux">
-            {retenus.map(({ b, v }) => <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />)}
-          </div>
+          <div className="vv-liste deux">{retenus.map(carte)}</div>
         </div>
       )}
       {non.length > 0 && (
         <div className="vv-groupe">
           <div className="sep"><span>{`Pas pour moi · ${non.length}`}</span><i /></div>
-          <p className="vv-note">{apprisClient.length
+          <p className="vv-note">{`${apprisClient.length
             ? `Ce qui ne vous a pas plu sur place oriente la suite de la recherche : ${apprisClient.map(minus).join(', ')}.`
-            : 'Ce qui ne vous a pas plu sur place oriente la suite de la recherche.'}</p>
-          <div className="vv-liste deux">
-            {non.map(({ b, v }) => <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre} />)}
-          </div>
+            : 'Ce qui ne vous a pas plu sur place oriente la suite de la recherche.'}${nonOffres ? ' Les offres qui n’ont pas abouti sont ici aussi : vous pouvez toujours en refaire une.' : ''}`}</p>
+          <div className="vv-liste deux">{non.map(carte)}</div>
         </div>
       )}
     </Vue>
@@ -4384,7 +4534,7 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
    carte, et en bas trois grands boutons de réponse à la place de la barre
    « Qu'en pensez-vous ? ». `colonne` : sur ordinateur, elle prend la colonne
    de droite — les photos restent à gauche, la galerie n'est pas répétée. */
-function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite, decouverte }: any) {
+function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite, decouverte, onFaireOffre, actionsOffre }: any) {
   const dec = decouverte as ActionsFiche | undefined;
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
@@ -4750,9 +4900,20 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
           return (
             <div className="apres-avis fini">
               <div className="aa-t">🏠 Visite effectuée{b.visiteFaite.date ? ` · ${dateLongue(b.visiteFaite.date)}` : ''}</div>
-              {v && (v.issue || etatOffre(b))
-                ? <div style={{ marginTop: 8 }}><EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} /></div>
-                : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} sansSuite={indispo(b)} /> : null}
+              {/* V3.189 : son offre, avec tout son historique ; sinon son avis,
+                  et « Faire une offre » tant qu'aucune ne court. */}
+              {b.offreSuivi
+                ? <CarteOffre o={b.offreSuivi} indispo={indispo(b)} historique {...(actionsOffre || {})} />
+                : v && (v.issue || etatOffre(b))
+                  ? (
+                    <div style={{ marginTop: 8 }}>
+                      <EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} />
+                      {onFaireOffre && v.issue !== 'non' && (
+                        <button type="button" className="ofr-mini" onClick={onFaireOffre}><Ico n="euro" t={14} /><span>{v.issue === 'offre' ? 'Préparer mon offre moi-même' : 'Faire une offre'}</span></button>
+                      )}
+                    </div>
+                  )
+                  : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} sansSuite={indispo(b)} onFaireOffre={onFaireOffre} /> : null}
               {b.visiteFaite.etoiles ? (
                 <p className="aa-p" style={{ marginTop: 10 }}>{'★'.repeat(b.visiteFaite.etoiles)}{'☆'.repeat(Math.max(0, 5 - b.visiteFaite.etoiles))}</p>
               ) : null}

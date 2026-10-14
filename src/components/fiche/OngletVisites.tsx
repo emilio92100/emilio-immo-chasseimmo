@@ -10,6 +10,9 @@ import Depliant from '@/components/shared/Depliant';
 import { ChoixJour } from '@/components/pages/PageAgenda';
 import FenetreBien, { BoutonPied, Ressort } from './FenetreBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
+import SonOffre from './SonOffre';
+import { etatDeOffre, offreCourante, ETATS_CRM, type DocOffre } from '@/lib/offres';
+import type { DocumentRow } from '@/components/documents/outils';
 import s from './OngletVisites.module.css';
 
 /* ═══ Onglet Visites de la fiche client ═══════════════════════════════════
@@ -36,7 +39,10 @@ import s from './OngletVisites.module.css';
      le client et le bien déjà choisis (`onDeuxieme`).
    · La photo et le nom du bien ouvrent le bien en grand (FenetreBien, comme
      dans la Sélection et les Présentés), avec la visite en tête et son
-     parcours — Alexandre : « on ne peut plus revoir le bien ». */
+     parcours — Alexandre : « on ne peut plus revoir le bien ».
+   · V3.189 — « Son offre » (SonOffre.tsx) sous la dernière visite d'un bien
+     qui a une offre : repliée, une ligne ; dépliée, toute la négociation.
+     L'étiquette de la photo dit où en est l'offre. */
 
 type Filtre = 'afaire' | 'avenir' | 'pense' | 'non' | 'sans' | 'toutes';
 
@@ -80,7 +86,9 @@ const IC = {
 };
 const IC_ISSUE: Record<Issue, ReactNode> = { offre: IC.euro, revoir: IC.oeil, reflexion: IC.pause, non: IC.croix };
 
-export default function OngletVisites({ visites, biens, prenom, civilite, couple, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat, onDeuxieme, onFiche, recherche }: {
+const TON_OFFRE: Record<string, string> = { or: '#c2410c', bleu: '#22497c', vert: '#15803d', rouge: '#b91c1c', violet: '#5B21B6', gris: '#64748b' };
+
+export default function OngletVisites({ visites, biens, prenom, civilite, couple, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat, onDeuxieme, onFiche, recherche, clientId, offres, onDocument, onTransaction }: {
   visites: any[]; biens: any[]; prenom: string; masques: string[]; rechercheId: string;
   /* V3.169 : pour accorder « Elle y pense », « Pas pour lui »… */
   civilite?: string | null; couple?: boolean;
@@ -98,6 +106,11 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
   /* V3.170 : le bien en grand — « Détail » (la fiche du bien), et la
      recherche pour comparer ses critères. */
   onFiche?: (id: string) => void; recherche?: any;
+  /* V3.189 : ses offres, bien par bien (useOffres), et où les ouvrir. */
+  clientId?: string;
+  offres?: { fil: (bienId: string) => DocumentRow[]; recharger: () => void };
+  onDocument?: (id: string, o?: { editer?: boolean }) => void;
+  onTransaction?: () => void;
 }) {
   const [choisi, setChoisi] = useState<Filtre | null>(null);
   const [deplace, setDeplace] = useState<string | null>(null);
@@ -161,6 +174,14 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
     );
   }
 
+  /* V3.189 : le fil de son offre sur ce bien, sous la visite la plus récente
+     déjà passée (pas deux fois le même bloc pour une 2e visite). */
+  const filDe = (v: any): DocumentRow[] => {
+    if (!offres || !v.bien_id) return [];
+    const plusRecente = vivantes.some(x => x.id !== v.id && x.bien_id === v.bien_id && cleTri(x) > cleTri(v) && (x.statut === 'effectuee' || visitePassee(x, maintenant)));
+    return plusRecente ? [] : offres.fil(v.bien_id);
+  };
+
   /* « À revoir » : la 2e visite est-elle déjà calée ? */
   const suivante = (v: any) => prochaines.find(x => x.bien_id === v.bien_id && cleTri(x) > cleTri(v)) || null;
 
@@ -214,10 +235,14 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
     const suiteD = suite ? enDate(suite.date_visite) : null;
     const details = [b?.surface ? `${String(b.surface).replace('.', ',')} m²` : '', b?.nb_pieces ? `${b.nb_pieces} p.` : '', b?.prix_acquereur ? euros(b.prix_acquereur) : ''].filter(Boolean).join(' · ');
 
-    /* L'étiquette posée sur la photo. */
+    /* L'étiquette posée sur la photo. V3.189 : une offre dit où elle en est. */
+    const fil = genre === 'venir' ? [] : filDe(v);
+    const courante = fil.length ? offreCourante(fil as unknown as DocOffre[]) : null;
+    const etatO = courante ? ETATS_CRM[etatDeOffre(courante)] : null;
     const etiquette = genre === 'afaire'
       ? { t: 'Compte rendu à faire', c: '#d97706', ic: IC.plume }
-      : i ? { t: i === 'non' ? m.pas : i === 'offre' && offreFaite ? 'Offre faite' : ISSUES[i].crm, c: COULEUR_ISSUE[i], ic: IC_ISSUE[i] } : null;
+      : etatO ? { t: etatO.l, c: TON_OFFRE[etatO.ton], ic: IC.euro }
+        : i ? { t: i === 'non' ? m.pas : i === 'offre' && offreFaite ? 'Offre faite' : ISSUES[i].crm, c: COULEUR_ISSUE[i], ic: IC_ISSUE[i] } : null;
 
     const sous = genre === 'faite'
       ? <>{contact ? `Visité avec ${contact}` : 'Visité'}{i === 'revoir' ? <>{' · '}<b style={{ color: '#1d4ed8' }}>{suiteD ? `2e visite le ${suiteD.getDate()} ${suiteD.toLocaleDateString('fr-FR', { month: 'short' })}` : '2e visite à caler'}</b></> : null}{i === 'offre' && v.prix_envisage && !offreFaite ? ` · autour de ${euros(v.prix_envisage)}` : ''}</>
@@ -322,6 +347,12 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
               {genre === 'faite' && <button type="button" className={s.btn} onClick={() => onCompteRendu(v)}><Ic d={IC.plume} t={14} e={2.1} />{i ? 'Modifier le compte rendu' : 'Préciser l’issue'}</button>}
               {genre === 'faite' && i === 'revoir' && !suite && onDeuxieme && <button type="button" className={`${s.btn} ${s.btnBleu}`} onClick={() => onDeuxieme(v)}>Caler la 2e visite</button>}
             </div>
+            {fil.length > 0 && offres && onDocument && clientId && (
+              <div className={s.offre}>
+                <SonOffre fil={fil} bienId={v.bien_id} client={{ id: clientId, prenom, civilite, couple }}
+                  onChange={() => { offres.recharger(); onRecharger(); }} onDocument={onDocument} onTransaction={onTransaction} />
+              </div>
+            )}
           </div>
         </article>
       </div>

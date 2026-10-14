@@ -1515,6 +1515,66 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.189 — 14 octobre 2026 · L'offre d'achat de bout en bout : depuis son espace, suivie dans le CRM
+
+- Alexandre : « il faut vraiment que ça soit fluide pour l'acheteur, qu'il puisse tout faire depuis
+  son espace », « que tout soit bien synchronisé, qu'il y ait un historique ». **Pas de SQL** : le fil
+  d'une offre vit dans `documents.donnees.suivi` (origine, choix, offre précédente, réponse du
+  vendeur, sans suite), et son état **se lit** (`etatDeOffre`, `src/lib/offres.ts`) : le CRM et
+  l'espace lisent la même chose et ne peuvent pas se contredire. Le serveur de chaque étape :
+  `src/lib/offres-serveur.ts` (relances, badge du bien, transaction, mails).
+- **Le prix** (`src/lib/actes/offre-achat.ts`) : le client tape son total frais d'agence compris ;
+  le prix pour le vendeur est **arrondi au millier au-dessus** (480 000 € à 2,5 % → 469 000 € +
+  11 000 €), ses honoraires prennent le reste (jamais plus que le taux). Dans l'éditeur, une case
+  « Proposé au vendeur » se tape aussi (son total s'en calcule), et « Offre au prix ». Validité par
+  défaut : **10 jours** (`VALIDITE_JOURS`) ; compromis « dans un délai raisonnable, en principe de
+  trente à quarante-cinq jours ». Plus de nom d'agence du vendeur pré-rempli. Au moment de signer
+  (et dans le mail), le gain face au prix affiché, seulement s'il y en a un (`ecartPrixAffiche`).
+- **Espace — « Faire une offre »** (`src/components/espace/FaireOffre.tsx`, route publique
+  `POST /api/espace/offre`) sur un bien visité (pas un bien de l'agence : son offre passe encore par
+  Alexandre). Trois pas : son prix (le calcul en direct, des « ? » sur chaque ligne, « Proposer le
+  prix affiché » qui part tel quel au vendeur), ses informations (reprises de son mandat, naissance
+  comprise ; jusqu'à 4 acquéreurs, chacun son code), le récapitulatif. Deux chemins : **« Signer mon
+  offre »** (PDF finalisé, signature lancée comme depuis le CRM — `lancerSignature`, sorti de la
+  route signature —, il signe tout de suite avec son lien) ou **« La faire relire par mon
+  conseiller »** (brouillon dans Documents, relance « Offre à relire », mail). Il ne peut pas signer
+  seul s'il manque quelque chose (ou des honoraires sans mandat signé) : relecture d'office, jamais
+  un mot du CRM à l'écran. Après une contre-proposition : accepter (une nouvelle offre au prix du
+  vendeur, qu'il signe), en faire une autre, ou ne pas donner suite — pas de relecture.
+- **Espace — le suivi** : « Vos visites » s'ouvre sur **« Vos offres »** (5 compteurs qui
+  s'additionnent, « Offres » seulement s'il y en a) ; une offre refusée, sans suite ou arrivée à
+  échéance passe dans « Pas pour moi », avec son étiquette, et « Faire une nouvelle offre ».
+  `CarteOffre` : l'étape, le montant, le geste du moment, l'historique dépliable. Sur la fiche du bien
+  (« Visite effectuée ») l'historique est déplié ; sur l'accueil, une carte « Votre offre » quand il y
+  a du neuf (proposition du vendeur, acceptée — en fête —, refusée). « Je veux faire une offre »
+  après la visite propose « Faire mon offre » ou « Je préfère que mon conseiller m'appelle »
+  (l'ancien chemin). Il peut retirer une offre confiée à son conseiller.
+- **CRM — « Son offre »** (`src/components/fiche/SonOffre.tsx`, le dessin de « Mon suivi avec
+  l'agence ») sous la dernière visite du bien (onglet Visites) et dans Présentés. Replié : l'étape et
+  le geste du moment ; déplié : son total, le prix pour le vendeur, tes honoraires, la validité, les
+  gestes, l'historique, « Comment ça marche ». Gestes : relire (l'éditeur), envoyer pour signature,
+  **« Envoyer à l'agence »** (l'adresse du dernier envoi reprise, copie cachée à Alexandre),
+  « Renvoyer », **« Réponse du vendeur »** (acceptée, refusée, contre-proposition au prix pour le
+  vendeur — ses honoraires s'ajoutent une fois, sur ce prix —, date limite, note interne),
+  « Elle accepte » / « Nouvelle offre » (un brouillon repris de l'offre, ouvert dans l'éditeur),
+  « Sans suite », « Supprimer le brouillon ». L'étiquette de la photo de la visite dit l'étape.
+- **Les relances** (en tête de la page, comme « Veut faire une offre », et vers l'onglet Visites) :
+  « Offre à relire », « Offre signée, à envoyer » (posée à la dernière signature, en ligne ou sur
+  papier — action `offre_signee`), « Offre en attente de réponse » (la veille de la fin de
+  validité), « Contre-proposition à suivre ». Chacune se solde à l'étape suivante.
+- **Les mails au client** : un seul par réponse du vendeur (contre-proposition ; « 🎉 Félicitations,
+  votre offre est acceptée ! » ; non retenue), et ceux de la signature. À Alexandre : « offre à
+  relire », « ne donne pas suite » (alerte `offre_espace`), et « Signé par tous » comme tout document.
+- **Acceptée** : la transaction s'ouvre (ou se complète) à « Offre acceptée », avec la 1re offre,
+  les contre-offres de chaque côté et le prix arrêté. **Refusée, sans suite, arrivée à échéance** : le
+  bien redevient « Visité » (l'échéance se range à la lecture de la fiche).
+- Garde-fous : une seule offre en cours par bien (deux envois au même instant : le second se retire) ;
+  un vieux brouillon du CRM (3 semaines, ou passé sa date) ne bloque pas le client ; une offre
+  passée sa date, close ou remplacée ne bloque plus la signature de la suivante
+  (`autreEnSignature`) ; « Sans suite » refusé sur une offre en signature (l'arrêter d'abord).
+- Limites : un bien de l'agence garde son offre par Alexandre (V3.50) ; l'offre d'avant est
+  « remplacée » seulement au départ de la suivante en signature.
+
 ### V3.186 — 14 octobre 2026 · Annonces du client : lues et notées comme la veille, « Envoyer une autre annonce »
 
 - Alexandre : « lecture par lien plus poussée… comme ça, c'est calculé, etc. Comme si c'était une

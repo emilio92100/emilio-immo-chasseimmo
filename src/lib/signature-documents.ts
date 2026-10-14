@@ -40,7 +40,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { PDFDocument } from 'pdf-lib';
-import { modele, pdfDocument, txt, num, aRetractation, demandeExpresse, type Donnees, type Modele, type CaseSignature } from './actes';
+import { modele, pdfDocument, txt, num, aRetractation, demandeExpresse, modeSignature, electronique, surPlaceSansCode, type Donnees, type Modele, type CaseSignature } from './actes';
 import { etListe, pdfSigne, type SignataireCertif, type CadreSigne } from './mandat-pdf';
 import { dateLongue, dateCourte, heureParis, masquerEmail, DELAI_COSIGNATURE } from './mandat';
 import { envoyerMail, gabarit, echappe, ALERTES, CRM } from './mandat-serveur';
@@ -53,6 +53,8 @@ import { mandatSigneSurBien } from './mandat-bien';
 import { avenantSigneSurBien } from './documents-avenant-bien';
 import { solderRelancesSignature } from './documents-relances';
 import { finValiditeOffre } from './actes/offre-achat';
+import { offreSigneeParTous } from './offres-serveur';
+import { lireSuivi } from './offres';
 
 export const BUCKET = 'mandats';
 export const SIGNATURE_AGENCE = 'agence/signature.png';
@@ -626,7 +628,7 @@ export async function envoyerExemplaire(o: {
      compris, et nos honoraires) — pour lui, pas pour l'agence qui transmet.
      C'est la trace écrite de ce qu'il a vu en signant. */
   const r = o.s.cle !== 'agence' && o.m.rappel ? o.m.rappel(o.d) : null;
-  const rappel = r ? `Pour rappel : ${r.titre.charAt(0).toLowerCase() + r.titre.slice(1)}, ${r.valeur}${r.detail ? ` (${r.detail})` : ''}.` : '';
+  const rappel = r ? `Pour rappel : ${r.titre.charAt(0).toLowerCase() + r.titre.slice(1)}, ${r.valeur}${r.detail ? ` (${r.detail})` : ''}${r.ecart ? `, ${r.ecart}` : ''}.` : '';
   return envoyerMail({
     a: o.s.personne.email, nomA: nomSig(o.s), pj, repondreA: 'agence@emilio-immo.com',
     sujet: o.complet ? `${Doc}, signé par tous` : `${Doc} : votre signature est enregistrée`,
@@ -735,6 +737,12 @@ export async function classer(sb: SupabaseClient, doc: DocSigne, sd: SignatureDo
       metadata: { document_id: doc.id, ...(biensBon ? { biens: biensBon } : {}) },
     });
     if (e3) pbs.push('suivi du client : ' + e3.message);
+  }
+  /* V3.189 : une offre d'achat signée par tous — « Offre signée, à envoyer »
+     dans les Relances, le bien « Offre faite », la précédente remplacée. */
+  if (doc.modele === 'offre_achat') {
+    const pbO = await offreSigneeParTous(sb, doc);
+    if (pbO) pbs.push('suite de l’offre : ' + pbO);
   }
   return pbs;
 }
@@ -871,7 +879,15 @@ export async function autreEnSignature(sb: SupabaseClient, doc: DocSigne): Promi
   const { data, error } = await sb.from('documents').select('*').eq('modele', doc.modele).eq('statut', 'pret')
     .not('signature', 'is', null).neq('id', doc.id).limit(200);
   if (error) throw new Error('Les autres documents en signature n’ont pas pu être lus : ' + error.message);
-  const autres = (data || []) as DocSigne[];
+  /* V3.189 : une offre d'achat passée sa date de validité, close (sans
+     suite) ou remplacée ne compte plus — sinon elle bloquerait pour
+     toujours la suivante sur le même bien. */
+  const autres = ((data || []) as DocSigne[]).filter(x => {
+    if (x.modele !== 'offre_achat') return true;
+    const s = lireSuivi(x.donnees);
+    const fin = finValiditeOffre(x.donnees || {});
+    return !s.close && !s.remplacee_le && !(fin && fin.getTime() <= Date.now());
+  });
   if (!autres.length) return null;
   /* Les copies d'un bien chez un acheteur, rapprochées de leur bien en vente. */
   const copies = [...new Set([doc, ...autres].map(x => x.bien_id).filter((x): x is string => !!x))];
@@ -951,6 +967,146 @@ export async function autreEnSignature(sb: SupabaseClient, doc: DocSigne): Promi
     autre,
     phrase: `${qui.un} ${qui.pour} est déjà en signature${depuis} : « ${nom} ». Arrête d’abord sa signature dans Documents, puis lance celle-ci.`,
   };
+}
+
+/* ── Lancer la signature (V3.189 : sorti de /api/documents/signature) ──────
+   La même chose qu'avant, mot pour mot, pour qu'un autre appelant (l'espace
+   du client qui signe seul son offre, /api/espace/offre) passe par le même
+   chemin que le CRM : l'agence signe, chacun reçoit son lien (en ligne) ou
+   est attendu (sur place). Le document se réserve d'abord (deux onglets,
+   deux clics : un seul passe), et un autre document du même genre déjà en
+   signature pour la même chose l'arrête (« concurrent »). Tout échec avant
+   l'enregistrement des signataires rend la réservation.
+   `pasDeMail` : les cadres dont le lien ne part pas par e-mail (le client
+   qui est déjà devant son espace et signe dans la foulée : il a son lien à
+   l'écran ; son mail d'invitation ferait doublon). */
+
+/* Ce qu'Alexandre (ou l'espace) a saisi pour un signataire, rapproché de son cadre. */
+export function personneSaisie(c: CaseSignature, saisi: Record<string, unknown> | undefined): PersonneSig {
+  const p = c.personne;
+  const s = (v: unknown, max = 120) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+  return {
+    civilite: p?.civilite || '', prenom: s(saisi?.prenom) || p?.prenom || '', nom: s(saisi?.nom) || p?.nom || '',
+    email: (s(saisi?.email) || p?.email || '').toLowerCase(), telephone: s(saisi?.telephone, 30) || p?.telephone || '', adresse: p?.adresse || '',
+  };
+}
+
+export type Lancement = { signataires: SigDoc[]; signature: SignatureDoc; echecs: string[]; personnes: PersonneSig[] };
+export async function lancerSignature(sb: SupabaseClient, doc: DocSigne, saisisListe: unknown, o: { pasDeMail?: string[] } = {}): Promise<Lancement | Refus> {
+  const m = modele(doc.modele);
+  if (!m || !m.cases) return { erreur: 'modele', statut: 400 };
+  const d = doc.donnees;
+  if (doc.statut !== 'pret') return { erreur: 'etat', statut: 409, plus: { statut: doc.statut } };
+  if (!electronique(d)) return { erreur: 'papier', statut: 409 };
+  const fin = offreFinie(m, d);
+  if (fin) return { erreur: 'offre_expiree', statut: 409, plus: { fin: fin.toISOString() } };
+  /* Déjà lancée (un autre onglet, un double clic) : rien ne repart. */
+  if (doc.signature) return { erreur: 'deja', statut: 409 };
+  const mode = modeSignature(d) as 'en_ligne' | 'sur_place';
+  const cases = casesDe(m, doc).filter(c => !c.agence);
+  if (!cases.length) return { erreur: 'personne', statut: 400 };
+  const saisis: Record<string, Record<string, unknown>> = {};
+  for (const x of Array.isArray(saisisListe) ? saisisListe : []) if (x && typeof x === 'object' && typeof (x as { cle?: unknown }).cle === 'string') saisis[(x as { cle: string }).cle] = x as Record<string, unknown>;
+  const personnes = cases.map(c => personneSaisie(c, saisis[c.cle]));
+  /* V3.154 : le bon de visite sur place se signe sans code. L'adresse ne
+     sert plus qu'à recevoir son exemplaire : facultative (juste si elle
+     est donnée), et un couple peut partager la sienne. */
+  const sansCode = mode === 'sur_place' && surPlaceSansCode(doc.modele, d);
+  const champs: Record<string, string> = {};
+  personnes.forEach((p, i) => {
+    if (sansCode && !p.email) return;
+    if (!emailValide(p.email)) champs[cases[i].cle] = sansCode ? 'Une adresse e-mail valide, ou rien' : 'Une adresse e-mail valide';
+    else if (!sansCode && personnes.some((q, j) => j < i && q.email === p.email)) champs[cases[i].cle] = 'Chacun signe avec sa propre adresse';
+  });
+  if (Object.keys(champs).length) return { erreur: 'emails', statut: 400, plus: { champs } };
+  const le = new Date().toISOString();
+  const pasDeMail = new Set(o.pasDeMail || []);
+  const sd: SignatureDoc = {
+    mode, lance_le: le, agence_le: le,
+    deroule: [{ t: le, x: mode === 'en_ligne'
+      ? pasDeMail.size
+        ? 'Document signé pour l’agence ; le client signe depuis son espace, les autres signataires reçoivent leur lien personnel'
+        : 'Document signé pour l’agence et adressé aux signataires, chacun par son lien personnel'
+      : sansCode
+        ? 'Document signé pour l’agence ; signature sur place ouverte, sans code : chacun signe dans son cadre, sur l’appareil de l’Agence'
+        : 'Document signé pour l’agence ; signature sur place ouverte' }],
+  };
+  /* V3.55 : le document se réserve d'abord, en une écriture qui ne passe
+     qu'une fois (toujours « à faire signer », signature encore vide). */
+  const { data: pris, error: eP } = await sb.from('documents').update({ signature: sd, updated_at: le })
+    .eq('id', doc.id).eq('statut', 'pret').is('signature', null).select('id');
+  if (eP) return { erreur: 'enregistrement', statut: 500, plus: { detail: eP.message } };
+  if (!pris?.length) {
+    const frais = await relireDocument(sb, doc.id).catch(() => null);
+    return frais?.statut === 'pret' ? { erreur: 'deja', statut: 409 } : { erreur: 'etat', statut: 409, plus: { statut: frais?.statut || null } };
+  }
+  /* Rien n'est parti : la place se rend (seulement ce lancement-ci). */
+  const rendre = async () => {
+    const { error } = await sb.from('documents').update({ signature: null }).eq('id', doc.id).eq('signature->>lance_le', le);
+    if (error) console.error('[écriture] La signature réservée :', error.message);
+    return !error;
+  };
+  const liberer = async (r: Refus): Promise<Refus> => {
+    if (await rendre()) return r;
+    console.error('[documents/signature] lancement raté, et la signature réservée n’a pas pu être rendue', doc.id);
+    return { erreur: 'reserve', statut: 500 };
+  };
+  let rows: SigDoc[];
+  try {
+    /* V3.55 : un autre document du même genre, pour la même chose, déjà en signature. */
+    let autre: Awaited<ReturnType<typeof autreEnSignature>> = null;
+    try { autre = await autreEnSignature(sb, doc); } catch (e) {
+      console.error('[documents/signature]', (e as Error).message);
+      return await liberer({ erreur: 'lecture', statut: 503 });
+    }
+    if (autre) return await liberer({ erreur: 'concurrent', statut: 409, plus: { message: autre.phrase, autre: autre.autre.id } });
+    let lus: SigDoc[];
+    try { lus = await lireSignataires(sb, doc.id); } catch (e) {
+      console.error('[documents/signature]', (e as Error).message);
+      return await liberer({ erreur: 'lecture', statut: 503 });
+    }
+    /* Les signataires d'une signature arrêtée à moitié : fermés avant d'en
+       ouvrir d'autres, sinon leurs anciens liens remarcheraient. */
+    const restes = lus.filter(actif);
+    if (restes.length) {
+      const { error: eR } = await sb.from('documents_signataires').update({ statut: 'annule', code_hash: null }).in('id', restes.map(x => x.id)).neq('statut', 'annule');
+      if (eR) return await liberer({ erreur: 'enregistrement', statut: 500, plus: { detail: eR.message } });
+    }
+    const lignes = cases.map((c, i) => {
+      const p = personnes[i];
+      const enLigne = mode === 'en_ligne';
+      /* V3.57 : une correction de l'agence reprise par la fenêtre d'envoi
+         (`repris`) se note, avec l'adresse du document qu'elle remplace. */
+      const duDoc = String(c.personne?.email || '').trim().toLowerCase();
+      const marque = saisis[c.cle]?.repris === true && duDoc && duDoc !== p.email ? ` (adresse corrigée par l’agence, au lieu de ${duDoc})` : '';
+      const sansMail = enLigne && pasDeMail.has(c.cle);
+      return {
+        document_id: doc.id, cle: c.cle, rang: i + 1, role: c.qui, nom: c.nom, mode, personne: p,
+        statut: enLigne ? 'invite' : 'attendu',
+        jeton: enLigne ? jetonSigner(p) : null,
+        /* Quinze jours, ou moins pour une offre d'achat (sa validité). */
+        lien_expire_le: enLigne ? finLien(m, d, le) : null,
+        invite_le: enLigne ? le : null,
+        deroule: [{ t: le, x: `${enLigne ? sansMail ? `Lien personnel ouvert depuis son espace (${p.email})` : `Lien personnel envoyé à ${p.email}` : sansCode ? 'Attendu pour signer sur place, sans code' : 'Attendu pour signer sur place'}${marque}` }],
+        relances: 0, code_essais: 0, codes_envoyes: 0,
+      };
+    });
+    const { data: ins, error } = await sb.from('documents_signataires').insert(lignes).select('*');
+    if (error || !ins) return await liberer({ erreur: 'enregistrement', statut: 500, plus: { detail: error?.message } });
+    rows = ins as SigDoc[];
+  } catch (e) {
+    console.error('[documents/signature] lancement', e);
+    return await liberer({ erreur: 'erreur', statut: 500 });
+  }
+  const echecs: string[] = [];
+  if (mode === 'en_ligne') {
+    for (const x of rows.slice().sort((a, b) => a.rang - b.rang)) {
+      if (pasDeMail.has(x.cle)) continue;
+      const e = await envoyerLien(x, m, d, 0);
+      if (e) echecs.push(`${nomSig(x)} : ${e}`);
+    }
+  }
+  return { signataires: rows, signature: sd, echecs, personnes };
 }
 
 export const lienCrmDocument = (doc: Pick<DocSigne, 'client_id'>) =>
