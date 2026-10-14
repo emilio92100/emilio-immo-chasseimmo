@@ -209,7 +209,8 @@ repérée ? ») : `client_id`, `recherche_id`, `url` (nettoyé par `lienPropre` 
 `annonces/<id>/…`), `aime[]` (`AIMES`), `mot`, `statut` (`nouveau` · `retenu` · `ecarte`),
 `reponse` (le mot d'Alexandre quand il l'écarte, lu par le client), `avis` (son avis quand il la
 retient, lu avec le bien), `decide_le`, `bien_id`, `fiche` (V3.185 : la fiche remplie, gardée dans
-Veille jusqu'à « Retenir » — la ligne `biens` de `ligneBienDepuisFormulaire`). RLS + `crm_authentifie`.
+Veille jusqu'à « Retenir » — la ligne `biens` de `ligneBienDepuisFormulaire` ; V3.186 : avec son
+analyse, `score`, `verdict`, `appreciation`, `points_forts`, `points_attention`, d'`api/analyse-bien`). RLS + `crm_authentifie`.
 Le déclencheur `annonce_client_presentee` (même fichier) : un bien tiré d'une annonce retenue qui
 passe en `presente` prend `badge_retour = 'interesse'` (« Ça lui plaît ») au lieu de `propose`, quel
 que soit le bouton d'envoi. Outils communs : `src/lib/annonces-client.ts`. Sans la table, rien ne
@@ -663,8 +664,9 @@ Ce sont des règles de fond, pas de style. Elles sont reprises dans `AGENTS.md`.
 | `POST /api/login` · `DELETE` | **publique** | Vérifie le code, pose le cookie SHA-256 | `EMILIO_ACCESS_CODE` |
 | `POST /api/espace/<action>` | **publique** | Tout ce que l'espace acheteur écrit ; la serrure est le token | Supabase |
 | `GET /api/espace/agenda` | **publique** | Le `.ics` d'une visite, si elle appartient au token | Supabase |
-| `POST /api/extract-bien` | portail | URL d'annonce → Claude → JSON (repli regex) | `ANTHROPIC_API_KEY` facultative |
+| `POST /api/extract-bien` | portail | URL d'annonce → Claude → JSON (repli regex). V3.186 : les mêmes champs que le texte collé (`lib/lecture-annonce.ts`), situation et séjour compris | `ANTHROPIC_API_KEY` facultative |
 | `POST /api/parse-texte-bien` | portail | Texte collé → Claude → JSON. **Prix = prix affiché en gros**, jamais le « hors honoraires » | idem |
+| `POST /api/analyse-bien` | portail | V3.186 : une fiche × une recherche → note, verdict, appréciation, atouts, points d'attention, avec les règles de la veille (le dossier de `lib/dossier-recherche.ts`, les photos). N'écrit rien | `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY` |
 | `POST /api/reformuler-bien` | portail | Réécrit la description : retire confrère, téléphone, formules commerciales. Ne touche pas au prix | `ANTHROPIC_API_KEY` |
 | `POST /api/send-mail` | portail | Envoi Mailjet. `mode` : `libre` · `biens` · **`bienvenue`** · `lien` (le lien de l'espace renvoyé, V3.110) | Mailjet |
 | `POST /api/espace/push` | **publique** | Abonnement/désabonnement aux notifications | Supabase |
@@ -1512,6 +1514,42 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.186 — 14 octobre 2026 · Annonces du client : lues et notées comme la veille, « Envoyer une autre annonce »
+
+- Alexandre : « lecture par lien plus poussée… comme ça, c'est calculé, etc. Comme si c'était une
+  veille ». **La lecture** : `extract-bien` (le lien) et `parse-texte-bien` (le texte copié) demandent
+  la même quarantaine de champs (`src/lib/lecture-annonce.ts` : `CHAMPS_ANNONCE`, `nettoyerLecture`,
+  `completerParRegex`), plus la **situation** (transports, environnement) et la **surface du
+  séjour**. `extract-bien` ne donne plus à l'IA les 2 000 premiers caractères de la page (souvent le
+  menu) : le JSON-LD entier, les données de la page triées pour garder l'annonce elle-même
+  (`annonceDans`, une caractéristique par ligne : « Surface habitable : 82 m² »), le texte visible à
+  partir du titre. Une case ne se coche plus sur « sans ascenseur », « pas de cave » (`mentionne`).
+  Le formulaire « Ajouter un bien » a deux champs de plus (Situation, Séjour m²), enregistrés pour
+  tous les biens (`ligneBienDepuisFormulaire`).
+- **L'analyse** : `POST /api/analyse-bien` (portail, rien n'est écrit) lit le même dossier que le
+  rapprochement (`src/lib/dossier-recherche.ts`, sorti de `rapprochement-ia` à l'identique :
+  critères, indispensables, précisions, parcours, visites, comptes rendus, retours, écarts), la
+  fiche, jusqu'à 5 photos et ce que le client en a dit, et rend avec les règles de la veille (skill
+  : curseurs +10 % / −5 %, seuils durs, choix, un seul indispensable manquant → `reserve` avec ⚠️
+  en premier, tranches 85/70/50, test de cohérence) la note, le verdict, l'appréciation, les atouts
+  et les points d'attention. `remettreDAplomb` : la note suit le verdict, un ⚠️ ne laisse jamais
+  passer `priorite` ni `appeler`. Sonnet puis Haiku ; une photo illisible : on recommence sans.
+- « Enregistrer la fiche » ferme la fenêtre tout de suite ; l'onglet Veille lance l'analyse
+  (`demandeAnalyse` → `OngletVeille.analyser` → `AnnoncesClient`), « Analyse par rapport à sa
+  recherche… » sur la carte, « Retenir » attend. La carte montre ensuite la note, le verdict et la
+  phrase (`Appreciation`), les compteurs Atouts / À vérifier / À trancher (`BilanBien`) ; « Voir en
+  grand » ouvre la fenêtre des biens de la veille (`FenetreBien`, son mot en bandeau, « Modifier la
+  fiche », « Écarter… », « Retenir »). Une fiche sans analyse (V3.185, ou une analyse ratée) :
+  « Analyser par rapport à sa recherche » / « Relancer ». L'analyse est gardée dans `fiche` et suit
+  le bien à « Retenir » (`score`, `verdict`, `appreciation`, `points_forts`, `points_attention`,
+  repli sans `verdict`/`appreciation` comme OngletVeille) ; une fiche modifiée entre-temps n'est pas
+  écrasée (`memeFiche`).
+- Espace, plusieurs annonces : **la version de Claude** — une annonce à la fois, et « Envoyer une
+  autre annonce » sous « Parfait » (`GrandOk`, prop `autre`) rouvre le formulaire vide, après
+  « C'est envoyé à Alexandre » et « Vous la lui avez déjà envoyée ».
+- Limites : l'historique des prix et le nombre d'agences ne se lisent pas dans une seule annonce
+  (le bloc Marché reste vide) ; la distance à la station n'est pas calculée, seulement lue.
 
 ### V3.185 — 14 octobre 2026 · Annonces du client : la fiche reste dans Veille, une photo = une photo
 
