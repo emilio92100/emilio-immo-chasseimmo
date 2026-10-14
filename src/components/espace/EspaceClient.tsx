@@ -1973,6 +1973,9 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
      et lui répond ici. Le même lien déjà envoyé, ou un bien déjà dans ses
      biens : on le lui dit, rien ne repart. */
   const peutEnvoyerAnnonce = enCours && !finDite;
+  /* V3.186 (Alexandre : « on part sur ta version ») : une annonce à la fois,
+     et après l'envoi, « Envoyer une autre annonce » rouvre le formulaire, vide. */
+  const uneAutre = { texte: 'Envoyer une autre annonce', onClick: () => { fermer(); window.setTimeout(() => ouvrirEnvoiAnnonce(), 340); } };
   function ouvrirEnvoiAnnonce() {
     montrer(<EnvoiAnnonce Ico={Ico} onFermer={fermer} onEnvoyer={async (d): Promise<ResultatEnvoi> => {
       const r = await envoyer('annonce', d);
@@ -1990,13 +1993,13 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
         if (r.deja) {
           montrer(<GrandOk titre="Vous la lui avez déjà envoyée"
             texte={`C’était ${dateAnnonce(a.le)}. ${a.statut === 'nouveau' ? 'Alexandre la regarde : il vous dit vite ce qu’il en pense.' : 'Sa réponse est sur votre accueil, dans « Votre dernière annonce ».'}`}
-            onFermer={fermer} />, 'pleine');
+            onFermer={fermer} autre={uneAutre} />, 'pleine');
           return 'ok';
         }
         montrer(<GrandOk titre="C’est envoyé à Alexandre"
           texte="Il la regarde avec le même soin que les biens qu’il vous présente, et vous dit ce qu’il en pense."
           rappel="Vous suivez sa réponse sur votre accueil&nbsp;: retenue, elle rejoint vos biens&nbsp;; écartée, il vous dit pourquoi."
-          onFermer={fermer} />, 'pleine');
+          onFermer={fermer} autre={uneAutre} />, 'pleine');
         return 'ok';
       }
       return r?.error === 'trop' ? 'trop' : r?.error === 'lien' ? 'lien' : r?.error === 'photo' ? 'photo' : 'erreur';
@@ -5922,7 +5925,9 @@ function GuideEcran({ appareil, onFermer }: { appareil: string; onFermer: () => 
   );
 }
 
-function GrandOk({ titre, texte, rappel, bouton, onFermer }: any) {
+/* `autre` (V3.186) : un second bouton, plus discret, sous « Parfait » —
+   « Envoyer une autre annonce » après un envoi. */
+function GrandOk({ titre, texte, rappel, bouton, onFermer, autre }: any) {
   return (
     <div className="grandok">
       <div className="rond-ok"><Ico n="check" t={36} /></div>
@@ -5930,6 +5935,7 @@ function GrandOk({ titre, texte, rappel, bouton, onFermer }: any) {
       <p>{texte}</p>
       {rappel && <div className="rappel" dangerouslySetInnerHTML={{ __html: rappel }} />}
       <button className="btn or" style={{ marginTop: 22 }} onClick={onFermer}>{bouton || 'Parfait'}</button>
+      {autre && <button className="btn fant" style={{ marginTop: 10 }} onClick={autre.onClick}><Ico n={autre.ico || 'plus'} t={17} /><span>{autre.texte}</span></button>}
     </div>
   );
 }
