@@ -137,6 +137,9 @@ export function EnvoiAnnonce({ onFermer, onEnvoyer, Ico }: {
   const galerie = useRef<HTMLInputElement>(null);
 
   const reste = PHOTOS_MAX - photos.length;
+  /* V3.185 : un vrai lien dans le champ — « Lien déposé », en vert, juste
+     dessous (Alexandre : « il n'y a rien qui lui indique »). */
+  const lienOk = !!lien.trim() && !!lienPropre(lien);
   async function ajouter(liste: FileList | null) {
     if (!liste || !liste.length || reste <= 0) return;
     setLecture(true); setErreur(null);
@@ -177,10 +180,15 @@ export function EnvoiAnnonce({ onFermer, onEnvoyer, Ico }: {
         <label className="ra-f-l" htmlFor="ra-lien">Le lien de l’annonce</label>
         <div className="ra-f-lien">
           <input id="ra-lien" type="url" inputMode="url" autoComplete="off" autoCapitalize="off" spellCheck={false}
-            value={lien} onChange={ev => { setLien(ev.target.value); if (erreur) setErreur(null); }}
+            className={lienOk ? 'ok' : undefined} value={lien} onChange={ev => { setLien(ev.target.value); if (erreur) setErreur(null); }}
             placeholder="https://www.leboncoin.fr/…" />
           {peutColler && <button type="button" className="ra-f-coller" onClick={coller}>Coller</button>}
         </div>
+        {lienOk && (
+          <div className="ra-f-ok" role="status">
+            <span className="ra-f-ok-i"><Ico n="check" t={13} /></span><span>Lien déposé</span>
+          </div>
+        )}
 
         <div className="ra-f-sep"><i /><span>et, si vous voulez</span><i /></div>
 
@@ -356,6 +364,12 @@ export const CSS_ANNONCES = `
 .ra-f-lien input{flex:1 1 auto; min-width:0; height:48px; border:1.5px solid var(--trait-fort); border-radius:13px; padding:0 13px;
   font-family:inherit; font-size:15px; color:var(--encre); background:var(--fond)}
 .ra-f-lien input:focus{outline:none; border-color:var(--or); background:var(--carte)}
+.ra-f-lien input.ok{border-color:#86D3A7; background:#F3FBF6}
+.ra-f-ok{display:flex; align-items:center; gap:8px; margin-top:9px; font-size:13.5px; font-weight:800; color:var(--vert);
+  animation:raOk .35s cubic-bezier(.16,1,.3,1)}
+.ra-f-ok-i{width:22px; height:22px; border-radius:50%; background:#16A34A; color:#fff; display:flex; align-items:center;
+  justify-content:center; flex:0 0 auto; box-shadow:0 6px 14px -6px rgba(21,128,61,.7)}
+@keyframes raOk{from{opacity:0; transform:translateY(-4px)} to{opacity:1; transform:none}}
 .ra-f-coller{height:48px; padding:0 14px; border-radius:13px; border:1px solid var(--bleu-trait); background:var(--fond);
   color:var(--encre2); font-size:13.5px; font-weight:800; flex:0 0 auto}
 .ra-f-sep{display:flex; align-items:center; gap:10px; margin:18px 0 0; color:var(--plume-clair); font-size:12.5px; font-weight:700}
