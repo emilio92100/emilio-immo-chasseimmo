@@ -208,7 +208,8 @@ repérée ? ») : `client_id`, `recherche_id`, `url` (nettoyé par `lienPropre` 
 `#` ni `utm_…`), `portail` (« Leboncoin »… ou l'adresse du site), `photos[]` (bucket `photos-biens`,
 `annonces/<id>/…`), `aime[]` (`AIMES`), `mot`, `statut` (`nouveau` · `retenu` · `ecarte`),
 `reponse` (le mot d'Alexandre quand il l'écarte, lu par le client), `avis` (son avis quand il la
-retient, lu avec le bien), `decide_le`, `bien_id`. RLS + `crm_authentifie`.
+retient, lu avec le bien), `decide_le`, `bien_id`, `fiche` (V3.185 : la fiche remplie, gardée dans
+Veille jusqu'à « Retenir » — la ligne `biens` de `ligneBienDepuisFormulaire`). RLS + `crm_authentifie`.
 Le déclencheur `annonce_client_presentee` (même fichier) : un bien tiré d'une annonce retenue qui
 passe en `presente` prend `badge_retour = 'interesse'` (« Ça lui plaît ») au lieu de `propose`, quel
 que soit le bouton d'envoi. Outils communs : `src/lib/annonces-client.ts`. Sans la table, rien ne
@@ -1511,6 +1512,23 @@ signataire et l'espace gardent leur marine.
 
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
+
+### V3.185 — 14 octobre 2026 · Annonces du client : la fiche reste dans Veille, une photo = une photo
+
+- Alexandre : « quand je fais Remplir la fiche, ça passe en Sélection, et en Sélection je ne peux
+  plus écarter ». Deux choix proposés, **il a pris A** : « Enregistrer la fiche » garde la fiche sur
+  l'annonce (`annonces_client.fiche`, SQL : `alter table annonces_client add column if not exists
+  fiche jsonb;`) ; la carte de Veille montre alors photos, prix, surface, pièces (« Fiche remplie »)
+  avec « Modifier la fiche », « Écarter… » (son mot) et « Retenir » (le bien est créé en Sélection,
+  `retenir` dans AnnoncesClient). La ligne `biens` vient de `src/lib/fiche-bien.ts`
+  (`ligneBienDepuisFormulaire`, la même que « Ajouter un bien »).
+- « Extraire » donnait douze fois la première photo d'une annonce Leboncoin : la page la répète en
+  plusieurs tailles avant la liste. `extractPhotos` (extract-bien) : une image = une adresse (même
+  chemin, ou taille écrite dans le chemin), la plus grande gardée, adresses JSON relues (\u002F), 20
+  au plus.
+- Espace : « Lien déposé » en vert sous le lien dès qu'il est valable (`lienOk`).
+- Question d'Alexandre, sans suite pour l'instant : « Extraire » par le lien lit moins que « Coller le
+  texte » et que la veille (pas de note, points forts, historique des prix).
 
 ### V3.184 — 14 octobre 2026 · « Une annonce repérée ? » : le client envoie ses annonces
 
