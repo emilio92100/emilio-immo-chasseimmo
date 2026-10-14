@@ -175,23 +175,56 @@ function extractFromUrl(url: string, portail: string) {
   return { titre: `${type_bien}${ville ? ` — ${ville}` : ''} (à compléter)`, type_bien, ville, source_portail: portail, surface: null, nb_pieces: null, etage: null, parking: false, dpe: '', prix_vendeur: null, description: '', photos: [], agence_nom: '', code_postal: '', adresse: '' };
 }
 
+/* Les photos de l'annonce, trouvées dans la page.
+
+   V3.185 : une annonce Leboncoin donnait douze fois la MÊME photo. La page
+   répète la première photo en plusieurs tailles (aperçu des réseaux, image
+   préchargée, vignettes : …/images/ab/cd/x.jpg?rule=ad-large, ?rule=ad-thumb…)
+   avant la liste complète, et on gardait les douze premières adresses. Une
+   photo = une seule adresse désormais : les tailles d'une même image
+   (même chemin, ou taille écrite dans le chemin) n'en font qu'une, et on
+   garde la plus grande. Les adresses écrites dans du JSON (\u002F, \/) sont
+   relues aussi : c'est souvent là qu'est la liste complète. */
 function extractPhotos(html: string): string[] {
-  const found = new Set<string>();
+  const h = html.replace(/\\u002[fF]/g, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+  const vues: string[] = [];
   const urlPat = /https?:\/\/[^"' \s<>\\]+\.(?:jpg|jpeg|png|webp)(?:\?[^"' \s<>\\]*)?/gi;
-  const all = [...html.matchAll(urlPat)].map(m => m[0]);
-  for (const u of all) {
-    const l = u.toLowerCase();
-    if (!l.includes('logo') && !l.includes('icon') && !l.includes('avatar') && !l.includes('sprite') && !l.includes('_xs') && !l.includes('_tn') && u.length < 400) {
-      found.add(u);
-    }
-  }
+  for (const m of h.matchAll(urlPat)) vues.push(m[0]);
   // SeLoger CDN spécifique
-  const sl = [...html.matchAll(/cdn-medias\.seloger\.com\/[^"' \s\\]+/gi)];
-  sl.forEach(m => found.add('https://' + m[0].replace(/["'\\].*/,'')));
+  for (const m of h.matchAll(/cdn-medias\.seloger\.com\/[^"' \s\\<>]+/gi)) vues.push('https://' + m[0]);
   // LeBonCoin
-  const lbc = [...html.matchAll(/img\.leboncoin\.fr\/[^"' \s\\]+/gi)];
-  lbc.forEach(m => found.add('https://' + m[0].replace(/["'\\].*/,'')));
-  return [...found].slice(0, 12);
+  for (const m of h.matchAll(/img\.leboncoin\.fr\/[^"' \s\\<>]+/gi)) vues.push('https://' + m[0]);
+
+  const garder = (u: string) => {
+    const l = u.toLowerCase();
+    return u.length < 400 && !l.includes('logo') && !l.includes('icon') && !l.includes('avatar') && !l.includes('sprite')
+      && !l.includes('_xs') && !l.includes('_tn');
+  };
+  /* La même image, quelle que soit sa taille : le site et le chemin, sans
+     les morceaux qui disent la taille (« /crop/590x330/ », « -800x600 »). */
+  const cle = (u: string) => {
+    try {
+      const x = new URL(u);
+      const chemin = x.pathname
+        .replace(/\/(?:s\/)?(?:crop|resize|width|height|fit|rs|thumb|thumbs)\/\d+(?:x\d+)?(?=\/)/gi, '')
+        .replace(/\/\d{2,4}x\d{2,4}(?=\/)/g, '')
+        .replace(/[-_](?:\d{2,4}x\d{2,4}|thumb|small|medium|large|big)(?=\.\w+$)/i, '');
+      return (x.hostname.replace(/^www\./, '') + chemin).toLowerCase();
+    } catch { return u; }
+  };
+  /* La plus grande des tailles d'une même image. */
+  const taille = (u: string) => (/large|1200|1600|1920|2048|full|original|\bhd\b|xl/i.test(u) ? 3
+    : /thumb|small|mini|250x|200x|150x|100x|ad-image-mini/i.test(u) ? 0 : 1);
+
+  const parCle = new Map<string, string>();
+  for (const u of vues) {
+    if (!garder(u)) continue;
+    const k = cle(u);
+    const deja = parCle.get(k);
+    if (!deja) parCle.set(k, u);
+    else if (taille(u) > taille(deja)) parCle.set(k, u);
+  }
+  return [...parCle.values()].slice(0, 20);
 }
 
 function extractText(html: string, patterns: RegExp[]): string {
