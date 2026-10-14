@@ -7,8 +7,9 @@
 -- photo (une affiche en vitrine, un panneau « À vendre »), dit ce qui lui
 -- plaît et laisse un mot. Une ligne par annonce envoyée.
 --
---   nouveau → Alexandre la regarde (onglet Veille de la fiche du client)
---   retenu  → il a rempli la fiche : le bien est en Sélection (bien_id)
+--   nouveau → Alexandre la regarde (onglet Veille de la fiche du client) ;
+--             « Remplir la fiche » y garde la fiche préparée (fiche, V3.185)
+--   retenu  → il l'a retenue : le bien est en Sélection (bien_id)
 --   ecarte  → il l'a écartée, avec un mot que le client lit (reponse)
 --
 -- Sans cette table, l'espace et le CRM marchent comme avant : la carte
@@ -30,6 +31,11 @@ create table if not exists annonces_client (
   bien_id uuid references biens(id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+-- V3.185 : la fiche remplie depuis l'annonce, gardée dans Veille jusqu'à
+-- « Retenir » (la ligne `biens` à poser). Pour ceux qui ont déjà passé ce
+-- fichier : cette seule ligne suffit.
+alter table annonces_client add column if not exists fiche jsonb;
 
 create index if not exists annonces_client_recherche_idx on annonces_client (recherche_id, created_at desc);
 create index if not exists annonces_client_bien_idx on annonces_client (bien_id);
