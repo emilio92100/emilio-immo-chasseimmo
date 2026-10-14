@@ -299,6 +299,7 @@ function SecteursListe({ secteurs }: { secteurs: string[] }) {
 import OngletVeille from './OngletVeille';
 import type { AnnonceCrm } from './AnnoncesClient';
 import { siteDe, tableAbsente } from '@/lib/annonces-client';
+import { ligneBienDepuisFormulaire } from '@/lib/fiche-bien';
 import OngletBiens from './OngletBiens';
 import DetailBien from './DetailBien';
 import MandatEnLigne from './MandatEnLigne';
@@ -2740,9 +2741,16 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
      sans lien (ses photos seules), la fiche est à remplir à la main. */
   function remplirDepuisAnnonce(a: AnnonceCrm) {
     annonceRef.current = a;
-    setDepuisAnnonce(a); setAvisAnnonce(''); setLectureRatee(false);
+    setDepuisAnnonce(a); setAvisAnnonce(a.avis || ''); setLectureRatee(false);
     setTexteAnnonce(''); setPhotosInput(''); setBienMode('url');
     setUrl(a.url || '');
+    /* V3.185 : la fiche est déjà remplie (« Modifier la fiche ») : on la
+       rouvre telle quelle, sans relire l'annonce. */
+    if (a.fiche && typeof a.fiche === 'object') {
+      setBienForm({ ...a.fiche, commission_type: a.fiche.commission_type || 'pourcentage', commission_val: a.fiche.commission_val ?? '' });
+      setShowBien(true);
+      return;
+    }
     if (a.url) {
       setBienForm(null);
       setShowBien(true);
@@ -2790,6 +2798,27 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     const photosFiche = (bienForm.photos || []).length ? bienForm.photos : (annonceRef.current?.photos || []);
     // Uploader les photos vers Supabase Storage
     const photosStockees = await uploadPhotosToStorage(photosFiche, tempId);
+    /* V3.185 (Alexandre choisit A) : la fiche d'une annonce du client reste
+       dans l'onglet Veille, gardée sur l'annonce. C'est là qu'il choisit
+       ensuite « Retenir » (le bien part en Sélection) ou « Écarter ». */
+    const aRemplir = annonceRef.current;
+    if (aRemplir) {
+      const fiche = ligneBienDepuisFormulaire(bienForm, photosStockees);
+      const { error: eFiche } = await supabase.from('annonces_client')
+        .update({ fiche, avis: avisAnnonce.trim() || null }).eq('id', aRemplir.id).select('id');
+      if (eFiche) {
+        if (/fiche/i.test(eFiche.message || '') && /column|colonne|schema cache/i.test(eFiche.message || '')) {
+          alert("La fiche n'a pas pu être gardée : il manque une colonne dans la base.\n\nLance dans Supabase (SQL Editor) :\nalter table annonces_client add column if not exists fiche jsonb;");
+        } else {
+          signalerEchec('La fiche de son annonce', eFiche.message);
+        }
+        setSaving(false);
+        return;
+      }
+      setSaving(false); fermerAjoutBien();
+      setVersionVeille(v => v + 1);
+      return;
+    }
     const { data: bienInsere, error: erreurBien } = await supabase.from('biens').insert({
       client_id: client.id,
       recherche_id: rechercheId || null,
@@ -2798,59 +2827,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
          Seul le compteur le voyait, via son repli `(b.etape || 'selection')`
          — d'où un onglet qui affiche « 1 » et reste vide. */
       etape: 'selection',
-      url: bienForm.url||null,
-      titre: bienForm.titre,
-      ville: bienForm.ville,
-      code_postal: bienForm.code_postal,
-      quartier: bienForm.quartier||null,
-      type_bien: bienForm.type_bien,
-      surface: parseFloat(bienForm.surface)||null,
-      nb_pieces: parseInt(bienForm.nb_pieces)||null,
-      nb_chambres: parseInt(bienForm.nb_chambres)||null,
-      nb_salles_bain: parseInt(bienForm.nb_salles_bain)||null,
-      nb_wc: parseInt(bienForm.nb_wc)||null,
-      etage: bienForm.etage !== '' && bienForm.etage !== null && bienForm.etage !== undefined ? parseInt(bienForm.etage) : null,
-      etage_total: parseInt(bienForm.etage_total)||null,
-      annee_construction: parseInt(bienForm.annee_construction)||null,
-      exposition: bienForm.exposition||null,
-      // DPE / GES
-      dpe: bienForm.dpe || null,
-      dpe_conso: parseInt(bienForm.dpe_conso)||null,
-      ges: bienForm.ges || null,
-      ges_emissions: parseInt(bienForm.ges_emissions)||null,
-      chauffage: bienForm.chauffage||null,
-      source_energie: bienForm.source_energie||null,
-      chauffage_emetteurs: bienForm.chauffage_emetteurs||null,
-      // Caractéristiques booléennes
-      parking: bienForm.parking||false,
-      balcon: bienForm.balcon||false,
-      terrasse: bienForm.terrasse||false,
-      jardin: bienForm.jardin||false,
-      cave: bienForm.cave||false,
-      ascenseur: bienForm.ascenseur||false,
-      gardien: bienForm.gardien||false,
-      cuisine_equipee: bienForm.cuisine_equipee||false,
-      climatisation: bienForm.climatisation||false,
-      traversant: bienForm.traversant||false,
-      // Surfaces annexes
-      surface_balcon: parseFloat(bienForm.surface_balcon)||null,
-      surface_terrasse: parseFloat(bienForm.surface_terrasse)||null,
-      // État
-      etat_general: bienForm.etat_general||null,
-      // Description et prix
-      description: bienForm.description,
-      prix_vendeur: parseFloat(bienForm.prix_vendeur)||null,
-      commission_type: bienForm.commission_type,
-      commission_val: parseFloat(bienForm.commission_val)||null,
-      prix_acquereur: prixAcq||null,
-      charges_trimestrielles: parseInt(bienForm.charges_trimestrielles)||null,
-      charges_comprises: (bienForm.charges_comprises || '').trim() || null,
-      taxe_fonciere: parseInt(bienForm.taxe_fonciere)||null,
-      // Photos et source
-      photos: photosStockees,
-      source_portail: bienForm.source_portail,
-      agence_nom: bienForm.agence_nom,
-      agence_tel: bienForm.agence_tel||null,
+      /* V3.185 : la ligne vient de src/lib/fiche-bien.ts (la même pour les
+         annonces du client). */
+      ...ligneBienDepuisFormulaire(bienForm, photosStockees),
       badge_retour: 'propose',
     }).select().single();
     /* L'erreur n'était pas relue : le journal s'écrivait et la modale se
@@ -2861,9 +2840,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       setSaving(false);
       return;
     }
-    const deSonAnnonce = !!annonceRef.current;
-    if (deSonAnnonce && bienInsere?.id) await retenirAnnonce(bienInsere.id);
-    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}${deSonAnnonce ? ' (son annonce, retenue)' : ''}`, bienForm.url||'', undefined, { rechercheId, bienId: bienInsere?.id || null });
+    await addJournal(client.id, 'bien_ajoute', `🏠 Bien ajouté — ${bienForm.titre||bienForm.ville||''}`, bienForm.url||'', undefined, { rechercheId, bienId: bienInsere?.id || null });
     setSaving(false); fermerAjoutBien(); load();
   }
 
@@ -5984,6 +5961,7 @@ ${signatureMail()}`,
                       <span style={{ fontSize: 12, color: '#94a3b8' }}>{'Ses photos : gardées pour la fiche si l’annonce n’en donne pas.'}</span>
                     </div>
                   )}
+                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>{'Enregistrée, la fiche reste dans Veille, avec son annonce : tu choisis ensuite « Retenir » (elle part en Sélection) ou « Écarter ».'}</div>
                   <label className={styles.lbl} style={{ marginTop: 2 }}>{'Ton avis pour lui '}<span style={{ fontWeight: 400, color: '#94a3b8' }}>{'(facultatif — il le lira avec le bien, dans « Ça me plaît »)'}</span></label>
                   <textarea className={styles.inp} rows={2} value={avisAnnonce} onChange={e => setAvisAnnonce(e.target.value)} maxLength={600}
                     placeholder="Ex. : très bon choix. Toujours disponible, toiture refaite en 2021, le vendeur a déjà baissé une fois." style={{ fontFamily: 'inherit', fontSize: 13 }} />
@@ -6064,7 +6042,7 @@ ${signatureMail()}`,
               )}
 
             </div>
-            <div className={styles.modalFooter}><button className={styles.btn} onClick={fermerAjoutBien}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : '✓ Ajouter ce bien'}</button>}</div>
+            <div className={styles.modalFooter}><button className={styles.btn} onClick={fermerAjoutBien}>Annuler</button>{bienForm !== null && <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={saveBien} disabled={saving}>{saving ? '...' : depuisAnnonce ? '✓ Enregistrer la fiche' : '✓ Ajouter ce bien'}</button>}</div>
           </div>
         </div>
         </Portail>
