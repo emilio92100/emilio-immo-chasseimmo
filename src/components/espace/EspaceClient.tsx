@@ -4417,6 +4417,8 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
   const [voirCorr, setVoirCorr] = useState(false);
   /* V3.145 : le « ? » du prix. */
   const [aidePrix, setAidePrix] = useState(false);
+  /* V3.188 : le « ? » de ses honoraires, quand ils s'ajoutent au prix. */
+  const [aideHono, setAideHono] = useState(false);
   const [envoiAvis, setEnvoiAvis] = useState(false);
   /* Les pastilles cochées, le texte libre seulement s'il le demande, et le
      panneau de la barre du bas. */
@@ -4558,6 +4560,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
         onPartager={() => { setBientot(false); setPartage(true); }} />}
       {voirCorr && corr && <ModaleCorrespondance b={b} r={corr} onFermer={() => setVoirCorr(false)} />}
       {aidePrix && <ModaleAide a={AIDES.prix} onFermer={() => setAidePrix(false)} />}
+      {aideHono && <ModaleAide a={AIDES.honoraires} onFermer={() => setAideHono(false)} />}
       <div className="fiche-droite" data-barre={!envoye && !dec && !b.vente ? '1' : undefined}>
       {dec?.colonne && (
         <div className="dec-f-haut">
@@ -4571,7 +4574,19 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
       </div>
       {/* V3.145 : ses honoraires, seulement quand ils s'ajoutent — en petit. */}
-      {b.prix && b.hono ? <div className="hono-l">{honoDe(b)}</div> : null}
+      {/* V3.188 (Alexandre : « quand il y a un prix affiché en plus, une petite
+          interrogation ») : un « ? » collé au dernier mot, pour qu'il ne parte
+          pas seul à la ligne sur téléphone. */}
+      {b.prix && b.hono ? (() => {
+        const t = honoDe(b);
+        const i = t.lastIndexOf(' ');
+        return (
+          <div className="hono-l">
+            {t.slice(0, i + 1)}
+            <span className="hono-fin">{t.slice(i + 1)}<BtnAide cle="honoraires" onAide={() => setAideHono(true)} /></span>
+          </div>
+        );
+      })() : null}
       <div className="tete-f" style={{ paddingTop: 10 }}>
         <div><h3>{b.titre}</h3>
           {b.secteur && <div className="meta" style={{ color: 'var(--plume)', fontSize: 13, marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -5658,6 +5673,19 @@ const AIDES: Record<string, { ico: string; sur: string; titre: string; texte: st
       'Les frais de notaire sont toujours en plus.',
     ],
   },
+  /* V3.188 : le « ? » de « + 6 000 € de nos honoraires » (Alexandre : « dans le
+     cadre d'une négociation, le but c'est que vous payiez le moins cher, et que
+     le fait qu'on vous accompagne soit compris dans votre négociation »). */
+  honoraires: {
+    ico: 'euro', sur: 'Nos honoraires', titre: 'Notre accompagnement, compris dans la négociation.',
+    texte: 'Ce montant, ce sont nos honoraires : notre accompagnement, de la recherche du bien jusqu’à la signature chez le notaire.',
+    puces: [
+      'Le prix affiché est celui de l’annonce. Quand vous faites une offre, nous négocions pour que vous payiez le moins cher possible.',
+      'Notre but : que la baisse obtenue couvre nos honoraires. Notre accompagnement est alors compris dans votre négociation.',
+      'Vous ne les payez que si vous achetez ce bien, le jour de la signature chez le notaire. Rien avant.',
+      'Les frais de notaire restent en plus.',
+    ],
+  },
   decouvrir: {
     ico: 'etoile', sur: 'Vos nouveautés', titre: 'Ce que veut dire « à découvrir »',
     texte: "C'est le nombre de biens retenus pour vous que vous n'avez pas encore ouverts.",
@@ -6722,6 +6750,8 @@ input, textarea, select{font-family:inherit}
 .bandeau-prix .nv{position:relative; display:inline-block; padding-right:22px}
 .bandeau-prix .nv .aide-pt{position:absolute; right:0; top:4px}
 .hono-l{padding:5px 20px 0; font-size:12px; line-height:1.45; color:var(--plume); font-weight:600}
+.hono-fin{white-space:nowrap}
+.hono-l .aide-pt{margin-left:5px; vertical-align:middle; position:relative; top:-1px}
 .bien .hono-c{display:block; font-size:11.5px; color:var(--plume); font-weight:600; margin-top:3px}
 .cn-h{display:block; font-size:11.5px; color:var(--plume); font-weight:600; margin-top:-2px}
 .pop-aide{padding:26px 22px 22px}
