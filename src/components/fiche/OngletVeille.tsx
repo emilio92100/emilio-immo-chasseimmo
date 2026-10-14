@@ -20,7 +20,8 @@ import AnnoncesClient, { type AnnonceCrm } from './AnnoncesClient';
  *
  * V3.184 : en tête, les annonces que le client a envoyées depuis son espace
  * (AnnoncesClient) — « Remplir la fiche » ouvre « Ajouter un bien » dans la
- * fiche (`onRemplir`).
+ * fiche (`onRemplir`). V3.186 : la fiche enregistrée y est analysée comme
+ * la veille (`analyser`).
  */
 
 interface Props {
@@ -29,9 +30,11 @@ interface Props {
   onRemplir?: (a: AnnonceCrm) => void;
   /** Change quand la fiche vient d'enregistrer un bien tiré d'une annonce du client. */
   rafraichir?: number;
+  /** V3.186 : la fiche d'une annonce du client vient d'être enregistrée : à analyser. */
+  analyser?: { id: string; n: number } | null;
 }
 
-export default function OngletVeille({ clientId, rechercheId, onChange, prenom, onRemplir, rafraichir = 0 }: Props) {
+export default function OngletVeille({ clientId, rechercheId, onChange, prenom, onRemplir, rafraichir = 0, analyser }: Props) {
   const [props_, setProps] = useState<any[]>([]);
   const [ecartees, setEcartees] = useState<any[]>([]);
   const [passage, setPassage] = useState<any>(null);
@@ -202,7 +205,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange, prenom, 
       <StylesEmilio />
       {onRemplir && (
         <AnnoncesClient clientId={clientId} rechercheId={rechercheId} prenom={prenom} rafraichir={rafraichir}
-          onRemplir={onRemplir} onChange={onChange} />
+          recherche={recherche} analyser={analyser} onRemplir={onRemplir} onChange={onChange} />
       )}
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>

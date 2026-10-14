@@ -54,6 +54,27 @@
 .vig { width: 64px; height: 48px; border-radius: 8px; overflow: hidden; border: 1px solid #e3e8f0; display: block; }
 .vig img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* V3.186 : l'analyse de la fiche, comme la veille (note, verdict, phrase,
+   atouts, points à vérifier ou à trancher). */
+.avis { display: flex; flex-direction: column; gap: 9px; margin-top: 2px; }
+.avisLigne { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.avisTexte { flex: 1 1 auto; min-width: 0; }
+.noteA { width: 58px; height: 58px; border-radius: 50%; border: 5px solid var(--c, #c9a84c); background: white; flex: 0 0 auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; cursor: pointer; font: inherit; box-sizing: border-box; }
+.noteA b { font-size: 18px; font-weight: 800; color: #1a2332; line-height: 1; }
+.noteA small { font-size: 9px; font-weight: 700; color: #64748b; }
+.analyse { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; border-radius: 11px; padding: 9px 12px; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.analyse[data-etat="encours"] { background: #f4f7fb; border: 1px solid #dfe6f0; color: #34496e; }
+.analyse[data-etat="erreur"] { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.analyse > span:not(.rond) { flex: 1 1 200px; min-width: 0; }
+.rond { width: 15px; height: 15px; border-radius: 50%; border: 2.5px solid #c9d4e3; border-top-color: #34496e; flex: 0 0 auto;
+  animation: tourne .8s linear infinite; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.relancer { background: white; border: 1px solid #f6d89a; color: #92400e; border-radius: 9px; padding: 5px 11px; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+.analyser { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; background: #f4f7fb; border: 1px dashed #b9c6d8; color: #34496e;
+  border-radius: 10px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.analyser:hover { background: #eaf0f8; }
+
 .pied { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid #eef2f7; background: #fbfcfe; }
 .ressort { flex: 1 1 auto; }
 .bouton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 11px;
@@ -83,4 +104,7 @@
   .quand { margin-left: 0; }
   .pied .ressort { display: none; }
   .pied > .bouton { flex: 1 1 auto; }
+  .avisLigne { align-items: flex-start; }
+  .noteA { width: 50px; height: 50px; border-width: 4px; }
+  .noteA b { font-size: 16px; }
 }

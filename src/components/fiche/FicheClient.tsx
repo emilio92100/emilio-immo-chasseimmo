@@ -537,6 +537,12 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
           <label className={styles.lbl}>Quartier <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optionnel)</span></label>
           <input className={styles.inp} value={bienForm.quartier||''} onChange={e => set('quartier', e.target.value)} placeholder="Parchamp–Albert Kahn..." />
         </div>
+        {/* V3.186 : les transports et l'environnement que l'annonce cite (lus
+            avec le lien), pour l'analyse et la fenêtre du bien. */}
+        <div style={{ gridColumn: '1/-1' }}>
+          <label className={styles.lbl}>Situation <span style={{ fontWeight: 400, color: '#94a3b8' }}>(transports, environnement)</span></label>
+          <input className={styles.inp} value={bienForm.situation||''} onChange={e => set('situation', e.target.value)} placeholder="Métro Marcel Sembat à 4 min à pied, rue calme…" />
+        </div>
       </div>
 
       {/* ===== CARACTÉRISTIQUES ===== */}
@@ -545,6 +551,10 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
         <div>
           <label className={styles.lbl}>Surface m²</label>
           <input className={styles.inp} type="number" value={bienForm.surface||''} onChange={e => set('surface', e.target.value)} />
+        </div>
+        <div>
+          <label className={styles.lbl}>Séjour m²</label>
+          <input className={styles.inp} type="number" value={bienForm.surface_sejour||''} onChange={e => set('surface_sejour', e.target.value)} placeholder="pièce de vie" />
         </div>
         <div>
           <label className={styles.lbl}>Pièces</label>
@@ -597,7 +607,7 @@ function BienFormFields({ bienForm, setBienForm, prixAcq, styles }: { bienForm: 
             <option value="À rénover">À rénover</option>
           </select>
         </div>
-        <div className="fc-cache-mobile" style={{ gridColumn: '3/5' }}>
+        <div className="fc-cache-mobile" style={{ gridColumn: '4/5' }}>
           <label className={styles.lbl} style={{ visibility: 'hidden' }}>spacer</label>
           <div style={{ height: 38 }} />
         </div>
@@ -1345,6 +1355,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   const [avisAnnonce, setAvisAnnonce] = useState('');
   const [lectureRatee, setLectureRatee] = useState(false);
   const [versionVeille, setVersionVeille] = useState(0);
+  /* V3.186 : la fiche d'une annonce du client vient d'être enregistrée :
+     l'onglet Veille l'analyse par rapport à sa recherche, comme la veille. */
+  const [demandeAnalyse, setDemandeAnalyse] = useState<{ id: string; n: number } | null>(null);
   const [txData, setTxData] = useState<any>({});
   /* L'étape qu'on REGARDE — pas forcément celle où on en est : le rail permet
      de revenir voir ce qu'on a saisi à l'offre sans défaire quoi que ce soit. */
@@ -2817,6 +2830,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       }
       setSaving(false); fermerAjoutBien();
       setVersionVeille(v => v + 1);
+      setDemandeAnalyse({ id: aRemplir.id, n: Date.now() });
       return;
     }
     const { data: bienInsere, error: erreurBien } = await supabase.from('biens').insert({
@@ -5408,6 +5422,7 @@ ${signatureMail()}`,
               prenom={client.prenom}
               onRemplir={remplirDepuisAnnonce}
               rafraichir={versionVeille}
+              analyser={demandeAnalyse}
             />
           </div>
         )}
@@ -5961,7 +5976,7 @@ ${signatureMail()}`,
                       <span style={{ fontSize: 12, color: '#94a3b8' }}>{'Ses photos : gardées pour la fiche si l’annonce n’en donne pas.'}</span>
                     </div>
                   )}
-                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>{'Enregistrée, la fiche reste dans Veille, avec son annonce : tu choisis ensuite « Retenir » (elle part en Sélection) ou « Écarter ».'}</div>
+                  <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>{'Enregistrée, la fiche reste dans Veille, avec son annonce, et elle y est analysée par rapport à sa recherche, comme la veille : la note, l’avis, les atouts, ce qu’il faut vérifier. Tu choisis ensuite « Retenir » (elle part en Sélection) ou « Écarter ».'}</div>
                   <label className={styles.lbl} style={{ marginTop: 2 }}>{'Ton avis pour lui '}<span style={{ fontWeight: 400, color: '#94a3b8' }}>{'(facultatif — il le lira avec le bien, dans « Ça me plaît »)'}</span></label>
                   <textarea className={styles.inp} rows={2} value={avisAnnonce} onChange={e => setAvisAnnonce(e.target.value)} maxLength={600}
                     placeholder="Ex. : très bon choix. Toujours disponible, toiture refaite en 2021, le vendeur a déjà baissé une fois." style={{ fontFamily: 'inherit', fontSize: 13 }} />
