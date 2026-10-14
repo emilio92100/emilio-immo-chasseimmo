@@ -142,7 +142,9 @@ export type EtatSuivi = { k: string; l: string; c: string; bg: string };
 /** Où l'on en est : l'étiquette du bloc. */
 export function etatSuivi(lignes: LigneSuivi[], visite: VisiteCalee | undefined, veutVisiter: boolean): EtatSuivi {
   if (visite) {
-    const [y, m, j] = visite.date_visite.split('-').map(Number);
+    /* V3.187 : la base rend la date avec l'heure (« 2026-10-15T00:00:00+00:00 ») :
+       sans le slice, le jour valait NaN (« Visite calée le jeu. NaN oct. »). */
+    const [y, m, j] = String(visite.date_visite).slice(0, 10).split('-').map(Number);
     const d = new Date(y, (m || 1) - 1, j || 1);
     const h = visite.heure ? ` à ${heureCourte(String(visite.heure).slice(0, 5))}` : '';
     return { k: 'calee', l: `Visite calée le ${JOURS_C[d.getDay()].toLowerCase()} ${j} ${MOIS_C[(m || 1) - 1]}${h}`, c: '#0E6B43', bg: '#E7F6EE' };
