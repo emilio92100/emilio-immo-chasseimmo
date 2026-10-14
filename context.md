@@ -1515,6 +1515,54 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.190 — 14 octobre 2026 · L'offre d'achat sur un bien de son mandat, le même circuit
+
+- Alexandre : « même si c'est un mandat que j'ai, et que le bien est présenté, et qu'ensuite visite,
+  et ensuite qu'il se fait une offre, que moi, de mon côté, j'ai le même visuel. Tu peux reprendre
+  les éléments qu'il y a dans le bien ». **Pas de SQL.** La limite de la V3.189 (« un bien de
+  l'agence garde son offre par Alexandre ») tombe.
+- **L'offre** (`src/lib/offre-agence.ts`, `champsOffreAgence`) reprend de la fiche du bien en vente :
+  le vendeur (`nomProprioActe`), l'adresse, le prix affiché, `bienVenteId`, **aucun honoraire de
+  recherche** (`honoMode: 'aucun'` : le prix tapé est ce qu'il paie). Le prix s'entend toujours
+  « honoraires compris » (`forme: 'fai'` — une offre « net vendeur » sur un mandat payé par le
+  vendeur était fausse) ; payés par l'acquéreur, `honoVente` garde la règle du mandat et l'éditeur
+  recalcule `honoVendeur` à chaque prix (`avecHonoVente` dans `deduire`) : le PDF dit le net vendeur
+  juste. Les mêmes champs depuis l'espace, « Nouveau document » (un bien du client qui est un bien de
+  l'agence) et « Préparer une offre » de la fiche du bien (`creerDocument`).
+- **Espace** : « Faire une offre » sur un bien de l'agence visité, en vente ou déjà sous offre.
+  Bloqué seulement si Alexandre a déjà noté une offre de lui sur la fiche du bien, encore ouverte
+  ou acceptée (`ko('en_cours' | 'acceptee')`, et `peutOffrir`). Les mots changent : son conseiller
+  **présente** l'offre au vendeur (il ne la « défend » pas : c'est le mandataire du vendeur) ;
+  l'aide de la proposition du vendeur ne parle plus de « nos honoraires en plus » quand rien ne
+  s'ajoute (`aideContre`, aussi juste pour l'inter-cabinet). Une contre-proposition notée par
+  Alexandre sur une offre faite avec lui dit « Réponse du vendeur » (elle disait « Offre envoyée »).
+- **Signée** (`offreSigneeParTous` → `relierOffreAgence`, `src/lib/offres-serveur.ts`) : elle
+  **rejoint les offres de la fiche du bien** comme « Une offre est arrivée » — la ligne
+  `biens_vente_suivi` (en attente ; après une contre-proposition ou un refus, la **même** ligne, une
+  proposition de plus dans ses échanges), la relance « réponse à donner » du propriétaire (tout de
+  suite quand il accepte la contre-proposition : « note l'accord sur la fiche du bien »), le bien
+  « Sous offre », une ligne au Suivi du vendeur et de l'acquéreur. L'offre garde `lienAgence`
+  (la ligne, sa place dans les échanges, `doc` = son propre id) ; la ligne garde `documentId`. Pas
+  de relance « à envoyer ». Rejouable ; si l'ajout rate, « Offre signée, à envoyer » le dit et
+  « Son offre » propose « L'ajouter aux offres du bien » (action `offre_agence`).
+- **La réponse du vendeur se note sur la fiche du bien**, comme avant, et **se lit** de la ligne
+  (`avecAgence` / `appliquerLignes`, `src/lib/offres.ts`) — jamais recopiée : en attente,
+  sa dernière contre-proposition, acceptée (au prix convenu), refusée, retirée ; une ligne supprimée
+  ferme l'offre. Lu partout : l'espace (`offresPourEspace`), la route de l'espace et les gardes du
+  CRM (`lireFilVue`, `lireOffreVue`), « Son offre » (`useOffres`). Une offre remplacée garde dans
+  son suivi ce que la ligne lui avait répondu (`figerOffreDAvant`, `suivi.avant`). `reponseOffre`
+  (FicheBien), et les offres refusées ou retirées par un compromis (`suiteEspace`), appellent
+  `reponse_agence` (`reponseAgence`) : **un seul mail** au client par réponse (`suivi.aviseAgence`),
+  ses relances suivent, le bien redevient « Visité » sans accord. « Réponse du vendeur » du CRM est
+  refusée sur ces offres ; « Sans suite » (le client ou Alexandre) passe la ligne « retirée »
+  (renonce après une contre-proposition) et le dit au Suivi du vendeur.
+- **CRM — « Son offre »** : le même bloc, `etatCrmDe` (« Chez le vendeur », « Signée, à ajouter au
+  bien »), les montants de son mandat (son offre, net vendeur, tes honoraires du mandat), « Répondre
+  sur la fiche du bien » / « Fiche du bien » (`onBienVente` jusqu'à la page Biens), son propre
+  « Comment ça marche ». Acceptée : la suite se gère sur la fiche du bien (pas de transaction côté
+  chasse). Correction au passage : une offre préparée depuis la fiche du bien et signée en ligne
+  posait à tort « Offre signée, à envoyer — un bien ».
+
 ### V3.189 — 14 octobre 2026 · L'offre d'achat de bout en bout : depuis son espace, suivie dans le CRM
 
 - Alexandre : « il faut vraiment que ça soit fluide pour l'acheteur, qu'il puisse tout faire depuis

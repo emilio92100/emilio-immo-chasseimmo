@@ -166,9 +166,11 @@ interface Props {
   /** V3.189 : « Son offre » sous chaque bien présenté — où ouvrir l'offre, et la transaction. */
   onDocument?: (id: string, o?: { editer?: boolean }) => void;
   onTransaction?: () => void;
+  /** V3.190 : la fiche d'un bien de son mandat (la réponse du vendeur s'y note). */
+  onBienVente?: (bienVenteId: string) => void;
 }
 
-export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, onDocument, onTransaction }: Props) {
+export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, onDocument, onTransaction, onBienVente }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [obs, setObs] = useState<any>(null);
@@ -287,7 +289,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     if (!fil.length) return null;
     return (
       <SonOffre fil={fil} bienId={b.id} client={{ id: clientId, prenom: client?.prenom, civilite: client?.civilite, couple: client?.couple }} seul={seul}
-        onChange={() => { offres.recharger(); recharge(); }} onDocument={onDocument} onTransaction={onTransaction} />
+        onChange={() => { offres.recharger(); recharge(); }} onDocument={onDocument} onTransaction={onTransaction} onBien={onBienVente} />
     );
   };
 

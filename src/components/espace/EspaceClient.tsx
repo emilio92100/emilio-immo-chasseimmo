@@ -107,6 +107,8 @@ function etatOffre(b: Bien): { etiq: string; ton: string; ligne: string; fini?: 
   if (!o && b.avis !== 'offre_faite') return null;
   const st = o?.statut || 'en_attente';
   if (st === 'acceptee') return { etiq: 'Offre acceptée', ton: 'fait', ligne: 'Le vendeur a accepté votre offre. Prochaine étape : le compromis chez le notaire ; votre conseiller organise la suite avec vous.' };
+  /* V3.190 : une contre-proposition notée par son conseiller (offre faite avec lui, hors de son espace). */
+  if (st === 'contre') return { etiq: 'Réponse du vendeur', ton: 'visite', ligne: 'Le vendeur a répondu à votre offre par une proposition. Votre conseiller en parle avec vous.' };
   if (st === 'refusee') return { etiq: 'Offre non retenue', ton: 'non', fini: true, ligne: 'Le vendeur n’a pas retenu votre offre. Votre conseiller en parle avec vous.' };
   if (st === 'retiree') return o?.tombe
     ? { etiq: 'Vente non conclue', ton: 'non', fini: true, ligne: 'La vente ne s’est finalement pas faite. Votre conseiller fait le point avec vous.' }
@@ -1665,20 +1667,25 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   }
 
   /* ── Son offre, depuis son espace (V3.189) ──
-     Sur un bien qu'il a visité, pas un bien de l'agence (son offre passe par
-     son conseiller, V3.50), toujours disponible, et sans offre qui court. */
+     Sur un bien qu'il a visité, toujours disponible, et sans offre qui court.
+     V3.190 : un bien de l'agence aussi (Alexandre : « même si c'est mon
+     mandat… le même visuel ») — sauf quand son conseiller a déjà noté une
+     offre de lui sur la fiche du bien, encore en cours ou acceptée. */
   const visiteFaitePour = (b: Bien) => !!b.visiteFaite || mesV.some(v => v.bienId === b.id && v.passee);
   function peutOffrir(b: Bien): boolean {
-    if (b.agence || indispo(b) || b.vente || !visiteFaitePour(b)) return false;
+    if (indispo(b) || b.vente || !visiteFaitePour(b)) return false;
     const o = b.offreSuivi;
-    if (!o) return b.avis !== 'offre_faite';
+    if (!o) {
+      if (b.agence && b.offre) return b.offre.statut === 'refusee' || b.offre.statut === 'retiree';
+      return b.avis !== 'offre_faite';
+    }
     return FINIES.includes(o.etat) && !o.enPreparation;
   }
   const bienOffre = (b: Bien): BienOffre => ({
     id: b.id,
     titre: b.titre || [b.pieces ? `${b.pieces} pièces` : '', b.ville || b.secteur].filter(Boolean).join(' · ') || 'Le bien',
     meta: [b.pieces ? `${b.pieces} pièces` : '', b.surface ? `${b.surface} m²` : '', b.ville || b.secteur].filter(Boolean).join(' · '),
-    photo: (b.photos || [])[0] || null, prix: b.prix, honoOffre: b.honoOffre || { mode: 'aucun', val: 0 },
+    photo: (b.photos || [])[0] || null, prix: b.prix, honoOffre: b.honoOffre || { mode: 'aucun', val: 0 }, agence: !!b.agence,
   });
   /* Les offres rendues par le serveur : la carte de chaque bien se met à jour. */
   function majOffres(offres: Record<string, OffreEspace>) {

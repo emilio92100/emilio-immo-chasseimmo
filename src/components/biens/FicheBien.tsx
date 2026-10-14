@@ -29,7 +29,7 @@ import {
   donneesHono, donneesNotaires, aDesNotaires, notaireAJour, ouvrirPiece, supprimerBien, triBien, supprimerSuivi,
   type Acheteur, type ClientMini, type Copie, type DetailBien, type DocLie, type ListeBiens, type NotaireChoisi, type PourDocument, type VisiteRow,
 } from './outils';
-import { exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
+import { avertirAcheteurOffre, exemplaireManquant, lienFichier, nomFichier, type DocumentRow } from '@/components/documents/outils';
 import FenetreSigne from '@/components/documents/FenetreSigne';
 import SuiviSignature, { lireSuivis, type Suivi } from '@/components/documents/SuiviSignature';
 import { DocsParEtat, depuisDoc } from '@/components/documents/DocumentsDuClient';
@@ -1320,7 +1320,20 @@ export default function FicheBien({ bien: depart, liste, onRetour, retourLib = '
     if (r.k === 'accepte') await noterOffreAcceptee(bien, maj);
     else if (r.k === 'rouvrir') { if (o.statut === 'acceptee') await noterAcceptationAnnulee(bien, maj); }
     else await noterNegociation(bien, o, r);
+    /* V3.190 — Une offre faite depuis l'espace de l'acheteur : il en est
+       prévenu (un mail par réponse) et son espace suit (src/lib/offres-serveur.ts,
+       reponseAgence). Jamais bloquant : la réponse est notée. */
+    let dit: string | null = null;
+    if (r.k !== 'rouvrir' && r.k !== 'propose' && typeof o.donnees?.documentId === 'string' && o.donnees.documentId) {
+      try {
+        const x = await avertirAcheteurOffre(o.id);
+        const fem = o.client_id && liste.clients[o.client_id]?.civilite === 'Madame' ? 'e' : '';
+        if (x.mail) dit = `${o.qui || 'L’acheteur'} est prévenu${fem} par e-mail, et son espace est à jour.`;
+        if (x.avertissements.length) dit = `${dit ? `${dit} ` : ''}⚠️ ${x.avertissements.join(' · ')}`;
+      } catch (e) { dit = `⚠️ La réponse est notée, mais ${o.qui || 'l’acheteur'} n’a pas été prévenu : ${(e as Error).message}`; }
+    }
     await apres();
+    if (dit) setMessage({ t: dit, ok: !dit.includes('⚠️') });
   }
   /* V3.172 : les honoraires d'une offre déjà acceptée, corrigés depuis sa carte. */
   async function corrigerAccord(o: SuiviVente, x: AccordOffre) {

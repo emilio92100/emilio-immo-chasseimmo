@@ -213,7 +213,22 @@ function depuisPrix(d: Donnees, prix: number | null): Donnees {
    demandé » met le prix de l'annonce. Une offre d'avant n'avait que son
    prix : son total s'en déduit à l'ouverture. Vider une case vide l'autre
    (sinon le champ se remplirait tout seul pendant qu'on tape). */
+/* V3.190 — Un bien de son mandat (`honoVente`, src/lib/offre-agence.ts) :
+   ses honoraires du mandat de vente, quand l'acquéreur les paie, suivent le
+   prix offert (« soit un prix net revenant au vendeur de… »). */
+function avecHonoVente(d: Donnees): Donnees {
+  const hv = d.honoVente && typeof d.honoVente === 'object' ? d.honoVente as Record<string, unknown> : null;
+  if (!hv) return d;
+  const prix = num(d, 'prix');
+  const forfait = typeof hv.forfait === 'number' && hv.forfait > 0 ? hv.forfait : null;
+  const taux = typeof hv.taux === 'number' && hv.taux > 0 ? hv.taux : null;
+  const h = !prix ? null : forfait !== null ? forfait : taux !== null ? Math.round(prix - prix / (1 + taux / 100)) : null;
+  return h === num(d, 'honoVendeur') ? d : { ...d, honoVendeur: h };
+}
 function deduire(d0: Donnees, cle: string): Donnees {
+  return avecHonoVente(deduirePrix(d0, cle));
+}
+function deduirePrix(d0: Donnees, cle: string): Donnees {
   /* Une offre d'avant la V3.145 : ses honoraires étaient un montant
      (`honoRecherche`) ; ils deviennent un forfait, ou rien. */
   const d: Donnees = d0.honoMode ? d0 : { ...d0, honoMode: num(d0, 'honoRecherche') ? 'forfait' : 'aucun', honoForfait: num(d0, 'honoRecherche') || null };
@@ -262,6 +277,11 @@ function depasseMandat(d: Donnees): string | null {
 export function noteOffre(d: Donnees): string | null {
   const prix = num(d, 'prix');
   if (!prix) return null;
+  /* V3.190 : un bien de ton mandat — tes honoraires sont ceux du mandat de vente. */
+  if (txt(d, 'bienVenteId')) {
+    const hv = num(d, 'honoVendeur');
+    return `Son offre : ${euros(prix)} · bien de ton mandat${hv ? ` (tes honoraires : ${euros(hv)})` : ''}`;
+  }
   const h = honorairesOffre(d);
   return h > 0
     ? `Son offre : ${euros(prix + h)} frais d’agence compris · proposé au vendeur : ${euros(prix)} · tes honoraires : ${euros(h)}`

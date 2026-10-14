@@ -39,6 +39,8 @@ export type BienOffre = {
   /** Le prix affiché (celui de l'annonce, pour le vendeur). */
   prix: number | null;
   honoOffre: HonoOffre;
+  /** V3.190 : un bien que son conseiller vend lui-même (il présente l'offre au vendeur). */
+  agence?: boolean;
 };
 /** `depuis` : l'offre du fil qu'elle suit. `contre` : la proposition du
     vendeur (une autre offre ou son acceptation ne passent pas par la relecture).
@@ -142,6 +144,18 @@ const motHono = (h: HonoOffre) => (h.mode === 'taux'
   ? `${String(h.val).replace('.', ',')} % du prix proposé au vendeur`
   : h.mode === 'forfait' ? `un forfait de ${EUR(h.val)}` : '');
 export const AIDE_CONTRE = 'C’est le prix que demande le vendeur (les honoraires de son agence compris, s’il en a une), plus nos honoraires, comptés une seule fois sur ce prix. Rien d’autre ne s’ajoute, hors frais de notaire.';
+/* V3.190 : sans honoraires qui s'ajoutent (un bien de l'agence, ou partagés
+   avec l'agence du vendeur), « plus nos honoraires » serait faux. */
+export function aideContre(agence: boolean, avecHono: boolean): string {
+  if (avecHono) return AIDE_CONTRE;
+  return agence
+    ? 'C’est le prix que demande le vendeur. Les honoraires de l’agence y sont déjà compris : rien d’autre ne s’ajoute, hors frais de notaire.'
+    : 'C’est le prix que demande le vendeur, les honoraires de son agence compris s’il en a une. Rien d’autre ne s’ajoute, hors frais de notaire.';
+}
+/* V3.190 : sur un bien qu'il vend lui-même, son conseiller présente l'offre au vendeur. */
+const RASSURE = (agence: boolean) => (agence
+  ? 'Votre conseiller présente votre offre au vendeur, et vous prévient dès sa réponse.'
+  : 'Votre conseiller défend votre offre auprès du vendeur, et vous prévient dès sa réponse.');
 
 /* ═══ La saisie d'un acquéreur (au niveau du module : AGENTS.md §2.4) ═══ */
 function FormAcq({ p, i, err, emailFige, meme, onP, onMeme, onFermer, onRetirer }: {
@@ -407,7 +421,7 @@ export default function FaireOffre({ bien, mode = {}, identite, saisie, apportDo
             : fait.force
               ? `Alexandre relit votre offre de ${EUR(total)} et finalise votre dossier avec vous. Il vous l’envoie ensuite pour signature : vous recevrez un e-mail.`
               : `Alexandre relit votre offre de ${EUR(total)}. Il vous l’envoie ensuite pour signature : vous recevrez un e-mail, et elle vous attendra dans votre espace.`}</p>
-          <div className="ofr-rassure"><Ic n="bouclier" t={18} /><span>{'Il défend ensuite votre offre auprès du vendeur, et vous prévient dès sa réponse.'}</span></div>
+          <div className="ofr-rassure"><Ic n="bouclier" t={18} /><span>{bien.agence ? 'Il la présente ensuite au vendeur, et vous prévient dès sa réponse.' : 'Il défend ensuite votre offre auprès du vendeur, et vous prévient dès sa réponse.'}</span></div>
           <button type="button" className="btn or mdt-plein" onClick={onFermer}>Revenir à mon espace</button>
         </div>
       </div>
@@ -426,7 +440,7 @@ export default function FaireOffre({ bien, mode = {}, identite, saisie, apportDo
             <>
               <h3>La proposition du vendeur</h3>
               <div className="mdt-total">
-                <div className="t"><Explique titre="La proposition du vendeur" texte={AIDE_CONTRE}>{'Le vendeur propose, frais d’agence compris'}</Explique></div>
+                <div className="t"><Explique titre="La proposition du vendeur" texte={aideContre(!!bien.agence, calc.hono > 0)}>{'Le vendeur propose, frais d’agence compris'}</Explique></div>
                 <div className="v">{EUR(contre.total)}</div>
                 <div className="d">{calc.hono > 0
                   ? `dont ${EUR(contre.prix)} pour le vendeur et ${EUR(calc.hono)} de nos honoraires · hors frais de notaire`
@@ -463,7 +477,8 @@ export default function FaireOffre({ bien, mode = {}, identite, saisie, apportDo
               ) : null}
               <div className="ofr-calc" id="ofr-calc" aria-live="polite" data-vide={total >= 10_000 ? undefined : '1'}>
                 <LigneCalc l="Proposé au vendeur" v={total >= 10_000 ? EUR(calc.prix) : '—'}
-                  aide={`C’est le prix écrit sur votre offre, celui que le vendeur lit. Il comprend déjà les honoraires de son agence, s’il en a une.${h.mode !== 'aucun' ? ' Il est arrondi au millier au-dessus, pour un chiffre rond.' : ''}`} />
+                  aide={bien.agence ? 'C’est le prix écrit sur votre offre, celui que le vendeur lit. Les honoraires de l’agence y sont déjà compris.'
+                    : `C’est le prix écrit sur votre offre, celui que le vendeur lit. Il comprend déjà les honoraires de son agence, s’il en a une.${h.mode !== 'aucun' ? ' Il est arrondi au millier au-dessus, pour un chiffre rond.' : ''}`} />
                 {h.mode !== 'aucun' && (
                   <LigneCalc l="Nos honoraires" v={total >= 10_000 ? EUR(calc.hono) : '—'}
                     aide={`Ceux de votre conseiller sur ce bien : ${motHono(h)}, comptés une seule fois. Avec l’arrondi du prix au millier, ils sont un peu en dessous, jamais au-dessus. Ils ne figurent pas sur l’offre que lit le vendeur.`} />
@@ -472,7 +487,7 @@ export default function FaireOffre({ bien, mode = {}, identite, saisie, apportDo
                   aide="C’est exactement le montant que vous avez indiqué. Seuls les frais de notaire s’y ajouteront, comme pour tout achat." />
                 {total >= 10_000 && gain ? <div className={'ofr-gain' + (gain.gain ? '' : ' neutre')}>{gain.gain && <Ic n="check" t={14} />}<span>{gain.t}</span></div> : null}
               </div>
-              <div className="ofr-rassure"><Ic n="bouclier" t={18} /><span>{'Votre conseiller défend votre offre auprès du vendeur, pour l’obtenir au meilleur prix, et vous prévient dès sa réponse.'}</span></div>
+              <div className="ofr-rassure"><Ic n="bouclier" t={18} /><span>{bien.agence ? RASSURE(true) : 'Votre conseiller défend votre offre auprès du vendeur, pour l’obtenir au meilleur prix, et vous prévient dès sa réponse.'}</span></div>
               <button type="button" className="btn or mdt-plein" onClick={suitePrix}>Continuer</button>
             </>
           )}
@@ -746,7 +761,7 @@ export function CarteOffre({ o, indispo = false, historique: histOuvert = false,
       ) : contreActive && o.contre ? (
         <>
           <div className="ofr-contre">
-            <div className="t"><Explique titre="La proposition du vendeur" texte={AIDE_CONTRE}>{'Le vendeur propose, frais d’agence compris'}</Explique></div>
+            <div className="t"><Explique titre="La proposition du vendeur" texte={aideContre(o.agence, o.contre.total > o.contre.prix)}>{'Le vendeur propose, frais d’agence compris'}</Explique></div>
             <div className="v tab">{EUR(o.contre.total)}</div>
             <div className="d">{[plusQue > 0 ? `soit ${EUR(plusQue)} de plus que votre offre` : '', o.contre.limite ? `${o.contre.depassee ? 'proposition expirée le' : 'valable jusqu’au'} ${jourCourt(o.contre.limite)}` : ''].filter(Boolean).join(' · ')}</div>
           </div>
@@ -756,7 +771,7 @@ export function CarteOffre({ o, indispo = false, historique: histOuvert = false,
         <p className="ofr-c-p">{phraseOffre(o)}</p>
       )}
 
-      {o.etat === 'envoyee' && <div className="ofr-rassure serre"><Ic n="bouclier" t={16} /><span>{'Votre conseiller défend votre offre auprès du vendeur, et vous prévient dès sa réponse.'}</span></div>}
+      {o.etat === 'envoyee' && <div className="ofr-rassure serre"><Ic n="bouclier" t={16} /><span>{RASSURE(o.agence)}</span></div>}
       {o.etat === 'en_signature' && o.fin && <p className="ofr-c-s">{`Valable jusqu’au ${jourCourt(o.fin)}${heureDe(o.fin) ? ` à ${heureDe(o.fin)}` : ''}`}</p>}
 
       {/* Le geste du moment */}

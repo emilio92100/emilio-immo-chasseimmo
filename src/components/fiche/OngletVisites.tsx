@@ -11,7 +11,7 @@ import { ChoixJour } from '@/components/pages/PageAgenda';
 import FenetreBien, { BoutonPied, Ressort } from './FenetreBien';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import SonOffre from './SonOffre';
-import { etatDeOffre, offreCourante, ETATS_CRM, type DocOffre } from '@/lib/offres';
+import { etatDeOffre, offreCourante, etatCrmDe, type DocOffre } from '@/lib/offres';
 import type { DocumentRow } from '@/components/documents/outils';
 import s from './OngletVisites.module.css';
 
@@ -88,7 +88,7 @@ const IC_ISSUE: Record<Issue, ReactNode> = { offre: IC.euro, revoir: IC.oeil, re
 
 const TON_OFFRE: Record<string, string> = { or: '#c2410c', bleu: '#22497c', vert: '#15803d', rouge: '#b91c1c', violet: '#5B21B6', gris: '#64748b' };
 
-export default function OngletVisites({ visites, biens, prenom, civilite, couple, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat, onDeuxieme, onFiche, recherche, clientId, offres, onDocument, onTransaction }: {
+export default function OngletVisites({ visites, biens, prenom, civilite, couple, masques, rechercheId, onCompteRendu, onAnnuler, onRecharger, onMasques, onOrganiser, onBon, bonEnCours, bonEtat, onDeuxieme, onFiche, recherche, clientId, offres, onDocument, onTransaction, onBienVente }: {
   visites: any[]; biens: any[]; prenom: string; masques: string[]; rechercheId: string;
   /* V3.169 : pour accorder « Elle y pense », « Pas pour lui »… */
   civilite?: string | null; couple?: boolean;
@@ -111,6 +111,8 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
   offres?: { fil: (bienId: string) => DocumentRow[]; recharger: () => void };
   onDocument?: (id: string, o?: { editer?: boolean }) => void;
   onTransaction?: () => void;
+  /* V3.190 : la fiche d'un bien de son mandat (la réponse du vendeur s'y note). */
+  onBienVente?: (bienVenteId: string) => void;
 }) {
   const [choisi, setChoisi] = useState<Filtre | null>(null);
   const [deplace, setDeplace] = useState<string | null>(null);
@@ -238,7 +240,7 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
     /* L'étiquette posée sur la photo. V3.189 : une offre dit où elle en est. */
     const fil = genre === 'venir' ? [] : filDe(v);
     const courante = fil.length ? offreCourante(fil as unknown as DocOffre[]) : null;
-    const etatO = courante ? ETATS_CRM[etatDeOffre(courante)] : null;
+    const etatO = courante ? etatCrmDe(courante.donnees, etatDeOffre(courante)) : null;
     const etiquette = genre === 'afaire'
       ? { t: 'Compte rendu à faire', c: '#d97706', ic: IC.plume }
       : etatO ? { t: etatO.l, c: TON_OFFRE[etatO.ton], ic: IC.euro }
@@ -350,7 +352,7 @@ export default function OngletVisites({ visites, biens, prenom, civilite, couple
             {fil.length > 0 && offres && onDocument && clientId && (
               <div className={s.offre}>
                 <SonOffre fil={fil} bienId={v.bien_id} client={{ id: clientId, prenom, civilite, couple }}
-                  onChange={() => { offres.recharger(); onRecharger(); }} onDocument={onDocument} onTransaction={onTransaction} />
+                  onChange={() => { offres.recharger(); onRecharger(); }} onDocument={onDocument} onTransaction={onTransaction} onBien={onBienVente} />
               </div>
             )}
           </div>

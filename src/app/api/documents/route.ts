@@ -9,8 +9,10 @@ import { CLES_MAIL, conseillerDe, personnaliser } from '@/lib/mail-variables';
 import { enveloppeMail } from '@/lib/mail-charte';
 import { avecRemises } from '@/lib/remise-mail';
 import { ALERTES } from '@/lib/mandat-serveur';
-import { lireOffre, noterReponse, fermerSansSuite, offreEnvoyee, offreSigneeParTous } from '@/lib/offres-serveur';
-import { etatDeOffre, lireSuivi } from '@/lib/offres';
+import {
+  lireOffre, lireOffreVue, noterReponse, fermerSansSuite, offreEnvoyee, offreSigneeParTous, relierOffreAgence, reponseAgence,
+} from '@/lib/offres-serveur';
+import { etatDeOffre, lireSuivi, estAgence, lienAgence } from '@/lib/offres';
 
 /**
  * Les fichiers des documents juridiques (Documents juridiques, dans le CRM).
@@ -40,6 +42,10 @@ import { etatDeOffre, lireSuivi } from '@/lib/offres';
  *   POST { action: 'sans_suite', id }   (V3.189)  l'offre se ferme, rien ne part au client
  *   POST { action: 'offre_signee', id }   (V3.189)  une offre signée à la main (FenetreSigne) :
  *        la même suite qu'une signature en ligne (relance « à envoyer », bien « Offre faite »)
+ *   POST { action: 'offre_agence', id }   (V3.190)  une offre signée sur un bien de l'agence,
+ *        ajoutée aux offres de la fiche du bien (quand l'ajout automatique a raté)
+ *   POST { action: 'reponse_agence', suivi }   (V3.190)  la réponse du vendeur, notée sur la
+ *        fiche du bien, à une offre faite depuis un espace : le client reçoit UN mail
  *
  * Tout vit sous documents/<id du document>/ : la route refuse le reste.
  *
@@ -354,16 +360,39 @@ async function traiterPost(req: NextRequest) {
       return NextResponse.json({ ok: true, avertissements: pb ? [pb] : [] });
     }
 
-    /* ── La réponse du vendeur (V3.189) ── */
-    if (action === 'reponse' || action === 'sans_suite') {
+    /* ── Un bien de l'agence (V3.190) ── */
+    if (action === 'offre_agence') {
       const id = String(body.id || '');
       if (!UUID.test(id)) return ko('Document inconnu');
       const doc = await lireOffre(sb, id);
       if (!doc) return ko('Offre introuvable', 404);
+      if (doc.statut !== 'signe') return ko('L’offre n’est pas signée.', 409);
+      if (!estAgence(doc.donnees) || !doc.bien_id) return ko('Cette offre ne porte pas sur un bien de l’agence.', 409);
+      if (lienAgence(doc)) return NextResponse.json({ ok: true, avertissements: [] });
+      const r = await relierOffreAgence(sb, { id: doc.id, donnees: doc.donnees, client_id: doc.client_id || null, recherche_id: doc.recherche_id || null, bien_id: doc.bien_id || null });
+      if (!r.relie) return ko(`Pas ajoutée : ${r.pb || 'erreur inconnue'}`, 500);
+      return NextResponse.json({ ok: true, avertissements: r.pb ? [r.pb] : [] });
+    }
+    if (action === 'reponse_agence') {
+      const suivi = String(body.suivi || '');
+      if (!UUID.test(suivi)) return ko('Offre inconnue');
+      const r = await reponseAgence(sb, suivi);
+      return NextResponse.json({ ok: true, mail: r.mail, avertissements: r.avertissements });
+    }
+
+    /* ── La réponse du vendeur (V3.189) ── */
+    if (action === 'reponse' || action === 'sans_suite') {
+      const id = String(body.id || '');
+      if (!UUID.test(id)) return ko('Document inconnu');
+      /* V3.190 : lue avec la fiche du bien (un bien de l'agence). */
+      const doc = await lireOffreVue(sb, id);
+      if (!doc) return ko('Offre introuvable', 404);
       const etat = etatDeOffre(doc);
+      const agence = estAgence(doc.donnees);
       if (etat === 'remplacee' || etat === 'annulee') return ko('Cette offre a été remplacée par une plus récente : réponds sur celle-ci.', 409);
+      if (action === 'reponse' && agence) return ko('Sur un bien de ton mandat, la réponse du vendeur se note sur la fiche du bien : l’acheteur est prévenu de la même façon.', 409);
       if (action === 'sans_suite') {
-        if (lireSuivi(doc.donnees).reponse?.statut === 'acceptee') return ko('Cette offre est acceptée : pour l’arrêter, passe par l’onglet Transaction.', 409);
+        if (lireSuivi(doc.donnees).reponse?.statut === 'acceptee') return ko(agence ? 'Cette offre est acceptée : pour l’arrêter, passe par la fiche du bien.' : 'Cette offre est acceptée : pour l’arrêter, passe par l’onglet Transaction.', 409);
         if (doc.statut === 'pret' && doc.signature) return ko('Cette offre est en signature : arrête d’abord sa signature dans Documents, puis note-la sans suite.', 409);
         const pb = await fermerSansSuite(sb, doc, 'conseiller');
         if (pb) return ko(`Pas enregistré : ${pb}`, 500);

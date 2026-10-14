@@ -8,8 +8,9 @@ import { lireIdentiteAgence } from '@/lib/agence';
 import { visitePasseeParis } from '@/lib/visites';
 import { lancerSignature, type DocSigne } from '@/lib/signature-documents';
 import {
-  lireFil, lireOffre, offresPourEspace, offrePartieEnSignature, alerteOffreARelire, fermerSansSuite, solderRelancesOffre,
+  lireFilVue, lireOffreVue, offresPourEspace, offrePartieEnSignature, alerteOffreARelire, fermerSansSuite, solderRelancesOffre,
 } from '@/lib/offres-serveur';
+import { champsOffreAgence, honoVendeurAuPrix, type VentePourOffre } from '@/lib/offre-agence';
 import { etatDeOffre, offreCourante, lireSuivi, totalOffre, contreDepassee, brouillonCrmVivant, visiblePourClient, ENCOURS, FINIES, TETES_OFFRE, type DocOffre } from '@/lib/offres';
 
 /**
@@ -31,6 +32,11 @@ import { etatDeOffre, offreCourante, lireSuivi, totalOffre, contreDepassee, brou
  *        offre refusée ou arrivée à échéance). `accepter` : il accepte la
  *        contre-proposition — le prix est celui du vendeur, il signe (pas de
  *        relecture : Alexandre l'a dit).
+ *        V3.190 : aussi sur un bien de l'agence (un mandat de vente
+ *        d'Alexandre) — le vendeur, le prix et l'adresse viennent de la fiche
+ *        du bien en vente, sans honoraires de recherche (champsOffreAgence) ;
+ *        signée, elle rejoint les offres de la fiche du bien
+ *        (relierOffreAgence), où Alexandre note la réponse du vendeur.
  *   POST /api/espace/offre { token, action: 'sans_suite', id }
  *        il ne donne pas suite (une contre-proposition, une offre refusée ou
  *        arrivée à échéance), ou il retire celle qu'il avait confiée à son
@@ -85,7 +91,7 @@ export async function POST(req: NextRequest) {
     if (action === 'sans_suite') {
       const id = String(body.id || '');
       if (!/^[0-9a-f-]{36}$/i.test(id)) return ko('offre');
-      const doc = await lireOffre(sb, id);
+      const doc = await lireOffreVue(sb, id);
       if (!doc || !(await aLui(doc))) return ko('offre', 404);
       const etat = etatDeOffre(doc);
       if (etat !== 'contre' && etat !== 'a_relire' && !FINIES.includes(etat)) return ko('etat', 409, { etat });
@@ -102,9 +108,15 @@ export async function POST(req: NextRequest) {
     const bienId = String(body.bien_id || '');
     const { data: bien } = await sb.from('biens').select('*').eq('id', bienId).eq('recherche_id', recherche.id).maybeSingle();
     if (!bien) return ko('bien inconnu', 404);
-    /* Un bien de l'agence : son offre se suit sur la fiche du bien (V3.50) —
-       elle passe par son conseiller, comme avant. */
-    if (bien.bien_vente_id) return ko('agence', 409);
+    /* V3.190 — Un bien de l'agence : son offre se fait ici aussi (Alexandre :
+       « que moi, de mon côté, j'ai le même visuel »). Le bien doit être en
+       vente (ou déjà sous offre) ; sa fiche donne le vendeur et le prix. */
+    let vente: (VentePourOffre & { etape: string; archive: boolean | null }) | null = null;
+    if (bien.bien_vente_id) {
+      const { data: v } = await sb.from('biens_vente').select('id, etape, archive, ville, adresse, donnees').eq('id', bien.bien_vente_id).maybeSingle();
+      if (!v || v.archive || !['mandat', 'offre'].includes(String(v.etape))) return ko('plus_dispo', 409);
+      vente = v as VentePourOffre & { etape: string; archive: boolean | null };
+    }
     if (bien.indispo) return ko('plus_dispo', 409);
     const { data: vis } = await sb.from('visites').select('id, statut, date_visite, heure, avis_client_le, issue').eq('recherche_id', recherche.id).eq('bien_id', bien.id);
     const faites = ((vis || []) as { id: string; statut: string; date_visite: string | null; heure: string | null; avis_client_le: string | null; issue: string | null }[])
@@ -113,7 +125,17 @@ export async function POST(req: NextRequest) {
 
     /* ── le fil : une seule offre en cours ── */
     let fil: DocOffre[];
-    try { fil = await lireFil(sb, client.id, bien.id); } catch { return ko('lecture', 503); }
+    try { fil = await lireFilVue(sb, client.id, bien.id); } catch { return ko('lecture', 503); }
+    /* Un bien de l'agence : une offre de lui notée à la main sur la fiche du
+       bien (hors de ce fil), encore en cours ou acceptée, passe avant. */
+    if (vente) {
+      const duFil = new Set(fil.map(x => x.id));
+      const { data: lignes, error: eL } = await sb.from('biens_vente_suivi').select('id, statut, donnees').eq('bien_id', vente.id).eq('type', 'offre').eq('client_id', client.id);
+      if (eL) return ko('lecture', 503);
+      const autre = ((lignes || []) as { statut: string | null; donnees: Record<string, unknown> | null }[])
+        .find(l => (!l.statut || ['en_attente', 'contre', 'acceptee'].includes(l.statut)) && !duFil.has(String(l.donnees?.documentId || '')));
+      if (autre) return ko(autre.statut === 'acceptee' ? 'acceptee' : 'en_cours', 409);
+    }
     /* Un brouillon du CRM oublié (plus de trois semaines, ou passé sa date)
        ne bloque pas le client. */
     fil = fil.filter(x => visiblePourClient(x) || brouillonCrmVivant(x));
@@ -155,8 +177,12 @@ export async function POST(req: NextRequest) {
     if (precedente?.donnees) {
       const avant: Donnees = { ...(precedente.donnees as Donnees) };
       delete avant.suivi;
+      /* Son lien à la fiche du bien est le sien ; `offreSuiviId` reste : la
+         suivante reprend la même ligne (relierOffreAgence). */
+      delete avant.lienAgence;
       d = { ...d, ...avant };
     }
+    if (vente) d = { ...d, ...champsOffreAgence(vente, identite.nom || '') };
     const sx = (body.saisie && typeof body.saisie === 'object' ? body.saisie : {}) as Record<string, unknown>;
 
     /* Les acquéreurs (4 au plus). Le premier signe avec l'adresse de SA fiche :
@@ -189,6 +215,7 @@ export async function POST(req: NextRequest) {
       if (!total) return ko('total', 400);
       d = m.deduire ? m.deduire({ ...d, total: Math.round(total) }, 'total') : { ...d, total: Math.round(total) };
     }
+    if (vente) d = { ...d, honoVendeur: honoVendeurAuPrix(vente, Number(d.prix) || null) };
     const pret = sx.pret === 'non' ? 'non' : 'oui';
     const conditions = (Array.isArray(sx.conditions) ? sx.conditions : []).map(String).filter(c => c === 'vente' || c === 'autre');
     const auPlus = new Date(Date.now() + 30 * 86_400_000), demain = new Date(Date.now() + 86_400_000);
@@ -233,7 +260,7 @@ export async function POST(req: NextRequest) {
     /* Deux envois au même instant (deux onglets, un double appui) : une
        seule offre en cours par bien. Le plus récent se retire. */
     try {
-      const apres = (await lireFil(sb, client.id, bien.id)).filter(x => x.id !== docId && (!derniere || x.id !== derniere.id)
+      const apres = (await lireFilVue(sb, client.id, bien.id)).filter(x => x.id !== docId && (!derniere || x.id !== derniere.id)
         && x.created_at >= ((derniere?.created_at) || '') && (visiblePourClient(x) || brouillonCrmVivant(x)) && ENCOURS.includes(etatDeOffre(x)));
       if (apres.some(x => x.created_at <= (cree as { created_at: string }).created_at)) {
         await ecritServeur('[espace/offre] doublon retiré', sb.from('documents').delete().eq('id', docId).eq('statut', 'brouillon'));

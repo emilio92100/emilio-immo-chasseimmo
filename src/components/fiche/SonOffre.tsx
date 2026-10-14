@@ -8,9 +8,10 @@ import { modele, aujourdhui, type Donnees } from '@/lib/actes';
 import { VALIDITE_JOURS, honorairesSurPrix } from '@/lib/actes/offre-achat';
 import {
   etatDeOffre, offreCourante, filsParBien, historiqueFil, resumeCrm, lireSuivi, envoisOffre, finOffre, totalContre, totalOffre, prixOffre,
-  contreDepassee, rangOffre, rangVisible, ETATS_CRM, type DocOffre, type Ton,
+  contreDepassee, rangOffre, rangVisible, etatCrmDe, estAgence, lienAgence, appliquerLignes, idsLignesAgence, COLONNES_LIGNE_AGENCE,
+  type DocOffre, type LigneAgence, type Ton,
 } from '@/lib/offres';
-import { colonnesListe, repondreOffre, sansSuiteOffre, supprimerBrouillon, type DocumentRow } from '@/components/documents/outils';
+import { colonnesListe, lierOffreAgence, repondreOffre, sansSuiteOffre, supprimerBrouillon, type DocumentRow } from '@/components/documents/outils';
 import { FenetreOffre } from '@/components/documents/EnvoiOffre';
 import { ChoixJour } from '@/components/pages/PageAgenda';
 import { cleDuJour } from '@/lib/suivi-agence';
@@ -31,7 +32,11 @@ import o from './SonOffre.module.css';
 
    Tout se lit au même endroit que l'espace du client (src/lib/offres.ts) :
    les deux ne peuvent pas se contredire. Rien de ce bloc n'est montré au
-   client tel quel (ni ses honoraires, ni ta note). */
+   client tel quel (ni ses honoraires, ni ta note).
+
+   V3.190 — Un bien de ton mandat (`bienVenteId`) : le même bloc. L'offre
+   signée rejoint les offres de la fiche du bien ; la réponse du vendeur s'y
+   note (« Répondre sur la fiche du bien »), et se lit ici. */
 
 const EUR = (x: number) => `${Math.round(x).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €`;
 const JOUR = (iso: string) => {
@@ -69,12 +74,21 @@ export function useOffres(clientId: string | null | undefined, biens: { id: stri
   useEffect(() => {
     if (!clientId || !ids) { setDocs([]); return; }
     let vivant = true;
-    supabase.from('documents').select('*').eq('modele', 'offre_achat').eq('client_id', clientId).in('bien_id', ids.split(',').slice(0, 300)).neq('statut', 'annule')
-      .then(({ data, error }) => {
+    void (async () => {
+      const { data, error } = await supabase.from('documents').select('*').eq('modele', 'offre_achat').eq('client_id', clientId).in('bien_id', ids.split(',').slice(0, 300)).neq('statut', 'annule');
+      if (!vivant) return;
+      if (error) { console.error('[offres] lecture', error.message); return; }
+      let l = (data || []) as DocumentRow[];
+      /* V3.190 : un bien de ton mandat — la réponse du vendeur est sur la fiche du bien. */
+      const lignes = idsLignesAgence(l as unknown as DocOffre[]);
+      if (lignes.length) {
+        const r = await supabase.from('biens_vente_suivi').select(COLONNES_LIGNE_AGENCE).in('id', lignes);
         if (!vivant) return;
-        if (error) { console.error('[offres] lecture', error.message); return; }
-        setDocs((data || []) as DocumentRow[]);
-      });
+        if (r.error) console.error('[offres] lignes du bien', r.error.message);
+        else l = appliquerLignes(l as unknown as DocOffre[], (r.data || []) as LigneAgence[]) as unknown as DocumentRow[];
+      }
+      setDocs(l);
+    })();
     return () => { vivant = false; };
   }, [clientId, ids, tick, lu]);
   const parBien = filsParBien(docs as unknown as DocOffre[]) as unknown as Map<string, DocumentRow[]>;
@@ -107,7 +121,7 @@ function Chevron({ haut }: { haut?: boolean }) {
   );
 }
 
-export default function SonOffre({ fil, bienId, client, seul, onChange, onDocument, onTransaction }: {
+export default function SonOffre({ fil, bienId, client, seul, onChange, onDocument, onTransaction, onBien }: {
   /** Le fil de ce bien (useOffres), du plus ancien au plus récent. */
   fil: DocumentRow[];
   bienId: string;
@@ -118,6 +132,8 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
   /** Ouvre l'offre dans Documents (`editer` : dans l'éditeur). */
   onDocument: (id: string, o?: { editer?: boolean }) => void;
   onTransaction?: () => void;
+  /** V3.190 : la fiche d'un bien de ton mandat (la réponse du vendeur s'y note). */
+  onBien?: (bienVenteId: string) => void;
 }) {
   const [ouvert, setOuvert] = useState(!!seul);
   useEffect(() => { if (!seul && lireOuverts().includes(bienId)) setOuvert(true); }, [bienId, seul]);
@@ -133,8 +149,13 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
   if (!courant) return null;
   const doc = fil.find(x => x.id === courant.id)!;
   const etat = etatDeOffre(courant);
-  const ton = ETATS_CRM[etat];
   const d = (doc.donnees || {}) as Donnees;
+  const ton = etatCrmDe(d, etat);
+  /* Un bien de ton mandat (V3.190). */
+  const agence = estAgence(d);
+  const venteId = agence ? String(d.bienVenteId) : '';
+  const allerBien = agence && onBien ? () => onBien(venteId) : null;
+  const honoV = agence && typeof d.honoVendeur === 'number' && d.honoVendeur > 0 ? d.honoVendeur : null;
   const suivi = lireSuivi(d);
   const r = suivi.reponse;
   /* La même numérotation que dans son espace (un brouillon du CRM n'en a pas). */
@@ -160,6 +181,9 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
     try {
       const d0: Donnees = { ...d };
       delete d0.suivi;
+      /* Un bien de ton mandat : `offreSuiviId` reste (la suivante reprend la
+         même offre sur la fiche du bien), le lien, lui, est propre à chaque offre. */
+      delete d0.lienAgence;
       let dn: Donnees = { ...d0, date: aujourdhui(), validite: dans(VALIDITE_JOURS), suivi: { origine: 'crm', precedente: doc.id, ...(accepte ? { depuisContre: true } : {}) } };
       dn = accepte && r?.montant
         ? (m.deduire ? m.deduire({ ...dn, prix: r.montant }, 'prix') : { ...dn, prix: r.montant })
@@ -185,12 +209,25 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
     } finally { setEn(''); }
   }
 
+  /* L'ajout automatique aux offres du bien a raté : on le refait. */
+  async function lier() {
+    if (en) return;
+    setEn('lier'); setMessage(null);
+    try {
+      const r = await lierOffreAgence(doc.id);
+      onChange(); signalerMaj();
+      setMessage({ t: `Ajoutée aux offres de la fiche du bien.${r.avertissements.length ? ` ⚠️ ${r.avertissements.join(' · ')}` : ''}`, ok: !r.avertissements.length });
+    } catch (e) {
+      setMessage({ t: (e as Error).message, ok: false });
+    } finally { setEn(''); }
+  }
+
   async function sansSuite() {
     setEn('sans_suite'); setMessage(null);
     try {
       await sansSuiteOffre(doc.id);
       setFen(''); onChange(); signalerMaj();
-      setMessage({ t: 'Notée sans suite. Le bien redevient « Visité » ; rien n’est parti au client.', ok: true });
+      setMessage({ t: `Notée sans suite. Le bien redevient « Visité »${agence && lienAgence(doc) ? ', et l’offre passe « retirée » sur la fiche du bien' : ''} ; rien n’est parti au client.`, ok: true });
     } catch (e) {
       setMessage({ t: (e as Error).message, ok: false });
     } finally { setEn(''); }
@@ -202,19 +239,22 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
       case 'a_relire': return { l: 'Relire l’offre', ic: 'crayon', go: () => onDocument(doc.id, { editer: true }) };
       case 'brouillon': return { l: 'Ouvrir le brouillon', ic: 'crayon', go: () => onDocument(doc.id, { editer: true }) };
       case 'a_finaliser': return { l: 'Envoyer pour signature', ic: 'envoyer', go: () => onDocument(doc.id) };
-      case 'signee': return doc.signe_chemin ? { l: 'Envoyer à l’agence', ic: 'envoyer', go: () => setFen('envoi') } : { l: 'Ouvrir l’offre', ic: 'doc', go: () => onDocument(doc.id) };
-      case 'envoyee': return { l: 'Réponse du vendeur', ic: 'coche', go: () => setFen('reponse') };
+      case 'signee': return agence ? { l: 'L’ajouter aux offres du bien', ic: 'plus', go: () => { void lier(); } }
+        : doc.signe_chemin ? { l: 'Envoyer à l’agence', ic: 'envoyer', go: () => setFen('envoi') } : { l: 'Ouvrir l’offre', ic: 'doc', go: () => onDocument(doc.id) };
+      case 'envoyee': return agence ? (allerBien ? { l: 'Répondre sur la fiche du bien', ic: 'maison', go: allerBien } : null)
+        : { l: 'Réponse du vendeur', ic: 'coche', go: () => setFen('reponse') };
       case 'contre': return expiree
         ? { l: 'Nouvelle offre', ic: 'plus', go: () => { void nouvelle(false); } }
         : { l: p.accepte, ic: 'coche', go: () => { void nouvelle(true); } };
-      case 'acceptee': return onTransaction ? { l: 'Ouvrir la transaction', ic: 'mallette', go: onTransaction } : null;
+      case 'acceptee': return agence ? (allerBien ? { l: 'Ouvrir la fiche du bien', ic: 'maison', go: allerBien } : null)
+        : onTransaction ? { l: 'Ouvrir la transaction', ic: 'mallette', go: onTransaction } : null;
       case 'refusee': case 'echue': case 'sans_suite': return { l: 'Nouvelle offre', ic: 'plus', go: () => { void nouvelle(false); } };
       default: return null;
     }
   })();
   const btnPrincipal = principal ? (
     <button type="button" className={s.btnFort} onClick={principal.go} disabled={!!en}>
-      <Icone nom={principal.ic} taille={14} epaisseur={2.2} />{en === 'accepte' || en === 'nouvelle' ? 'Préparation…' : principal.l}
+      <Icone nom={principal.ic} taille={14} epaisseur={2.2} />{en === 'accepte' || en === 'nouvelle' ? 'Préparation…' : en === 'lier' ? 'Ajout…' : principal.l}
     </button>
   ) : null;
 
@@ -236,7 +276,15 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
       {ouvert && (
         <div className={s.corps}>
           {/* Les montants, pour toi seul */}
-          {total ? (
+          {total && agence ? (
+            /* Ton mandat : pas d'honoraires de recherche ; ceux du mandat de vente, au prix offert. */
+            <div className={o.montants}>
+              <div><span>Son offre</span><b>{EUR(total)}</b></div>
+              <div><span>Net vendeur</span><b>{honoV ? EUR(total - honoV) : d.forme === 'net' ? EUR(total) : '—'}</b></div>
+              <div><span>Tes honoraires (mandat)</span><b>{honoV ? EUR(honoV) : '—'}</b></div>
+              {fin && <div><span>{'Valable jusqu’au'}</span><b>{JOUR(fin.toISOString())}</b></div>}
+            </div>
+          ) : total ? (
             <div className={o.montants}>
               <div><span>{`Son total, frais d’agence compris`}</span><b>{EUR(total)}</b></div>
               <div><span>Proposé au vendeur</span><b>{prix ? EUR(prix) : '—'}</b></div>
@@ -249,11 +297,11 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
             <div className={o.contre}>
               <div className={o.contreT}>{`Contre-proposition du ${JOUR(r.le)}${r.limite ? ` · valable jusqu’au ${JOUR(r.limite)}` : ''}`}</div>
               <div className={o.contreV}>
-                <span><b>{EUR(r.montant)}</b>{' pour le vendeur'}</span>
-                <span>{`soit ${EUR(totalContre(d, r.montant))} pour ${p.pour}, dont ${EUR(totalContre(d, r.montant) - r.montant)} de tes honoraires`}</span>
+                <span><b>{EUR(r.montant)}</b>{agence ? ' demandés par le vendeur' : ' pour le vendeur'}</span>
+                {totalContre(d, r.montant) !== r.montant && <span>{`soit ${EUR(totalContre(d, r.montant))} pour ${p.pour}, dont ${EUR(totalContre(d, r.montant) - r.montant)} de tes honoraires`}</span>}
               </div>
               {expiree && <div className={o.alerte}>{'Sa date limite est passée : la proposition ne tient plus. Une nouvelle offre, ou « Sans suite ».'}</div>}
-              {!expiree && <div className={o.aide}>{`${prenom} l’a reçue par e-mail et dans son espace : ${p.il} peut l’accepter, faire une autre offre ou ne pas donner suite. Tu gardes la main ici, s’${p.il} te répond au téléphone.`}</div>}
+              {!expiree && <div className={o.aide}>{`${prenom} l’a reçue par e-mail et dans son espace : ${p.il} peut l’accepter, faire une autre offre ou ne pas donner suite. Tu gardes la main ici, s’${p.il} te répond au téléphone.${agence ? ' Notée sur la fiche du bien, la contre-proposition se corrige là-bas.' : ''}`}</div>}
             </div>
           ) : null}
 
@@ -263,18 +311,27 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
           {etat === 'a_relire' && (
             <div className={o.aide}>{`${prenom} l’a préparée dans son espace et te la confie. Relis-la, puis envoie-la pour signature : ${p.il} signe avec son code.`}</div>
           )}
-          {(etat === 'envoyee' || (etat === 'echue' && env.length)) && env.length > 0 && (
+          {agence && etat === 'envoyee' && env.length > 0 && (
+            <div className={o.aide}>{`Dans les offres de la fiche du bien depuis le ${JOURL(env[env.length - 1].le)}. Note la réponse du vendeur là-bas (« Il accepte », contre-offre, refus) : ${prenom} reçoit un e-mail, et son espace suit. Une relance « réponse à donner » t’attend le jour où l’offre expire.`}</div>
+          )}
+          {agence && etat === 'signee' && (
+            <div className={o.alerte}>{'Signée, mais pas encore dans les offres de la fiche du bien (l’ajout automatique n’a pas pu se faire). « L’ajouter aux offres du bien » le refait.'}</div>
+          )}
+          {!agence && (etat === 'envoyee' || (etat === 'echue' && env.length)) && env.length > 0 && (
             <div className={o.aide}>{`Envoyée le ${JOURL(env[env.length - 1].le)} à ${env[env.length - 1].a.join(', ') || 'l’agence'}${env.length > 1 ? ` (${env.length} envois)` : ''}. Une relance t’attend la veille de la fin de validité.`}</div>
           )}
           {etat === 'acceptee' && (
-            <div className={o.aide}>{`Acceptée le ${JOURL(r!.le)}. L’onglet Transaction s’est ouvert à l’étape « Offre acceptée », avec la négociation.`}</div>
+            <div className={o.aide}>{agence
+              ? `Acceptée le ${JOURL(r!.le)}${r?.montant && r.montant !== total ? `, à ${EUR(r.montant)}` : ''}. La suite (compromis, notaires) se gère sur la fiche du bien.`
+              : `Acceptée le ${JOURL(r!.le)}. L’onglet Transaction s’est ouvert à l’étape « Offre acceptée », avec la négociation.`}</div>
           )}
 
           <div className={o.gestes}>
             {btnPrincipal}
             {etat === 'contre' && !expiree && <button type="button" className={s.btn} onClick={() => { void nouvelle(false); }} disabled={!!en}><Icone nom="plus" taille={14} epaisseur={2.2} />Nouvelle offre</button>}
-            {etat === 'envoyee' && doc.signe_chemin && <button type="button" className={s.btn} onClick={() => setFen('envoi')}><Icone nom="envoyer" taille={14} epaisseur={2.1} />Renvoyer</button>}
-            {(etat === 'contre' || etat === 'echue') && doc.statut === 'signe' && <button type="button" className={s.btn} onClick={() => setFen('reponse')}><Icone nom="crayon" taille={14} epaisseur={2.1} />{etat === 'contre' ? 'Corriger la réponse' : 'Noter une réponse'}</button>}
+            {!agence && etat === 'envoyee' && doc.signe_chemin && <button type="button" className={s.btn} onClick={() => setFen('envoi')}><Icone nom="envoyer" taille={14} epaisseur={2.1} />Renvoyer</button>}
+            {!agence && (etat === 'contre' || etat === 'echue') && doc.statut === 'signe' && <button type="button" className={s.btn} onClick={() => setFen('reponse')}><Icone nom="crayon" taille={14} epaisseur={2.1} />{etat === 'contre' ? 'Corriger la réponse' : 'Noter une réponse'}</button>}
+            {agence && allerBien && ['contre', 'echue', 'refusee', 'sans_suite'].includes(etat) && <button type="button" className={s.btn} onClick={allerBien}><Icone nom="maison" taille={14} epaisseur={2.1} />Fiche du bien</button>}
             {['a_relire', 'signee', 'envoyee', 'contre'].includes(etat) && (
               <button type="button" className={s.btn} onClick={() => setFen('sans_suite')} disabled={!!en}><Icone nom="fermer" taille={13} epaisseur={2.3} />Sans suite</button>
             )}
@@ -284,7 +341,7 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
             <button type="button" className={s.lien} onClick={() => onDocument(doc.id)}><Icone nom="doc" taille={14} epaisseur={2.1} />{'Voir l’offre'}</button>
             <button type="button" className={o.q} aria-expanded={circuit} onClick={() => setCircuit(x => !x)}><span className={o.qRond}>?</span>Comment ça marche</button>
           </div>
-          {circuit && <Circuit p={p} />}
+          {circuit && <Circuit p={p} agence={agence} />}
           {message && <div className={message.ok ? o.ok : o.alerte}>{message.t}</div>}
 
           {histo.length > 0 && (
@@ -319,7 +376,7 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
               <div style={{ minWidth: 0 }}><h2>Noter sans suite</h2><p>{`L’offre de ${prenom}${total ? ` · ${EUR(total)}` : ''}`}</p></div>
             </div>
             <div className={s.fCorps}>
-              <div className={s.aide}>{`L’offre se ferme : le bien redevient « Visité », les relances de cette offre s’arrêtent. Rien ne part au client ; dans son espace, ${p.il} voit « Offre sans suite » et peut en refaire une.`}</div>
+              <div className={s.aide}>{`L’offre se ferme : le bien redevient « Visité », les relances de cette offre s’arrêtent${agence && lienAgence(doc) ? ', et elle passe « retirée » dans les offres de la fiche du bien' : ''}. Rien ne part au client ; dans son espace, ${p.il} voit « Offre sans suite » et peut en refaire une.`}</div>
             </div>
             <div className={s.fPied}>
               <span className={s.fNote} />
@@ -335,11 +392,18 @@ export default function SonOffre({ fil, bienId, client, seul, onChange, onDocume
 }
 
 /* ═══ Le circuit d'une offre, en clair (« Comment ça marche ») ═══ */
-function Circuit({ p }: { p: ReturnType<typeof pronoms> }) {
+function Circuit({ p, agence }: { p: ReturnType<typeof pronoms>; agence?: boolean }) {
   const pl = p.il === 'ils';
   const v = (un: string, plusieurs: string) => (pl ? plusieurs : un);
   const seul = p.il === 'elle' ? 'seule' : pl ? 'seuls' : 'seul';
-  const etapes: [string, string][] = [
+  /* V3.190 : un bien de ton mandat. */
+  const etapes: [string, string][] = agence ? [
+    ['Son offre', `${p.Il} ${v('la prépare', 'la préparent')} dans son espace, sur un bien de ton mandat qu’${p.il} a visité : le prix et le vendeur viennent de la fiche du bien, sans honoraires de recherche. ${p.Il} ${v('la signe', 'la signent')} ${seul} avec un code par e-mail, ou ${v('te la confie', 'te la confient')} pour relecture.`],
+    ['Signée', 'Elle rejoint toute seule les offres de la fiche du bien, comme « Une offre est arrivée » : le bien passe « Sous offre », la relance « réponse à donner » du propriétaire est posée, et le Suivi des deux côtés le dit.'],
+    ['La réponse', `Tu la notes sur la fiche du bien, comme d’habitude : « Il accepte », contre-offre, refus. ${p.Il} ${v('reçoit', 'reçoivent')} un seul e-mail par réponse, et sa carte « Votre offre » se met à jour.`],
+    ['Contre-offre', `${p.Il} ${v('l’accepte', 'l’acceptent')} (une nouvelle offre à ce prix, à signer : elle s’ajoute à la même offre sur la fiche du bien, et une relance te demande de noter l’accord), ${v('en refait une', 'en refont une')}, ou ${v('ne donne', 'ne donnent')} pas suite — l’offre passe alors « retirée » sur la fiche du bien.`],
+    ['La fin', 'Acceptée : la suite (compromis, notaires) se gère sur la fiche du bien. Refusée ou sans suite : le bien redevient « Visité » chez lui, une nouvelle offre reste possible.'],
+  ] : [
     ['Son offre', `${p.Il} ${v('la prépare', 'la préparent')} dans son espace, sur un bien visité (ou toi, dans Documents). ${p.Il} ${v('la signe', 'la signent')} ${seul} avec un code par e-mail, ou ${v('te la confie', 'te la confient')} : relance « Offre à relire », tu la relis dans l’éditeur, puis tu l’envoies pour signature.`],
     ['Signée', 'Le mail « Signé par tous » arrive, et la relance « Offre signée, à envoyer ». « Envoyer à l’agence » joint l’offre signée — tes honoraires n’y figurent pas — avec une copie cachée pour toi. « Renvoyer » si l’agence ne l’a pas reçue.'],
     ['En attente', 'Une relance t’attend la veille de la fin de validité, pour relancer l’agence. Sans réponse à la date : « Arrivée à échéance », le bien redevient « Visité ».'],

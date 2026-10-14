@@ -4961,7 +4961,8 @@ ${signatureMail()}`,
             onCompteRendu={(v: any) => setCrVisite(v)} onAnnuler={annulerVisite}
             onRecharger={load} onMasques={loadRecherches} onOrganiser={organiserVisite}
             onBon={(v: any) => { void bonVisite.lancer(departBon(v)); }} bonEnCours={bonVisite.enCours} bonEtat={(v: any) => etatBon(departBon(v))}
-            clientId={client.id} offres={offresVisites} onDocument={ouvrirOffreDoc('Visites')} onTransaction={() => setTab('transaction')} />
+            clientId={client.id} offres={offresVisites} onDocument={ouvrirOffreDoc('Visites')} onTransaction={() => setTab('transaction')}
+            onBienVente={id => onNavigate('biens', { bien: id })} />
         )}
 
         {/* ═══ TAB TRANSACTION ═══ */}
@@ -5413,6 +5414,7 @@ ${signatureMail()}`,
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
             vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null}
             onDocument={ouvrirOffreDoc('Présentés')} onTransaction={() => setTab('transaction')}
+            onBienVente={id => onNavigate('biens', { bien: id })}
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={async (id) => { await load(); openEnvoiBien(id); }}
             rafraichir={versionBiens}

@@ -258,6 +258,15 @@ export async function repondreOffre(o: { id: string; statut: 'acceptee' | 'refus
 export async function sansSuiteOffre(id: string) {
   return api<{ row: DocumentRow | null }>({ action: 'sans_suite', id });
 }
+/* V3.190 — Un bien de l'agence : l'offre signée ajoutée aux offres de la
+   fiche du bien (quand l'ajout automatique a raté), et la réponse notée sur
+   la fiche du bien dite au client (un mail). Voir src/lib/offres-serveur.ts. */
+export async function lierOffreAgence(id: string) {
+  return api<{ avertissements: string[] }>({ action: 'offre_agence', id });
+}
+export async function avertirAcheteurOffre(suivi: string) {
+  return api<{ mail: boolean; avertissements: string[] }>({ action: 'reponse_agence', suivi });
+}
 
 /* Le projet d'un brouillon, en relecture (V3.40) : le serveur fabrique le
    PDF « projet non signé » depuis les réponses enregistrées, l'envoie à

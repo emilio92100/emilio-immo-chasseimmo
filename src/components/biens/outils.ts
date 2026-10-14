@@ -18,7 +18,8 @@ import {
   typeCompatible, versBienAcheteur, versCorrespondance, versMandatVente,
   type BienVente, type Donnees, type EtapeVente, type EtatMandatDoc, type Photo, type Reponse, type SuiviVente,
 } from '@/lib/biens-vente';
-import { colonnesListe, identiteDuJour, mandatDepuis, preparerDepuis } from '@/components/documents/outils';
+import { avertirAcheteurOffre, colonnesListe, identiteDuJour, mandatDepuis, preparerDepuis } from '@/components/documents/outils';
+import { champsOffreAgence } from '@/lib/offre-agence';
 import { retirerMandatDuBien, type RetraitMandat } from '@/lib/mandat-bien';
 import { cleAdresse } from '@/lib/carte';
 import { REMISE_SUIVIE, attendreRemises, remisesDe, suivreRemises } from '@/lib/remise-client';
@@ -1862,8 +1863,19 @@ export async function retirerAutresAcceptees(b: BienVente, offres: SuiviVente[],
     try {
       const { statut, donnees } = apresReponse(o, { k: 'retire' }, aujourdhui());
       await majSuivi(o.id, { statut, donnees });
+      await suiteEspace(o);
     } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
   }
+}
+/* V3.190 — Une offre faite depuis l'espace de l'acheteur (`documentId`) :
+   son espace et ses relances suivent la réponse ; un refus lui part par
+   e-mail (src/lib/offres-serveur.ts, reponseAgence). Jamais bloquant. */
+async function suiteEspace(o: SuiviVente): Promise<void> {
+  if (typeof o.donnees?.documentId !== 'string' || !o.donnees.documentId) return;
+  try {
+    const r = await avertirAcheteurOffre(o.id);
+    if (r.avertissements.length) signalerEchec(`L’espace de ${o.qui || 'l’acheteur'}`, r.avertissements.join(' · '));
+  } catch (e) { signalerEchec(`L’espace de ${o.qui || 'l’acheteur'}`, (e as Error).message); }
 }
 /* « L'offre est tombée » (V3.47) : les offres encore en jeu passent
    « retirées », leurs relances « réponse à donner » se closent. */
@@ -1875,6 +1887,7 @@ export async function offresTombees(b: BienVente, offres: SuiviVente[]): Promise
       await majSuivi(o.id, { statut, donnees });
       await cloreRelanceOffre(b, o);
       await noterOffreFermee(b, o, '↩️ Offre tombée', 'Le bien repasse en vente.');
+      await suiteEspace(o);
     } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
   }
 }
@@ -1886,6 +1899,7 @@ export async function refuserAutresOffres(b: BienVente, offres: SuiviVente[], ga
       const { statut, donnees } = apresReponse(o, { k: 'refuse' }, aujourdhui());
       await majSuivi(o.id, { statut, donnees });
       await cloreRelanceOffre(b, o);
+      await suiteEspace(o);
       /* V3.48 : l'acquéreur suivi le lit dans son Suivi. */
       await noterOffreFermee(b, o, '✕ Offre non retenue', 'Le vendeur s’est engagé avec un autre acquéreur.');
     } catch (e) { signalerEchec(`L’offre de ${o.qui || 'un acquéreur'}`, (e as Error).message); }
@@ -2371,8 +2385,10 @@ export async function creerDocument(b: BienVente, x: PourDocument): Promise<stri
          l'offre le retrouve, au lieu d'en commencer un autre à chaque clic. */
       ...(o?.id ? { offreSuiviId: o.id } : {}),
       ...(x.personne ? { acquereurs: [x.personne] } : {}),
-      vendeurNom: nomProprioActe(d), agenceVendeur: identite.nom || '',
-      prixAffiche: a.prix, forme: a.acq ? 'fai' : 'net', honoVendeur: a.acq ? a.hono : null,
+      /* V3.190 : les mêmes champs que depuis l'espace du client
+         (src/lib/offre-agence.ts) — le prix s'entend honoraires compris, et
+         ses honoraires suivent le prix offert. */
+      ...champsOffreAgence(b, identite.nom || '', o?.montant || null),
       ...(o?.montant ? { prix: o.montant } : {}),
       ...(typeof od.jusquau === 'string' && od.jusquau ? { validite: od.jusquau } : {}),
       ...(typeof od.apport === 'number' ? { apport: od.apport } : {}),

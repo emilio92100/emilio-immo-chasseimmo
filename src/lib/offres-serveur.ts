@@ -13,7 +13,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   lireSuivi, etatDeOffre, filDuBien, offreCourante, totalOffre, prixOffre, envoisOffre, finOffre, totalContre, contreDepassee,
   historiqueFil, visiblePourClient, rangVisible, brouillonCrmVivant, TETES_OFFRE, ENCOURS,
-  type DocOffre, type SuiviOffre, type ReponseVendeur, type OffreEspace, type SaisieOffre,
+  estAgence, lienAgence, avecAgence, appliquerLignes, idsLignesAgence, COLONNES_LIGNE_AGENCE,
+  type DocOffre, type SuiviOffre, type ReponseVendeur, type OffreEspace, type SaisieOffre, type LigneAgence,
 } from './offres';
 import { signatairesEspace, COLONNES_SIGNATAIRES, type LigneSignataire, type FicheEspace } from './documents-espace';
 import { lirePersonnes, num, txt, type Donnees } from './actes/commun';
@@ -21,6 +22,7 @@ import { envoyerMail, echappe, ALERTES, CRM } from './mandat-serveur';
 import { enveloppeMail, MAIL } from './mail-charte';
 import { lienEspace } from './jeton';
 import { alerteMailActive } from './alertes';
+import { apresReponse, echangesDe, montantActuel, titreBien as titreVente, type SuiviVente } from './biens-vente';
 
 const EUR = (x: number) => `${Math.round(x).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €`;
 const jourParis = (d = new Date()) => new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(d);
@@ -44,6 +46,24 @@ export async function lireFil(sb: SupabaseClient, clientId: string, bienId: stri
   if (error) throw new Error('Les offres de ce bien n’ont pas pu être lues : ' + error.message);
   return filDuBien((data || []) as DocOffre[], bienId);
 }
+/* V3.190 — Les offres sur un bien de l'agence, lues avec leur ligne de la
+   fiche du bien (avecAgence, src/lib/offres.ts) : c'est elle qui dit la
+   réponse du vendeur. Une lecture ratée rend les offres telles quelles. */
+export async function avecLignesAgence<T extends DocOffre>(sb: SupabaseClient, docs: T[]): Promise<T[]> {
+  const ids = idsLignesAgence(docs);
+  if (!ids.length) return docs;
+  const { data, error } = await sb.from('biens_vente_suivi').select(COLONNES_LIGNE_AGENCE).in('id', ids);
+  if (error) { console.error('[offres] lignes du bien', error.message); return docs; }
+  return appliquerLignes(docs, (data || []) as LigneAgence[]);
+}
+/** Le fil, tel que le client et le CRM le voient (avec la fiche du bien). */
+export async function lireFilVue(sb: SupabaseClient, clientId: string, bienId: string): Promise<DocOffre[]> {
+  return avecLignesAgence(sb, await lireFil(sb, clientId, bienId));
+}
+export async function lireOffreVue(sb: SupabaseClient, id: string): Promise<DocOffre | null> {
+  const doc = await lireOffre(sb, id);
+  return doc ? (await avecLignesAgence(sb, [doc]))[0] : null;
+}
 async function titreDuBien(sb: SupabaseClient, bienId: string | null | undefined): Promise<string> {
   if (!bienId) return 'un bien';
   const { data } = await sb.from('biens').select('titre, ville, type_bien').eq('id', bienId).maybeSingle();
@@ -61,6 +81,15 @@ export async function majSuivi(sb: SupabaseClient, id: string, fn: (s: SuiviOffr
   const brut = d.suivi && typeof d.suivi === 'object' ? d.suivi as Record<string, unknown> : {};
   const suivi = { ...brut, ...fn(lireSuivi(d)) };
   const { error: e2 } = await sb.from('documents').update({ donnees: { ...d, suivi } }).eq('id', id);
+  return e2 ? e2.message : null;
+}
+/* Quelques champs posés dans `donnees`, relue juste avant (le texte de
+   l'offre ne bouge pas). */
+async function poserDansDonnees(sb: SupabaseClient, id: string, patch: Record<string, unknown>): Promise<string | null> {
+  const { data, error } = await sb.from('documents').select('donnees').eq('id', id).maybeSingle();
+  if (error || !data) return error?.message || 'offre introuvable';
+  const d = ((data as { donnees?: Donnees | null }).donnees || {}) as Donnees;
+  const { error: e2 } = await sb.from('documents').update({ donnees: { ...d, ...patch } }).eq('id', id);
   return e2 ? e2.message : null;
 }
 
@@ -138,22 +167,47 @@ export async function offrePartieEnSignature(sb: SupabaseClient, doc: { id: stri
 export async function offreSigneeParTous(sb: SupabaseClient, doc: { id: string; donnees: Donnees | null; client_id: string | null; recherche_id: string | null; bien_id: string | null }): Promise<string | null> {
   if (!doc.client_id) return null;
   const pbs: string[] = [];
-  const s = lireSuivi(doc.donnees);
+  let d: Donnees = doc.donnees || {};
+  const s = lireSuivi(d);
   /* Close (sans suite) ou remplacée entre-temps : elle ne repart pas. */
   if (s.close || s.remplacee_le) return null;
+  /* V3.190 : l'offre écrite depuis la fiche d'un bien de l'agence (« Préparer
+     une offre ») : sa ligne est déjà dans les offres du bien. Rien à
+     envoyer, rien à relier (la V3.189 posait à tort « à envoyer »). */
+  if (estAgence(d) && !doc.bien_id) return null;
+  /* Une offre du CRM sur un bien de l'agence, écrite avant la V3.190 (sans
+     son lien au bien en vente) : on le retrouve par le bien du client. */
+  if (!estAgence(d) && doc.bien_id) {
+    const { data: b } = await sb.from('biens').select('bien_vente_id').eq('id', doc.bien_id).maybeSingle();
+    const vente = (b as { bien_vente_id?: string | null } | null)?.bien_vente_id;
+    if (vente) {
+      const pb = await poserDansDonnees(sb, doc.id, { bienVenteId: vente });
+      if (pb) pbs.push('le lien au bien en vente : ' + pb);
+      else d = { ...d, bienVenteId: vente };
+    }
+  }
   if (s.precedente) {
     const pb = await majSuivi(sb, s.precedente, x => (x.remplacee_le ? x : { ...x, remplacee_le: new Date().toISOString() }));
     if (pb) pbs.push('l’offre précédente : ' + pb);
   }
   const titre = await titreDuBien(sb, doc.bien_id);
-  const total = totalOffre(doc.donnees);
+  const total = totalOffre(d);
   const pb1 = await solderRelancesOffre(sb, doc.client_id, titre, [TETES_OFFRE.relire, TETES_OFFRE.contre]);
   if (pb1) pbs.push(pb1);
-  const pb2 = await poserRelanceOffre(sb, {
-    clientId: doc.client_id, rechercheId: doc.recherche_id, tete: TETES_OFFRE.envoyer, titre,
-    detail: total ? `${EUR(total)} frais d’agence compris${prixOffre(doc.donnees) !== total ? ` (${EUR(prixOffre(doc.donnees) || 0)} pour le vendeur)` : ''}` : undefined,
-  });
-  if (pb2) pbs.push('relance « à envoyer » : ' + pb2);
+  /* Un bien de l'agence : l'offre rejoint les offres de sa fiche, où Alexandre
+     note la réponse du vendeur. Si ça rate, « Offre signée, à envoyer » le
+     lui dit, et « Son offre » propose de l'y ajouter. */
+  const lie = estAgence(d) ? await relierOffreAgence(sb, { ...doc, donnees: d }) : null;
+  if (lie?.pb) pbs.push('les offres du bien : ' + lie.pb);
+  if (!lie?.relie) {
+    const pb2 = await poserRelanceOffre(sb, {
+      clientId: doc.client_id, rechercheId: doc.recherche_id, tete: TETES_OFFRE.envoyer, titre,
+      detail: lie
+        ? `${total ? `${EUR(total)} · ` : ''}à ajouter aux offres de la fiche du bien, depuis « Son offre » (${lie.pb})`
+        : total ? `${EUR(total)} frais d’agence compris${prixOffre(d) !== total ? ` (${EUR(prixOffre(d) || 0)} pour le vendeur)` : ''}` : undefined,
+    });
+    if (pb2) pbs.push('relance « à envoyer » : ' + pb2);
+  }
   const pb3 = await solderVeutOffrir(sb, doc.client_id, titre);
   if (pb3) pbs.push(pb3);
   await badgeBien(sb, doc.bien_id, 'offre_faite');
@@ -185,6 +239,323 @@ export async function offreEnvoyee(sb: SupabaseClient, doc: { id: string; donnee
   }
   await badgeBien(sb, doc.bien_id, 'offre_faite');
   return pbs.length ? pbs.join(' ; ') : null;
+}
+
+/* ── Un bien de l'agence : l'offre rejoint la fiche du bien (V3.190) ──
+   Ce que fait « Une offre est arrivée » sur la fiche du bien
+   (enregistrerOffre, src/components/biens/outils.ts), côté serveur :
+     · la ligne de l'offre (`biens_vente_suivi`, type 'offre', en attente du
+       vendeur). Après une contre-proposition ou un refus, la MÊME ligne :
+       une proposition de plus dans ses échanges (un acquéreur = un bloc,
+       V3.45) ;
+     · la relance du propriétaire « réponse à donner », le jour où l'offre
+       expire — tout de suite quand la contre-proposition du vendeur est
+       acceptée (Alexandre note l'accord sur la fiche du bien) ;
+     · le bien passe « Sous offre » s'il était en vente (comme la case
+       cochée d'office de la fenêtre) ;
+     · une ligne dans le Suivi du vendeur et dans celui de l'acquéreur.
+   Puis l'offre garde son lien (`lienAgence`). Rejouable : une ligne qui
+   porte déjà cette offre n'est pas reprise une seconde fois. */
+const OUVERTES = ['en_attente', 'contre'];
+const JOURA = (ymd: string) => {
+  const t = new Date(`${ymd.slice(0, 10)}T12:00:00Z`);
+  return Number.isFinite(t.getTime()) ? t.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris' }) : '';
+};
+const fr = (n: number) => Math.round(n).toLocaleString('fr-FR');
+function nomsAcquereurs(d: Donnees): string {
+  const l = lirePersonnes(d.acquereurs).map(p => `${p.prenom} ${p.nom}`.trim()).filter(Boolean);
+  return l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l[l.length - 1]}` : l[0] || '';
+}
+function conditionsOffre(d: Donnees): string {
+  const c = Array.isArray(d.conditions) ? (d.conditions as unknown[]).map(String) : [];
+  return [
+    c.includes('vente') ? `sous réserve de la vente de son bien${txt(d, 'venteBien') ? ` (${txt(d, 'venteBien')})` : ''}` : '',
+    c.includes('autre') && txt(d, 'conditionAutre') ? txt(d, 'conditionAutre') : '',
+  ].filter(Boolean).join(' ; ');
+}
+type VenteLue = { id: string; etape: string; client_id: string | null; titre: string | null; donnees: Donnees | null };
+async function lireVente(sb: SupabaseClient, id: string): Promise<VenteLue | null> {
+  const { data, error } = await sb.from('biens_vente').select('id, etape, client_id, titre, donnees').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as VenteLue | null) || null;
+}
+async function clore(sb: SupabaseClient, relanceId: unknown): Promise<string | null> {
+  if (typeof relanceId !== 'string' || !relanceId) return null;
+  const { error } = await sb.from('relances').update({ statut: 'cloturee' }).eq('id', relanceId).eq('statut', 'en_attente');
+  return error ? error.message : null;
+}
+
+/** `relie` : l'offre est dans les offres du bien (même avec un souci à côté, dit dans `pb`). */
+export type Reliure = { relie: boolean; pb: string | null };
+export async function relierOffreAgence(sb: SupabaseClient, doc: { id: string; donnees: Donnees | null; client_id: string | null; recherche_id: string | null; bien_id: string | null }): Promise<Reliure> {
+  const d = (doc.donnees || {}) as Donnees;
+  const rate = (pb: string): Reliure => ({ relie: false, pb });
+  const venteId = txt(d, 'bienVenteId');
+  if (!venteId || !doc.bien_id || !doc.client_id) return rate('ce n’est pas une offre sur un bien de l’agence');
+  if (lienAgence({ id: doc.id, donnees: d })) return { relie: true, pb: null };
+  if (lireSuivi(d).close || lireSuivi(d).remplacee_le) return rate('cette offre est close, ou remplacée par une plus récente');
+  const prix = prixOffre(d);
+  if (!prix) return rate('le prix de l’offre manque');
+  let bv: VenteLue | null;
+  try { bv = await lireVente(sb, venteId); } catch (e) { return rate('le bien en vente : ' + (e as Error).message); }
+  if (!bv) return rate('le bien en vente est introuvable');
+  const titreV = bv.titre || titreVente(bv.donnees || {});
+  const s = lireSuivi(d);
+  const jour = jourParis();
+  const maintenant = new Date().toISOString();
+  const qui = nomsAcquereurs(d) || await nomClient(sb, doc.client_id);
+  const jusquau = /^\d{4}-\d{2}-\d{2}$/.test(txt(d, 'validite')) ? txt(d, 'validite') : null;
+  const infos: Record<string, unknown> = {
+    jusquau, financement: d.pret === 'non' ? 'comptant' : d.pret === 'oui' ? 'pret' : null,
+    apport: num(d, 'apport'), pret: d.pret === 'oui' ? num(d, 'pretMontant') : null,
+    conditions: conditionsOffre(d), documentId: doc.id, origine: s.origine || 'crm',
+  };
+  const pbs: string[] = [];
+
+  /* Sa ligne d'avant : celle de l'offre qu'elle suit, sinon une offre de lui
+     encore ouverte sur ce bien (notée à la main sur la fiche du bien). */
+  let ligne: SuiviVente | null = null;
+  const indice = txt(d, 'offreSuiviId');
+  if (indice) {
+    const { data } = await sb.from('biens_vente_suivi').select('*').eq('id', indice).eq('bien_id', venteId).eq('type', 'offre').maybeSingle();
+    ligne = (data as SuiviVente | null) || null;
+  }
+  if (!ligne) {
+    const { data, error } = await sb.from('biens_vente_suivi').select('*').eq('bien_id', venteId).eq('type', 'offre').eq('client_id', doc.client_id)
+      .order('le', { ascending: false }).limit(10);
+    if (error) return rate('les offres du bien n’ont pas pu être lues : ' + error.message);
+    const l = (data || []) as SuiviVente[];
+    ligne = l.find(x => x.donnees?.documentId === doc.id) || l.find(x => !x.statut || OUVERTES.includes(x.statut)) || null;
+  }
+  if (ligne && ligne.client_id && ligne.client_id !== doc.client_id) ligne = null;
+  const dejaLa = !!ligne && ligne.donnees?.documentId === doc.id;
+  /* Il accepte la contre-proposition, et Alexandre a déjà noté l'accord sur
+     la fiche du bien (au téléphone) : l'offre signée en est l'écrit — même
+     ligne, rien ne repart au vendeur. */
+  const accordNote = !!ligne && !dejaLa && ligne.statut === 'acceptee' && !!s.depuisContre;
+  const reprise = !!ligne && (dejaLa || accordNote || !ligne.statut || ['en_attente', 'contre', 'refusee'].includes(ligne.statut)
+    || (ligne.statut === 'retiree' && !ligne.donnees?.compromisTombe));
+  const titreCopie = await titreDuBien(sb, doc.bien_id);
+  const lierSeulement = async (l: SuiviVente, i: number): Promise<Reliure> => {
+    const pbL = await poserDansDonnees(sb, doc.id, { offreSuiviId: l.id, lienAgence: { suivi: l.id, echange: Math.max(0, i), le: maintenant, doc: doc.id } });
+    if (pbL) return rate('le lien de l’offre : ' + pbL);
+    const pbE = await solderRelancesOffre(sb, doc.client_id, titreCopie, [TETES_OFFRE.envoyer]);
+    return { relie: true, pb: pbE ? 'la relance « à envoyer » : ' + pbE : null };
+  };
+
+  let ligneId: string;
+  let echange: number;
+  let avant: SuiviVente | null = null;
+  if (ligne && reprise && dejaLa) {
+    /* Un premier essai interrompu : la ligne porte déjà cette offre. */
+    const ech = echangesDe(ligne);
+    let i = ech.length - 1;
+    while (i > 0 && ech[i].par !== 'acquereur') i--;
+    return lierSeulement(ligne, i);
+  }
+  if (ligne && reprise && accordNote) {
+    await figerOffreDAvant(sb, ligne, doc.id, pbs);
+    const { error } = await sb.from('biens_vente_suivi').update({ donnees: { ...(ligne.donnees || {}), documentId: doc.id } }).eq('id', ligne.id);
+    if (error) return rate('la ligne de son offre : ' + error.message);
+    const r = await lierSeulement(ligne, echangesDe(ligne).length - 1);
+    return { relie: r.relie, pb: [...pbs, r.pb].filter(Boolean).join(' ; ') || null };
+  }
+  if (ligne && reprise) {
+    avant = ligne;
+    /* L'offre d'avant garde ce que la ligne lui avait répondu (son historique). */
+    await figerOffreDAvant(sb, ligne, doc.id, pbs);
+    const { statut, donnees } = apresReponse(ligne, { k: 'propose', montant: prix }, jour);
+    const nd = { ...donnees, ...infos };
+    const { error } = await sb.from('biens_vente_suivi').update({
+      statut, donnees: nd, ...(ligne.client_id ? {} : { client_id: doc.client_id }), ...(ligne.recherche_id ? {} : { recherche_id: doc.recherche_id }),
+    }).eq('id', ligne.id);
+    if (error) return rate('la ligne de son offre : ' + error.message);
+    ligneId = ligne.id;
+    echange = Math.max(0, (Array.isArray(nd.echanges) ? nd.echanges.length : 1) - 1);
+    ligne = { ...ligne, statut, donnees: nd };
+  } else {
+    const { data, error } = await sb.from('biens_vente_suivi').insert({
+      bien_id: venteId, type: 'offre', le: maintenant, qui, client_id: doc.client_id, recherche_id: doc.recherche_id,
+      montant: prix, statut: 'en_attente', commentaire: s.origine === 'espace' ? 'Faite depuis son espace, signée en ligne.' : null,
+      donnees: { ...infos, echanges: [{ le: jour, par: 'acquereur', montant: prix }] },
+    }).select('*').single();
+    if (error || !data) return rate('la ligne de son offre : ' + (error?.message || 'rien n’a été écrit'));
+    ligne = data as SuiviVente;
+    ligneId = ligne.id;
+    echange = 0;
+  }
+
+  /* L'offre garde son lien : c'est par lui que le fil lit la fiche du bien. */
+  /* Sans lui, la ligne porte quand même l'offre (`documentId`) : « L'ajouter
+     aux offres du bien » le repose sans rien refaire. */
+  const pbL = await poserDansDonnees(sb, doc.id, { offreSuiviId: ligneId, lienAgence: { suivi: ligneId, echange, le: maintenant, doc: doc.id } });
+  if (pbL) pbs.push('le lien de l’offre : ' + pbL);
+
+  /* La relance du propriétaire, gardée avec l'offre (cloreRelanceOffre la clôt à sa réponse). */
+  const pbR0 = await clore(sb, avant?.donnees?.relance_id);
+  if (pbR0) pbs.push('l’ancienne relance du propriétaire : ' + pbR0);
+  if (bv.client_id && (s.depuisContre || (jusquau && jusquau >= jour))) {
+    const note = s.depuisContre
+      ? `Offre de ${qui} à ${fr(prix)} € sur ${bv.titre || 'son bien'} : la contre-proposition du vendeur est acceptée — note l’accord sur la fiche du bien.`
+      : `Offre de ${qui} à ${fr(prix)} € sur ${bv.titre || 'son bien'} : réponse à donner aujourd’hui.`;
+    const { data: rel, error: eR } = await sb.from('relances').insert({
+      client_id: bv.client_id, type: 'manuelle', statut: 'en_attente',
+      date_echeance: s.depuisContre ? maintenant : new Date(`${jusquau}T07:00:00Z`).toISOString(), note,
+    }).select('id').single();
+    if (eR) pbs.push('la relance du propriétaire : ' + eR.message);
+    else if (rel?.id) {
+      const { error: eL } = await sb.from('biens_vente_suivi').update({ donnees: { ...(ligne.donnees || {}), relance_id: rel.id } }).eq('id', ligneId);
+      if (eL) pbs.push('le lien entre l’offre et sa relance : ' + eL.message);
+    }
+  }
+
+  /* Le bien passe « Sous offre ». */
+  if (bv.etape === 'mandat' || bv.etape === 'suspendu') {
+    const { data: passe, error: eE } = await sb.from('biens_vente').update({ etape: 'offre', etape_le: maintenant, updated_at: maintenant })
+      .eq('id', bv.id).eq('etape', bv.etape).select('id');
+    if (eE) pbs.push('le bien « Sous offre » : ' + eE.message);
+    else if (passe?.length) {
+      const { error: eS } = await sb.from('biens_vente_suivi').insert({
+        bien_id: bv.id, type: 'etape', statut: 'offre', le: maintenant, donnees: { de: bv.etape, offre: ligneId, montant: prix, qui },
+      });
+      if (eS) pbs.push('l’historique du bien : ' + eS.message);
+    }
+  }
+
+  /* Le Suivi des deux côtés (comme noterJalon). */
+  const nouvelle = !avant;
+  const sur = avant ? montantActuel(avant) : 0;
+  const repond = avant?.statut === 'contre';
+  const fin = d.pret === 'non' ? 'Financement : comptant' : d.pret === 'oui' ? 'Financement : avec un prêt' : null;
+  if (bv.client_id) {
+    await journal(sb, {
+      client_id: bv.client_id, type: 'etape_transaction',
+      titre: nouvelle ? `💶 Offre reçue — ${EUR(prix)}` : `💶 Nouvelle proposition — ${EUR(prix)}`,
+      description: [
+        nouvelle ? `${titreV} · offre de ${qui}, signée le ${JOURA(jour)}` : `${titreV} · ${qui} ${repond ? `répond à la contre-offre de ${EUR(sur)}` : 'fait une nouvelle offre'}`,
+        jusquau ? `Valable jusqu’au ${JOURA(jusquau)}` : null, fin,
+      ].filter(Boolean).join('\n'),
+      metadata: { jalon: nouvelle ? 'offre_recue' : 'negociation', cote: 'vendeur', bien_vente_id: bv.id },
+    });
+  }
+  await journal(sb, {
+    client_id: doc.client_id, recherche_id: doc.recherche_id, bien_id: doc.bien_id, type: nouvelle ? 'offre' : 'etape_transaction',
+    titre: nouvelle ? `💶 Offre à ${EUR(prix)} — ${titreV}` : `💶 Nouvelle proposition — ${EUR(prix)}`,
+    description: [
+      nouvelle ? `Signée le ${JOURA(jour)}` : `${titreV} · ${repond ? `en réponse à la contre-offre du vendeur à ${EUR(sur)}` : 'une nouvelle offre'}`,
+      jusquau ? `Valable jusqu’au ${JOURA(jusquau)}` : '',
+    ].filter(Boolean).join(' · '),
+    metadata: { bien_vente_id: bv.id, suivi_id: ligneId, jalon: nouvelle ? 'offre_faite' : 'negociation', cote: 'acquereur', document_id: doc.id },
+  });
+  /* Ajoutée après coup (« Son offre ») : « Offre signée, à envoyer » a sa réponse. */
+  if (!pbL) {
+    const pbE = await solderRelancesOffre(sb, doc.client_id, titreCopie, [TETES_OFFRE.envoyer]);
+    if (pbE) pbs.push('la relance « à envoyer » : ' + pbE);
+  }
+  return { relie: !pbL, pb: pbs.length ? pbs.join(' ; ') : null };
+}
+
+/* Une nouvelle offre reprend la ligne : celle qu'elle portait jusque-là
+   garde, écrit chez elle, ce que la ligne lui avait répondu (une
+   contre-proposition, un refus, un retrait) — sinon son historique le
+   perdrait, la ligne passant à la suivante. */
+async function figerOffreDAvant(sb: SupabaseClient, l: SuiviVente, docId: string, pbs: string[]): Promise<void> {
+  const prevId = typeof l.donnees?.documentId === 'string' ? l.donnees.documentId : '';
+  if (!prevId || prevId === docId) return;
+  let prev: DocOffre | null = null;
+  try { prev = await lireOffre(sb, prevId); } catch { return; }
+  if (!prev || !lienAgence(prev)) return;
+  const brut = prev.donnees?.suivi && typeof prev.donnees.suivi === 'object' ? prev.donnees.suivi as Record<string, unknown> : {};
+  /* L'état que la ligne lui donnait, comme si elle était encore la dernière. */
+  const nu = { ...prev, donnees: { ...(prev.donnees || {}), suivi: { ...brut, remplacee_le: null, close: null } } };
+  const vue = lireSuivi(avecAgence(nu, l as unknown as LigneAgence).donnees);
+  if (!vue.reponse && !vue.avant?.length && !vue.close) return;
+  const pb = await majSuivi(sb, prevId, x => ({
+    ...x,
+    ...(!x.reponse && vue.reponse ? { reponse: vue.reponse } : {}),
+    ...(!x.avant?.length && vue.avant?.length ? { avant: vue.avant } : {}),
+    ...(!x.close && vue.close ? { close: vue.close } : {}),
+  }));
+  if (pb) pbs.push('l’historique de l’offre d’avant : ' + pb);
+}
+
+/* Sans suite, sur un bien de l'agence : sa ligne de la fiche du bien passe
+   « retirée » (l'acquéreur renonce à une contre-proposition, ou retire son
+   offre), sa relance se clôt, et le Suivi du vendeur le dit. */
+async function fermerLigneAgence(sb: SupabaseClient, doc: DocOffre, par: 'client' | 'conseiller'): Promise<string | null> {
+  const lien = lienAgence(doc);
+  if (!lien) return null;
+  const { data, error } = await sb.from('biens_vente_suivi').select('*').eq('id', lien.suivi).maybeSingle();
+  if (error) return error.message;
+  const l = data as SuiviVente | null;
+  /* Une offre plus récente la porte, ou elle est déjà fermée. */
+  if (!l || l.donnees?.documentId !== doc.id || (l.statut && !OUVERTES.includes(l.statut))) return null;
+  const k = l.statut === 'contre' ? 'renonce' : 'retire';
+  const { statut, donnees } = apresReponse(l, { k }, jourParis());
+  const { error: e2 } = await sb.from('biens_vente_suivi').update({ statut, donnees }).eq('id', l.id);
+  if (e2) return e2.message;
+  const pbR = await clore(sb, l.donnees?.relance_id);
+  if (pbR) console.error('[offres] relance du propriétaire', pbR);
+  let bv: VenteLue | null = null;
+  try { bv = await lireVente(sb, l.bien_id); } catch (e) { console.error('[offres] bien en vente', (e as Error).message); }
+  if (bv?.client_id) {
+    const titreV = bv.titre || titreVente(bv.donnees || {});
+    const sur = montantActuel(l);
+    await journal(sb, {
+      client_id: bv.client_id, type: 'etape_transaction',
+      titre: `↩️ ${k === 'renonce' ? 'L’acquéreur renonce' : 'Offre retirée'} — ${EUR(sur)}`,
+      description: `${titreV} · ${l.qui || 'l’acquéreur'} ${k === 'renonce' ? 'ne donne pas suite à la contre-offre' : 'retire son offre'}${par === 'client' ? ', depuis son espace' : ''}`,
+      metadata: { jalon: 'offre_close', cote: 'vendeur', bien_vente_id: bv.id },
+    });
+  }
+  return null;
+}
+
+/* La réponse du vendeur, notée sur la fiche du bien (FicheBien, reponseOffre)
+   à une offre qui vient d'un espace : le client reçoit UN mail (comme
+   « Réponse du vendeur » du CRM), les relances de son côté suivent, le bien
+   redevient « Visité » s'il n'y a pas d'accord. Rien n'est recopié : l'état
+   se lit de la ligne (avecAgence). Une réponse déjà dite n'en renvoie pas. */
+export async function reponseAgence(sb: SupabaseClient, suiviId: string): Promise<{ mail: boolean; avertissements: string[] }> {
+  const avertissements: string[] = [];
+  const { data, error } = await sb.from('biens_vente_suivi').select(COLONNES_LIGNE_AGENCE).eq('id', suiviId).maybeSingle();
+  if (error) throw new Error('La ligne de l’offre n’a pas pu être lue : ' + error.message);
+  const l = data as LigneAgence | null;
+  const docId = l && typeof l.donnees?.documentId === 'string' ? l.donnees.documentId : '';
+  if (!l || !docId) return { mail: false, avertissements };
+  const brut = await lireOffre(sb, docId);
+  if (!brut || lienAgence(brut)?.suivi !== l.id) return { mail: false, avertissements };
+  const doc = avecAgence(brut, l);
+  const s = lireSuivi(doc.donnees);
+  if (s.remplacee_le || !visiblePourClient(doc)) return { mail: false, avertissements };
+  const etat = etatDeOffre(doc);
+  const dl = l.donnees || {};
+  const nEch = Array.isArray(dl.echanges) ? dl.echanges.length : 1;
+  const cle = `${l.statut || 'en_attente'}:${nEch}`;
+  if (lireSuivi(brut.donnees).aviseAgence === cle) return { mail: false, avertissements };
+  const titre = await titreDuBien(sb, doc.bien_id);
+  const r = s.reponse;
+  if (doc.client_id) {
+    const pbR = await solderRelancesOffre(sb, doc.client_id, titre, [TETES_OFFRE.reponse, TETES_OFFRE.envoyer, TETES_OFFRE.contre]);
+    if (pbR) avertissements.push('relances : ' + pbR);
+    if (etat === 'contre' && r?.montant) {
+      const dans2 = new Date(Date.now() + 2 * 86_400_000); dans2.setUTCHours(7, 0, 0, 0);
+      const pbC = await poserRelanceOffre(sb, {
+        clientId: doc.client_id, rechercheId: doc.recherche_id || null, tete: TETES_OFFRE.contre, titre,
+        detail: `le vendeur propose ${EUR(r.montant)} : sa réponse ?`, echeance: dans2,
+      });
+      if (pbC) avertissements.push('relance : ' + pbC);
+    }
+  }
+  if (etat === 'refusee' || etat === 'sans_suite') await badgeBien(sb, doc.bien_id, 'visite');
+  let mail = false;
+  if (r && (etat === 'contre' || etat === 'acceptee' || etat === 'refusee')) {
+    const pbM = await mailClientReponse(sb, doc, r, titre);
+    if (pbM) avertissements.push(pbM); else mail = true;
+  }
+  const pbS = await majSuivi(sb, doc.id, x => ({ ...x, aviseAgence: cle }));
+  if (pbS) avertissements.push('l’offre : ' + pbS);
+  return { mail, avertissements };
 }
 
 /* ── La réponse du vendeur (notée par Alexandre) ── */
@@ -231,6 +602,9 @@ export async function noterReponse(sb: SupabaseClient, doc: DocOffre, r: Reponse
 export async function fermerSansSuite(sb: SupabaseClient, doc: DocOffre, par: 'client' | 'conseiller'): Promise<string | null> {
   const pb = await majSuivi(sb, doc.id, s => ({ ...s, close: { le: new Date().toISOString(), par } }));
   if (pb) return pb;
+  /* V3.190 : un bien de l'agence — sa ligne sur la fiche du bien se ferme aussi. */
+  const pbA = await fermerLigneAgence(sb, doc, par);
+  if (pbA) console.error('[offres] offre du bien', pbA);
   const titre = await titreDuBien(sb, doc.bien_id);
   if (doc.client_id) {
     await solderRelancesOffre(sb, doc.client_id, titre, Object.values(TETES_OFFRE));
@@ -245,10 +619,11 @@ export async function fermerSansSuite(sb: SupabaseClient, doc: DocOffre, par: 'c
   if (par === 'client' && doc.client_id && await alerteMailActive(sb, 'offre_espace')) {
     const nom = await nomClient(sb, doc.client_id);
     const lien = `${CRM()}/?page=fiche&client=${encodeURIComponent(doc.client_id)}`;
+    const bienAgence = lienAgence(doc) ? ' Son offre passe « retirée » sur la fiche du bien.' : '';
     const e = await envoyerMail({
       a: ALERTES(), deLaPartDe: 'crm', sujet: `⏹️ ${nom} ne donne pas suite à son offre · ${titre}`,
-      texte: `${nom} ne donne pas suite à son offre pour « ${titre} », depuis son espace.\n\nOuvrir sa fiche : ${lien}`,
-      html: enveloppeMail({ titre: `${echappe(nom)} ne donne pas suite`, mention: 'CRM', corps: `<p style="margin:0 0 14px">${echappe(nom)} ne donne pas suite à son offre pour « ${echappe(titre)} », depuis son espace.</p>${boutonMail(lien, 'Ouvrir sa fiche')}` }),
+      texte: `${nom} ne donne pas suite à son offre pour « ${titre} », depuis son espace.${bienAgence}\n\nOuvrir sa fiche : ${lien}`,
+      html: enveloppeMail({ titre: `${echappe(nom)} ne donne pas suite`, mention: 'CRM', corps: `<p style="margin:0 0 14px">${echappe(nom)} ne donne pas suite à son offre pour « ${echappe(titre)} », depuis son espace.${echappe(bienAgence)}</p>${boutonMail(lien, 'Ouvrir sa fiche')}` }),
     });
     if (e) console.error('[offres] alerte sans suite', e);
   }
@@ -343,11 +718,13 @@ async function mailClientReponse(sb: SupabaseClient, doc: DocOffre, r: ReponseVe
     ];
     bouton = 'Voir la réponse du vendeur';
   } else if (r.statut === 'acceptee') {
+    /* V3.190 : un accord noté sur la fiche du bien à un autre prix que l'offre. */
+    const accord = r.montant || total;
     sujet = '🎉 Félicitations, votre offre est acceptée !';
     titreMail = '🎉 Félicitations, votre offre est acceptée !';
     paras = [
       `${bonjour.replace(/,$/, '')}, félicitations !`,
-      `Le vendeur a accepté votre offre${total ? ` de ${EUR(total)}, frais d’agence compris,` : ''} pour « ${titre} ». C’est une très belle nouvelle.`,
+      `Le vendeur a accepté votre offre${accord ? ` de ${EUR(accord)}, frais d’agence compris,` : ''} pour « ${titre} ». C’est une très belle nouvelle.`,
       'Je vous appelle très vite pour organiser la suite, à commencer par le compromis chez le notaire.',
     ];
   } else {
@@ -410,7 +787,8 @@ export async function offresPourEspace(sb: SupabaseClient, clientId: string, bie
     const { data, error } = await sb.from('documents').select(COLONNES_DOC)
       .eq('modele', 'offre_achat').eq('client_id', clientId).in('bien_id', bienIds.slice(0, 300)).neq('statut', 'annule');
     if (error || !data?.length) return out;
-    const docs = data as DocOffre[];
+    /* V3.190 : un bien de l'agence, avec la réponse notée sur la fiche du bien. */
+    const docs = await avecLignesAgence(sb, data as DocOffre[]);
     const enSignature = docs.filter(x => x.statut === 'pret' && x.signature).map(x => x.id);
     let lignes: LigneSignataire[] = [];
     if (enSignature.length) {
@@ -435,8 +813,9 @@ export async function offresPourEspace(sb: SupabaseClient, clientId: string, bie
       const env = envoisOffre(courant);
       const r = s.reponse;
       out[bienId] = {
-        id: courant.id, etat, enPreparation, rang: rangVisible(fil, courant) || 1,
-        total: totalOffre(d), prix: prixOffre(d), prixAffiche: num(d, 'prixAffiche'),
+        id: courant.id, etat, enPreparation, agence: estAgence(d), rang: rangVisible(fil, courant) || 1,
+        /* Acceptée à un autre prix (noté sur la fiche du bien) : le prix convenu. */
+        total: etat === 'acceptee' && r?.montant ? r.montant : totalOffre(d), prix: prixOffre(d), prixAffiche: num(d, 'prixAffiche'),
         fin: fin ? fin.toISOString() : null, envoyeLe: env.length ? env[env.length - 1].le : null,
         lien: moi && moi.etat === 'a_signer' ? moi.lien : null,
         vousSigne: moi?.etat === 'signe', attendus: sigs.filter(x => x.qui !== 'vous' && x.etat !== 'signe').map(x => x.prenom || x.nom).filter(Boolean),

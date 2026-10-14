@@ -11,6 +11,7 @@ import { Croix, Ic } from './ApercuActe';
 import { etapeDe, type BienVente } from '@/lib/biens-vente';
 import { jourParis } from '@/lib/mandat';
 import { creerDocument } from '@/components/biens/outils';
+import { champsOffreAgence } from '@/lib/offre-agence';
 import { conseilMandat, mandatRechercheEnCours, mandatVenteEnCours, phraseMandat, type MandatEnCours } from '@/lib/coherence';
 import { cleRecherche, colonnesListe, identiteDuJour, mandatsPour, preparerDepuis, tableAbsente, type DocumentRow, type MandatChoix } from './outils';
 import s from './Documents.module.css';
@@ -263,6 +264,15 @@ export default function NouveauDocument({ modeleId, clientId, confrereId, onFerm
         ? await preparerDepuis(m, mandat!, identite)
         : { ...m.defaut({ identite, client, bien, visite, recherche: rech }), ...liens };
       if (pourDeleguer && confrere) donnees = { ...donnees, ...depuisConfrere(confrere) };
+      /* V3.190 : une offre sur un bien de ton mandat — le vendeur, le prix et
+         la forme du prix viennent de la fiche du bien, sans honoraires de
+         recherche ; signée, elle rejoint les offres du bien (comme depuis
+         l'espace du client). */
+      if (!avecMandat && m.id === 'offre_achat' && bien?.bien_vente_id) {
+        const { data: v, error: eV } = await supabase.from('biens_vente').select('id, ville, adresse, donnees').eq('id', bien.bien_vente_id).maybeSingle();
+        if (eV) throw new Error('Le bien en vente n’a pas pu être lu : ' + eV.message);
+        if (v) donnees = { ...donnees, ...champsOffreAgence(v as { id: string; ville: string | null; adresse: string | null; donnees: Donnees | null }, identite.nom || '') };
+      }
       const { data, error } = await supabase.from('documents').insert({
         modele: m.id, categorie: m.categorie, statut: 'brouillon', donnees, ...colonnesListe(m, donnees),
         client_id: (avecMandat ? mandat!.client_id : null) || client?.id || null,
