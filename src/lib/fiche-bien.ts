@@ -21,8 +21,11 @@ export function ligneBienDepuisFormulaire(f: Record<string, any>, photos: string
     ville: f.ville,
     code_postal: f.code_postal,
     quartier: f.quartier || null,
+    // V3.186 : les transports et l'environnement cités par l'annonce
+    situation: String(f.situation || '').trim() || null,
     type_bien: f.type_bien,
     surface: parseFloat(f.surface) || null,
+    surface_sejour: parseFloat(f.surface_sejour) || null,
     nb_pieces: parseInt(f.nb_pieces) || null,
     nb_chambres: parseInt(f.nb_chambres) || null,
     nb_salles_bain: parseInt(f.nb_salles_bain) || null,
