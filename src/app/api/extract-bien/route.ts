@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { CHAMPS_ANNONCE, nettoyerLecture, completerParRegex } from '@/lib/lecture-annonce';
+
+/* V3.186 : la lecture est plus complète (une quarantaine de champs), elle
+   prend plus de temps. */
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -63,54 +68,151 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function extractWithClaude(html: string, url: string, portail: string, apiKey: string) {
-  // Extraire uniquement les JSON-LD + scripts utiles + texte visible (éviter de saturer le contexte)
-  const jsonLdMatches = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) || [];
-  const scriptNextMatches = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-  const metaDesc = html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/i)?.[1] || '';
-  const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
+/* ═══ La page, ramenée à ce qui décrit le bien (V3.186) ════════════════
+   Avant : 2 000 caractères de JSON-LD, 2 000 du début de `__NEXT_DATA__`
+   (souvent des réglages du site, pas l'annonce) et 3 000 de texte (souvent
+   le menu) — l'IA ne voyait ni l'étage, ni le DPE, ni les charges.
+   Maintenant : le JSON-LD entier, les données de la page triées pour garder
+   l'annonce elle-même, et le texte visible pris à partir du titre. */
 
-  // Texte brut nettoyé (max 3000 chars)
-  const textContent = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, 3000);
+const ENTITES: Record<string, string> = { nbsp: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', eacute: 'é', egrave: 'è', ecirc: 'ê', agrave: 'à', acirc: 'â', ccedil: 'ç', ocirc: 'ô', icirc: 'î', ucirc: 'û', ugrave: 'ù', euro: '€', sup2: '²', rsquo: '’', laquo: '«', raquo: '»' };
+const decoder = (t: string) => t
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+  .replace(/&([a-z0-9]+);/gi, (m, n) => ENTITES[n.toLowerCase()] ?? m);
 
-  const context = [
-    jsonLdMatches.join('\n').substring(0, 2000),
-    scriptNextMatches?.[1]?.substring(0, 2000) || '',
-    `TITLE: ${title}`,
-    `META: ${metaDesc}`,
-    `TEXT: ${textContent}`,
-  ].filter(Boolean).join('\n\n').substring(0, 6000);
+/** Le texte que lit un visiteur : sans scripts, styles, menus ni pied de page. */
+function texteVisible(html: string): string {
+  return decoder(html
+    .replace(/<head[\s\S]*?<\/head>/i, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<(nav|footer|noscript|svg)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|section|article|tr|dd|dt)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t  ]+/g, ' ')
+    .replace(/ *\n[\s\n]*/g, '\n')
+    .trim();
+}
 
-  const prompt = `Tu es un extracteur de données immobilières. Extrais les informations de cette annonce immobilière et réponds UNIQUEMENT avec un JSON valide (pas de markdown, pas de texte autour).
+/* Les morceaux de données d'une page sans intérêt pour décrire le bien. */
+const BRUIT = /^(url|urls|href|link|links|image|images|img|photo|photos|picture|pictures|thumb|thumbnail|thumbnails|tracking|tracker|analytics|xiti|gtm|datalayer|cookie|cookies|consent|i18n|translations?|locale|messages|config|configuration|features?|flags?|experiments?|seo|breadcrumbs?|footer|header|menu|navigation|ads?_?list|similar\w*|recommend\w*|related\w*|buildid|runtimeconfig|assetprefix|scripts?|styles?|css|svg|icon|icons|logo|avatar)$/i;
 
-Annonce depuis ${portail} : ${url}
+/** L'objet qui ressemble le plus à une annonce : un long texte, un prix,
+    des caractéristiques. Les autres annonces de la page (« similaires »)
+    n'y entrent pas. */
+function annonceDans(racine: unknown): unknown {
+  let meilleur: unknown = null, note = 0;
+  const vus = new Set<unknown>();
+  const visiter = (o: unknown, prof: number) => {
+    if (!o || typeof o !== 'object' || vus.has(o) || prof > 14) return;
+    vus.add(o);
+    if (Array.isArray(o)) { o.slice(0, 200).forEach(x => visiter(x, prof + 1)); return; }
+    const r = o as Record<string, unknown>;
+    const cles = Object.keys(r);
+    let n = 0;
+    if (cles.some(k => /^(body|description|desc|text|texte)$/i.test(k) && typeof r[k] === 'string' && (r[k] as string).length > 120)) n += 3;
+    if (cles.some(k => /price|prix/i.test(k))) n += 2;
+    if (cles.some(k => /^(attributes|characteristics|caracteristiques|features|criteria|criteres)$/i.test(k))) n += 2;
+    if (cles.some(k => /surface|square|area|rooms|pieces|bedrooms|chambres/i.test(k))) n += 1;
+    if (cles.some(k => /^(subject|title|titre|name)$/i.test(k))) n += 1;
+    if (cles.some(k => /location|address|adresse|city|ville|zipcode|postal/i.test(k))) n += 1;
+    if (n > note) { note = n; meilleur = o; }
+    for (const k of cles) if (!BRUIT.test(k)) visiter(r[k], prof + 1);
+  };
+  visiter(racine, 0);
+  return note >= 5 ? meilleur : racine;
+}
 
-Données disponibles :
+/** Une ligne « chemin : valeur » par donnée utile, jusqu'à `max` caractères. */
+function lignesDonnees(o: unknown, max: number): string {
+  const lignes: string[] = [];
+  let taille = 0;
+  const pousser = (l: string) => { if (taille + l.length > max) return false; lignes.push(l); taille += l.length + 1; return true; };
+  const vus = new Set<unknown>();
+  const visiter = (x: unknown, chemin: string[], prof: number): boolean => {
+    if (taille >= max || prof > 12) return taille < max;
+    if (x === null || x === undefined || x === '') return true;
+    if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') {
+      const v = String(x).trim();
+      if (!v || /^https?:\/\//i.test(v) || /^[0-9a-f-]{24,}$/i.test(v) || v.length > 6000) return true;
+      return pousser(`${chemin.slice(-3).join('.')} : ${v.replace(/\s+/g, ' ')}`) || taille < max;
+    }
+    if (typeof x !== 'object' || vus.has(x)) return true;
+    vus.add(x);
+    /* Une caractéristique : « Surface habitable : 82 m² » sur une ligne. */
+    if (!Array.isArray(x)) {
+      const r = x as Record<string, unknown>;
+      const lib = r.key_label ?? r.label ?? r.libelle;
+      const val = r.value_label ?? r.values_label ?? r.value ?? r.valeur;
+      if (typeof lib === 'string' && lib.trim() && ['string', 'number', 'boolean'].includes(typeof val) && Object.keys(r).length <= 8) {
+        return pousser(`${lib.trim()} : ${String(val).replace(/\s+/g, ' ').trim()}`) || taille < max;
+      }
+    }
+    if (Array.isArray(x)) {
+      for (let i = 0; i < Math.min(x.length, 80); i++) if (!visiter(x[i], [...chemin, String(i)], prof + 1)) return false;
+      return true;
+    }
+    for (const [k, v] of Object.entries(x as Record<string, unknown>)) {
+      if (BRUIT.test(k) || k.startsWith('@context') || /^(id|_id|uuid|hash|token|key_id|list_id)$/i.test(k)) continue;
+      if (!visiter(v, [...chemin, k], prof + 1)) return false;
+    }
+    return true;
+  };
+  visiter(o, [], 0);
+  return lignes.join('\n');
+}
+
+const lireJson = (t: string): unknown => { try { return JSON.parse(decoder(t.trim())); } catch { try { return JSON.parse(t.trim()); } catch { return null; } } };
+
+function contextePage(html: string, url: string): string {
+  const title = decoder(html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '').trim();
+  const meta = (nom: string) => decoder(html.match(new RegExp(`<meta[^>]+(?:name|property)="${nom}"[^>]+content="([^"]+)"`, 'i'))?.[1] || '').trim();
+  const h1 = decoder((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+  /* Le JSON-LD : déjà la fiche du bien, sur beaucoup de sites. */
+  const jsonLd = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
+    .map(m => lireJson(m[1])).filter(Boolean);
+  const ld = jsonLd.length ? lignesDonnees(jsonLd, 5000) : '';
+
+  /* Les données de la page (Next, Leboncoin…) : l'annonce seulement. */
+  const blocs = [
+    ...html.matchAll(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/gi),
+    ...html.matchAll(/<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi),
+  ].map(m => lireJson(m[1])).filter(Boolean);
+  const donnees = blocs.length ? lignesDonnees(annonceDans(blocs), 9000) : '';
+
+  /* Le texte visible, à partir du titre (le menu passe avant). */
+  const texte = texteVisible(html);
+  let depart = 0;
+  const repere = h1 && h1.length > 8 ? texte.indexOf(h1.slice(0, 40)) : -1;
+  if (repere > 0) depart = Math.max(0, repere - 200);
+  else { const m = texte.search(/\d[\d\s]*\s?m[²2]/); if (m > 1500) depart = m - 1500; }
+
+  return [
+    `PAGE : ${url}`,
+    title && `TITRE DE LA PAGE : ${title}`,
+    h1 && h1 !== title && `TITRE DE L'ANNONCE : ${h1}`,
+    meta('description') && `RÉSUMÉ : ${meta('description')}`,
+    meta('og:description') && meta('og:description') !== meta('description') && `RÉSUMÉ (partage) : ${meta('og:description')}`,
+    ld && `DONNÉES STRUCTURÉES :\n${ld}`,
+    donnees && `DONNÉES DE LA PAGE :\n${donnees}`,
+    `TEXTE DE LA PAGE :\n${texte.slice(depart, depart + 9000)}`,
+  ].filter(Boolean).join('\n\n');
+}
+
+async function extractWithClaude(html: string, url: string, portail: string, apiKey: string): Promise<Record<string, unknown> | null> {
+  const context = contextePage(html, url).slice(0, 26000);
+
+  const prompt = `Tu es un expert immobilier. Voici une annonce immobilière lue sur ${portail} (${url}) : les données de la page et son texte. Extrais TOUTES les informations du bien, comme le ferait un chasseur qui lit l'annonce en entier (le bloc des caractéristiques ET le texte de l'annonce).
+
+Réponds UNIQUEMENT avec un JSON valide, sans markdown ni texte autour. Ne JAMAIS inventer une valeur — mettre null si non trouvée. Les données d'autres annonces (« annonces similaires ») ne comptent pas : seulement CE bien.
+
 ${context}
 
-Réponds avec ce JSON exact (null si non trouvé) :
-{
-  "titre": "...",
-  "type_bien": "Appartement|Maison|Studio|Loft|Duplex|Villa",
-  "ville": "...",
-  "code_postal": "...",
-  "surface": number|null,
-  "nb_pieces": number|null,
-  "nb_chambres": number|null,
-  "etage": number|null,
-  "parking": boolean,
-  "dpe": "A|B|C|D|E|F|G"|null,
-  "prix_vendeur": number|null,
-  "description": "...",
-  "agence_nom": "...",
-  "photos": ["url1", "url2"]
-}`;
+Réponds avec ce JSON exact :
+${CHAMPS_ANNONCE}`;
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -121,10 +223,10 @@ Réponds avec ce JSON exact (null si non trouvé) :
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      max_tokens: 3500,
       messages: [{ role: 'user', content: prompt }],
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(40000),
   });
 
   if (!response.ok) return null;
@@ -134,7 +236,10 @@ Réponds avec ce JSON exact (null si non trouvé) :
   // Parser le JSON
   const jsonMatch = text.match(/\{[\s\S]+\}/);
   if (!jsonMatch) return null;
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = nettoyerLecture(JSON.parse(jsonMatch[0]));
+  /* Ce que l'IA a laissé vide, rattrapé dans la description (les mêmes
+     règles que le texte copié). */
+  completerParRegex(parsed, String(parsed.description || ''));
 
   // Extraire les photos directement depuis le HTML (Claude ne peut pas les voir)
   const photos = extractPhotos(html);
@@ -142,8 +247,8 @@ Réponds avec ce JSON exact (null si non trouvé) :
   return {
     ...parsed,
     source_portail: portail,
-    adresse: '',
-    photos: photos.length > 0 ? photos : (parsed.photos || []),
+    adresse: parsed.adresse || '',
+    photos,
   };
 }
 
