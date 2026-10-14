@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { avantMandat, type BienVente } from '@/lib/biens-vente';
-import { lireParcours, texteParcours } from '@/lib/parcours';
-import { apprisDe } from '@/lib/visites';
+import { garder, court, memoireRecherches, dossierRecherche } from '@/lib/dossier-recherche';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -89,13 +88,8 @@ const OUTIL = {
   },
 };
 
-const plein = (v: unknown) => v !== null && v !== undefined && v !== '' && v !== false && !(Array.isArray(v) && !v.length) && !(typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
-function garder(o: Record<string, unknown>, cles: string[]): Record<string, unknown> {
-  const x: Record<string, unknown> = {};
-  for (const k of cles) if (plein(o[k])) x[k] = o[k];
-  return x;
-}
-const court = (t: unknown, n: number) => String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+/* `garder`, `court` et le dossier d'une recherche : lib/dossier-recherche.ts
+   (V3.186), le même que lit l'analyse d'une annonce du client. */
 
 /* La fiche du bien, ce qu'une visite en dirait : ni adresse exacte, ni
    propriétaire, ni code, ni mandat. */
@@ -124,13 +118,6 @@ function bienPourIA(b: BienVente): Record<string, unknown> {
   return x;
 }
 
-const CLES_RECHERCHE = [
-  'type_bien', 'budget_min', 'budget_max', 'surface_min', 'surface_max', 'surface_sejour_min', 'nb_pieces_min', 'nb_pieces_max', 'chambres_min',
-  'secteurs', 'transport_minutes', 'etage_min', 'etage_max', 'etage_max_sans_ascenseur', 'rdc_exclu', 'dernier_etage', 'exposition_souhaitee',
-  'etat_souhaite', 'annee_construction_min', 'dpe_max', 'cuisine_type', 'exterieur_surface_min', 'exigences', 'parking', 'cave', 'balcon',
-  'terrasse', 'jardin', 'ascenseur', 'gardien', 'urgence', 'notes',
-];
-
 export async function POST(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -154,12 +141,10 @@ export async function POST(req: NextRequest) {
   const ids = [...new Set(paires.map(x => x.r))];
 
   try {
-    const [{ data: lusB, error: eB }, { data: rs, error: eR }, { data: vs }, { data: cs }, { data: ps }] = await Promise.all([
+    const [{ data: lusB, error: eB }, { data: rs, error: eR }, memoire] = await Promise.all([
       sb.from('biens_vente').select('*').in('id', idsB),
       sb.from('recherches').select('*').in('id', ids),
-      sb.from('visites').select('recherche_id, statut, issue, avis_client, motifs, aime, retenir, commentaire, mot_client, date_visite').in('recherche_id', ids).neq('statut', 'annulee').order('date_visite', { ascending: false }),
-      sb.from('biens').select('recherche_id, titre, ville, badge_retour, retour_client, retour_le').in('recherche_id', ids).not('retour_client', 'is', null).order('retour_le', { ascending: false }),
-      sb.from('veille_propositions').select('recherche_id, motif_ecart').in('recherche_id', ids).eq('statut', 'ecarte').not('motif_ecart', 'is', null).limit(300),
+      memoireRecherches(sb, ids),
     ]);
     if (eB) return ko(eB.message, 500);
     if (eR) return ko(eR.message, 500);
@@ -168,27 +153,7 @@ export async function POST(req: NextRequest) {
     const biens = new Map(((lusB || []) as BienIA[]).map(b => [b.id, { b, x: bienPourIA(b) }]));
 
     /* Chaque recherche, ce qu'on sait d'elle, sans rien de nominatif. */
-    const dossiers = new Map(((rs || []) as Record<string, unknown>[]).map(r => {
-      const rid = String(r.id);
-      const visites = ((vs || []) as Record<string, unknown>[]).filter(v => v.recherche_id === rid);
-      const appris = apprisDe(visites as Parameters<typeof apprisDe>[0], (r.appris_masques as string[] | null) || []);
-      const x: Record<string, unknown> = garder(r, CLES_RECHERCHE);
-      if (Array.isArray(r.transport_arrets) && r.transport_arrets.length) {
-        x.arrets = (r.transport_arrets as { nom?: string; minutes?: number }[]).map(a => `${a.nom || ''}${a.minutes ? ` (${a.minutes} min à pied)` : ''}`);
-      }
-      const parcours = texteParcours(lireParcours(r.parcours));
-      if (parcours) x.son_parcours = parcours;
-      if (appris.eviter.length) x.ses_visites_refusees_pour = appris.eviter.slice(0, 8).map(a => `${a.t}${a.n > 1 ? ` (${a.n} fois)` : ''}`);
-      if (appris.aime.length) x.ses_visites_lui_ont_plu_pour = appris.aime.slice(0, 8).map(a => `${a.t}${a.n > 1 ? ` (${a.n} fois)` : ''}`);
-      const crs = visites.map(v => [court(v.commentaire, 300), court(v.mot_client, 200)].filter(Boolean).join(' — ')).filter(Boolean).slice(0, 6);
-      if (crs.length) x.comptes_rendus = crs;
-      const retours = ((cs || []) as Record<string, unknown>[]).filter(c => c.recherche_id === rid).slice(0, 8)
-        .map(c => `${court(c.titre || c.ville, 60)} : ${court(c.retour_client, 220)}${c.badge_retour === 'refuse' ? ' (pas pour lui)' : ''}`);
-      if (retours.length) x.ce_quil_a_dit_des_biens_montres = retours;
-      const ecarts = [...new Set(((ps || []) as Record<string, unknown>[]).filter(p => p.recherche_id === rid).map(p => court(p.motif_ecart, 140)).filter(Boolean))].slice(0, 10);
-      if (ecarts.length) x.annonces_ecartees_pour = ecarts;
-      return [rid, x] as const;
-    }));
+    const dossiers = new Map(((rs || []) as Record<string, unknown>[]).map(r => [String(r.id), dossierRecherche(r, memoire)] as const));
 
     /* L'empreinte de chaque couple : ce que l'IA a lu du bien et de la
        recherche. Déjà relu, rien n'a bougé : on garde l'avis. */
