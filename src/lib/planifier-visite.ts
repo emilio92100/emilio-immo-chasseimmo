@@ -68,8 +68,15 @@ export async function poserVisites(v: VisiteAPoser): Promise<boolean> {
   /* V3.50 : un bien « Offre faite » le reste (même règle que le compte
      rendu, badgeApresVisite). Une 2e visite effaçait l'offre, dans le CRM
      comme dans son espace, alors que la transaction restait ouverte. */
+  /* V3.187 : un bien sans réponse du client (pas encore de retour) prend
+     « Veut visiter » noté par Alexandre. Sans `retour_par`, la carte disait
+     « depuis son espace » alors que le client n'avait rien répondu. Un retour
+     déjà donné par le client garde son auteur : seul l'état change. */
+  await verifie('La visite est enregistrée, mais l’état « visite » des biens', supabase.from('biens')
+    .update({ badge_retour: 'souhaite_visiter', retour_par: 'conseiller', retour_le: new Date().toISOString() })
+    .in('id', ids).or('badge_retour.is.null,badge_retour.eq.propose'));
   await verifie('La visite est enregistrée, mais l’état « visite » des biens', supabase.from('biens').update({ badge_retour: 'souhaite_visiter' })
-    .in('id', ids).or('badge_retour.is.null,badge_retour.neq.offre_faite'));
+    .in('id', ids).not('badge_retour', 'in', '(propose,offre_faite,souhaite_visiter)'));
   /* S'il l'avait demandée depuis son espace, la demande est servie : la
      relance « Veut visiter » se solde, et la page Visites la range dans
      « À venir ». */
