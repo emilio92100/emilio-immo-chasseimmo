@@ -22,6 +22,11 @@ export type LigneSuivi = {
   ensuite: 'attente' | 'rappeler' | null;
   rappel_le: string | null;
   relance_id: string | null;
+  /** V3.193 — la case « Lui montrer l'étape » ; `null` : la colonne n'existe
+      pas encore (outils/sql/suivis-agence-client.sql pas passé). */
+  montrer: boolean | null;
+  /** V3.193 — « Un mot pour … », lu par le client sur le bien. */
+  mot_client: string | null;
   created_at: string;
 };
 export type VisiteCalee = { date_visite: string; heure: string | null };
@@ -55,6 +60,8 @@ function lire(x: any): LigneSuivi {
     ensuite: x.ensuite === 'attente' || x.ensuite === 'rappeler' ? x.ensuite : null,
     rappel_le: x.rappel_le || null,
     relance_id: x.relance_id || null,
+    montrer: x && 'montrer' in x ? x.montrer !== false : null,
+    mot_client: texteOuNull(x.mot_client),
     created_at: String(x.created_at || ''),
   };
 }
@@ -73,6 +80,12 @@ export async function chargerSuivis(bienIds: string[]): Promise<Suivis> {
   (s.data || []).forEach((x: any) => { const l = lire(x); (parBien[l.bien_id] ||= []).push(l); });
   return { absent: false, parBien, visites };
 }
+
+/* V3.193 : les deux colonnes de ce que le client voit. Avant le SQL, une
+   écriture qui les porte échoue : on la refait sans elles, et on le dit. */
+export const SQL_CLIENT = 'outils/sql/suivis-agence-client.sql';
+export const colonnesClientAbsentes = (e: { message?: string } | null | undefined) =>
+  !!e && /montrer|mot_client/i.test(e.message || '') && /(column|colonne|schema cache)/i.test(e.message || '');
 
 /* ── Les mots ── */
 export const AVEC: { k: 'agence' | 'proprietaire' | 'autre'; l: string; ic: string }[] = [
