@@ -73,14 +73,14 @@ export function mailLienAgence(o: { lien: string; interlocuteur?: string | null;
     </div>`;
 
   const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${LIEN_POLICE_MAIL}<title>${echappe(SUJET_AGENCE)}</title>
-<style>@media (max-width:480px){ .ag-pad{ padding-left:18px !important; padding-right:18px !important; } .ag-titre{ font-size:23px !important; } }</style></head>
+<style>@media (max-width:480px){ .ag-pad{ padding-left:18px !important; padding-right:18px !important; } .ag-titre{ font-size:23px !important; } } @media (max-width:380px){ .ag-badge{ display:none !important; } }</style></head>
 <body style="margin:0;padding:0;background:${MAIL.fondPage};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${MAIL.fondPage};"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;font-family:${POLICE_MAIL};">
   <tr><td class="ag-pad" style="background:${MAIL.marque};border-radius:18px 18px 0 0;border-bottom:3px solid ${MAIL.or};padding:24px 28px 22px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
       <td style="vertical-align:middle;"><img src="${LOGO_BLANC_MAIL}" alt="Emilio Immobilier" height="30" style="height:30px;width:auto;display:block;border:0;color:#ffffff;font-weight:800;font-size:15px;" /></td>
-      <td align="right" style="vertical-align:middle;"><span style="display:inline-block;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:${MAIL.orClair};font-size:10.5px;font-weight:800;letter-spacing:1.2px;white-space:nowrap;">RECHERCHE ACQUÉREUR</span></td>
+      <td align="right" class="ag-badge" style="vertical-align:middle;"><span style="display:inline-block;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:${MAIL.orClair};font-size:10.5px;font-weight:800;letter-spacing:1.2px;white-space:nowrap;">RECHERCHE ACQUÉREUR</span></td>
     </tr></table>
     <div class="ag-titre" style="margin-top:16px;font-size:26px;font-weight:800;line-height:1.2;color:#ffffff;">Un bien pour mon client&nbsp;?</div>
     <div style="margin-top:6px;font-size:15px;font-weight:600;line-height:1.5;color:#DCE6F3;">Déposez-le en un clic : il arrive directement chez moi.</div>

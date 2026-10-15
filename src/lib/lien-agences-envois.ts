@@ -103,11 +103,20 @@ export async function envoisDuLien(rechercheId: string): Promise<Envoi[]> {
 /* ── Les agences de ce client ──
    Rapprochées par leur nom, leur numéro ou leur mail : « CENTURY 21 -
    Montparnasse » et « Century 21 Montparnasse » ne font qu'une. */
+/** D'où le CRM la connaît, du plus parlant au moins parlant. */
+export type Origine = 'presente' | 'selection' | 'suivi' | 'veille' | 'propose' | 'envoi';
+const ORDRE_ORIGINES: Origine[] = ['presente', 'selection', 'suivi', 'veille', 'propose', 'envoi'];
+export const ORIGINES: Record<Origine, string> = {
+  presente: 'Agence d’un bien présenté', selection: 'Agence d’un bien de sa Sélection', suivi: 'Notée dans un de tes suivis',
+  veille: 'Agence d’un bien de sa Veille', propose: 'Elle t’a proposé un bien', envoi: 'Ajoutée à la main',
+};
 export type AgenceConnue = {
   cle: string; nom: string; interlocuteur: string | null; tel: string | null; email: string | null;
   envois: Envoi[]; proposes: number; dernier: string;
+  /** la première de ORDRE_ORIGINES qu'elle a */
+  origine: Origine;
 };
-type Trace = Destinataire & { le: string; envoi?: Envoi; propose?: boolean };
+type Trace = Destinataire & { le: string; envoi?: Envoi; propose?: boolean; origine: Origine };
 
 const normNom = (n: string) => n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const plusRecent = (a: string, b: string) => (a > b ? a : b);
@@ -115,7 +124,7 @@ const plusRecent = (a: string, b: string) => (a > b ? a : b);
 export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue[]> {
   const veilleAvecTel = () => supabase.from('veille_propositions').select('agence, agence_tel, est_particulier, created_at').eq('recherche_id', rechercheId).eq('statut', 'nouveau').limit(500);
   const [b, s, pa, envois, v0] = await Promise.all([
-    supabase.from('biens').select('agence_nom, agence_tel, est_particulier, created_at').eq('recherche_id', rechercheId).limit(500),
+    supabase.from('biens').select('agence_nom, agence_tel, est_particulier, etape, created_at').eq('recherche_id', rechercheId).limit(500),
     supabase.from('suivis_agence').select('avec, contact, created_at').eq('recherche_id', rechercheId).limit(1000),
     supabase.from('propositions_agences').select('agence, interlocuteur, tel, email, created_at').eq('recherche_id', rechercheId).limit(500),
     envoisDuLien(rechercheId),
@@ -129,14 +138,14 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
   }
 
   const traces: Trace[] = [];
-  for (const x of (b.data || []) as any[]) if (!x.est_particulier && x.agence_nom) traces.push({ nom: x.agence_nom, tel: x.agence_tel, le: x.created_at || '' });
+  for (const x of (b.data || []) as any[]) if (!x.est_particulier && x.agence_nom) traces.push({ nom: x.agence_nom, tel: x.agence_tel, le: x.created_at || '', origine: x.etape === 'presente' ? 'presente' : 'selection' });
   for (const x of (s.data || []) as any[]) {
     const c = x.contact && typeof x.contact === 'object' ? x.contact : {};
-    if ((x.avec === 'agence' || !x.avec) && c.nom) traces.push({ nom: c.nom, interlocuteur: c.interlocuteur, tel: c.tel, email: c.email, le: x.created_at || '' });
+    if ((x.avec === 'agence' || !x.avec) && c.nom) traces.push({ nom: c.nom, interlocuteur: c.interlocuteur, tel: c.tel, email: c.email, le: x.created_at || '', origine: 'suivi' });
   }
-  for (const x of (v.data || []) as any[]) if (!x.est_particulier && x.agence) traces.push({ nom: x.agence, tel: x.agence_tel || null, le: x.created_at || '' });
-  for (const x of (pa.data || []) as any[]) if (x.agence) traces.push({ nom: x.agence, interlocuteur: x.interlocuteur, tel: x.tel, email: x.email, le: x.created_at || '', propose: true });
-  for (const e of envois) if (e.nom) traces.push({ ...e, le: e.le, envoi: e });
+  for (const x of (v.data || []) as any[]) if (!x.est_particulier && x.agence) traces.push({ nom: x.agence, tel: x.agence_tel || null, le: x.created_at || '', origine: 'veille' });
+  for (const x of (pa.data || []) as any[]) if (x.agence) traces.push({ nom: x.agence, interlocuteur: x.interlocuteur, tel: x.tel, email: x.email, le: x.created_at || '', propose: true, origine: 'propose' });
+  for (const e of envois) if (e.nom) traces.push({ ...e, le: e.le, envoi: e, origine: 'envoi' });
 
   /* Les regroupements : une clé par nom, par numéro, par mail. */
   const groupes: (AgenceConnue & { cles: Set<string> })[] = [];
@@ -152,7 +161,7 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
     const trouves = Array.from(new Set(cles.map(k => index.get(k)).filter((i): i is number => i !== undefined)));
     let g: (typeof groupes)[number];
     if (!trouves.length) {
-      g = { cle: cles[0], nom, interlocuteur: null, tel: null, email: null, envois: [], proposes: 0, dernier: t.le, cles: new Set() };
+      g = { cle: cles[0], nom, interlocuteur: null, tel: null, email: null, envois: [], proposes: 0, dernier: t.le, origine: t.origine, cles: new Set() };
       groupes.push(g);
     } else {
       g = groupes[trouves[0]];
@@ -161,6 +170,7 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
         if (autre === g) continue;
         autre.cles.forEach(k => g.cles.add(k));
         g.envois.push(...autre.envois); g.proposes += autre.proposes; g.dernier = plusRecent(g.dernier, autre.dernier);
+        if (ORDRE_ORIGINES.indexOf(autre.origine) < ORDRE_ORIGINES.indexOf(g.origine)) g.origine = autre.origine;
         g.tel ||= autre.tel; g.email ||= autre.email; g.interlocuteur ||= autre.interlocuteur;
         groupes[i] = g;
       }
@@ -174,6 +184,7 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
     if (mailValide(t.email)) g.email = String(t.email).trim();
     if (t.envoi) g.envois.push(t.envoi);
     if (t.propose) g.proposes += 1;
+    if (ORDRE_ORIGINES.indexOf(t.origine) < ORDRE_ORIGINES.indexOf(g.origine)) g.origine = t.origine;
     g.dernier = plusRecent(g.dernier, t.le);
   }
   const uniques = Array.from(new Set(groupes));
