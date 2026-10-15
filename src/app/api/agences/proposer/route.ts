@@ -1,0 +1,191 @@
+import { NextRequest, NextResponse, after } from 'next/server';
+import { lienPropre, siteDe } from '@/lib/annonces-client';
+import { lireAnnonce } from '@/lib/extraction-annonce';
+import { pagePublique } from '@/lib/page-publique';
+import { analyserPourRecherche } from '@/lib/analyse-bien-serveur';
+import { ecritServeur } from '@/lib/ecritures';
+import { tableAgencesAbsente } from '@/lib/agences-lien';
+import { apercuDe, base, decoderPhoto, ficheNette, limite, nettoie, rechercheDuJeton, signatureValide } from '@/lib/agences-serveur';
+
+/**
+ * Le lien pour les agences (V3.197) : l'agence envoie un bien.
+ *
+ *   POST /api/agences/proposer  {
+ *     token, url?, fiche?, signature?,            ← la lecture faite par api/agences/lire
+ *     photos?: data:image/…[], adresse?, prix?, surface?, mot?,
+ *     agence, interlocuteur?, tel?, email?
+ *   } → { ok, apercu } | { ok, deja: true }
+ *
+ * Un lien ou au moins une photo. Le bien arrive dans l'onglet Veille de la
+ * fiche du client (« Proposés par des agences »), puis l'analyse part juste
+ * après la réponse (`after`) : Alexandre le trouve déjà noté. Une ligne au
+ * Suivi, une relance « Proposé par une agence » (une seule en attente à la
+ * fois par recherche).
+ *
+ * Publique dans src/proxy.ts : le jeton d'une recherche ouverte fait la serrure.
+ */
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+const BUCKET = 'photos-biens';
+const PHOTOS_MAX = 6;
+/* Trente biens par jour et par lien : bien au-delà d'un usage normal. */
+const PAR_JOUR = 30;
+const PREFIXE_RELANCE = 'Bien proposé par';
+
+const nombre = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(/[\s  €m²]/g, '').replace(',', '.'));
+  return Number.isFinite(n) && n > 0 && n < 1e9 ? n : null;
+};
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) return NextResponse.json({ ok: false, error: 'requete' }, { status: 400 });
+    const token = String(body.token || '');
+    const sb = base();
+    const r = await rechercheDuJeton(sb, token);
+    if (!r) return NextResponse.json({ ok: false, error: 'lien' }, { status: 401 });
+    if (r.ferme) return NextResponse.json({ ok: false, error: 'ferme' }, { status: 410 });
+    if (!limite(`proposer:${token}`, 15, 15 * 60_000)) return NextResponse.json({ ok: false, error: 'trop' }, { status: 429 });
+    const rid = r.recherche.id as string;
+    const cid = r.recherche.client_id as string;
+
+    /* Ce qu'elle envoie. */
+    const brut = typeof body.url === 'string' ? body.url.trim() : '';
+    const url = brut ? lienPropre(brut) : null;
+    if (brut && !url) return NextResponse.json({ ok: false, error: 'adresse' }, { status: 400 });
+    const brutes: unknown[] = Array.isArray(body.photos) ? body.photos.slice(0, PHOTOS_MAX) : [];
+    const photos = brutes.map(decoderPhoto).filter((x): x is NonNullable<ReturnType<typeof decoderPhoto>> => !!x);
+    if (brutes.length && photos.length < brutes.length) return NextResponse.json({ ok: false, error: 'photo' }, { status: 400 });
+    if (!url && !photos.length) return NextResponse.json({ ok: false, error: 'vide' }, { status: 400 });
+    const agence = nettoie(body.agence, 120);
+    const interlocuteur = nettoie(body.interlocuteur, 120) || null;
+    const tel = nettoie(body.tel, 40) || null;
+    const email = nettoie(body.email, 160) || null;
+    if (!agence) return NextResponse.json({ ok: false, error: 'agence' }, { status: 400 });
+    if (!tel && !email) return NextResponse.json({ ok: false, error: 'contact' }, { status: 400 });
+    const adresse = nettoie(body.adresse, 300) || null;
+    const prix = nombre(body.prix);
+    const surface = nombre(body.surface);
+    const mot = nettoie(body.mot, 1200) || null;
+
+    /* Pas plus de PAR_JOUR par jour. La table absente (SQL pas passé) : on le dit. */
+    const depuis24h = new Date(Date.now() - 86_400_000).toISOString();
+    const compte = await sb.from('propositions_agences').select('id', { count: 'exact', head: true })
+      .eq('recherche_id', rid).gte('created_at', depuis24h);
+    if (compte.error) {
+      if (tableAgencesAbsente(compte.error)) return NextResponse.json({ ok: false, error: 'indisponible' }, { status: 503 });
+      console.error('[agences/proposer] compte', compte.error.message);
+      return NextResponse.json({ ok: false, error: 'erreur' }, { status: 500 });
+    }
+    if ((compte.count || 0) >= PAR_JOUR) return NextResponse.json({ ok: false, error: 'trop' }, { status: 429 });
+
+    /* Le même lien, déjà proposé pour ce client ou déjà dans son dossier : rien de nouveau. */
+    if (url) {
+      const [deja, bien] = await Promise.all([
+        sb.from('propositions_agences').select('id').eq('recherche_id', rid).eq('url', url).limit(1).maybeSingle(),
+        sb.from('biens').select('id').eq('recherche_id', rid).eq('url', url).limit(1).maybeSingle(),
+      ]);
+      if (deja.data || bien.data) return NextResponse.json({ ok: true, deja: true });
+    }
+
+    /* La fiche : celle lue par api/agences/lire (signée), sinon on lit l'annonce maintenant. */
+    let fiche: Record<string, unknown> = {};
+    let lecture: 'ok' | 'partielle' | 'echec' | 'sans_lien' = 'sans_lien';
+    if (url) {
+      const recue = body.fiche && typeof body.fiche === 'object' ? body.fiche : null;
+      if (recue && signatureValide(token, url, recue, body.signature)) {
+        fiche = ficheNette(recue);
+      } else {
+        const lu = await lireAnnonce(url, pagePublique);
+        fiche = ficheNette(lu.bien);
+        if (lu.partial !== false) fiche.titre = undefined;
+      }
+      const utile = !!(fiche.prix_vendeur || fiche.surface || fiche.nb_pieces);
+      lecture = utile ? (fiche.titre ? 'ok' : 'partielle') : 'echec';
+      if (!utile) fiche = {};
+    }
+
+    /* Les photos d'abord, rangées sous agences/<id>/ ; la ligne ensuite. */
+    const id = crypto.randomUUID();
+    const deposees: string[] = [];
+    const urls: string[] = [];
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      const chemin = `agences/${id}/${i + 1}-${Date.now()}.${p.ext}`;
+      const { error } = await sb.storage.from(BUCKET).upload(chemin, p.octets, { contentType: p.type, upsert: false });
+      if (error) {
+        console.error('[agences/proposer] photo', error.message);
+        if (deposees.length) await sb.storage.from(BUCKET).remove(deposees);
+        return NextResponse.json({ ok: false, error: 'photo' }, { status: 500 });
+      }
+      deposees.push(chemin);
+      urls.push(sb.storage.from(BUCKET).getPublicUrl(chemin).data.publicUrl);
+    }
+
+    /* Ce que l'agence a écrit complète la lecture, sans l'écraser. */
+    const portail = url ? siteDe(url)?.nom || null : null;
+    if (adresse && !fiche.adresse) fiche.adresse = adresse;
+    if (prix && !fiche.prix_vendeur) fiche.prix_vendeur = prix;
+    if (surface && !fiche.surface) fiche.surface = surface;
+    const photosFiche = Array.isArray(fiche.photos) ? (fiche.photos as string[]) : [];
+    fiche.photos = [...photosFiche, ...urls].slice(0, 24);
+    fiche.agence_nom = agence;
+    if (tel) fiche.agence_tel = tel;
+    if (url) fiche.url = url;
+    fiche.source_portail = portail || agence;
+    if (!fiche.titre) {
+      const ville = fiche.ville || (adresse ? adresse.split(',').pop()?.trim() : '');
+      const bouts = [fiche.type_bien, fiche.surface ? `${fiche.surface} m²` : '', ville].filter(Boolean);
+      fiche.titre = bouts.length ? bouts.join(' · ') : `Bien proposé par ${agence}`;
+    }
+
+    const ligne = {
+      id, client_id: cid, recherche_id: rid, url, portail, photos: urls,
+      adresse, prix, surface, mot, agence, interlocuteur, tel, email, lecture, fiche, statut: 'nouveau',
+    };
+    const { error: eIns } = await sb.from('propositions_agences').insert(ligne);
+    if (eIns) {
+      console.error('[agences/proposer] enregistrement', eIns.message);
+      if (deposees.length) await sb.storage.from(BUCKET).remove(deposees);
+      return NextResponse.json({ ok: false, error: tableAgencesAbsente(eIns) ? 'indisponible' : 'enregistrement' }, { status: 500 });
+    }
+
+    /* Pour Alexandre : une ligne au Suivi, une relance (une seule en attente à la fois). */
+    const qui = [agence, interlocuteur].filter(Boolean).join(' · ');
+    const quoi = [String(fiche.titre || ''), fiche.prix_vendeur ? `${Number(fiche.prix_vendeur).toLocaleString('fr-FR')} €` : ''].filter(Boolean).join(' · ');
+    await ecritServeur('[agences/proposer] journal', sb.from('journal').insert({
+      client_id: cid, recherche_id: rid, type: 'proposition_agence',
+      titre: `🏢 Bien proposé par ${agence} — ${quoi}`.slice(0, 300),
+      description: [url || `${urls.length} photo${urls.length > 1 ? 's' : ''}, sans lien`, qui + (tel ? ` · ${tel}` : '') + (email ? ` · ${email}` : ''), mot ? `« ${mot} »` : ''].filter(Boolean).join('\n'),
+      metadata: { proposition_agence_id: id },
+    }));
+    const { count: dejaRelance } = await sb.from('relances').select('id', { count: 'exact', head: true })
+      .eq('recherche_id', rid).eq('statut', 'en_attente').like('note', `${PREFIXE_RELANCE}%`);
+    if (!dejaRelance) {
+      await ecritServeur('[agences/proposer] relance', sb.from('relances').insert({
+        client_id: cid, recherche_id: rid, type: 'manuelle', statut: 'en_attente', date_echeance: new Date().toISOString(),
+        note: `${PREFIXE_RELANCE} ${agence} : ${quoi || 'un bien'} — à voir dans l’onglet Veille`.slice(0, 500),
+      }));
+    }
+
+    /* L'analyse, juste après la réponse : l'agence n'attend pas. */
+    if (lecture === 'ok' || lecture === 'partielle' || fiche.prix_vendeur || fiche.surface) {
+      after(async () => {
+        const dit: Record<string, unknown> = { agence: qui };
+        if (mot) dit.son_mot = mot;
+        if (adresse) dit.adresse_donnee = adresse;
+        const a = await analyserPourRecherche(sb, rid, fiche, { source: 'agence', dit });
+        if (!a.ok) { console.error('[agences/proposer] analyse', a.erreur); return; }
+        await ecritServeur('[agences/proposer] analyse', sb.from('propositions_agences').update({ fiche: { ...fiche, ...a.analyse } }).eq('id', id));
+      });
+    }
+
+    return NextResponse.json({ ok: true, apercu: apercuDe(fiche) });
+  } catch (e) {
+    console.error('[agences/proposer]', e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ ok: false, error: 'erreur' }, { status: 500 });
+  }
+}
