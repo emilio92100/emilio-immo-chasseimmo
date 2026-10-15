@@ -1515,6 +1515,50 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.197 — 15 octobre 2026 · Le lien pour les agences
+
+- Alexandre : « quand j'appelle une agence et qu'elle me dit d'aller voir sur son site, comment
+  fluidifier pour que je le reçoive en veille, et que je puisse écarter ou pas ? ». Maquettes
+  validées (canevas « Le lien pour les agences ») ; choix : un lien PAR RECHERCHE (le même pour
+  toutes les agences de ce client), le budget maximum montré, « tout autre site » accepté.
+  **SQL à passer** : `outils/sql/lien-agences.sql` (`recherches.token_agences` + index unique ;
+  table `propositions_agences`, RLS `crm_authentifie`).
+- La page publique `/proposer/<jeton>` (src/app/proposer/[token]/page.tsx →
+  src/components/agences/PageAgence.tsx ; espace.emilio-immo.com/proposer/… passe le proxy) :
+  résumé SANS NOM de la recherche (`resumePourAgence`, src/lib/agences-lien.ts : type, pièces,
+  chambres, surface, villes, budget max, indispensables, RDC exclu — jamais les précisions ni les
+  biens vus) ; le lien de l'annonce lu dès qu'il est collé (« Annonce lue · 3 pièces 52 m² ·
+  265 000 € · 8 photos ») ; sinon photos (réduites à 1 600 px), adresse, prix, surface ; un mot ;
+  « Vous » (agence, nom, téléphone, e-mail) gardé dans le navigateur ; « C'est arrivé chez
+  Alexandre », « Proposer un autre bien », la liste des biens envoyés (navigateur). Sur
+  ordinateur (≥ 900 px) : bandeau en deux colonnes avec « Comment ça marche » / « Et maintenant ? »
+  à droite (motif de points, cercles fins), la recherche et une carte « Une question ? » à
+  gauche, le formulaire à droite. Lien coupé ou dossier fermé (`rechercheFermee` : perdu,
+  bien_trouve, suspendu, archivé) : la page le dit.
+- Routes publiques (src/proxy.ts, `/api/agences/`) : `lire` (lit l'annonce, rend l'aperçu et
+  la fiche SIGNÉE — HMAC, src/lib/agences-serveur.ts) et `proposer` (vérifie la signature,
+  sinon relit ; photos sous `photos-biens/agences/<id>/` ; complète la lecture avec ce que
+  l'agence a écrit ; même lien déjà proposé ou déjà dans le dossier → « Alexandre l'a déjà » ;
+  journal `proposition_agence`, une relance « Bien proposé par … » à la fois ; puis l'ANALYSE
+  dans `after()`, gardée dans `fiche`). Limites : 20 lectures et 15 envois par quart d'heure et
+  par lien (par instance), 30 biens par jour.
+- ⚠️ Une adresse donnée par un inconnu : `pagePublique` (src/lib/page-publique.ts) refuse
+  toute adresse interne (http/https seulement, ports 80/443, nom résolu et toutes ses adresses
+  publiques, redirections revérifiées une à une, 15 s, 4 Mo).
+- Le moteur sorti des routes pour servir deux fois : src/lib/extraction-annonce.ts
+  (`lireAnnonce`, `lireHtml` ; api/extract-bien n'en garde que l'appel) et
+  src/lib/analyse-bien-serveur.ts (`analyserPourRecherche`, consigne « client » ou « agence » ;
+  api/analyse-bien accepte `proposition_id`).
+- CRM, onglet Veille : « Proposés par des agences » (src/components/fiche/PropositionsAgences.tsx,
+  liseré violet) — agence, personne, numéro, son mot, la note et l'analyse ; « Ouvrir
+  l'annonce », « Voir en grand », « Appeler Julien », « Écarter » (l'agence n'en sait rien),
+  « Retenir » (en Sélection, avec `agence_nom`, `agence_tel`, l'analyse) ; les écartés,
+  « Remettre ». Le bouton « Lien pour les agences » : le lien (créé à la première ouverture),
+  le message (SMS ou mail, lien cliquable), « Ce que l'agence voit », le compte, « Couper ce
+  lien » (puis « Créer un nouveau lien »). Le compteur de l'onglet Veille les compte ; la page
+  Relances les nomme « Proposé par une agence ». Sur téléphone, les cartes des annonces (client
+  et agences) ne débordent plus (`.haut { align-items: stretch }`).
+
 ### V3.196 — 15 octobre 2026 · Fiche du bien plus compacte : pas de ligne pour un mot
 
 - Alexandre : « sur PC ça crée des lignes pour rien : En réflexion à côté de Visite effectuée,
