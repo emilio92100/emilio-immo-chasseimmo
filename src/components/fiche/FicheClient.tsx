@@ -311,6 +311,8 @@ import type { SuiviVente } from '@/lib/biens-vente';
 import { useBonDeVisite, useEtatsBons, type DepartBon } from '@/components/documents/BonDeVisite';
 import CompteRenduVisite, { enregistrerCompteRendu, type ValeursCR } from '@/components/shared/CompteRenduVisite';
 import { Onglets, StylesEmilio, Icone, LienEspace } from './ParcoursBien';
+import { annoncerSucces } from '@/lib/succes';
+import { texteCreneau, reporterAdresseVeille } from '@/lib/suivi-agence';
 import FriseSuivi, { ISSUES_APPEL, estMailSimple } from './FriseSuivi';
 import CarteASavoir from '@/components/contacts/CarteASavoir';
 import BlocSociete from '@/components/contacts/BlocSociete';
@@ -1394,6 +1396,9 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
   /* Monte d'un cran quand un mail de biens est parti : les onglets Sélection
      et Présentés, qui chargent leurs biens eux-mêmes, se rechargent. */
   const [versionBiens, setVersionBiens] = useState(0);
+  /* V3.192 : une visite vient d'être calée sur ces biens : leur fenêtre « en
+     grand » se ferme (OngletBiens), et le suivi relu montre « Visite calée ». */
+  const [visitePosee, setVisitePosee] = useState<{ ids: string[]; n: number } | null>(null);
   useEffect(() => {
     if (!rechercheActive) { setMandatsOk(null); return; }
     let vivant = true;
@@ -3067,6 +3072,10 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     }).eq('id', ficheBienId).select('id'), { ligne: true });
     /* Pas enregistrée : la fenêtre reste ouverte, rien n'est perdu. */
     if (!enregistre) { setSaving(false); return; }
+    /* V3.192 : une adresse changée ici change aussi dans la proposition de la veille. */
+    const adresseAvant = String(biens.find(x => x.id === ficheBienId)?.adresse || '').trim();
+    const adresseApres = String(editBienForm.adresse || '').trim();
+    if (adresseApres !== adresseAvant) await reporterAdresseVeille(ficheBienId, adresseApres || null);
     await addJournal(client.id, 'bien_modifie', `🏠 Bien modifié — ${editBienForm.titre||editBienForm.ville||''}`, undefined, undefined, { rechercheId });
     setSaving(false); setShowFicheBien(false); load();
   }
@@ -3280,6 +3289,19 @@ ${signatureMail()}`,
     });
     if (!ok) return;
     setShowPlanVisite(false); chargerRelances(); load();
+    /* V3.192 (Alexandre : « j'ai validé le créneau, et rien ne s'est fait, le
+       bouton Valider ce créneau était toujours là ») : la liste et le suivi
+       se relisent (le créneau passe à « Visite calée »), la fenêtre du bien se
+       ferme, et un petit message dit où elle est. */
+    setVersionBiens(v => v + 1);
+    setVisitePosee({ ids: bien_ids, n: Date.now() });
+    const quand = date ? (heure ? texteCreneau({ date, heure: String(heure).slice(0, 5) }) : texteCreneau({ date, heure: '00:00' }).split(' · ')[0]) : '';
+    const qui = (client.prenom || '').trim() || 'ton client';
+    annoncerSucces({
+      titre: bien_ids.length > 1 ? `Visite calée · ${bien_ids.length} biens` : 'Visite calée',
+      detail: `${quand ? `${quand} — ` : ''}dans ton agenda, et dans l’espace de ${qui}.`,
+      ic: 'calendrier',
+    });
   }
 
   function marquerEffectuee(visiteId: string) {
@@ -5399,7 +5421,7 @@ ${signatureMail()}`,
         {tab === 'selection' && (
           <div key="p-selection" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="selection"
-            vise={ouverture?.onglet === 'selection' ? ouverture.bienId || null : null} viseEnGrand={!!ouverture?.enGrand}
+            vise={ouverture?.onglet === 'selection' ? ouverture.bienId || null : null} viseEnGrand={!!ouverture?.enGrand} visitePosee={visitePosee}
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={async (id) => { await load(); openEnvoiBien(id); }}
             onMailGroupe={async (ids) => { await load(); openEnvoiMulti(ids); }}
@@ -5413,7 +5435,7 @@ ${signatureMail()}`,
         {tab === 'presentes' && (
           <div key="p-presentes" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
-            vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null} viseEnGrand={!!ouverture?.enGrand}
+            vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null} viseEnGrand={!!ouverture?.enGrand} visitePosee={visitePosee}
             onDocument={ouvrirOffreDoc('Présentés')} onTransaction={() => setTab('transaction')}
             onBienVente={id => onNavigate('biens', { bien: id })}
             onChange={() => { load(); chargerVeilleCount(); }}

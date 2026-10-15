@@ -6,7 +6,7 @@ import { signalerEchec, verifie } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
 import { lireIndispo } from '@/lib/biens-indispo';
 import {
-  AVEC, DISPOS, REPONSES, cleDuJour, contactDu, contactEnLigne, creneauxOuverts, etatSuivi, quandNote, texteCreneau,
+  AVEC, DISPOS, REPONSES, cleDuJour, contactDu, contactEnLigne, corrigerAdresse, creneauDeLaVisite, creneauxOuverts, etatSuivi, quandNote, texteCreneau,
   type Creneau, type LigneSuivi, type VisiteCalee,
 } from '@/lib/suivi-agence';
 import { ChoixDateHeure, ChoixJour } from '@/components/pages/PageAgenda';
@@ -171,12 +171,17 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
                       {l.creneaux.length > 0 && (
                         <div className={s.creneaux}>
                           <span className={s.creneauxLib}>{actifs ? 'Créneaux proposés par l’agence :' : 'Créneaux proposés :'}</span>
-                          {(actifs || l.creneaux).map(c => (
-                            <span key={`${c.date}-${c.heure}`} className={s.creneau} data-actif={actifs ? 'oui' : undefined}>
-                              {texteCreneau(c)}
-                              {actifs && <button type="button" className={s.valider} onClick={() => onValider(c, contactEnLigne(contact))}>Valider ce créneau</button>}
-                            </span>
-                          ))}
+                          {(actifs || l.creneaux).map(c => {
+                            /* V3.192 : le créneau validé le dit, une coche verte à côté. */
+                            const retenu = creneauDeLaVisite(c, visite);
+                            return (
+                              <span key={`${c.date}-${c.heure}`} className={s.creneau} data-actif={actifs ? 'oui' : undefined} data-retenu={retenu ? 'oui' : undefined}>
+                                {texteCreneau(c)}
+                                {actifs && <button type="button" className={s.valider} onClick={() => onValider(c, contactEnLigne(contact))}>Valider ce créneau</button>}
+                                {retenu && <span className={s.retenu}><Icone nom="coche" taille={12} epaisseur={2.8} />Visite calée</span>}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                       {l.ensuite === 'rappeler' && l.rappel_le && (
@@ -231,6 +236,12 @@ function FenetreAppel({ b, lignes, clientId, rechercheId, onFermer, onFait }: {
   const [ensuite, setEnsuite] = useState<string | null>(null);
   const [rappel, setRappel] = useState(demain());
   const [envoi, setEnvoi] = useState(false);
+  /* V3.192 : l'adresse exacte, vérifiée au téléphone. Vide tant qu'il n'y a
+     que celle, probable, de la veille : elle ne devient exacte que si tu la
+     reprends ou l'écris. */
+  const adresseFiche = String(b.adresse || '').trim();
+  const adresseProbable = adresseFiche ? '' : String(b.adresse_probable || '').trim();
+  const [adresse, setAdresse] = useState(adresseFiche);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !envoi) onFermer(); };
@@ -274,6 +285,8 @@ function FenetreAppel({ b, lignes, clientId, rechercheId, onFermer, onFait }: {
       if (change && garder) {
         await verifie('Les coordonnées sur la fiche du bien', supabase.from('biens').update({ agence_nom: c.nom || null, agence_tel: c.tel || null }).eq('id', b.id).select('id'), { ligne: true });
       }
+      /* V3.192 : l'adresse corrigée va sur le bien et sur sa proposition de la veille. */
+      if (adresse.trim() && adresse.trim() !== adresseFiche) await corrigerAdresse(b.id, adresse);
       if (relanceId) signalerMaj();
       onFait();
     } finally {
@@ -315,6 +328,21 @@ function FenetreAppel({ b, lignes, clientId, rechercheId, onFermer, onFait }: {
             {change && (
               <label className={s.coche}><input type="checkbox" checked={garder} onChange={e => setGarder(e.target.checked)} />{'Mettre aussi ce nom et ce téléphone sur la fiche du bien'}</label>
             )}
+          </section>
+
+          {/* V3.192 — L'adresse exacte du bien. */}
+          <section className={s.section}>
+            <label className={s.lib} htmlFor="appel-adresse"><Icone nom="lieu" taille={14} epaisseur={2.2} />L’adresse exacte du bien</label>
+            <input id="appel-adresse" className={s.adresse} value={adresse} onChange={e => setAdresse(e.target.value)} maxLength={300}
+              placeholder={adresseProbable ? `Probable d’après la veille : ${adresseProbable}` : 'Numéro, rue, ville'} />
+            {adresseProbable && !adresse.trim() && (
+              <button type="button" className={s.reprendre} onClick={() => setAdresse(adresseProbable)}>
+                <Icone nom="coche" taille={13} epaisseur={2.6} />{`C’est la bonne : ${adresseProbable}`}
+              </button>
+            )}
+            <div className={s.aide}>{adresseFiche
+              ? 'Corrige-la si l’agence ou le propriétaire t’en donne une autre : elle change sur la fiche du bien et dans la proposition de la veille.'
+              : 'Vérifie-la au téléphone. Écrite ici, elle devient l’adresse du bien, et celle de sa proposition dans la veille.'}</div>
           </section>
 
           <div className={s.deux}>

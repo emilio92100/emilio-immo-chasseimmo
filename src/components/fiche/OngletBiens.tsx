@@ -165,6 +165,8 @@ interface Props {
   vise?: string | null;
   /** V3.191 : et l'ouvrir en grand (une agence retrouvée par son numéro, la recherche du haut ou Ringover). */
   viseEnGrand?: boolean;
+  /** V3.192 : une visite vient d'être calée sur ces biens : leur fenêtre en grand se ferme. */
+  visitePosee?: { ids: string[]; n: number } | null;
   /** V3.189 : « Son offre » sous chaque bien présenté — où ouvrir l'offre, et la transaction. */
   onDocument?: (id: string, o?: { editer?: boolean }) => void;
   onTransaction?: () => void;
@@ -172,7 +174,7 @@ interface Props {
   onBienVente?: (bienVenteId: string) => void;
 }
 
-export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, viseEnGrand = false, onDocument, onTransaction, onBienVente }: Props) {
+export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, viseEnGrand = false, visitePosee = null, onDocument, onTransaction, onBienVente }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [obs, setObs] = useState<any>(null);
@@ -243,6 +245,15 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     window.setTimeout(() => document.getElementById(`bien-${vise}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 700);
     window.setTimeout(() => setEclaire(null), 6000);
   }, [vise, viseEnGrand, chargement, biens]);
+
+  /* V3.192 : la visite du bien ouvert en grand est calée : la fenêtre se
+     ferme, on revient à la liste (le petit message dit où elle est). */
+  const visiteVue = useRef(0);
+  useEffect(() => {
+    if (!visitePosee || visitePosee.n === visiteVue.current) return;
+    visiteVue.current = visitePosee.n;
+    if (grand && visitePosee.ids.includes(grand.id)) setGrand(null);
+  }, [visitePosee, grand]);
 
   const recharge = () => { setTick(t => t + 1); onChange?.(); };
 
