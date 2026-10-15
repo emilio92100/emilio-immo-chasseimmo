@@ -17,6 +17,11 @@ import type { ResumeAgence } from '@/lib/agences-lien';
  *   - « Envoyer à Alexandre », puis « C'est arrivé chez Alexandre ».
  * Téléphone : une colonne. Ordinateur : deux (la recherche à gauche, le
  * formulaire à droite). Composants au niveau du module (AGENTS.md §2.4).
+ *
+ * V3.198 — « Vos envois pour ce client » sous le formulaire, dès qu'elle a
+ * envoyé quelque chose depuis cet appareil ; un « ? » explique que la liste
+ * est gardée sur l'appareil (Alexandre : « pour leur faire comprendre que
+ * l'historique se base uniquement sur ce poste »).
  */
 
 type Apercu = { titre: string | null; prix: number | null; surface: number | null; pieces: number | null; chambres: number | null; etage: number | null; ville: string | null; balcon: boolean; terrasse: boolean; jardin: boolean; photos: number; photo: string | null };
@@ -148,6 +153,44 @@ const ETAPES_FAIT = [
   { t: 'Il l’étudie pour son client', s: 'Il le compare à sa recherche.' },
   { t: 'Il revient vers vous', s: 'S’il intéresse son client, pour organiser une visite.' },
 ];
+
+/* « Aujourd'hui », « Le 12 octobre » */
+function quandEnvoi(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  if (d.toDateString() === new Date().toDateString()) return 'Aujourd’hui';
+  return `Le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+}
+
+/* V3.198 — Ce qu'elle a envoyé pour ce client depuis cet appareil, et le « ? ». */
+function CarteEnvois({ envoyes }: { envoyes: Envoye[] }) {
+  const [info, setInfo] = useState(false);
+  const zone = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!info) return;
+    const dehors = (e: PointerEvent) => { if (zone.current && !zone.current.contains(e.target as Node)) setInfo(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setInfo(false); };
+    document.addEventListener('pointerdown', dehors);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', dehors); document.removeEventListener('keydown', esc); };
+  }, [info]);
+  return (
+    <section className="ag-carte ag-hist" aria-label="Vos envois pour ce client">
+      <div className="ag-hist-tete" ref={zone}>
+        <span className="ag-hist-titre"><span className="ag-sur">VOS ENVOIS POUR CE CLIENT</span><span className="ag-hist-sous">Depuis cet appareil</span></span>
+        <button type="button" className="ag-q" aria-expanded={info} aria-controls="ag-hist-info" aria-label="À propos de cette liste" onClick={() => setInfo(v => !v)}>?</button>
+        {info && (
+          <div id="ag-hist-info" className="ag-bulle" role="note">
+            <b>Les envois faits depuis cet appareil</b>
+            <span>{'Cette liste est gardée sur ce téléphone ou cet ordinateur. Ce que vous avez envoyé depuis un autre appareil n’y apparaît pas, mais Alexandre l’a bien reçu.'}</span>
+            <button type="button" onClick={() => setInfo(false)}>Compris</button>
+          </div>
+        )}
+      </div>
+      {envoyes.map((e, i) => <span key={i} className="ag-hist-l"><span>{e.titre}</span><small>{quandEnvoi(e.le)}</small></span>)}
+    </section>
+  );
+}
 
 /* Ordinateur : la carte pour joindre Alexandre, sous la recherche. */
 function CarteContact() {
@@ -288,11 +331,6 @@ export default function PageAgence({ etat, token, resume }: { etat: 'ouvert' | '
   }
 
   const prenomAgent = vous.interlocuteur.trim().split(/\s+/)[0] || '';
-  const quand = (iso: string) => {
-    const d = new Date(iso); const auj = new Date();
-    if (d.toDateString() === auj.toDateString()) return 'Aujourd’hui';
-    return `Le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
-  };
 
   return (
     <>
@@ -324,12 +362,7 @@ export default function PageAgence({ etat, token, resume }: { etat: 'ouvert' | '
                 </div>
               </section>
               <div className="ag-droite">
-                {envoyes.length > 0 && (
-                  <section className="ag-carte ag-hist" aria-label="Vos biens envoyés pour ce client">
-                    <span className="ag-sur">VOS BIENS ENVOYÉS POUR CE CLIENT</span>
-                    {envoyes.map((e, i) => <span key={i} className="ag-hist-l"><span>{e.titre}</span><small>{quand(e.le)}</small></span>)}
-                  </section>
-                )}
+                {envoyes.length > 0 && <CarteEnvois envoyes={envoyes} />}
                 <CarteContact />
               </div>
             </div>
@@ -425,6 +458,7 @@ export default function PageAgence({ etat, token, resume }: { etat: 'ouvert' | '
                   <span>{envoi ? 'Envoi…' : lecture.etat === 'lecture' ? 'Lecture de l’annonce…' : 'Envoyer à Alexandre'}</span>
                 </button>
                 <a className="ag-appel ag-mob" href={`tel:${TEL_URL}`}><Ic n="tel" t={15} /><span>{`Une question ? ${TEL}`}</span></a>
+                {envoyes.length > 0 && <CarteEnvois envoyes={envoyes} />}
               </div>
             </div>
           </>
@@ -541,6 +575,18 @@ body{ margin:0; background:#F5F8FC }
 .ag-etapes-x b{ font-size:14.5px; font-weight:800; color:#fff }
 .ag-etapes-x small{ font-size:13px; font-weight:600; color:#C9D6EA; line-height:1.45 }
 .ag-hist-l small{ font-size:13px; font-weight:600; color:#6B7A90; white-space:nowrap }
+/* V3.198 — le « ? » de « Vos envois pour ce client », et sa bulle. */
+.ag-hist-tete{ position:relative; display:flex; align-items:flex-start; gap:10px }
+.ag-hist-titre{ flex:1 1 auto; display:flex; flex-direction:column; gap:2px; min-width:0 }
+.ag-hist-sous{ font-size:12.5px; font-weight:600; color:#6B7A90 }
+.ag-q{ position:relative; width:28px; height:28px; border-radius:50%; border:1.5px solid #B7C3D4; background:#fff; color:#22497D; font-family:inherit; font-size:14px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; padding:0; cursor:pointer; flex-shrink:0 }
+.ag-q::after{ content:''; position:absolute; inset:-9px }
+.ag-q:hover, .ag-q[aria-expanded="true"]{ border-color:#22497D; background:#E8EFF8 }
+.ag-bulle{ position:absolute; z-index:5; top:calc(100% + 10px); right:-4px; width:min(330px, calc(100vw - 48px)); box-sizing:border-box; background:#13243D; color:#fff; border-radius:14px; padding:13px 15px; display:flex; flex-direction:column; gap:6px; box-shadow:0 18px 40px -14px rgba(19,36,61,.65); font-size:13.5px; line-height:1.5 }
+.ag-bulle::before{ content:''; position:absolute; top:-6px; right:13px; width:12px; height:12px; background:#13243D; transform:rotate(45deg); border-radius:2px }
+.ag-bulle b{ font-size:14px; font-weight:800 }
+.ag-bulle span{ color:#DCE6F3; font-weight:600 }
+.ag-bulle button{ align-self:flex-start; margin-top:4px; height:36px; padding:0 14px; border-radius:10px; border:none; background:#E68B23; color:#13243D; font-family:inherit; font-size:13.5px; font-weight:800; cursor:pointer }
 @media (min-width: 900px){
   .ag-pc{ display:flex !important }
   .ag-mob{ display:none !important }
