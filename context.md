@@ -1515,6 +1515,35 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.192 — 15 octobre 2026 · « Valider ce créneau » se voit ; l'adresse exacte ; les fenêtres ne se ferment plus d'un clic à côté
+
+- Alexandre : « j'ai fait Valider ce créneau, et rien ne s'est fait : le bouton était toujours là,
+  j'ai dû quitter la page et vérifier dans l'agenda […] une petite validation, que ça enlève la
+  page en cours, et un petit message : votre visite est dans l'agenda et dans l'espace du client ».
+  Cause : après « Confirmer la visite », la fiche relisait ses données, mais pas la liste des biens
+  ni leur suivi (OngletBiens ne se recharge que sur `rafraichir`). `enregistrerVisite` (FicheClient)
+  fait maintenant `setVersionBiens` (le suivi passe à « Visite calée le… », les boutons « Valider ce
+  créneau » disparaissent), `visitePosee` (la fenêtre « Voir en grand » de ce bien se ferme,
+  OngletBiens) et `annoncerSucces` : « Visite calée — Sam. 17 oct. · 18 h — dans ton agenda, et dans
+  l'espace de <prénom> ». Vrai aussi pour « Planifier une visite » sans créneau. Dans le suivi, le
+  créneau devenu la visite porte une coche verte « Visite calée » (`creneauDeLaVisite`, heures
+  comparées par `heureNette`).
+- « Où est-ce que je valide l'adresse exacte, si celle de la veille n'est pas bonne ? Et qu'elle se
+  mette à jour aussi dans la proposition de la veille » : « Noter un appel » a une rubrique
+  « L'adresse exacte du bien » — vide tant qu'il n'y a que l'adresse probable (en exemple, avec « C'est
+  la bonne : … » pour la reprendre ; une probable n'est jamais confirmée sans lui). Écrite ou
+  changée, elle va sur le bien (`adresse`) et sur la proposition de la veille d'où il vient
+  (`veille_propositions.adresse`, `corrigerAdresse` dans lib/suivi-agence.ts). Le « Détail » du bien
+  fait de même quand son adresse change (`reporterAdresseVeille`).
+- « Quand on note les éléments, parfois on clique à côté, et tout se supprime : il faut que les
+  pop-up restent bloquées. » `src/lib/fenetres-figees.ts` (monté dans AppLayout, le CRM seulement) :
+  un écouteur sur `window`, en phase de capture (pointerdown, mousedown, click), arrête l'appui qui
+  tombe sur le VOILE d'une fenêtre où l'on peut écrire (un voile : fixe, sur tout l'écran,
+  translucide ou flouté ; un champ : input, textarea, select, contenteditable) — il n'arrive jamais à
+  React, quelle que soit la façon dont la fenêtre se fermait (une quarantaine). La fenêtre fait un
+  léger battement. On ferme avec ×, Annuler ou Échap. Une fenêtre sans champ (photo, explication,
+  un bien de la Veille à lire) se ferme toujours d'un clic à côté ; les menus ne sont pas touchés.
+
 ### V3.191 — 15 octobre 2026 · Une agence qui rappelle : retrouvée par son numéro
 
 - Alexandre : « je vais appeler plusieurs agences pour un seul client, et m'occuper d'autres
