@@ -11,7 +11,7 @@ import {
   lienAgences, messageAgence, quiPropose, resumePourAgence, tableAgencesAbsente, type PropositionAgence,
 } from '@/lib/agences-lien';
 import {
-  ORIGINES, agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterEnvoi,
+  ORIGINES, agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterContact, noterEnvoi,
   type AgenceConnue, type Canal, type Destinataire, type Jeton,
 } from '@/lib/lien-agences-envois';
 import { mailLienAgence } from '@/lib/mail-agence';
@@ -490,61 +490,150 @@ function teinte(nom: string): [string, string] {
 
 type Partie = 'contacter' | 'contactees' | 'proposees';
 
-/* Une agence : le rond à ses initiales, son nom, où elle en est, les boutons. */
-function LigneAgence({ g, partie, message, envoiMail, onMail, onSms, onCopier, onCompleter }: {
-  g: AgenceConnue; partie: Partie; message: string; envoiMail: string | null;
-  onMail: (d: Destinataire) => void; onSms: (d: Destinataire) => void; onCopier: (d: Destinataire) => void; onCompleter: (g: AgenceConnue) => void;
+/* V3.201 — Le contact d'une agence, rempli sur place : la personne qui gère le
+   dossier, son portable, son mail (chacun sur sa ligne, un mail est long).
+   Sans `nomFixe`, le nom de l'agence se tape aussi (« Une autre agence »).
+   Au moins un portable ou un mail ; un fixe s'enregistre, sans SMS. */
+type ActionsContact = {
+  envoiMail: string | null; cle: string; message: string;
+  onMail: (d: Destinataire) => Promise<boolean>; onSms: (d: Destinataire) => Promise<void>; onEnregistrer: (d: Destinataire) => Promise<boolean>;
+};
+function FormContact({ nomFixe, initial, actions, onFini, onAnnuler }: {
+  nomFixe?: string; initial?: { interlocuteur?: string | null; tel?: string | null; email?: string | null };
+  actions: ActionsContact; onFini: () => void; onAnnuler: () => void;
+}) {
+  const [nom, setNom] = useState(nomFixe || '');
+  const [personne, setPersonne] = useState(initial?.interlocuteur || '');
+  const [tel, setTel] = useState(initial?.tel || '');
+  const [mail, setMail] = useState(initial?.email || '');
+  const [erreur, setErreur] = useState<string | null>(null);
+  const premier = useRef<HTMLInputElement>(null);
+  useEffect(() => { premier.current?.focus(); premier.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, []);
+
+  const t = tel.trim(), m = mail.trim();
+  const mobile = !!t && estMobile(t);
+  const mailOk = !!m && mailValide(m);
+  const dest: Destinataire = { nom: (nomFixe || nom).trim(), interlocuteur: personne.trim() || null, tel: t || null, email: mailOk ? m : null };
+  const verifier = () => {
+    if (!dest.nom) { setErreur('Le nom de l’agence d’abord.'); return false; }
+    if (m && !mailOk) { setErreur('Ce mail ne semble pas complet.'); return false; }
+    return true;
+  };
+  const aide = erreur
+    || (!t && !m ? 'Un portable pour l’envoyer par SMS, un mail pour le mail mis en page — ou les deux.'
+      : t && !mobile ? 'Ce numéro est un fixe : pas de SMS possible. Ajoute un mail, ou enregistre-le simplement.'
+        : 'Le contact est gardé : la prochaine fois, il sera déjà là.');
+
+  return (
+    <div className={a.flForm}>
+      <div className={a.flFormGrille} data-fixe={nomFixe ? 'oui' : undefined}>
+        {!nomFixe && (
+          <label className={a.flChamp}><span>Agence</span>
+            <input ref={premier} value={nom} onChange={e => { setNom(e.target.value); setErreur(null); }} placeholder="Orpi Vanves" maxLength={120} autoComplete="off" /></label>
+        )}
+        <label className={a.flChamp}><span>{'Personne qui gère le dossier '}<i>(facultatif)</i></span>
+          <input ref={nomFixe ? premier : undefined} value={personne} onChange={e => setPersonne(e.target.value)} placeholder="Marc Lenoir" maxLength={120} autoComplete="off" /></label>
+        <label className={a.flChamp}><span>Portable</span>
+          <input value={tel} onChange={e => { setTel(e.target.value); setErreur(null); }} placeholder="06 12 34 56 78" maxLength={40} inputMode="tel" autoComplete="off" /></label>
+        <label className={`${a.flChamp} ${a.flChampMail}`}><span>Mail</span>
+          <input value={mail} onChange={e => { setMail(e.target.value); setErreur(null); }} placeholder="marc.lenoir@orpi.com" maxLength={160} inputMode="email" autoComplete="off" /></label>
+      </div>
+      <p className={a.flFormAide} data-erreur={erreur ? 'oui' : undefined}>{aide}</p>
+      <div className={a.flFormBtns}>
+        {mobile && (
+          <a className={a.flBtn} data-ton={mailOk ? 'doux' : undefined} href={lienSms(t, messagePour(actions.message, dest.interlocuteur))}
+            onClick={e => { if (!verifier()) { e.preventDefault(); return; } void actions.onSms(dest).then(onFini); }}>
+            <Icone nom="mobile" taille={15} epaisseur={2.1} />Envoyer par SMS
+          </a>
+        )}
+        {mailOk && (
+          <button type="button" className={a.flBtn} disabled={!!actions.envoiMail}
+            onClick={() => { if (verifier()) void actions.onMail(dest).then(ok => { if (ok) onFini(); }); }}>
+            <Icone nom="mail" taille={15} epaisseur={2.1} />{actions.envoiMail === actions.cle ? 'Envoi…' : 'Envoyer le mail'}
+          </button>
+        )}
+        {!mobile && !mailOk && <button type="button" className={a.flBtn} disabled>Envoyer</button>}
+        <span className={a.flRessort} />
+        <button type="button" className={a.flLienBtn} disabled={!t && !m}
+          onClick={() => { if (verifier()) void actions.onEnregistrer(dest).then(ok => { if (ok) onFini(); }); }}>Enregistrer sans envoyer</button>
+        <button type="button" className={a.flLienBtn} onClick={onAnnuler}>Annuler</button>
+      </div>
+    </div>
+  );
+}
+
+/* Une agence : le rond à ses initiales, son nom, où elle en est, les boutons ;
+   « Ajouter son contact » (ou le crayon) ouvre le contact sur place. */
+function LigneAgence({ g, partie, edition, onEdition, actions, onCopier }: {
+  g: AgenceConnue; partie: Partie; edition: boolean; onEdition: (o: boolean) => void;
+  actions: ActionsContact; onCopier: (d: Destinataire) => void;
 }) {
   const dest: Destinataire = { nom: g.nom, interlocuteur: g.interlocuteur, tel: g.tel, email: g.email };
   const mobile = !!g.tel && estMobile(g.tel);
-  const msg = messagePour(message, g.interlocuteur);
+  const msg = messagePour(actions.message, g.interlocuteur);
   const dernier = g.envois[0];
   const re = partie !== 'contacter' && !!dernier;
   const [fond, encre] = teinte(g.nom);
-  const contact = [g.interlocuteur, g.tel || g.email].filter(Boolean).join(' · ');
+  const contact = [g.interlocuteur, g.tel, g.email].filter(Boolean).join(' · ');
+  const sansContact = !g.tel && !g.email;
   return (
-    <div className={a.flAgence}>
-      <span className={a.flRond} style={{ background: fond, color: encre }} aria-hidden="true">{initiales(g.nom)}</span>
-      <span className={a.flAgTx}>
-        <b>{g.nom}</b>
-        <small>{contact || 'Pas de numéro ni de mail noté'}</small>
-        {partie === 'contacter' && <span className={a.flOrigine}>{ORIGINES[g.origine]}</span>}
-        {partie !== 'contacter' && (
-          <span className={a.flEtat}>
-            {g.proposes > 0 && <span className={a.flPuce} data-ton="prune">{`A proposé ${g.proposes} bien${g.proposes > 1 ? 's' : ''}`}</span>}
-            {dernier && (
-              <span className={a.flEnvoi}>
-                <Icone nom="coche" taille={13} epaisseur={2.6} />
-                {`${dernier.canal === 'copie' ? 'Message copié' : 'Lien envoyé'} ${quandEnvoi(dernier.le)}${dernier.canal === 'copie' ? '' : ` ${canalLong(dernier.canal)}`}${g.envois.length > 1 ? ` · ${g.envois.length} envois` : ''}`}
-              </span>
+    <div className={a.flAgence} data-edition={edition ? 'oui' : undefined}>
+      <div className={a.flAgLigne}>
+        <span className={a.flRond} style={{ background: fond, color: encre }} aria-hidden="true">{initiales(g.nom)}</span>
+        <span className={a.flAgTx}>
+          <b>{g.nom}</b>
+          <small>{contact || 'Pas de numéro ni de mail noté'}</small>
+          {partie === 'contacter' && <span className={a.flOrigine}>{ORIGINES[g.origine]}</span>}
+          {partie !== 'contacter' && (
+            <span className={a.flEtat}>
+              {g.proposes > 0 && <span className={a.flPuce} data-ton="prune">{`A proposé ${g.proposes} bien${g.proposes > 1 ? 's' : ''}`}</span>}
+              {dernier && (
+                <span className={a.flEnvoi}>
+                  <Icone nom="coche" taille={13} epaisseur={2.6} />
+                  {`${dernier.canal === 'copie' ? 'Message copié' : 'Lien envoyé'} ${quandEnvoi(dernier.le)}${dernier.canal === 'copie' ? '' : ` ${canalLong(dernier.canal)}`}${g.envois.length > 1 ? ` · ${g.envois.length} envois` : ''}`}
+                </span>
+              )}
+            </span>
+          )}
+        </span>
+        {!edition && (
+          <span className={a.flBtns}>
+            {!sansContact && (
+              <button type="button" className={a.flIco} onClick={() => onEdition(true)} aria-label={`Modifier le contact de ${g.nom}`} title="Modifier le contact">
+                <Icone nom="crayon" taille={15} epaisseur={2} />
+              </button>
+            )}
+            {g.email && mobile && (
+              <a className={a.flIco} href={lienSms(g.tel!, msg)} onClick={() => { void actions.onSms(dest); }} aria-label={`${re ? 'Renvoyer' : 'Envoyer'} par SMS à ${g.interlocuteur || g.nom}`} title={`${re ? 'Renvoyer' : 'Envoyer'} par SMS`}>
+                <Icone nom="mobile" taille={16} epaisseur={2.1} />
+              </a>
+            )}
+            {g.email ? (
+              <button type="button" className={a.flBtn} data-ton={re ? 'doux' : undefined} disabled={!!actions.envoiMail} onClick={() => { void actions.onMail(dest); }}>
+                <Icone nom="mail" taille={15} epaisseur={2.1} />{actions.envoiMail === actions.cle ? 'Envoi…' : re ? 'Renvoyer le mail' : 'Envoyer le mail'}
+              </button>
+            ) : mobile ? (
+              <a className={a.flBtn} data-ton={re ? 'doux' : undefined} href={lienSms(g.tel!, msg)} onClick={() => { void actions.onSms(dest); }}>
+                <Icone nom="mobile" taille={15} epaisseur={2.1} />{re ? 'Renvoyer par SMS' : 'Envoyer par SMS'}
+              </a>
+            ) : g.tel ? (
+              <button type="button" className={a.flBtn} data-ton="doux" onClick={() => onCopier(dest)} title="Un fixe ne reçoit pas de SMS : copie le message pour l’envoyer autrement">
+                <Icone nom="copie" taille={15} epaisseur={2.1} />Copier le message
+              </button>
+            ) : (
+              <button type="button" className={a.flBtn} data-ton="pointille" onClick={() => onEdition(true)}>
+                <Icone nom="plus" taille={15} epaisseur={2.3} />Ajouter son contact
+              </button>
             )}
           </span>
         )}
-      </span>
-      <span className={a.flBtns}>
-        {g.email && mobile && (
-          <a className={a.flIco} href={lienSms(g.tel!, msg)} onClick={() => onSms(dest)} aria-label={`${re ? 'Renvoyer' : 'Envoyer'} par SMS à ${g.interlocuteur || g.nom}`} title={`${re ? 'Renvoyer' : 'Envoyer'} par SMS`}>
-            <Icone nom="mobile" taille={16} epaisseur={2.1} />
-          </a>
-        )}
-        {g.email ? (
-          <button type="button" className={a.flBtn} data-ton={re ? 'doux' : undefined} disabled={!!envoiMail} onClick={() => onMail(dest)}>
-            <Icone nom="mail" taille={15} epaisseur={2.1} />{envoiMail === g.cle ? 'Envoi…' : re ? 'Renvoyer le mail' : 'Envoyer le mail'}
-          </button>
-        ) : mobile ? (
-          <a className={a.flBtn} data-ton={re ? 'doux' : undefined} href={lienSms(g.tel!, msg)} onClick={() => onSms(dest)}>
-            <Icone nom="mobile" taille={15} epaisseur={2.1} />{re ? 'Renvoyer par SMS' : 'Envoyer par SMS'}
-          </a>
-        ) : g.tel ? (
-          <button type="button" className={a.flBtn} data-ton="doux" onClick={() => onCopier(dest)} title="Un fixe ne reçoit pas de SMS : copie le message pour l’envoyer autrement">
-            <Icone nom="copie" taille={15} epaisseur={2.1} />Copier le message
-          </button>
-        ) : (
-          <button type="button" className={a.flBtn} data-ton="pointille" onClick={() => onCompleter(g)}>
-            <Icone nom="plus" taille={15} epaisseur={2.3} />Ajouter son contact
-          </button>
-        )}
-      </span>
+      </div>
+      {edition && (
+        <div className={a.flAgForm}>
+          <span className={a.flFormTitre}>{sansContact ? `Le contact chez ${g.nom}` : `Modifier le contact chez ${g.nom}`}</span>
+          <FormContact nomFixe={g.nom} initial={g} actions={actions} onFini={() => onEdition(false)} onAnnuler={() => onEdition(false)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -584,6 +673,57 @@ function PartieAgences({ titre, ton, liste, ouverte, onBascule, aide, vide, chil
   );
 }
 
+/* V3.201 — Ce que reçoit l'agence, en grand, par-dessus la fenêtre : le mail
+   (vue ordinateur ou téléphone) ou le SMS (une bulle, modifiable). */
+function ApercuEnvoi({ type, html, message, onMessage, onCopier, onFermer }: {
+  type: 'mail' | 'sms'; html: string; message: string; onMessage: (m: string) => void; onCopier: () => void; onFermer: () => void;
+}) {
+  const [vue, setVue] = useState<'ordi' | 'tel'>('ordi');
+  return createPortal(
+    <div className={a.apVoile} onClick={e => { if (e.target === e.currentTarget) onFermer(); }}>
+      <div className={a.apFenetre} data-type={type} role="dialog" aria-modal="true" aria-label={type === 'mail' ? 'Le mail que reçoit l’agence' : 'Le SMS que reçoit l’agence'}>
+        <div className={a.apTete}>
+          <span className={a.apIc} aria-hidden="true"><Icone nom={type === 'mail' ? 'mail' : 'mobile'} taille={18} epaisseur={2.1} /></span>
+          <div className={a.flTitre}>
+            <h2>{type === 'mail' ? 'Le mail que reçoit l’agence' : 'Le SMS que reçoit l’agence'}</h2>
+            <p>{type === 'mail' ? 'Mis en page aux couleurs d’Emilio, envoyé de ta part (arogelet@emilio-immo.com).' : 'Il s’ouvre sur ton téléphone, prêt à envoyer : tu peux le modifier ici.'}</p>
+          </div>
+          {type === 'mail' && (
+            <div className={a.apVues} role="group" aria-label="Voir sur">
+              <button type="button" aria-pressed={vue === 'ordi'} onClick={() => setVue('ordi')}>Ordinateur</button>
+              <button type="button" aria-pressed={vue === 'tel'} onClick={() => setVue('tel')}>Téléphone</button>
+            </div>
+          )}
+          <button type="button" className={a.fFermer} onClick={onFermer} aria-label="Fermer l’aperçu"><Icone nom="fermer" taille={16} epaisseur={2.4} /></button>
+        </div>
+        {type === 'mail' ? (
+          <div className={a.apCorpsMail}>
+            <iframe className={a.apMail} data-vue={vue} title="Aperçu du mail" srcDoc={html} sandbox="" />
+            <p className={a.flPetit}>{'« Bonjour, » prend le prénom de la personne au moment de l’envoi (« Bonjour Julien, »).'}</p>
+          </div>
+        ) : (
+          <div className={a.apCorpsSms}>
+            <div className={a.apTel}>
+              <span className={a.apTelTete}>{'Message · à l’agence'}</span>
+              <div className={a.apBulle}>{message}</div>
+            </div>
+            <div className={a.apEdition}>
+              <label className={a.flLib} htmlFor="msg-agence">Modifier le message</label>
+              <textarea id="msg-agence" className={a.zone} rows={8} value={message} onChange={e => onMessage(e.target.value)} />
+              <span className={a.flPetit}>{'« Bonjour, » prend le prénom de la personne au moment de l’envoi. Le lien est cliquable dans le SMS.'}</span>
+              <div className={a.apPied}>
+                <button type="button" className={a.btn} onClick={onCopier}><Icone nom="copie" taille={14} epaisseur={2.1} />Copier le message</button>
+                <button type="button" className={a.btnFort} onClick={onFermer}>C’est bon</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, onFermer }: {
   clientId: string; rechercheId: string; prenom?: string | null; recherche?: any;
   stats: { biens: number; agences: number }; absent: boolean; onFermer: () => void;
@@ -597,13 +737,11 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const [agences, setAgences] = useState<AgenceConnue[] | null>(null);
   const [ouvertes, setOuvertes] = useState<Record<Partie, boolean>>({ contacter: true, contactees: false, proposees: false });
   const [autreOuvert, setAutreOuvert] = useState(false);
-  const [autre, setAutre] = useState({ nom: '', interlocuteur: '', contact: '' });
-  const [erreurAutre, setErreurAutre] = useState<string | null>(null);
+  const [edition, setEdition] = useState<string | null>(null);
   const [apercu, setApercu] = useState<null | 'mail' | 'sms'>(null);
   /* Le joli mail : en cours (la clé de l'agence), ou parti en erreur (la messagerie à la place). */
   const [envoiMail, setEnvoiMail] = useState<string | null>(null);
   const [secours, setSecours] = useState<{ dest: Destinataire; erreur: string } | null>(null);
-  const champContact = useRef<HTMLInputElement>(null);
   const minuteurDit = useRef<number | undefined>(undefined);
   const pour = String(prenom || '').trim();
 
@@ -633,11 +771,12 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const chargerAgences = useCallback(async () => { setAgences(await agencesDuClient(rechercheId)); }, [rechercheId]);
   useEffect(() => { void chargerAgences(); }, [chargerAgences]);
 
+  /* Échap ferme d'abord l'aperçu, puis la fenêtre. */
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer(); };
+    const esc = (e: KeyboardEvent) => { if (e.key !== 'Escape') return; if (apercu) setApercu(null); else onFermer(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onFermer]);
+  }, [onFermer, apercu]);
 
   async function copier(t: string, quoi: string) {
     try { await navigator.clipboard.writeText(t); dire(`${quoi} copié.`); return true; } catch { dire('La copie n’a pas marché : sélectionne le texte et copie-le.'); return false; }
@@ -673,11 +812,18 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     await chargerAgences();
     return true;
   }
-  function completer(g: AgenceConnue) {
-    setAutre({ nom: g.nom, interlocuteur: g.interlocuteur || '', contact: '' });
-    setErreurAutre(null); setAutreOuvert(true);
-    window.setTimeout(() => { champContact.current?.focus(); champContact.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 0);
+  async function enregistrer(dest: Destinataire): Promise<boolean> {
+    const ok = await noterContact({ clientId, rechercheId, dest });
+    if (ok) dire(`Contact de ${dest.nom} enregistré.`);
+    await chargerAgences();
+    return ok;
   }
+  const actions = (cle: string): ActionsContact => ({
+    envoiMail, cle, message,
+    onMail: d => mailer(d, cle),
+    onSms: d => noter(d, 'sms'),
+    onEnregistrer: enregistrer,
+  });
 
   const resume = recherche ? resumePourAgence(recherche) : null;
   const lien = jeton ? lienAgences(jeton) : '';
@@ -690,15 +836,9 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const nbContactees = liste.filter(g => g.envois.length).length;
   const htmlMail = apercu === 'mail' && jeton && resume ? mailLienAgence({ lien, resume }).html : '';
 
-  /* « + Une autre agence » : un portable donne le SMS, une adresse le mail. */
-  const c = autre.contact.trim();
-  const autreDest: Destinataire = { nom: autre.nom.trim(), interlocuteur: autre.interlocuteur.trim() || null, tel: mailValide(c) ? null : c || null, email: mailValide(c) ? c : null };
-  const autreCanal: Canal | null = mailValide(c) ? 'mail' : estMobile(c) ? 'sms' : null;
-  const autreHref = autreCanal === 'sms' ? lienSms(c, messagePour(message, autreDest.interlocuteur)) : undefined;
-
   const ligne = (partie: Partie) => (g: AgenceConnue) => (
-    <LigneAgence g={g} partie={partie} message={message} envoiMail={envoiMail}
-      onMail={d => { void mailer(d, g.cle); }} onSms={d => { void noter(d, 'sms'); }} onCopier={d => { void copierPour(d); }} onCompleter={completer} />
+    <LigneAgence g={g} partie={partie} edition={edition === g.cle} onEdition={o => setEdition(o ? g.cle : null)}
+      actions={actions(g.cle)} onCopier={d => { void copierPour(d); }} />
   );
   const basculer = (k: Partie) => setOuvertes(o => ({ ...o, [k]: !o[k] }));
 
@@ -746,7 +886,7 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
               {dit && <div className={a.dit} role="status">{dit}</div>}
             </div>
 
-            {/* ── Ce que l'agence voit, le mail, le SMS ── */}
+            {/* ── Ce que l'agence voit, puis ce qu'elle reçoit (en grand) ── */}
             <div className={a.flBloc} style={{ order: 3 }}>
               <span className={a.flLib}>{'Ce que l’agence voit'}</span>
               {resume && (
@@ -759,27 +899,17 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
               <span className={a.flPetit}>{'Jamais son nom, ni ses précisions, ni ses biens déjà vus.'}</span>
             </div>
             <div className={a.flBloc} style={{ order: 4 }}>
-              <div className={a.flOnglets} role="group" aria-label="Ce que reçoit l’agence">
-                <button type="button" aria-pressed={apercu === 'mail'} onClick={() => setApercu(x => (x === 'mail' ? null : 'mail'))}><Icone nom="mail" taille={14} epaisseur={2.1} />Le mail</button>
-                <button type="button" aria-pressed={apercu === 'sms'} onClick={() => setApercu(x => (x === 'sms' ? null : 'sms'))}><Icone nom="mobile" taille={14} epaisseur={2.1} />Le SMS</button>
-              </div>
-              {apercu === null && <span className={a.flPetit}>{'Touche pour voir ce que l’agence reçoit.'}</span>}
-              {apercu === 'mail' && htmlMail && (
-                <>
-                  <iframe className={a.flApercu} title="Aperçu du mail" srcDoc={htmlMail} sandbox="" />
-                  <span className={a.flPetit}>{'Mis en page aux couleurs d’Emilio, envoyé de ta part ; « Bonjour, » prend le prénom de la personne.'}</span>
-                </>
-              )}
-              {apercu === 'sms' && (
-                <>
-                  <label className={a.cache} htmlFor="msg-agence">Le SMS envoyé aux agences</label>
-                  <textarea id="msg-agence" className={a.zone} rows={6} value={message} onChange={e => setMessage(e.target.value)} />
-                  <div className={a.flSmsPied}>
-                    <span className={a.flPetit}>{'Tu peux le modifier ; « Bonjour, » prend le prénom de la personne.'}</span>
-                    <button type="button" className={a.btn} onClick={() => { void copier(message, 'Message'); }}><Icone nom="copie" taille={14} epaisseur={2.1} />Copier</button>
-                  </div>
-                </>
-              )}
+              <span className={a.flLib}>{'Ce qu’elle reçoit'}</span>
+              <button type="button" className={a.flVoir} onClick={() => setApercu('mail')}>
+                <span className={a.flVoirIc} aria-hidden="true"><Icone nom="mail" taille={17} epaisseur={2.1} /></span>
+                <span className={a.flVoirTx}><b>Voir le mail</b><small>{'Mis en page, envoyé de ta part'}</small></span>
+                <Icone nom="chevron" taille={15} epaisseur={2.3} />
+              </button>
+              <button type="button" className={a.flVoir} onClick={() => setApercu('sms')}>
+                <span className={a.flVoirIc} data-ton="bleu" aria-hidden="true"><Icone nom="mobile" taille={17} epaisseur={2.1} /></span>
+                <span className={a.flVoirTx}><b>Voir le SMS</b><small>{'Il s’ouvre sur ton téléphone ; modifiable'}</small></span>
+                <Icone nom="chevron" taille={15} epaisseur={2.3} />
+              </button>
             </div>
             <div className={`${a.flBloc} ${a.flBas}`} style={{ order: 5 }}>
               <button type="button" className={a.couper} onClick={() => { void couper(); }} disabled={travail}>Couper ce lien</button>
@@ -790,14 +920,14 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
             <div className={a.flAgences} style={{ order: 2 }}>
               <div className={a.flAgencesTete}>
                 <b>Ses agences</b>
-                <span>{'celles de ses biens, de tes suivis et de sa Veille'}</span>
+                <span>{'celles de ses biens (Sélection, Présentés, Veille), de tes suivis, et celles qui t’ont répondu'}</span>
               </div>
               {agences === null ? (
                 <p className={a.flVide}>{'Recherche des agences de ses biens…'}</p>
               ) : (
                 <>
-                  <PartieAgences titre="À contacter" ton="or" liste={parties.contacter} ouverte={ouvertes.contacter} onBascule={() => basculer('contacter')}
-                    aide={'Les agences que ton CRM connaît pour ce client et qui n’ont pas encore le lien. Le mail part tout de suite, de ta part ; le SMS s’ouvre sur ton téléphone, prêt à envoyer.'}
+                  <PartieAgences titre="Pas encore contactées" ton="or" liste={parties.contacter} ouverte={ouvertes.contacter} onBascule={() => basculer('contacter')}
+                    aide={'Elles n’ont pas encore le lien. Le mail part tout de suite, de ta part ; le SMS s’ouvre sur ton téléphone, prêt à envoyer. Pas de numéro ? « Ajouter son contact ».'}
                     vide={liste.length ? 'Toutes les agences connues ont déjà le lien.' : 'Aucune agence notée pour l’instant dans ses biens ni dans tes suivis : ajoute-la juste en dessous.'}>
                     {ligne('contacter')}
                   </PartieAgences>
@@ -827,45 +957,20 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
               ) : (
                 <div className={a.flAutre}>
                   <div className={a.flAutreTete}>
-                    <b>Une autre agence</b>
-                    <button type="button" className={a.flAutreFermer} onClick={() => { setAutreOuvert(false); setErreurAutre(null); }} aria-label="Fermer"><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
+                    <span className={a.flFormTitre}>{'Une agence que le CRM ne connaît pas encore'}</span>
+                    <button type="button" className={a.flAutreFermer} onClick={() => setAutreOuvert(false)} aria-label="Fermer"><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
                   </div>
-                  <div className={a.flAutreGrille}>
-                    <label className={a.flChamp}><span>Agence</span>
-                      <input value={autre.nom} onChange={e => { setAutre(x => ({ ...x, nom: e.target.value })); setErreurAutre(null); }} placeholder="Orpi Vanves" maxLength={120} autoComplete="off" /></label>
-                    <label className={a.flChamp}><span>{'Nom '}<i>(facultatif)</i></span>
-                      <input value={autre.interlocuteur} onChange={e => setAutre(x => ({ ...x, interlocuteur: e.target.value }))} placeholder="Marc Lenoir" maxLength={120} autoComplete="off" /></label>
-                    <label className={a.flChamp}><span>Portable ou mail</span>
-                      <input ref={champContact} value={autre.contact} onChange={e => { setAutre(x => ({ ...x, contact: e.target.value })); setErreurAutre(null); }} placeholder="06 12 34 56 78" maxLength={160} autoComplete="off" inputMode="email" /></label>
-                  </div>
-                  <div className={a.flAutrePied}>
-                    <span className={a.flPetit}>{erreurAutre || (!c ? 'Un portable (06, 07) pour un SMS, ou une adresse mail : l’agence rejoint ensuite la liste.' : !autreCanal ? 'Un portable (06, 07) pour un SMS, ou une adresse mail.' : autreCanal === 'mail' ? 'Le mail part mis en page, de ta part ; l’agence rejoint la liste.' : 'Le SMS s’ouvre rempli ; l’agence rejoint la liste.')}</span>
-                    {autreCanal === 'mail' ? (
-                      <button type="button" className={a.flBtn} disabled={!!envoiMail}
-                        onClick={() => {
-                          if (!autreDest.nom) { setErreurAutre('Le nom de l’agence d’abord.'); return; }
-                          void mailer(autreDest, 'autre').then(ok => { if (ok) { setAutre({ nom: '', interlocuteur: '', contact: '' }); setAutreOuvert(false); } });
-                        }}>
-                        <Icone nom="mail" taille={15} epaisseur={2.1} />{envoiMail === 'autre' ? 'Envoi…' : 'Envoyer le mail'}
-                      </button>
-                    ) : autreHref ? (
-                      <a className={a.flBtn} href={autreHref}
-                        onClick={e => {
-                          if (!autreDest.nom) { e.preventDefault(); setErreurAutre('Le nom de l’agence d’abord.'); return; }
-                          void noter(autreDest, 'sms').then(() => { setAutre({ nom: '', interlocuteur: '', contact: '' }); setAutreOuvert(false); });
-                        }}>
-                        <Icone nom="mobile" taille={15} epaisseur={2.1} />Envoyer par SMS
-                      </a>
-                    ) : (
-                      <button type="button" className={a.flBtn} disabled>Envoyer</button>
-                    )}
-                  </div>
+                  <FormContact actions={actions('autre')} onFini={() => setAutreOuvert(false)} onAnnuler={() => setAutreOuvert(false)} />
                 </div>
               )}
             </div>
           </div>
         )}
       </div>
+      {apercu && (
+        <ApercuEnvoi type={apercu} html={htmlMail} message={message} onMessage={setMessage}
+          onCopier={() => { void copier(message, 'Message'); }} onFermer={() => setApercu(null)} />
+      )}
     </div>,
     document.body,
   );

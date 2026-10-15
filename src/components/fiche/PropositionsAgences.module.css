@@ -149,7 +149,9 @@
 .flPlus { width: 100%; padding: 10px; border: none; border-top: 1px solid #f1f4f8; background: white; color: #22497D; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
 
 /* Une agence */
-.flAgence { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid #f1f4f8; }
+.flAgence { border-top: 1px solid #f1f4f8; }
+.flAgence[data-edition] { background: #f8fafd; }
+.flAgLigne { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
 .flRond { width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 800 13px 'Plus Jakarta Sans', sans-serif; flex-shrink: 0; }
 .flAgTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .flAgTx b { font-size: 14px; font-weight: 800; color: #13243D; overflow-wrap: anywhere; }
@@ -178,15 +180,57 @@
 .flAutreTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .flAutreTete b { font-size: 13.5px; font-weight: 800; color: #22497D; }
 .flAutreFermer { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e3e8f0; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-.flAutreGrille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .flChamp { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .flChamp > span { font-size: 12px; font-weight: 700; color: #475569; }
 .flChamp > span i { font-style: normal; font-weight: 600; color: #94a3b8; }
 .flChamp input { width: 100%; box-sizing: border-box; height: 40px; border: 1.5px solid #e3e8f0; border-radius: 10px; padding: 0 11px; font: 500 14px 'DM Sans', sans-serif;
   color: #13243D; background: white; outline: none; }
 .flChamp input:focus { border-color: #22497D; }
-.flAutrePied { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.flAutrePied .flPetit { flex: 1 1 220px; }
+
+/* V3.201 — Le contact d'une agence, rempli sur place (et « Une autre agence »). */
+.flAgForm { margin: 0 14px 14px; padding: 14px; border-radius: 14px; background: white; border: 1px solid #dce3ec;
+  box-shadow: 0 10px 26px -20px rgba(17,35,64,.55); display: flex; flex-direction: column; gap: 10px; }
+.flFormTitre { font: 800 13.5px 'Plus Jakarta Sans', sans-serif; color: #22497D; }
+.flForm { display: flex; flex-direction: column; gap: 10px; }
+.flFormGrille { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px 12px; }
+.flFormGrille[data-fixe] > :first-child { grid-column: 1 / -1; }
+.flFormAide { margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #64748b; }
+.flFormAide[data-erreur] { color: #b91c1c; }
+.flFormBtns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.flLienBtn { background: none; border: none; padding: 6px 4px; color: #22497D; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.flLienBtn:disabled { opacity: .45; cursor: default; }
+
+/* « Voir le mail », « Voir le SMS » */
+.flVoir { width: 100%; display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 13px; border: 1px solid #e3e8f0; background: white;
+  font: inherit; color: #13243D; text-align: left; cursor: pointer; }
+.flVoir:hover { border-color: #22497D; }
+.flVoir > svg:last-child { color: #94a3b8; transform: rotate(-90deg); flex-shrink: 0; }
+.flVoirIc { width: 36px; height: 36px; border-radius: 10px; background: #fff6ec; color: #a95808; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.flVoirIc[data-ton="bleu"] { background: #e8eff8; color: #22497D; }
+.flVoirTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.flVoirTx b { font-size: 13.5px; font-weight: 800; }
+.flVoirTx small { font-size: 12px; font-weight: 600; color: #64748b; }
+
+/* L'aperçu, par-dessus la fenêtre du lien */
+.apVoile { position: fixed; inset: 0; z-index: 1400; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.apFenetre { width: min(820px, 100%); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: white; border-radius: 22px;
+  box-shadow: 0 40px 90px -30px rgba(17,35,64,.65); font-family: 'DM Sans', system-ui, sans-serif; color: #13243D; overflow: hidden; }
+.apFenetre[data-type="sms"] { width: min(780px, 100%); }
+.apTete { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid #eef2f7; }
+.apIc { width: 40px; height: 40px; border-radius: 12px; background: #fff6ec; color: #a95808; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.apVues { display: flex; gap: 4px; padding: 3px; border-radius: 11px; background: #f1f5f9; flex-shrink: 0; }
+.apVues button { height: 32px; padding: 0 12px; border-radius: 9px; border: none; background: transparent; color: #64748b; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.apVues button[aria-pressed="true"] { background: white; color: #13243D; box-shadow: 0 1px 4px rgba(17,35,64,.15); }
+.apCorpsMail { flex: 1 1 auto; min-height: 0; overflow: auto; background: #e6edf6; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.apMail { display: block; width: 100%; max-width: 700px; height: min(70dvh, 820px); border: none; border-radius: 14px; background: #e6edf6; }
+.apMail[data-vue="tel"] { max-width: 390px; border: 10px solid #13243D; border-radius: 36px; }
+.apCorpsSms { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; padding: 20px; }
+.apTel { background: #f4f6fb; border: 10px solid #13243D; border-radius: 34px; padding: 18px 14px; min-height: 380px; display: flex; flex-direction: column; gap: 12px; }
+.apTelTete { text-align: center; font-size: 12px; font-weight: 700; color: #64748b; }
+.apBulle { align-self: flex-end; max-width: 94%; background: #22497D; color: white; border-radius: 18px 18px 4px 18px; padding: 10px 12px;
+  font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.apEdition { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.apPied { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
 
 /* Téléphone : une colonne, le lien puis ses agences, le reste dessous. */
 @media (max-width: 760px) {
@@ -204,12 +248,23 @@
   .flBas { margin-top: 0; padding-bottom: 18px; }
   .flAgences { flex: 0 0 auto; overflow: visible; padding: 14px 14px 4px; }
   .flNoms, .flDeplier { display: none; }
-  .flAgence { flex-wrap: wrap; padding: 12px; }
+  .flAgLigne { flex-wrap: wrap; padding: 12px; }
   .flAgTx { flex: 1 1 calc(100% - 52px); }
   .flBtns { flex: 1 1 100%; }
   .flBtns .flBtn { flex: 1 1 auto; height: 42px; }
   .flIco { width: 42px; height: 42px; }
-  .flAutreGrille { grid-template-columns: minmax(0, 1fr); }
-  .flAutrePied .flBtn { flex: 1 1 100%; }
+  .flAgForm { margin: 0 10px 12px; padding: 12px; }
+  .flFormGrille { grid-template-columns: minmax(0, 1fr); }
+  .flFormBtns .flBtn { flex: 1 1 100%; height: 42px; }
+  .apVoile { align-items: flex-end; padding: 0; }
+  .apFenetre, .apFenetre[data-type="sms"] { width: 100%; max-height: 94dvh; border-radius: 22px 22px 0 0; }
+  .apTete { flex-wrap: wrap; padding: 14px 16px 12px; gap: 12px; }
+  .apVues { order: 3; flex: 1 1 100%; }
+  .apVues button { flex: 1 1 0; }
+  .apCorpsMail { padding: 12px; }
+  .apMail { height: 68dvh; }
+  .apMail[data-vue="tel"] { border-width: 6px; border-radius: 26px; }
+  .apCorpsSms { grid-template-columns: minmax(0, 1fr); padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .apTel { min-height: 0; border-width: 6px; border-radius: 26px; }
   .flApercu { height: 440px; }
 }
