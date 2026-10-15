@@ -73,47 +73,143 @@
 .meme svg { margin-top: 1px; }
 .motA .meme { margin-top: 6px; }
 
-/* V3.198 — Les agences de ce client, dans la fenêtre du lien (maquette 6). */
-.agences { display: flex; flex-direction: column; gap: 8px; }
-.agence { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px; border: 1px solid #e3e8f0; background: white; }
-.agTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.agTx b { font-size: 14px; font-weight: 800; color: #13243D; overflow-wrap: anywhere; }
-.agTx small { font-size: 12.5px; font-weight: 600; color: #64748b; overflow-wrap: anywhere; }
-.puceEtat { flex: 0 0 auto; padding: 3px 9px; border-radius: 99px; background: #f1f5f9; color: #475569; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
-.puceEtat[data-ton="vert"] { background: #dcfce7; color: #166534; }
-.puceEtat[data-ton="prune"] { background: #f5f3ff; color: #5b21b6; }
-.agBtns { flex: 0 0 auto; display: flex; gap: 6px; }
-.btnMini { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 11px; border-radius: 9px; border: none;
-  background: #22497D; color: white; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; white-space: nowrap; text-decoration: none; }
-.btnMini:hover { background: #1a3a66; color: white; }
-.btnMini[data-ton="doux"] { background: white; color: #22497D; border: 1px solid #c9d6e8; }
-.btnMini[data-ton="doux"]:hover { border-color: #22497D; background: white; color: #22497D; }
-.plus { align-self: flex-start; background: none; border: none; padding: 4px 2px; color: #22497D; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-.autre { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 13px; border: 1.5px dashed #c9d6e8; background: #fbfcfe; }
-.autreT { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: #22497D; }
-.autreGrille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.champ > span { font-size: 12px; font-weight: 700; color: #475569; }
-.champ > span i { font-style: normal; font-weight: 600; color: #94a3b8; }
-.champ input { width: 100%; box-sizing: border-box; height: 40px; border: 1.5px solid #e3e8f0; border-radius: 10px; padding: 0 11px; font: 500 14px 'DM Sans', sans-serif;
-  color: #13243D; background: white; outline: none; }
-.champ input:focus { border-color: #22497D; }
-.autrePied { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.autrePied .aide { flex: 1 1 220px; }
-.details { display: block; }
-.details > * + * { margin-top: 8px; }
-.details > .zone { display: block; }
-.details summary { cursor: pointer; font-size: 13px; font-weight: 700; color: #22497D; padding: 4px 0; }
 .cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-@media (max-width: 600px) {
-  .agence { flex-wrap: wrap; }
-  .agTx { flex: 1 1 100%; }
-  .agBtns { margin-left: auto; }
-  .autreGrille { grid-template-columns: 1fr; }
-  .autrePied .btnFort { flex: 1 1 100%; }
-}
 .secours { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #fef2f2; border: 1px solid #fecaca;
   color: #991b1b; font-size: 13px; font-weight: 600; line-height: 1.45; }
 .secours > span { flex: 1 1 220px; }
-.btnMini:disabled { opacity: .6; cursor: default; }
+
+/* ═══ V3.200 — La fenêtre du lien, large et rangée (maquettes 9 et 10) ═══ */
+.flFenetre { width: min(1000px, 100%); height: min(700px, calc(100dvh - 36px)); display: flex; flex-direction: column; background: white; border-radius: 22px;
+  box-shadow: 0 40px 90px -30px rgba(17,35,64,.6); font-family: 'DM Sans', system-ui, sans-serif; color: #13243D; overflow: hidden; }
+.flTete { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid #eef2f7; }
+.flTitre { flex: 1 1 auto; min-width: 0; }
+.flTitre h2 { margin: 0; font: 800 18px 'Plus Jakarta Sans', sans-serif; }
+.flTitre p { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #64748b; }
+.flChiffres { display: flex; gap: 8px; }
+.flChiffre { display: flex; flex-direction: column; align-items: center; padding: 5px 14px; border-radius: 12px; background: #f4f7fb; }
+.flChiffre b { font: 800 18px/1.15 'Plus Jakarta Sans', sans-serif; color: #13243D; }
+.flChiffre small { font-size: 11.5px; font-weight: 700; color: #64748b; white-space: nowrap; }
+.flChiffre[data-ton="prune"] { background: #f5f3ff; }
+.flChiffre[data-ton="prune"] b { color: #5b21b6; }
+.flChiffre[data-ton="prune"] small { color: #6d5ba6; }
+.flCorpsUn { padding: 18px 20px; }
+
+/* Ordinateur : à gauche le lien (fond clair), à droite ses agences ; chaque côté défile seul.
+   Téléphone : une colonne (la gauche « s'efface », `order` range les blocs). */
+.flCorps { flex: 1 1 auto; min-height: 0; display: flex; }
+.flGauche { flex: 0 0 340px; width: 340px; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; background: #f8fafd; border-right: 1px solid #eef2f7; }
+.flBloc { flex-shrink: 0; padding: 16px 20px 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.flBas { margin-top: auto; align-items: center; padding-bottom: 16px; }
+.flLib { font: 800 11.5px 'Plus Jakarta Sans', sans-serif; letter-spacing: .8px; text-transform: uppercase; color: #64748b; }
+.flLien { display: flex; align-items: center; gap: 8px; padding: 5px 5px 5px 12px; border-radius: 13px; background: white; border: 1.5px solid #e3e8f0; }
+.flLien span { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 700; color: #22497D; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.flLien button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 9px; border: none; background: #22497D; color: white;
+  font: 800 12.5px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.flPetit { font-size: 12px; font-weight: 600; line-height: 1.5; color: #64748b; }
+.flPastilles { display: flex; flex-wrap: wrap; gap: 6px; }
+.flPastille { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 99px; background: #e8eff8; color: #22497D; font-size: 12.5px; font-weight: 700; }
+.flPastille[data-ton="or"] { background: #fff6ec; color: #a95808; border: 1px solid #f7d5b0; font-weight: 800; }
+.flPastille[data-ton="blanc"] { background: white; color: #13243D; border: 1px solid #dce3ec; }
+.flPastille[data-ton="blanc"] svg { color: #15803d; }
+.flOnglets { display: flex; gap: 6px; }
+.flOnglets button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border-radius: 10px; border: 1px solid #dce3ec;
+  background: white; color: #22497D; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+.flOnglets button[aria-pressed="true"] { background: #22497D; color: white; border-color: #22497D; }
+.flApercu { display: block; width: 100%; height: 380px; border: 1px solid #e3e8f0; border-radius: 12px; background: #e6edf6; }
+.flSmsPied { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.flAgences { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 10px; }
+.flAgences > * { flex-shrink: 0; }
+.flAgencesTete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.flAgencesTete b { font: 800 15.5px 'Plus Jakarta Sans', sans-serif; }
+.flAgencesTete span { font-size: 12.5px; font-weight: 600; color: #64748b; }
+
+/* Une partie qui se déplie */
+.flPartie { border: 1px solid #e3e8f0; border-radius: 16px; overflow: hidden; background: white; }
+.flPartieTete { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: none; background: white; font: inherit; color: #13243D; cursor: pointer; text-align: left; }
+.flPartieTete:hover { background: #fbfcfe; }
+.flPartieTete b { font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+.flPartieTete > svg { color: #94a3b8; flex-shrink: 0; }
+.flPoint { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #e68b23; }
+.flNb { padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 800; background: #fdebd5; color: #a95808; }
+.flNoms { flex: 0 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600; color: #64748b; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.flRessort { flex: 1 1 auto; }
+.flDeplier { font-size: 12.5px; font-weight: 700; color: #22497D; white-space: nowrap; }
+.flPartie[data-ton="or"][data-ouverte] .flPartieTete { background: #fff9f1; }
+.flPartie[data-ton="vert"] .flPoint { background: #16a34a; }
+.flPartie[data-ton="vert"] .flNb { background: #dcfce7; color: #166534; }
+.flPartie[data-ton="vert"][data-ouverte] .flPartieTete { background: #f3fbf6; }
+.flPartie[data-ton="prune"] .flPoint { background: #7c3aed; }
+.flPartie[data-ton="prune"] .flNb { background: #f5f3ff; color: #5b21b6; }
+.flPartie[data-ton="prune"][data-ouverte] .flPartieTete { background: #faf8ff; }
+.flPartieCorps { border-top: 1px solid #f1f4f8; }
+.flAide { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #475569; background: #fbfcfe; }
+.flAide svg { margin-top: 2px; color: #94a3b8; }
+.flVide { margin: 0; padding: 12px 14px; font-size: 13px; font-weight: 600; color: #94a3b8; }
+.flPlus { width: 100%; padding: 10px; border: none; border-top: 1px solid #f1f4f8; background: white; color: #22497D; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; }
+
+/* Une agence */
+.flAgence { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid #f1f4f8; }
+.flRond { width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 800 13px 'Plus Jakarta Sans', sans-serif; flex-shrink: 0; }
+.flAgTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.flAgTx b { font-size: 14px; font-weight: 800; color: #13243D; overflow-wrap: anywhere; }
+.flAgTx small { font-size: 12.5px; font-weight: 600; color: #64748b; overflow-wrap: anywhere; }
+.flOrigine { font-size: 11.5px; font-weight: 700; color: #94a3b8; }
+.flEtat { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; margin-top: 2px; }
+.flEnvoi { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: #15803d; }
+.flPuce { padding: 2px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 800; }
+.flPuce[data-ton="prune"] { background: #f5f3ff; color: #5b21b6; }
+.flBtns { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.flIco { width: 38px; height: 38px; border-radius: 11px; border: 1px solid #c9d6e8; background: white; color: #22497D; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.flIco:hover { border-color: #22497D; }
+.flBtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 13px; border-radius: 11px; border: none; background: #22497D; color: white;
+  font: 800 13px 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.flBtn:hover { background: #1a3a66; color: white; }
+.flBtn[data-ton="doux"] { background: white; color: #22497D; border: 1px solid #c9d6e8; }
+.flBtn[data-ton="doux"]:hover { border-color: #22497D; background: white; color: #22497D; }
+.flBtn[data-ton="pointille"] { background: white; color: #22497D; border: 1px dashed #b7c3d4; font-weight: 700; }
+.flBtn:disabled { opacity: .55; cursor: default; }
+
+/* Une autre agence */
+.flAutreBtn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 12px; border: 1.5px dashed #c9d6e8;
+  background: #fbfcfe; color: #22497D; font: 800 13.5px 'DM Sans', sans-serif; cursor: pointer; }
+.flAutreBtn:hover { border-color: #22497D; }
+.flAutre { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 14px; border: 1.5px dashed #c9d6e8; background: #fbfcfe; }
+.flAutreTete { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.flAutreTete b { font-size: 13.5px; font-weight: 800; color: #22497D; }
+.flAutreFermer { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e3e8f0; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.flAutreGrille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.flChamp { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.flChamp > span { font-size: 12px; font-weight: 700; color: #475569; }
+.flChamp > span i { font-style: normal; font-weight: 600; color: #94a3b8; }
+.flChamp input { width: 100%; box-sizing: border-box; height: 40px; border: 1.5px solid #e3e8f0; border-radius: 10px; padding: 0 11px; font: 500 14px 'DM Sans', sans-serif;
+  color: #13243D; background: white; outline: none; }
+.flChamp input:focus { border-color: #22497D; }
+.flAutrePied { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.flAutrePied .flPetit { flex: 1 1 220px; }
+
+/* Téléphone : une colonne, le lien puis ses agences, le reste dessous. */
+@media (max-width: 760px) {
+  .voile { align-items: flex-end; padding: 0; }
+  .flFenetre { width: 100%; height: auto; max-height: 94dvh; border-radius: 22px 22px 0 0; }
+  .flTete { flex-wrap: wrap; padding: 14px 16px 12px; gap: 12px; }
+  .flTitre { flex: 1 1 calc(100% - 110px); }
+  .flTitre h2 { font-size: 16.5px; }
+  .flChiffres { order: 3; flex: 1 1 100%; }
+  .flChiffre { flex: 1 1 0; flex-direction: row; justify-content: center; gap: 6px; padding: 7px; }
+  .flChiffre b { font-size: 15px; }
+  .flCorps { flex-direction: column; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .flGauche { display: contents; }
+  .flBloc { padding: 14px 16px 0; }
+  .flBas { margin-top: 0; padding-bottom: 18px; }
+  .flAgences { flex: 0 0 auto; overflow: visible; padding: 14px 14px 4px; }
+  .flNoms, .flDeplier { display: none; }
+  .flAgence { flex-wrap: wrap; padding: 12px; }
+  .flAgTx { flex: 1 1 calc(100% - 52px); }
+  .flBtns { flex: 1 1 100%; }
+  .flBtns .flBtn { flex: 1 1 auto; height: 42px; }
+  .flIco { width: 42px; height: 42px; }
+  .flAutreGrille { grid-template-columns: minmax(0, 1fr); }
+  .flAutrePied .flBtn { flex: 1 1 100%; }
+  .flApercu { height: 440px; }
+}

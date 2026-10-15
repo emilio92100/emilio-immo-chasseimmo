@@ -11,9 +11,10 @@ import {
   lienAgences, messageAgence, quiPropose, resumePourAgence, tableAgencesAbsente, type PropositionAgence,
 } from '@/lib/agences-lien';
 import {
-  agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterEnvoi,
+  ORIGINES, agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterEnvoi,
   type AgenceConnue, type Canal, type Destinataire, type Jeton,
 } from '@/lib/lien-agences-envois';
+import { mailLienAgence } from '@/lib/mail-agence';
 import { nombre, rapprocher, villeDeLAdresse, type Rapprochement, type Repere } from '@/lib/meme-bien';
 import s from './AnnoncesClient.module.css';
 import a from './PropositionsAgences.module.css';
@@ -452,22 +453,136 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
 }
 
 /* ═══ La fenêtre « Le lien pour les agences » ═════════════════════════════
-   V3.198 (maquette 6) : les agences de ce client, déjà connues du CRM, avec
-   leur numéro ou leur mail ; un appui sur SMS ou Mail ouvre le message
-   rempli, et l'envoi est noté (« Envoyé aujourd'hui · SMS »). Une agence
-   pas encore connue s'ajoute en bas, une fois. src/lib/lien-agences-envois.ts */
+   V3.200 (maquettes 9 et 10, validées le 15 octobre) — Alexandre : « que ce
+   soit plus joli, que je comprenne à qui ça a été envoyé, une fonction
+   dépliée ». Une fenêtre large : à gauche le lien, ce que l'agence voit,
+   le mail et le SMS ; à droite SES agences, en trois parties qui se
+   déplient : « À contacter » (ouverte), « Déjà contactées », « Ont proposé
+   des biens ». Un appui : le mail part du CRM, le SMS s'ouvre sur le
+   téléphone ; l'envoi est noté (src/lib/lien-agences-envois.ts). */
 
-const AGENCES_VUES = 6;
+const PAR_PARTIE = 5;
 const pad2 = (n: number) => String(n).padStart(2, '0');
-function quandCourt(iso: string) {
+/** « aujourd'hui à 22 h 33 », « hier à 9 h 05 », « le 13 oct. à 14 h 20 » */
+function quandEnvoi(iso: string) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
+  const h = `${d.getHours()} h ${pad2(d.getMinutes())}`;
   const j = Math.round((new Date(new Date().toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000);
-  if (j === 0) return `aujourd’hui à ${d.getHours()} h ${pad2(d.getMinutes())}`;
-  if (j === 1) return 'hier';
-  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
+  if (j === 0) return `aujourd’hui à ${h}`;
+  if (j === 1) return `hier à ${h}`;
+  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${h}`;
 }
-const canalCourt = (c: Canal) => (c === 'sms' ? 'SMS' : c === 'mail' ? 'mail' : 'copié');
+const canalLong = (c: Canal) => (c === 'sms' ? 'par SMS' : c === 'mail' ? 'par mail' : 'message copié');
+const MOTS_VIDES = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'l', 'd', 'agence', 'immobilier', 'immobiliere', 'immo']);
+function initiales(nom: string) {
+  const mots = nom.normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const utiles = mots.filter(m => !MOTS_VIDES.has(m.toLowerCase()));
+  const l = (utiles.length ? utiles : mots).slice(0, 2).map(m => m[0].toUpperCase());
+  return l.join('') || '?';
+}
+const TEINTES: [string, string][] = [['#E8EFF8', '#22497D'], ['#FDF2F8', '#9D174D'], ['#ECFDF5', '#047857'], ['#FFF7ED', '#9A3412'], ['#F5F3FF', '#5B21B6'], ['#F0F9FF', '#075985']];
+function teinte(nom: string): [string, string] {
+  let h = 0;
+  for (const c of nom.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return TEINTES[h % TEINTES.length];
+}
+
+type Partie = 'contacter' | 'contactees' | 'proposees';
+
+/* Une agence : le rond à ses initiales, son nom, où elle en est, les boutons. */
+function LigneAgence({ g, partie, message, envoiMail, onMail, onSms, onCopier, onCompleter }: {
+  g: AgenceConnue; partie: Partie; message: string; envoiMail: string | null;
+  onMail: (d: Destinataire) => void; onSms: (d: Destinataire) => void; onCopier: (d: Destinataire) => void; onCompleter: (g: AgenceConnue) => void;
+}) {
+  const dest: Destinataire = { nom: g.nom, interlocuteur: g.interlocuteur, tel: g.tel, email: g.email };
+  const mobile = !!g.tel && estMobile(g.tel);
+  const msg = messagePour(message, g.interlocuteur);
+  const dernier = g.envois[0];
+  const re = partie !== 'contacter' && !!dernier;
+  const [fond, encre] = teinte(g.nom);
+  const contact = [g.interlocuteur, g.tel || g.email].filter(Boolean).join(' · ');
+  return (
+    <div className={a.flAgence}>
+      <span className={a.flRond} style={{ background: fond, color: encre }} aria-hidden="true">{initiales(g.nom)}</span>
+      <span className={a.flAgTx}>
+        <b>{g.nom}</b>
+        <small>{contact || 'Pas de numéro ni de mail noté'}</small>
+        {partie === 'contacter' && <span className={a.flOrigine}>{ORIGINES[g.origine]}</span>}
+        {partie !== 'contacter' && (
+          <span className={a.flEtat}>
+            {g.proposes > 0 && <span className={a.flPuce} data-ton="prune">{`A proposé ${g.proposes} bien${g.proposes > 1 ? 's' : ''}`}</span>}
+            {dernier && (
+              <span className={a.flEnvoi}>
+                <Icone nom="coche" taille={13} epaisseur={2.6} />
+                {`${dernier.canal === 'copie' ? 'Message copié' : 'Lien envoyé'} ${quandEnvoi(dernier.le)}${dernier.canal === 'copie' ? '' : ` ${canalLong(dernier.canal)}`}${g.envois.length > 1 ? ` · ${g.envois.length} envois` : ''}`}
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+      <span className={a.flBtns}>
+        {g.email && mobile && (
+          <a className={a.flIco} href={lienSms(g.tel!, msg)} onClick={() => onSms(dest)} aria-label={`${re ? 'Renvoyer' : 'Envoyer'} par SMS à ${g.interlocuteur || g.nom}`} title={`${re ? 'Renvoyer' : 'Envoyer'} par SMS`}>
+            <Icone nom="mobile" taille={16} epaisseur={2.1} />
+          </a>
+        )}
+        {g.email ? (
+          <button type="button" className={a.flBtn} data-ton={re ? 'doux' : undefined} disabled={!!envoiMail} onClick={() => onMail(dest)}>
+            <Icone nom="mail" taille={15} epaisseur={2.1} />{envoiMail === g.cle ? 'Envoi…' : re ? 'Renvoyer le mail' : 'Envoyer le mail'}
+          </button>
+        ) : mobile ? (
+          <a className={a.flBtn} data-ton={re ? 'doux' : undefined} href={lienSms(g.tel!, msg)} onClick={() => onSms(dest)}>
+            <Icone nom="mobile" taille={15} epaisseur={2.1} />{re ? 'Renvoyer par SMS' : 'Envoyer par SMS'}
+          </a>
+        ) : g.tel ? (
+          <button type="button" className={a.flBtn} data-ton="doux" onClick={() => onCopier(dest)} title="Un fixe ne reçoit pas de SMS : copie le message pour l’envoyer autrement">
+            <Icone nom="copie" taille={15} epaisseur={2.1} />Copier le message
+          </button>
+        ) : (
+          <button type="button" className={a.flBtn} data-ton="pointille" onClick={() => onCompleter(g)}>
+            <Icone nom="plus" taille={15} epaisseur={2.3} />Ajouter son contact
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/* Une partie qui se déplie : son point de couleur, son nombre, les noms quand elle est repliée. */
+function PartieAgences({ titre, ton, liste, ouverte, onBascule, aide, vide, children }: {
+  titre: string; ton: 'or' | 'vert' | 'prune'; liste: AgenceConnue[]; ouverte: boolean; onBascule: () => void;
+  aide: string; vide: string; children: (g: AgenceConnue) => React.ReactNode;
+}) {
+  const [tout, setTout] = useState(false);
+  const vues = tout ? liste : liste.slice(0, PAR_PARTIE);
+  const noms = liste.slice(0, 3).map(g => g.nom).join(', ') + (liste.length > 3 ? '…' : '');
+  return (
+    <section className={a.flPartie} data-ouverte={ouverte ? 'oui' : undefined} data-ton={ton}>
+      <button type="button" className={a.flPartieTete} onClick={onBascule} aria-expanded={ouverte}>
+        <span className={a.flPoint} aria-hidden="true" />
+        <b>{titre}</b>
+        <span className={a.flNb}>{liste.length}</span>
+        {!ouverte && liste.length > 0 && <span className={a.flNoms}>{noms}</span>}
+        <span className={a.flRessort} />
+        <span className={a.flDeplier}>{ouverte ? 'Replier' : 'Déplier'}</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+          style={{ transform: ouverte ? 'rotate(180deg)' : undefined, transition: 'transform .2s ease' }}><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {ouverte && (
+        <div className={a.flPartieCorps}>
+          <p className={a.flAide}><Icone nom="info" taille={14} epaisseur={2.1} /><span>{aide}</span></p>
+          {liste.length === 0 ? <p className={a.flVide}>{vide}</p> : vues.map(g => <div key={g.cle}>{children(g)}</div>)}
+          {liste.length > PAR_PARTIE && (
+            <button type="button" className={a.flPlus} onClick={() => setTout(t => !t)} aria-expanded={tout}>
+              {tout ? 'Moins d’agences' : liste.length - PAR_PARTIE === 1 ? 'Voir l’autre agence' : `Voir les ${liste.length - PAR_PARTIE} autres agences`}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, onFermer }: {
   clientId: string; rechercheId: string; prenom?: string | null; recherche?: any;
@@ -480,9 +595,11 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const [coupe, setCoupe] = useState(false);
   const [travail, setTravail] = useState(false);
   const [agences, setAgences] = useState<AgenceConnue[] | null>(null);
-  const [tout, setTout] = useState(false);
+  const [ouvertes, setOuvertes] = useState<Record<Partie, boolean>>({ contacter: true, contactees: false, proposees: false });
+  const [autreOuvert, setAutreOuvert] = useState(false);
   const [autre, setAutre] = useState({ nom: '', interlocuteur: '', contact: '' });
   const [erreurAutre, setErreurAutre] = useState<string | null>(null);
+  const [apercu, setApercu] = useState<null | 'mail' | 'sms'>(null);
   /* Le joli mail : en cours (la clé de l'agence), ou parti en erreur (la messagerie à la place). */
   const [envoiMail, setEnvoiMail] = useState<string | null>(null);
   const [secours, setSecours] = useState<{ dest: Destinataire; erreur: string } | null>(null);
@@ -493,7 +610,7 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const dire = (m: string) => {
     setDit(m);
     window.clearTimeout(minuteurDit.current);
-    minuteurDit.current = window.setTimeout(() => setDit(null), 3000);
+    minuteurDit.current = window.setTimeout(() => setDit(null), 3200);
   };
   useEffect(() => () => window.clearTimeout(minuteurDit.current), []);
 
@@ -507,7 +624,6 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     recevoir(await creerJeton(rechercheId));
     setTravail(false);
   }, [rechercheId, recevoir]);
-
   useEffect(() => {
     let vivant = true;
     (async () => { const r = await lireOuCreerJeton(rechercheId); if (vivant) recevoir(r); })();
@@ -534,11 +650,14 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     if (ok) { setJeton(null); setCoupe(true); }
   }
 
-  /* L'envoi : le lien (sms:, mailto:) s'ouvre tout seul ; ici, on le note. */
+  /* L'envoi : le SMS (sms:) s'ouvre tout seul ; ici, on le note. */
   async function noter(dest: Destinataire, canal: Canal) {
     const ok = await noterEnvoi({ clientId, rechercheId, prenom, dest, canal });
-    if (ok) dire(canal === 'copie' ? `Message copié pour ${dest.interlocuteur || dest.nom} : c’est noté.` : `Envoi à ${dest.interlocuteur || dest.nom} noté.`);
+    if (ok) dire(canal === 'copie' ? `Message copié pour ${dest.interlocuteur || dest.nom} : c’est noté.` : `SMS préparé pour ${dest.interlocuteur || dest.nom} : l’envoi est noté.`);
     await chargerAgences();
+  }
+  async function copierPour(dest: Destinataire) {
+    if (await copier(messagePour(message, dest.interlocuteur), 'Message')) await noter(dest, 'copie');
   }
   /* Le joli mail, envoyé par le CRM (après un « oui ») ; s'il ne part pas,
      la messagerie d'Alexandre reste possible, avec le message simple. */
@@ -554,21 +673,22 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     await chargerAgences();
     return true;
   }
-  async function copierPour(dest: Destinataire) {
-    if (await copier(messagePour(message, dest.interlocuteur), 'Message')) await noter(dest, 'copie');
-  }
   function completer(g: AgenceConnue) {
     setAutre({ nom: g.nom, interlocuteur: g.interlocuteur || '', contact: '' });
-    setErreurAutre(null);
-    window.setTimeout(() => champContact.current?.focus(), 0);
+    setErreurAutre(null); setAutreOuvert(true);
+    window.setTimeout(() => { champContact.current?.focus(); champContact.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 0);
   }
 
   const resume = recherche ? resumePourAgence(recherche) : null;
-  const voit = resume ? [...resume.puces, resume.budget?.toLowerCase(), ...resume.important.map(x => x.charAt(0).toLowerCase() + x.slice(1))].filter(Boolean).join(' · ') : '';
   const lien = jeton ? lienAgences(jeton) : '';
   const liste = agences || [];
-  const vues = tout ? liste : liste.slice(0, AGENCES_VUES);
-  const envoyees = liste.filter(g => g.envois.some(e => e.canal !== 'copie')).length;
+  const parties: Record<Partie, AgenceConnue[]> = {
+    contacter: liste.filter(g => !g.envois.length && !g.proposes),
+    contactees: liste.filter(g => g.envois.length && !g.proposes),
+    proposees: liste.filter(g => g.proposes > 0),
+  };
+  const nbContactees = liste.filter(g => g.envois.length).length;
+  const htmlMail = apercu === 'mail' && jeton && resume ? mailLienAgence({ lien, resume }).html : '';
 
   /* « + Une autre agence » : un portable donne le SMS, une adresse le mail. */
   const c = autre.contact.trim();
@@ -576,144 +696,175 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const autreCanal: Canal | null = mailValide(c) ? 'mail' : estMobile(c) ? 'sms' : null;
   const autreHref = autreCanal === 'sms' ? lienSms(c, messagePour(message, autreDest.interlocuteur)) : undefined;
 
+  const ligne = (partie: Partie) => (g: AgenceConnue) => (
+    <LigneAgence g={g} partie={partie} message={message} envoiMail={envoiMail}
+      onMail={d => { void mailer(d, g.cle); }} onSms={d => { void noter(d, 'sms'); }} onCopier={d => { void copierPour(d); }} onCompleter={completer} />
+  );
+  const basculer = (k: Partie) => setOuvertes(o => ({ ...o, [k]: !o[k] }));
+
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div className={a.voile} onClick={e => { if (e.target === e.currentTarget) onFermer(); }}>
-      <div className={a.fenetre} role="dialog" aria-modal="true" aria-label="Le lien pour les agences">
-        <div className={a.fTete}>
+      <div className={a.flFenetre} role="dialog" aria-modal="true" aria-label="Le lien pour les agences">
+        <div className={a.flTete}>
           <span className={a.fIc} aria-hidden="true"><Icone nom="lien" taille={19} epaisseur={2} /></span>
-          <div style={{ minWidth: 0 }}>
+          <div className={a.flTitre}>
             <h2>Le lien pour les agences</h2>
-            <p>{pour ? `Recherche de ${pour} · le même lien pour toutes les agences` : 'Le même lien pour toutes les agences qui travaillent pour ce client'}</p>
+            <p>{pour ? `Recherche de ${pour} · le même lien pour toutes les agences` : 'Le même lien pour toutes les agences de ce client'}</p>
           </div>
+          {jeton && !manque && !coupe && (
+            <div className={a.flChiffres}>
+              <span className={a.flChiffre}><b>{nbContactees}</b><small>{nbContactees > 1 ? 'contactées' : 'contactée'}</small></span>
+              <span className={a.flChiffre} data-ton="prune"><b>{stats.biens}</b><small>{stats.biens > 1 ? 'biens reçus' : 'bien reçu'}</small></span>
+            </div>
+          )}
           <button type="button" className={a.fFermer} onClick={onFermer} aria-label="Fermer"><Icone nom="fermer" taille={16} epaisseur={2.4} /></button>
         </div>
-        <div className={a.fCorps}>
-          {manque ? (
-            <div className={a.coupe}>{'À activer d’abord : un petit SQL à passer dans Supabase (SQL Editor), outils/sql/lien-agences.sql.'}</div>
-          ) : coupe ? (
+
+        {manque ? (
+          <div className={a.flCorpsUn}><div className={a.coupe}>{'À activer d’abord : un petit SQL à passer dans Supabase (SQL Editor), outils/sql/lien-agences.sql.'}</div></div>
+        ) : coupe ? (
+          <div className={a.flCorpsUn}>
             <div className={a.coupe}>
               <span>{'Lien coupé : les agences qui l’avaient tombent sur « Cette recherche n’est plus ouverte ».'}</span>
               <button type="button" className={a.btnFort} onClick={() => { void creer(); }} disabled={travail}>Créer un nouveau lien</button>
             </div>
-          ) : !jeton ? (
-            <div className={a.aide}>{travail ? 'Création du lien…' : 'Lecture du lien…'}</div>
-          ) : (
-            <>
-              <div className={a.ligneLien}>
-                <span className={a.lienTxt} title={lien}>{lien.replace(/^https:\/\//, '')}</span>
-                <button type="button" className={a.btnFort} onClick={() => { void copier(lien, 'Lien'); }}>Copier le lien</button>
+          </div>
+        ) : !jeton ? (
+          <div className={a.flCorpsUn}><div className={a.aide}>{travail ? 'Création du lien…' : 'Lecture du lien…'}</div></div>
+        ) : (
+          <div className={a.flCorps}>
+            <div className={a.flGauche}>
+            {/* ── Le lien ── */}
+            <div className={a.flBloc} style={{ order: 1 }}>
+              <span className={a.flLib}>Le lien</span>
+              <div className={a.flLien}>
+                <span title={lien}>{lien.replace(/^https:\/\//, '')}</span>
+                <button type="button" onClick={() => { void copier(lien, 'Lien'); }}><Icone nom="copie" taille={14} epaisseur={2.2} />Copier</button>
               </div>
+              <span className={a.flPetit}>{`Le même pour toutes les agences${pour ? ` de ${pour}` : ''}. Elles y collent leur annonce : le bien arrive dans sa Veille, analysé.`}</span>
               {dit && <div className={a.dit} role="status">{dit}</div>}
+            </div>
 
-              <div className={a.agences}>
-                <span className={a.lib}>{`Les agences de ${pour || 'ce client'}${liste.length ? ` · ${liste.length}` : ''}`}</span>
-                {agences === null ? (
-                  <span className={a.aide}>{'Recherche des agences de ses biens…'}</span>
-                ) : liste.length === 0 ? (
-                  <span className={a.aide}>{'Aucune agence notée pour l’instant dans ses biens ni dans tes suivis : ajoute-la juste en dessous.'}</span>
-                ) : vues.map(g => {
-                  const dernier = g.envois[0];
-                  const dest: Destinataire = { nom: g.nom, interlocuteur: g.interlocuteur, tel: g.tel, email: g.email };
-                  const msg = messagePour(message, g.interlocuteur);
-                  const mobile = !!g.tel && estMobile(g.tel);
-                  const coord = [g.tel, g.email].filter(Boolean).join(' · ');
-                  const envoye = dernier ? `${dernier.canal === 'copie' ? 'copié' : 'envoyé'} ${quandCourt(dernier.le)}${dernier.canal === 'copie' ? '' : ` par ${canalCourt(dernier.canal)}`}${g.envois.length > 1 ? ` (${g.envois.length} fois)` : ''}` : '';
-                  return (
-                    <div key={g.cle} className={a.agence}>
-                      <span className={a.agTx}>
-                        <b>{g.interlocuteur ? `${g.nom} · ${g.interlocuteur}` : g.nom}</b>
-                        <small>{[coord || 'Pas de numéro ni de mail noté', g.proposes && envoye ? envoye : ''].filter(Boolean).join(' · ')}</small>
-                      </span>
-                      {g.proposes > 0
-                        ? <span className={a.puceEtat} data-ton="prune">{`A proposé ${g.proposes} bien${g.proposes > 1 ? 's' : ''}`}</span>
-                        : dernier
-                          ? <span className={a.puceEtat} data-ton="vert">{envoye.charAt(0).toUpperCase() + envoye.slice(1)}</span>
-                          : <span className={a.puceEtat}>Pas encore envoyé</span>}
-                      <span className={a.agBtns}>
-                        {mobile && <a className={a.btnMini} href={lienSms(g.tel!, msg)} onClick={() => { void noter(dest, 'sms'); }}><Icone nom="mobile" taille={14} epaisseur={2.1} />SMS</a>}
-                        {g.email && <button type="button" className={a.btnMini} disabled={!!envoiMail} onClick={() => { void mailer(dest, g.cle); }}><Icone nom="mail" taille={14} epaisseur={2.1} />{envoiMail === g.cle ? 'Envoi…' : 'Mail'}</button>}
-                        {!mobile && !g.email && g.tel && <button type="button" className={a.btnMini} onClick={() => { void copierPour(dest); }} title="Un fixe ne reçoit pas de SMS : copie le message pour l’envoyer autrement"><Icone nom="copie" taille={14} epaisseur={2.1} />Copier</button>}
-                        {!g.tel && !g.email && <button type="button" className={a.btnMini} data-ton="doux" onClick={() => completer(g)}><Icone nom="plus" taille={14} epaisseur={2.1} />Son numéro</button>}
-                      </span>
-                    </div>
-                  );
-                })}
-                {secours && (
-                  <div className={a.secours} role="alert">
-                    <span>{`Le mail à ${secours.dest.email} n’est pas parti : ${secours.erreur}`}</span>
-                    <a className={a.btn} href={lienMail(secours.dest.email || '', messagePour(message, secours.dest.interlocuteur))}
-                      onClick={() => { const d = secours.dest; setSecours(null); void noter(d, 'mail'); }}><Icone nom="mail" taille={14} epaisseur={2.1} />Ouvrir ma messagerie à la place</a>
-                  </div>
-                )}
-                {liste.length > AGENCES_VUES && (
-                  <button type="button" className={a.plus} onClick={() => setTout(t => !t)} aria-expanded={tout}>
-                    {tout ? 'Moins d’agences' : liste.length - AGENCES_VUES === 1 ? 'Voir l’autre agence' : `Voir les ${liste.length - AGENCES_VUES} autres agences`}
-                  </button>
-                )}
-              </div>
-
-              <div className={a.autre}>
-                <span className={a.autreT}><Icone nom="plus" taille={14} epaisseur={2.4} />Une autre agence</span>
-                <div className={a.autreGrille}>
-                  <label className={a.champ}><span>Agence</span>
-                    <input value={autre.nom} onChange={e => { setAutre(x => ({ ...x, nom: e.target.value })); setErreurAutre(null); }} placeholder="Orpi Vanves" maxLength={120} autoComplete="off" /></label>
-                  <label className={a.champ}><span>{'Nom '}<i>(facultatif)</i></span>
-                    <input value={autre.interlocuteur} onChange={e => setAutre(x => ({ ...x, interlocuteur: e.target.value }))} placeholder="Marc Lenoir" maxLength={120} autoComplete="off" /></label>
-                  <label className={a.champ}><span>Portable ou mail</span>
-                    <input ref={champContact} value={autre.contact} onChange={e => { setAutre(x => ({ ...x, contact: e.target.value })); setErreurAutre(null); }} placeholder="06 12 34 56 78" maxLength={160} autoComplete="off" inputMode="email" /></label>
-                </div>
-                <div className={a.autrePied}>
-                  <span className={a.aide}>{erreurAutre || (c && !autreCanal ? 'Un portable (06, 07) pour un SMS, ou une adresse mail.' : autreCanal === 'mail' ? 'Le mail part mis en page, de ta part ; l’agence rejoint la liste.' : 'Le SMS s’ouvre rempli ; l’agence rejoint la liste.')}</span>
-                  {autreCanal === 'mail' ? (
-                    <button type="button" className={a.btnFort} disabled={!!envoiMail}
-                      onClick={() => {
-                        if (!autreDest.nom) { setErreurAutre('Le nom de l’agence d’abord.'); return; }
-                        void mailer(autreDest, 'autre').then(ok => { if (ok) setAutre({ nom: '', interlocuteur: '', contact: '' }); });
-                      }}>
-                      <Icone nom="mail" taille={15} epaisseur={2.1} />{envoiMail === 'autre' ? 'Envoi…' : 'Envoyer le mail'}
-                    </button>
-                  ) : autreHref ? (
-                    <a className={a.btnFort} href={autreHref}
-                      onClick={e => {
-                        if (!autreDest.nom) { e.preventDefault(); setErreurAutre('Le nom de l’agence d’abord.'); return; }
-                        void noter(autreDest, 'sms').then(() => setAutre({ nom: '', interlocuteur: '', contact: '' }));
-                      }}>
-                      <Icone nom="mobile" taille={15} epaisseur={2.1} />Envoyer par SMS
-                    </a>
-                  ) : (
-                    <button type="button" className={a.btnFort} disabled>Envoyer</button>
-                  )}
-                </div>
-              </div>
-
-              <details className={a.details}>
-                <summary>Voir ou modifier le message</summary>
-                <label className={a.cache} htmlFor="msg-agence">Le message envoyé aux agences</label>
-                <textarea id="msg-agence" className={a.zone} rows={6} value={message} onChange={e => setMessage(e.target.value)} />
-                <span className={a.aide}>{'Ce message part par SMS (ou se copie). « Bonjour, » prend le prénom de la personne quand il est connu ; le lien est cliquable. Le mail, lui, part mis en page aux couleurs d’Emilio, avec ce que cherche le client et un bouton « Proposer un bien ».'}</span>
-                <div className={a.boutons}>
-                  <button type="button" className={a.btn} onClick={() => { void copier(message, 'Message'); }}><Icone nom="copie" taille={14} epaisseur={2.1} />Copier le message</button>
-                </div>
-              </details>
-
-              {voit && (
-                <div className={a.voit}>
-                  <span className={a.lib}>{'Ce que l’agence voit'}</span>
-                  <span className={a.voitTx}>{voit}</span>
-                  <span className={a.aide}>{'Jamais son nom, ni ses précisions, ni ses biens déjà vus.'}</span>
+            {/* ── Ce que l'agence voit, le mail, le SMS ── */}
+            <div className={a.flBloc} style={{ order: 3 }}>
+              <span className={a.flLib}>{'Ce que l’agence voit'}</span>
+              {resume && (
+                <div className={a.flPastilles}>
+                  {resume.puces.map(x => <span key={x} className={a.flPastille}>{x}</span>)}
+                  {resume.budget && <span className={a.flPastille} data-ton="or">{resume.budget}</span>}
+                  {resume.important.map(x => <span key={x} className={a.flPastille} data-ton="blanc"><Icone nom="coche" taille={12} epaisseur={2.6} />{x}</span>)}
                 </div>
               )}
-              <div className={a.bas}>
-                <span className={a.stats}>{[
-                  envoyees ? `Envoyé à ${envoyees} agence${envoyees > 1 ? 's' : ''}` : 'Pas encore envoyé',
-                  stats.biens ? (() => { const n = stats.agences || 1; return `${n} agence${n > 1 ? 's ont' : ' a'} proposé ${stats.biens} bien${stats.biens > 1 ? 's' : ''}`; })() : '',
-                ].filter(Boolean).join(' · ')}</span>
-                <button type="button" className={a.couper} onClick={() => { void couper(); }} disabled={travail}>Couper ce lien</button>
+              <span className={a.flPetit}>{'Jamais son nom, ni ses précisions, ni ses biens déjà vus.'}</span>
+            </div>
+            <div className={a.flBloc} style={{ order: 4 }}>
+              <div className={a.flOnglets} role="group" aria-label="Ce que reçoit l’agence">
+                <button type="button" aria-pressed={apercu === 'mail'} onClick={() => setApercu(x => (x === 'mail' ? null : 'mail'))}><Icone nom="mail" taille={14} epaisseur={2.1} />Le mail</button>
+                <button type="button" aria-pressed={apercu === 'sms'} onClick={() => setApercu(x => (x === 'sms' ? null : 'sms'))}><Icone nom="mobile" taille={14} epaisseur={2.1} />Le SMS</button>
               </div>
-            </>
-          )}
-        </div>
+              {apercu === null && <span className={a.flPetit}>{'Touche pour voir ce que l’agence reçoit.'}</span>}
+              {apercu === 'mail' && htmlMail && (
+                <>
+                  <iframe className={a.flApercu} title="Aperçu du mail" srcDoc={htmlMail} sandbox="" />
+                  <span className={a.flPetit}>{'Mis en page aux couleurs d’Emilio, envoyé de ta part ; « Bonjour, » prend le prénom de la personne.'}</span>
+                </>
+              )}
+              {apercu === 'sms' && (
+                <>
+                  <label className={a.cache} htmlFor="msg-agence">Le SMS envoyé aux agences</label>
+                  <textarea id="msg-agence" className={a.zone} rows={6} value={message} onChange={e => setMessage(e.target.value)} />
+                  <div className={a.flSmsPied}>
+                    <span className={a.flPetit}>{'Tu peux le modifier ; « Bonjour, » prend le prénom de la personne.'}</span>
+                    <button type="button" className={a.btn} onClick={() => { void copier(message, 'Message'); }}><Icone nom="copie" taille={14} epaisseur={2.1} />Copier</button>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className={`${a.flBloc} ${a.flBas}`} style={{ order: 5 }}>
+              <button type="button" className={a.couper} onClick={() => { void couper(); }} disabled={travail}>Couper ce lien</button>
+            </div>
+            </div>
+
+            {/* ── Ses agences ── */}
+            <div className={a.flAgences} style={{ order: 2 }}>
+              <div className={a.flAgencesTete}>
+                <b>Ses agences</b>
+                <span>{'celles de ses biens, de tes suivis et de sa Veille'}</span>
+              </div>
+              {agences === null ? (
+                <p className={a.flVide}>{'Recherche des agences de ses biens…'}</p>
+              ) : (
+                <>
+                  <PartieAgences titre="À contacter" ton="or" liste={parties.contacter} ouverte={ouvertes.contacter} onBascule={() => basculer('contacter')}
+                    aide={'Les agences que ton CRM connaît pour ce client et qui n’ont pas encore le lien. Le mail part tout de suite, de ta part ; le SMS s’ouvre sur ton téléphone, prêt à envoyer.'}
+                    vide={liste.length ? 'Toutes les agences connues ont déjà le lien.' : 'Aucune agence notée pour l’instant dans ses biens ni dans tes suivis : ajoute-la juste en dessous.'}>
+                    {ligne('contacter')}
+                  </PartieAgences>
+                  <PartieAgences titre="Déjà contactées" ton="vert" liste={parties.contactees} ouverte={ouvertes.contactees} onBascule={() => basculer('contactees')}
+                    aide={'Le lien ne change pas : renvoie-le autant de fois qu’il faut, si une agence ne l’a pas reçu. « Lien envoyé » note ton appui : pour un SMS, le CRM ne voit pas si tu as vraiment appuyé sur Envoyer.'}
+                    vide={'Aucune pour l’instant.'}>
+                    {ligne('contactees')}
+                  </PartieAgences>
+                  <PartieAgences titre="Ont proposé des biens" ton="prune" liste={parties.proposees} ouverte={ouvertes.proposees} onBascule={() => basculer('proposees')}
+                    aide={'Leurs biens sont dans la Veille de ce client, tout en haut : « Proposés par des agences ».'}
+                    vide={'Aucune pour l’instant.'}>
+                    {ligne('proposees')}
+                  </PartieAgences>
+                </>
+              )}
+
+              {secours && (
+                <div className={a.secours} role="alert">
+                  <span>{`Le mail à ${secours.dest.email} n’est pas parti : ${secours.erreur}`}</span>
+                  <a className={a.btn} href={lienMail(secours.dest.email || '', messagePour(message, secours.dest.interlocuteur))}
+                    onClick={() => { const d = secours.dest; setSecours(null); void noter(d, 'mail'); }}><Icone nom="mail" taille={14} epaisseur={2.1} />Ouvrir ma messagerie à la place</a>
+                </div>
+              )}
+
+              {!autreOuvert ? (
+                <button type="button" className={a.flAutreBtn} onClick={() => setAutreOuvert(true)}><Icone nom="plus" taille={15} epaisseur={2.4} />Une autre agence</button>
+              ) : (
+                <div className={a.flAutre}>
+                  <div className={a.flAutreTete}>
+                    <b>Une autre agence</b>
+                    <button type="button" className={a.flAutreFermer} onClick={() => { setAutreOuvert(false); setErreurAutre(null); }} aria-label="Fermer"><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
+                  </div>
+                  <div className={a.flAutreGrille}>
+                    <label className={a.flChamp}><span>Agence</span>
+                      <input value={autre.nom} onChange={e => { setAutre(x => ({ ...x, nom: e.target.value })); setErreurAutre(null); }} placeholder="Orpi Vanves" maxLength={120} autoComplete="off" /></label>
+                    <label className={a.flChamp}><span>{'Nom '}<i>(facultatif)</i></span>
+                      <input value={autre.interlocuteur} onChange={e => setAutre(x => ({ ...x, interlocuteur: e.target.value }))} placeholder="Marc Lenoir" maxLength={120} autoComplete="off" /></label>
+                    <label className={a.flChamp}><span>Portable ou mail</span>
+                      <input ref={champContact} value={autre.contact} onChange={e => { setAutre(x => ({ ...x, contact: e.target.value })); setErreurAutre(null); }} placeholder="06 12 34 56 78" maxLength={160} autoComplete="off" inputMode="email" /></label>
+                  </div>
+                  <div className={a.flAutrePied}>
+                    <span className={a.flPetit}>{erreurAutre || (!c ? 'Un portable (06, 07) pour un SMS, ou une adresse mail : l’agence rejoint ensuite la liste.' : !autreCanal ? 'Un portable (06, 07) pour un SMS, ou une adresse mail.' : autreCanal === 'mail' ? 'Le mail part mis en page, de ta part ; l’agence rejoint la liste.' : 'Le SMS s’ouvre rempli ; l’agence rejoint la liste.')}</span>
+                    {autreCanal === 'mail' ? (
+                      <button type="button" className={a.flBtn} disabled={!!envoiMail}
+                        onClick={() => {
+                          if (!autreDest.nom) { setErreurAutre('Le nom de l’agence d’abord.'); return; }
+                          void mailer(autreDest, 'autre').then(ok => { if (ok) { setAutre({ nom: '', interlocuteur: '', contact: '' }); setAutreOuvert(false); } });
+                        }}>
+                        <Icone nom="mail" taille={15} epaisseur={2.1} />{envoiMail === 'autre' ? 'Envoi…' : 'Envoyer le mail'}
+                      </button>
+                    ) : autreHref ? (
+                      <a className={a.flBtn} href={autreHref}
+                        onClick={e => {
+                          if (!autreDest.nom) { e.preventDefault(); setErreurAutre('Le nom de l’agence d’abord.'); return; }
+                          void noter(autreDest, 'sms').then(() => { setAutre({ nom: '', interlocuteur: '', contact: '' }); setAutreOuvert(false); });
+                        }}>
+                        <Icone nom="mobile" taille={15} epaisseur={2.1} />Envoyer par SMS
+                      </a>
+                    ) : (
+                      <button type="button" className={a.flBtn} disabled>Envoyer</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body,
