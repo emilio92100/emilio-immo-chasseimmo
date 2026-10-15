@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { lienBienPublic } from '@/lib/jeton';
@@ -4565,7 +4565,39 @@ function quandEtape(iso?: string) {
   if (j === 1) return 'Hier';
   return `Le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
 }
+function EtapeOE({ e }: { e: SuiviClient['etapes'][number] }) {
+  const quand = e.etat !== 'avenir' ? quandEtape(e.le) : '';
+  return (
+    <li className={'oe-e oe-' + e.etat}>
+      <span className="oe-p" aria-hidden="true">{e.etat === 'fait' ? <Ico n="check" t={13} /> : e.etat === 'encours' ? <span className="oe-pt" /> : null}</span>
+      <span className="oe-c">
+        <b>{e.t}</b>
+        {(quand || e.sous) && <small>{[quand, e.sous].filter(Boolean).join(' · ')}</small>}
+        {e.mot && (
+          <span className="oe-mot">
+            <i>{'Le mot d’Alexandre'}</i>
+            <span>{`« ${e.mot} »`}</span>
+          </span>
+        )}
+      </span>
+    </li>
+  );
+}
+/* V3.194 — Alexandre : « il affiche les trois, et s'il y en a quatre, un
+   petit message : voir tout l'historique des échanges, ça se déplie en mode
+   fluide, et il peut replier ». Les appels d'avant les trois derniers
+   (`ancien`) restent repliés à leur place, sous son avis. */
 function OuEnEst({ s }: { s: SuiviClient }) {
+  const [tout, setTout] = useState(false);
+  const id = useId();
+  const premier = s.etapes.findIndex(e => e.ancien);
+  const anciens = s.etapes.filter(e => e.ancien);
+  const avant = premier < 0 ? [] : s.etapes.slice(0, premier);
+  const apres = premier < 0 ? s.etapes : s.etapes.slice(premier + anciens.length);
+  const n = anciens.length;
+  const lib = tout
+    ? (n === 1 ? 'Replier l’échange plus ancien' : 'Replier les échanges plus anciens')
+    : (n === 1 ? 'Voir l’échange plus ancien' : `Voir les ${n} échanges plus anciens`);
   return (
     <div className="oe">
       <div className="oe-tete">
@@ -4573,24 +4605,26 @@ function OuEnEst({ s }: { s: SuiviClient }) {
         <span className={'oe-b' + (s.calee ? ' oe-ok' : '')}>{s.calee ? 'Visite calée' : 'En cours'}</span>
       </div>
       <ol className="oe-fil">
-        {s.etapes.map((e, i) => {
-          const quand = e.etat !== 'avenir' ? quandEtape(e.le) : '';
-          return (
-            <li key={i} className={'oe-e oe-' + e.etat}>
-              <span className="oe-p" aria-hidden="true">{e.etat === 'fait' ? <Ico n="check" t={13} /> : e.etat === 'encours' ? <span className="oe-pt" /> : null}</span>
-              <span className="oe-c">
-                <b>{e.t}</b>
-                {(quand || e.sous) && <small>{[quand, e.sous].filter(Boolean).join(' · ')}</small>}
-                {e.mot && (
-                  <span className="oe-mot">
-                    <i>{'Le mot d’Alexandre'}</i>
-                    <span>{`« ${e.mot} »`}</span>
-                  </span>
-                )}
-              </span>
-            </li>
-          );
-        })}
+        {avant.map((e, i) => <EtapeOE key={'a' + i} e={e} />)}
+        {n > 0 && (
+          <li className="oe-plus">
+            <span className="oe-plus-l" aria-hidden="true" />
+            <button type="button" className="oe-plus-b" aria-expanded={tout} aria-controls={id} onClick={() => setTout(t => !t)}>
+              <span>{lib}</span>
+              <span className="oe-plus-ch" data-o={tout ? '1' : undefined}><Ico n="chevron" t={14} /></span>
+            </button>
+          </li>
+        )}
+        {n > 0 && (
+          <li className="oe-anciens" data-o={tout ? '1' : undefined}>
+            <div className="oe-anc-in" id={id} inert={tout ? undefined : true}>
+              <ol className="oe-fil oe-sous">
+                {anciens.map((e, i) => <EtapeOE key={'v' + i} e={e} />)}
+              </ol>
+            </div>
+          </li>
+        )}
+        {apres.map((e, i) => <EtapeOE key={'r' + i} e={e} />)}
       </ol>
       <p className="oe-pied">{'Les étapes se mettent à jour à chaque appel d’Alexandre.'}</p>
     </div>
@@ -6991,6 +7025,19 @@ input, textarea, select{font-family:inherit}
 .oe-mot{display:flex; flex-direction:column; gap:4px; margin-top:6px; padding:10px 12px; border-radius:13px; background:#FFF8EF; border:1px solid #F7DDBC}
 .oe-mot i{font-style:normal; font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:var(--or-fonce)}
 .oe-mot > span{font-size:14px; font-weight:600; line-height:1.55; color:var(--encre); overflow-wrap:anywhere}
+.oe-plus{position:relative; display:flex; align-items:center; gap:12px; padding-bottom:14px}
+.oe-plus-l{flex:0 0 auto; width:26px; align-self:stretch; display:flex; justify-content:center}
+.oe-plus-l::before{content:''; width:0; border-left:2px dotted var(--vert-trait); margin-bottom:-14px}
+.oe-plus-b{display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; border-radius:99px; border:1px solid var(--trait-fort); background:#fff; color:var(--marque); font:inherit; font-size:13px; font-weight:700; cursor:pointer}
+.oe-plus-b:hover{border-color:var(--marque)}
+.oe-plus-ch{display:inline-flex; transition:transform .3s ease}
+.oe-plus-ch[data-o="1"]{transform:rotate(180deg)}
+.oe-anciens{display:grid; grid-template-rows:0fr; opacity:0; transition:grid-template-rows .4s ease, opacity .3s ease}
+.oe-anciens[data-o="1"]{grid-template-rows:1fr; opacity:1}
+.oe-anc-in{min-height:0; overflow:hidden}
+.oe-sous .oe-e:last-child{padding-bottom:14px}
+.oe-sous .oe-e:last-child::before{display:block}
+@media (prefers-reduced-motion: reduce){ .oe-anciens, .oe-plus-ch{transition:none} }
 .oe-pied{margin:0; padding-top:10px; border-top:1px solid #EEF2F7; font-size:12.5px; line-height:1.5; color:var(--plume)}
 .suivi-l{display:flex; align-items:center; gap:7px; margin-top:9px; font-size:12.5px; font-weight:700; line-height:1.35; color:var(--or-fonce)}
 .suivi-pt{flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:var(--or)}
