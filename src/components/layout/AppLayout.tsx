@@ -35,6 +35,7 @@ import FichesOuvertes, { type FicheOuverte, EVT_FICHE_OUVERTE, EVT_BIEN_ACTIF, E
 import { nomFoyer } from '@/lib/foyer';
 import { signalerEchec } from '@/lib/ecritures';
 import { signalerMaj, prendreOuvertureUrl, lireOuvertureFiche } from '@/lib/intentions';
+import { figerLesFenetres } from '@/lib/fenetres-figees';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 
 /**
@@ -123,6 +124,10 @@ export default function AppLayout() {
      fiche y ramènera (V3.102). handleNavigate ne se recrée pas, d'où le ref. */
   const pageRef = useRef(activePage);
   useEffect(() => { pageRef.current = activePage; }, [activePage]);
+
+  /* V3.192 : un clic à côté d'une fenêtre où l'on écrit ne la ferme plus
+     (src/lib/fenetres-figees.ts). */
+  useEffect(() => figerLesFenetres(), []);
 
   /* La classe « crm » sur <html> : les règles du téléphone s'appliquent au
      CRM et à ses fenêtres (posées sur <body>), jamais à l'espace client. */
