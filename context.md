@@ -1515,6 +1515,24 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.201 — 16 octobre 2026 · Le contact sur place, les aperçus en grand
+
+- Alexandre : « pourquoi “Ajouter son contact” renvoie en bas, dans “une autre agence” ? »,
+  « l'aperçu du mail à gauche, c'est condensé : pourquoi pas un pop-up ? », « portable ou mail
+  en bas, le mail est long ».
+- « À contacter » devient **« Pas encore contactées »**. « Ajouter son contact » (et le crayon
+  sur une agence qui a déjà un contact) ouvre `FormContact` DANS la ligne : la personne qui gère
+  le dossier, le portable, le mail (chacun sa case ; le mail, la plus large) ; « Envoyer par
+  SMS », « Envoyer le mail » (les deux si les deux sont remplis), « Enregistrer sans envoyer »
+  (`noterContact` : une ligne au journal, `metadata.contact_agence`, relue par
+  `agencesDuClient`). « Une autre agence » prend le même formulaire, avec le nom de l'agence.
+- « Voir le mail » et « Voir le SMS » ouvrent `ApercuEnvoi` par-dessus la fenêtre : le mail en
+  grand (Ordinateur / Téléphone), le SMS dans une bulle de téléphone, modifiable ; Échap ferme
+  d'abord l'aperçu.
+- « Emilio Immobilier » (l'agence d'Alexandre, sur ses mandats présentés) n'apparaît plus dans
+  « Ses agences ». La petite phrase : « celles de ses biens (Sélection, Présentés, Veille), de tes
+  suivis, et celles qui t'ont répondu ».
+
 ### V3.200 — 15 octobre 2026 · La fenêtre du lien, large et rangée
 
 - Alexandre : « que ce soit plus joli, que je comprenne à qui ça a été envoyé, une fonction
