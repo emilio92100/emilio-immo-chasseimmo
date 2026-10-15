@@ -1491,7 +1491,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
   };
 
   /* ── ouverture d'une fiche ── */
-  function ouvrirBien(b: Bien) {
+  function ouvrirBien(b: Bien, o?: { versCr?: boolean }) {
     if (aDecouvrir(b)) { ouvrirDecouverte(b.id); return; }
     if (b.etat === 'neuf') {
       setBiens(l => l.map(x => x.id === b.id ? { ...x, etat: 'vu', vuLe: new Date().toISOString() } : x));
@@ -1507,7 +1507,7 @@ export default function EspaceClient({ token, client, criteres, biens: biensInit
       onAvis={enregistrerAvis} onPartager={partagerBien}
       visitesB={mesV.filter(x => x.bienId === b.id)} onRepondreVisite={repondreVisite}
       onFaireOffre={peutOffrir(b) ? () => ouvrirOffre(b, b.offreSuivi ? { depuis: b.offreSuivi.id, derniere: b.offreSuivi.total } : {}) : undefined}
-      actionsOffre={actionsOffre(b)} />, 'fiche');
+      actionsOffre={actionsOffre(b)} versCr={!!o?.versCr} />, 'fiche');
   }
 
   /* ── Le mandat de recherche ──
@@ -4309,7 +4309,9 @@ function EtiqVisite({ b, v }: { b: Bien; v: VisiteE }) {
   return <span className={'etiq ' + ETIQ_ISSUE[v.issue]}><Ico n={ICO_ISSUE[v.issue]} t={13} />{ISSUES[v.issue].client}</span>;
 }
 
-function CarteVisite({ b, v, onOuvrir, onRepondre, onFaireOffre, actionsOffre }: { b: Bien; v: VisiteE; onOuvrir: () => void; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>;
+function CarteVisite({ b, v, onOuvrir, onCompteRendu, onRepondre, onFaireOffre, actionsOffre }: { b: Bien; v: VisiteE; onOuvrir: () => void;
+  /* V3.195 : la fiche s'ouvre et descend jusqu'au compte rendu. */
+  onCompteRendu?: () => void; onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>;
   /* V3.189 : préparer son offre ; les gestes de la carte « Votre offre ». */
   onFaireOffre?: () => void; actionsOffre?: ActionsOffre }) {
   const ph = (b.photos || [])[0];
@@ -4334,7 +4336,7 @@ function CarteVisite({ b, v, onOuvrir, onRepondre, onFaireOffre, actionsOffre }:
           </>
         ) : <AvisVisite v={v} onRepondre={onRepondre} sansNote sansSuite={indispo(b)} onFaireOffre={onFaireOffre} />}
       {v.compteRendu && (
-        <button type="button" className="vv-cr" onClick={onOuvrir}>
+        <button type="button" className="vv-cr" onClick={onCompteRendu || onOuvrir}>
           <Ico n="note" t={14} /><span>{'Le compte rendu de votre conseiller'}</span><Ico n="fleche" t={14} />
         </button>
       )}
@@ -4375,7 +4377,7 @@ function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir, onFaireOffre }: 
    son étiquette, et une nouvelle offre reste possible. */
 function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir, onRepondre, onFaireOffre, actionsOffre }: {
   biens: Bien[]; mesV: VisiteE[]; visites: any[]; token: string; apprisClient: string[];
-  aller: (v: string) => void; onOuvrir: (b: Bien) => void;
+  aller: (v: string) => void; onOuvrir: (b: Bien, o?: { versCr?: boolean }) => void;
   onRepondre: (v: VisiteE, i: Issue, motifs: string[], mot: string, prix: number | null) => Promise<boolean>;
   onFaireOffre?: (b: Bien) => (() => void) | undefined;
   actionsOffre?: (b: Bien) => ActionsOffre;
@@ -4411,7 +4413,7 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
     ['En cours', retenus.length, 'c-bleu'], ['Pas pour moi', non.length, 'c-brique'],
   ];
   const carte = ({ b, v }: { b: Bien; v: VisiteE }) => (
-    <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onRepondre={onRepondre}
+    <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onCompteRendu={() => onOuvrir(b, { versCr: true })} onRepondre={onRepondre}
       onFaireOffre={onFaireOffre?.(b)} actionsOffre={actionsOffre?.(b)} />
   );
 
@@ -4550,6 +4552,45 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
    carte, et en bas trois grands boutons de réponse à la place de la barre
    « Qu'en pensez-vous ? ». `colonne` : sur ordinateur, elle prend la colonne
    de droite — les photos restent à gauche, la galerie n'est pas répétée. */
+/* ══ V3.195 : le texte du compte rendu de visite, mis en forme ══════════
+   Tel qu'Alexandre l'écrit dans le CRM : un paragraphe par ligne ; les
+   lignes qui commencent par « - », « • » ou « * » deviennent une liste, celles
+   par « + » ou « ✓ » une liste cochée ; « Luminosité : très bonne » met son
+   intitulé en gras. */
+const PUCE_CR = /^([-•*–·+✓✔])\s+/;
+function lignesCR(t: string) {
+  const m = t.match(/^([^:.!?]{2,32}?)\s?:\s+(.+)$/);
+  return m ? <><b>{m[1]}</b>{` : ${m[2]}`}</> : t;
+}
+function TexteCR({ texte }: { texte: string }) {
+  type Bloc = { k: 'p'; t: string } | { k: 'l'; l: { t: string; plus: boolean }[] };
+  const blocs: Bloc[] = [];
+  for (const brut of String(texte || '').replace(/\r/g, '').split('\n')) {
+    const l = brut.trim();
+    if (!l) continue;
+    const m = l.match(PUCE_CR);
+    if (m) {
+      const item = { t: l.slice(m[0].length), plus: m[1] === '+' || m[1] === '✓' || m[1] === '✔' };
+      const der = blocs[blocs.length - 1];
+      if (der && der.k === 'l') der.l.push(item); else blocs.push({ k: 'l', l: [item] });
+    } else blocs.push({ k: 'p', t: l });
+  }
+  return (
+    <div className="cpr-texte">
+      {blocs.map((x, i) => (x.k === 'l' ? (
+        <ul key={i} className="cpr-puces">
+          {x.l.map((y, j) => (
+            <li key={j} data-plus={y.plus ? '1' : undefined}>
+              <span className="cpr-pc" aria-hidden="true">{y.plus ? <Ico n="check" t={12} /> : null}</span>
+              <span>{lignesCR(y.t)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p key={i}>{lignesCR(x.t)}</p>))}
+    </div>
+  );
+}
+
 /* ══ V3.193 : « Où en est Alexandre », sur la fiche du bien ══════════════
    Alexandre : « que le client voie que je travaille dessus ». Des étapes
    neutres (« Alexandre a laissé un message au vendeur »), la dernière en
@@ -4631,8 +4672,16 @@ function OuEnEst({ s }: { s: SuiviClient }) {
   );
 }
 
-function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite, decouverte, onFaireOffre, actionsOffre }: any) {
+function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite, decouverte, onFaireOffre, actionsOffre, versCr }: any) {
   const dec = decouverte as ActionsFiche | undefined;
+  /* V3.195 : ouverte depuis « Le compte rendu de votre conseiller » (Vos
+     visites), la fiche descend jusqu'à lui, une fois la fenêtre posée. */
+  const refCr = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!versCr) return;
+    const t = setTimeout(() => refCr.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 450);
+    return () => clearTimeout(t);
+  }, [versCr]);
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
      y porte déjà 'propose' — ce n'est pas un retour du client, c'est l'état
      de départ. Seules les quatre valeurs d'ETIQ sont de vraies réponses.
@@ -4862,6 +4911,60 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             {b.sonMot && <span><i>{'Votre mot\u00a0: '}</i>{`«\u00a0${b.sonMot}\u00a0»`}</span>}
           </div>
         )}
+        {/* V3.195 — Alexandre : « le compte rendu est tout en bas, sur un fond
+            gris : le monter pour qu'on le voie directement, et le rendre plus
+            joli ». Après la visite : son issue (ou la question, s'il n'a rien
+            dit), puis le compte rendu, en carte blanche, juste sous le titre. */}
+        {b.visiteFaite && (() => {
+          const cle = (v: VisiteE) => `${v.date || ''}${v.heure || ''}`;
+          const faites = (visitesB as VisiteE[]).filter(v => v.passee).sort((a, c) => cle(c).localeCompare(cle(a)));
+          const v = faites[0];
+          const et = b.visiteFaite.etoiles || 0;
+          return (
+            <div className="vf">
+              <div className="vf-tete">
+                <span className="vf-ic" aria-hidden="true"><Ico n="maison" t={18} /></span>
+                <span className="vf-tt">
+                  <b>{'Visite effectuée'}</b>
+                  {b.visiteFaite.date && <small>{dateLongue(b.visiteFaite.date)}</small>}
+                </span>
+              </div>
+              {/* V3.189 : son offre, avec tout son historique ; sinon son avis,
+                  et « Faire une offre » tant qu'aucune ne court. */}
+              {b.offreSuivi
+                ? <CarteOffre o={b.offreSuivi} indispo={indispo(b)} historique {...(actionsOffre || {})} />
+                : v && (v.issue || etatOffre(b))
+                  ? (
+                    <div className="vf-etat">
+                      <EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} />
+                      {onFaireOffre && v.issue !== 'non' && (
+                        <button type="button" className="ofr-mini" onClick={onFaireOffre}><Ico n="euro" t={14} /><span>{v.issue === 'offre' ? 'Préparer mon offre moi-même' : 'Faire une offre'}</span></button>
+                      )}
+                    </div>
+                  )
+                  : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} sansSuite={indispo(b)} onFaireOffre={onFaireOffre} /> : null}
+              {b.visiteFaite.commentaire ? (
+                <div className="cpr" ref={refCr}>
+                  <div className="cpr-tete">
+                    <span className="cpr-ic" aria-hidden="true"><Ico n="note" t={16} /></span>
+                    <span className="cpr-tt">{'Le compte rendu d’Alexandre'}</span>
+                    {et > 0 && <span className="cpr-et" aria-label={`${et} sur 5`}>{'★'.repeat(et)}<i>{'★'.repeat(Math.max(0, 5 - et))}</i></span>}
+                  </div>
+                  <TexteCR texte={b.visiteFaite.commentaire} />
+                  <div className="cpr-sign">
+                    <span className="cpr-av" aria-hidden="true">AR</span>
+                    <span><b>{AGENT.nom}</b><small>{'Votre conseiller'}</small></span>
+                  </div>
+                </div>
+              ) : (
+                <div className="vf-attente" ref={refCr}>
+                  <Ico n="horloge" t={16} />
+                  <span>{'Votre conseiller vous fait un retour détaillé de sa visite.'}</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {b.suivi && <OuEnEst s={b.suivi} />}
         {corr && (
           <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
@@ -4988,44 +5091,6 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             </p>
           </div>
         )}
-
-        {/* Après la visite : son issue (ou la question, s'il n'a rien dit),
-            puis le compte rendu de son conseiller. */}
-        {b.visiteFaite && (() => {
-          const cle = (v: VisiteE) => `${v.date || ''}${v.heure || ''}`;
-          const faites = (visitesB as VisiteE[]).filter(v => v.passee).sort((a, c) => cle(c).localeCompare(cle(a)));
-          const v = faites[0];
-          return (
-            <div className="apres-avis fini">
-              <div className="aa-t">🏠 Visite effectuée{b.visiteFaite.date ? ` · ${dateLongue(b.visiteFaite.date)}` : ''}</div>
-              {/* V3.189 : son offre, avec tout son historique ; sinon son avis,
-                  et « Faire une offre » tant qu'aucune ne court. */}
-              {b.offreSuivi
-                ? <CarteOffre o={b.offreSuivi} indispo={indispo(b)} historique {...(actionsOffre || {})} />
-                : v && (v.issue || etatOffre(b))
-                  ? (
-                    <div style={{ marginTop: 8 }}>
-                      <EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} />
-                      {onFaireOffre && v.issue !== 'non' && (
-                        <button type="button" className="ofr-mini" onClick={onFaireOffre}><Ico n="euro" t={14} /><span>{v.issue === 'offre' ? 'Préparer mon offre moi-même' : 'Faire une offre'}</span></button>
-                      )}
-                    </div>
-                  )
-                  : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} sansSuite={indispo(b)} onFaireOffre={onFaireOffre} /> : null}
-              {b.visiteFaite.etoiles ? (
-                <p className="aa-p" style={{ marginTop: 10 }}>{'★'.repeat(b.visiteFaite.etoiles)}{'☆'.repeat(Math.max(0, 5 - b.visiteFaite.etoiles))}</p>
-              ) : null}
-              {b.visiteFaite.commentaire ? (
-                <>
-                  <div className="fige-t" style={{ marginTop: 10 }}>Compte rendu de votre conseiller</div>
-                  <div className="fige">{b.visiteFaite.commentaire}</div>
-                </>
-              ) : (
-                <p className="aa-p" style={{ marginTop: 10 }}>Votre conseiller vous fait un retour détaillé de sa visite.</p>
-              )}
-            </div>
-          );
-        })()}
 
         {envoye && !b.visiteFaite && (
           <div className="apres-avis fini">
@@ -6999,6 +7064,38 @@ input, textarea, select{font-family:inherit}
 .ruban-vente{position:absolute; top:10px; left:10px; z-index:2; padding:5px 10px; border-radius:99px; background:rgba(19,36,61,.88); color:#fff; font-size:12px; font-weight:800; letter-spacing:.2px}
 .ruban-vente.vous{background:var(--or); color:#13243D}
 .avis-vente{display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:14px; background:#F2F5F9; color:#13243D; font-size:14px; line-height:1.5; margin-bottom:14px}
+/* V3.195 : « Visite effectuée » et le compte rendu, sous le titre, en blanc.
+   ⚠️ Préfixes vf- et cpr- (l'espace a déjà .fait, .fige, .apres-avis). */
+.vf{display:flex; flex-direction:column; gap:12px; margin:0 0 16px; padding:15px; border-radius:18px; background:#fff; border:1px solid var(--trait); box-shadow:0 10px 26px -20px rgba(19,36,61,.5)}
+.vf-tete{display:flex; align-items:center; gap:11px}
+.vf-ic{flex:0 0 auto; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:var(--vert-fond); color:var(--vert); border:1px solid var(--vert-trait)}
+.vf-tt{display:flex; flex-direction:column; gap:1px; min-width:0}
+.vf-tt b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; color:var(--encre)}
+.vf-tt small{font-size:13px; font-weight:600; color:var(--plume)}
+.vf-etat{display:flex; flex-direction:column; align-items:flex-start; gap:8px}
+.vf-etat .vv-ligne{margin-top:0}
+.vf-attente{display:flex; align-items:center; gap:9px; padding:11px 13px; border-radius:13px; background:var(--fond); color:var(--plume); font-size:13.5px; line-height:1.5; scroll-margin-top:72px}
+.vf-attente svg{flex-shrink:0}
+.cpr{display:flex; flex-direction:column; gap:12px; padding:14px 15px 13px; border-radius:15px; background:linear-gradient(180deg,#FFFBF5,#fff 70%); border:1px solid var(--or-trait); scroll-margin-top:72px}
+.cpr-tete{display:flex; align-items:center; gap:9px}
+.cpr-ic{flex:0 0 auto; width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; background:var(--or-fond); color:var(--or-fonce); border:1px solid var(--or-trait)}
+.cpr-tt{flex:1 1 auto; min-width:0; font-size:12px; font-weight:800; letter-spacing:.8px; text-transform:uppercase; color:var(--or-fonce)}
+.cpr-et{flex:0 0 auto; font-size:15px; letter-spacing:1px; color:var(--or)}
+.cpr-et i{font-style:normal; color:#E3E8F0}
+.cpr-texte{display:flex; flex-direction:column; gap:9px; font-size:15px; line-height:1.65; color:var(--encre)}
+.cpr-texte p{margin:0; overflow-wrap:anywhere}
+.cpr-texte b{font-weight:800}
+.cpr-puces{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px}
+.cpr-puces li{display:flex; align-items:flex-start; gap:10px; overflow-wrap:anywhere}
+.cpr-pc{flex:0 0 auto; width:20px; height:20px; margin-top:2px; box-sizing:border-box; border-radius:50%; display:flex; align-items:center; justify-content:center}
+.cpr-pc::before{content:''; width:7px; height:7px; border-radius:50%; background:var(--or)}
+.cpr-puces li[data-plus] .cpr-pc{background:var(--vert-fond); color:var(--vert); border:1px solid var(--vert-trait)}
+.cpr-puces li[data-plus] .cpr-pc::before{display:none}
+.cpr-sign{display:flex; align-items:center; gap:10px; padding-top:11px; border-top:1px solid #F3E6D4}
+.cpr-av{flex:0 0 auto; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--marque); color:#fff; font-size:12.5px; font-weight:800; letter-spacing:.5px}
+.cpr-sign > span:last-child{display:flex; flex-direction:column; min-width:0}
+.cpr-sign b{font-size:14px; font-weight:800; color:var(--encre)}
+.cpr-sign small{font-size:12.5px; font-weight:600; color:var(--plume)}
 /* V3.193 : « Où en est Alexandre » sur la fiche, et sa ligne sur la carte.
    ⚠️ Classes préfixées : l'espace a déjà .fait (un bloc) et d'autres mots courts. */
 .oe{display:flex; flex-direction:column; gap:12px; margin:0 0 16px; padding:15px 15px 13px; border-radius:18px; background:#fff; border:1px solid var(--trait); box-shadow:0 10px 26px -20px rgba(19,36,61,.5)}
