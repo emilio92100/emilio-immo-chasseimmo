@@ -1515,6 +1515,47 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.198 — 15 octobre 2026 · Le lien pour les agences : envoyer, se souvenir, reconnaître
+
+- Pas de SQL. Maquettes 5 à 8 du canevas « Le lien pour les agences », validées.
+- **L'envoyer** (Alexandre : « est-ce que je sais à qui je l'ai envoyé ? si les infos de
+  l'agence sont déjà renseignées, ça reprend ? ») — src/lib/lien-agences-envois.ts :
+  - la fenêtre « Lien pour les agences » liste « Les agences de Didier » (`agencesDuClient` :
+    biens, `suivis_agence.contact`, Veille « nouveau », `propositions_agences`, envois passés ;
+    regroupées par nom, numéro ou mail ; le plus récent l'emporte), avec « Envoyé aujourd'hui ·
+    SMS », « A proposé 2 biens », SMS (portable seulement), Mail, Copier (un fixe), « Son
+    numéro » ; « + Une autre agence » (agence, nom, portable ou mail) ;
+  - « Mon suivi avec l'agence » d'un bien présenté : « Le lien pour Didier » (agence seulement)
+    → Par SMS au …, Par mail à …, Copier le message ; l'envoi s'y inscrit en NOTE (jamais lue
+    par l'espace, qui ne lit que les appels) ;
+  - le SMS s'ouvre sur le téléphone d'Alexandre (`sms:…?&body=`, « Bonjour Julien, » —
+    `messagePour`) : le CRM n'envoie pas de SMS ; il note l'appui ;
+  - le MAIL, lui, part du CRM (Mailjet, au nom d'Alexandre, remise suivie) : route
+    `POST /api/lien-agences/mail` (⚠️ hors de `/api/agences/`, qui est public), gabarit
+    src/lib/mail-agence.ts (bande bleue au logo, « Un bien pour mon client ? », ce qu'il cherche
+    en icônes, bouton orange « Proposer un bien », « Comment ça marche », signature) ; icônes
+    PNG 2x dans public/mail/agence/ (pas de SVG : Gmail les retire) ; `window.confirm` avant ;
+    s'il ne part pas : « Ouvrir ma messagerie à la place ».
+  - Chaque envoi : une ligne au journal, `metadata.lien_agences = true` (type
+    `lien_agences`, ou `statut_change` si la liste fermée de la base le refuse) — c'est elle
+    que relit `envoisDuLien`.
+- **Le même bien sous un autre lien** (Alexandre : « ça peut être un autre lien de la même
+  annonce ») :
+  - côté agence (api/agences/proposer) : le même lien, au « www. » et au « / » final près
+    (`variantesLien`), cherché aussi dans la Veille (écartés compris) et les annonces du client
+    → « Alexandre l'a déjà », et une ligne au Suivi « Bien déjà connu, proposé aussi par … »
+    (sauf si c'est la même agence qui renvoie) ;
+  - côté CRM : src/lib/meme-bien.ts rapproche surface (1 m² ou 2 %), ville, pièces, prix
+    (12 %) avec le dossier, la Veille, les annonces du client et les autres agences → sur la
+    carte « Sans doute le même bien que « … », dans sa Sélection : même surface, 12 000 € de
+    moins ici. » ; « Retenir » rattache au bien quand c'est le même lien écrit autrement.
+    L'agence n'est jamais prévenue d'une simple ressemblance.
+- **Page de l'agence** : « Vos envois pour ce client » sous le formulaire aussi, avec un « ? »
+  (bulle : « Les envois faits depuis cet appareil… Alexandre l'a bien reçu »).
+- Journal côté serveur des routes agences : `journalServeur` (src/lib/agences-serveur.ts),
+  repli `statut_change` sur le code 23514 — `proposition_agence` n'est peut-être pas dans la
+  liste fermée de la base (les lignes de la V3.197 ont pu se perdre).
+
 ### V3.197 — 15 octobre 2026 · Le lien pour les agences
 
 - Alexandre : « quand j'appelle une agence et qu'elle me dit d'aller voir sur son site, comment
