@@ -16,6 +16,9 @@ import { COOKIE_BADGE, badgeValide } from '@/lib/badge';
  *  - /api/point-auto/envoi         (l'envoi quotidien, appelé par Vercel : protégé par CRON_SECRET)
  *  - /api/mandat/relances          (les rappels aux co-signataires, idem : CRON_SECRET)
  *  - /signer/... et /api/signer     (le lien personnel d'un co-signataire : protégé par son jeton)
+ *  - /proposer/... et /api/agences/... (le lien pour les agences, V3.197 : le jeton d'une
+ *                                   recherche ouverte ; la lecture d'une annonce refuse toute
+ *                                   adresse interne, src/lib/page-publique.ts)
  *  - /api/demandes-site/notifier   (le mail « Nouvelle demande du site » : ne reçoit rien, n'envoie
  *                                   que ce qui n'a pas encore été annoncé — V3.37)
  *  - /api/flux-site et /api/flux-site/sitemap (les biens que lit le site emilio-immo.com et son
@@ -36,7 +39,7 @@ const COOKIE = COOKIE_BADGE;
    (V3.141) ; /api/ringover/recherche : il cherche un contact du CRM (V3.143).
    Leur serrure : la signature de Ringover (lib/ringover-serveur.ts). */
 const PUBLIC_PATHS = ['/login', '/api/login', '/api/point-auto/envoi', '/api/mandat/relances', '/api/signer', '/api/demandes-site/notifier', '/api/flux-site', '/api/flux-site/sitemap', '/api/diffusion/portails', '/api/seloger/contacts', '/api/ringover/contact', '/api/ringover/recherche'];
-const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/'];
+const PUBLIC_PREFIXES = ['/bien/', '/espace/', '/api/espace/', '/signer/', '/proposer/', '/api/agences/'];
 
 /* Le sous-domaine de l'espace acheteur. Tout le monde vit sur le même projet
    Vercel : c'est le nom d'hôte qui décide de ce qu'on sert. */
@@ -74,6 +77,8 @@ export async function proxy(request: NextRequest) {
       /* Le lien personnel d'un co-signataire (conjoint, co-acquéreur) :
          espace.emilio-immo.com/signer/<jeton>. */
       pathname.startsWith('/signer/') ||
+      /* V3.197 : le lien pour les agences, espace.emilio-immo.com/proposer/<jeton>. */
+      pathname.startsWith('/proposer/') ||
       pathname.startsWith('/api/') ||
       pathname.startsWith('/_next/') ||
       /\.[a-z0-9]+$/i.test(pathname);
