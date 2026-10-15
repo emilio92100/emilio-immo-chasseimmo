@@ -89,6 +89,17 @@ export async function noterEnvoi(o: {
   return ok;
 }
 
+/** V3.201 — Le contact d'une agence, noté sans rien envoyer (« Enregistrer sans
+    envoyer ») : une ligne au journal, `metadata.contact_agence = true`, que
+    `agencesDuClient` relit. Les envois, eux, gardent aussi le contact. */
+export async function noterContact(o: { clientId: string; rechercheId: string; dest: Destinataire }): Promise<boolean> {
+  const d = o.dest;
+  return addJournal(o.clientId, 'lien_agences', `📇 Contact noté pour le lien des agences : ${quiEst(d)}`.slice(0, 300),
+    [d.tel, d.email].filter(Boolean).join(' · ') || undefined,
+    { contact_agence: true, agence: d.nom.trim(), interlocuteur: d.interlocuteur?.trim() || null, tel: d.tel?.trim() || null, email: d.email?.trim() || null },
+    { rechercheId: o.rechercheId });
+}
+
 /** Les envois de ce lien pour cette recherche, du plus récent au plus ancien. */
 export async function envoisDuLien(rechercheId: string): Promise<Envoi[]> {
   const { data, error } = await supabase.from('journal').select('created_at, metadata').eq('recherche_id', rechercheId)
@@ -122,13 +133,16 @@ const normNom = (n: string) => n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowe
 const plusRecent = (a: string, b: string) => (a > b ? a : b);
 
 export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue[]> {
+  const contactsNotes = supabase.from('journal').select('created_at, metadata').eq('recherche_id', rechercheId)
+    .contains('metadata', { contact_agence: true }).order('created_at', { ascending: false }).limit(200);
   const veilleAvecTel = () => supabase.from('veille_propositions').select('agence, agence_tel, est_particulier, created_at').eq('recherche_id', rechercheId).eq('statut', 'nouveau').limit(500);
-  const [b, s, pa, envois, v0] = await Promise.all([
+  const [b, s, pa, envois, v0, cn] = await Promise.all([
     supabase.from('biens').select('agence_nom, agence_tel, est_particulier, etape, created_at').eq('recherche_id', rechercheId).limit(500),
     supabase.from('suivis_agence').select('avec, contact, created_at').eq('recherche_id', rechercheId).limit(1000),
     supabase.from('propositions_agences').select('agence, interlocuteur, tel, email, created_at').eq('recherche_id', rechercheId).limit(500),
     envoisDuLien(rechercheId),
     veilleAvecTel(),
+    contactsNotes,
   ]);
   /* `agence_tel` vient d'outils/sql/veille-agence-tel.sql : sans lui, le nom seul. */
   let v: { data: any[] | null; error: { message: string } | null } = v0;
@@ -146,6 +160,11 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
   for (const x of (v.data || []) as any[]) if (!x.est_particulier && x.agence) traces.push({ nom: x.agence, tel: x.agence_tel || null, le: x.created_at || '', origine: 'veille' });
   for (const x of (pa.data || []) as any[]) if (x.agence) traces.push({ nom: x.agence, interlocuteur: x.interlocuteur, tel: x.tel, email: x.email, le: x.created_at || '', propose: true, origine: 'propose' });
   for (const e of envois) if (e.nom) traces.push({ ...e, le: e.le, envoi: e, origine: 'envoi' });
+  if (cn.error) console.error('[agences du client] contacts', cn.error.message);
+  for (const x of (cn.data || []) as { created_at: string; metadata: any }[]) {
+    const m = x.metadata || {};
+    if (m.agence) traces.push({ nom: m.agence, interlocuteur: m.interlocuteur, tel: m.tel, email: m.email, le: x.created_at || '', origine: 'envoi' });
+  }
 
   /* Les regroupements : une clé par nom, par numéro, par mail. */
   const groupes: (AgenceConnue & { cles: Set<string> })[] = [];
@@ -187,7 +206,8 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
     if (ORDRE_ORIGINES.indexOf(t.origine) < ORDRE_ORIGINES.indexOf(g.origine)) g.origine = t.origine;
     g.dernier = plusRecent(g.dernier, t.le);
   }
-  const uniques = Array.from(new Set(groupes));
+  /* Emilio Immobilier, c'est Alexandre (un de ses mandats présenté au client) : pas de lien à s'envoyer. */
+  const uniques = Array.from(new Set(groupes)).filter(g => !/\bemilio\b/.test(normNom(g.nom)));
   return uniques.map(({ cles: _cles, ...g }) => ({ ...g, envois: g.envois.sort((p, q) => (p.le < q.le ? 1 : -1)) }))
     .sort((p, q) => {
       const jp = p.tel || p.email ? 0 : 1, jq = q.tel || q.email ? 0 : 1;
