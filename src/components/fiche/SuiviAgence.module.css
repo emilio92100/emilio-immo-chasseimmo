@@ -69,15 +69,28 @@
 .point[data-genre="appel"] .puce { background: #5B21B6; }
 .point:first-child .puce { box-shadow: 0 0 0 3px #fafbfd, 0 0 0 5px rgba(91,33,182,.15); }
 .pointCorps { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.pointTete { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; font-weight: 700; color: #6B7A90; padding-right: 34px; }
+.pointTete { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; font-weight: 700; color: #6B7A90; padding-right: 62px; }
 .marque { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 99px; font-size: 11.5px; font-weight: 800; background: #eef2f8; color: #3D4C63; }
 .marque[data-k="repondu"] { background: #eaf1fb; color: #1F4E8C; }
 .marque[data-k="message"], .marque[data-k="sans_reponse"] { background: #FFF1E6; color: #8F3F00; }
 .marque[data-k="disponible"] { background: #E7F6EE; color: #0E6B43; }
 .marque[data-k="sous_offre"] { background: #FFF1E6; color: #8F3F00; }
 .marque[data-k="vendu"] { background: #EEF0F3; color: #475569; }
-.retirer { position: absolute; top: -5px; right: 0; width: 28px; height: 28px; border-radius: 8px; border: none; background: none; color: #b8c3d3; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+/* V3.193 : « Modifier » à côté de « Retirer ». */
+.gestes { position: absolute; top: -5px; right: 0; display: flex; gap: 2px; }
+.retirer, .modifier { width: 28px; height: 28px; border-radius: 8px; border: none; background: none; color: #b8c3d3; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .retirer:hover { color: #dc2626; background: #fef2f2; }
+.modifier:hover { color: #22497D; background: #eaf1fb; }
+.marque[data-k="client"] { background: #FFF4E6; color: #A95808; }
+.edition { display: flex; flex-direction: column; gap: 8px; }
+.edition .zone { min-height: 76px; background: white; }
+.editionPied { display: flex; justify-content: flex-end; gap: 8px; }
+.motClient { display: flex; align-items: flex-start; gap: 7px; padding: 8px 11px; border-radius: 10px; background: #f4f6f9; border: 1px solid #e3e8f0; color: #5B6B82; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.motClient svg { margin-top: 2px; flex-shrink: 0; }
+.motClient > span { min-width: 0; overflow-wrap: anywhere; color: #13243D; }
+.motClient i { font-style: normal; font-weight: 800; color: #5B6B82; }
+.motClient[data-vu="oui"] { background: #FFF8EF; border-color: #F7DDBC; }
+.motClient[data-vu="oui"] svg, .motClient[data-vu="oui"] i { color: #A95808; }
 .qui { font-size: 12.5px; font-weight: 700; color: #5B6B82; }
 .texte { font-size: 14px; font-weight: 600; line-height: 1.55; color: #13243D; white-space: pre-line; overflow-wrap: anywhere; }
 .creneaux { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
@@ -166,6 +179,34 @@
 .ajout { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #e3e8f0; }
 .ajoutPied { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .aide { font-size: 12.5px; line-height: 1.5; color: #64748b; }
+.pourToi { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; font: 700 11.5px 'DM Sans', sans-serif; letter-spacing: 0; text-transform: none; color: #8593a8; }
+
+/* V3.193 : ce que le client voit de l'appel (maquette « Noter un appel »). */
+.client { display: flex; flex-direction: column; gap: 11px; padding: 14px; border-radius: 16px; background: #FFF8EF; border: 1.5px solid #F2C894; }
+.client[data-ton="vendu"] { background: #F4F6F9; border-color: #CBD5E1; }
+.clientTete { display: flex; align-items: center; gap: 8px; color: #A95808; font: 800 12px 'Plus Jakarta Sans', sans-serif; letter-spacing: .5px; text-transform: uppercase; }
+.clientCoche { display: flex; align-items: flex-start; gap: 11px; cursor: pointer; }
+.clientCoche input { width: 20px; height: 20px; margin: 0; flex-shrink: 0; accent-color: #E68B23; }
+.client[data-ton="vendu"] .clientCoche input { accent-color: #22497D; }
+.clientCocheTx { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 1px; }
+.clientCocheTx b { font: 700 14px 'DM Sans', sans-serif; color: #13243D; }
+.clientCocheTx small { font-size: 13px; font-weight: 600; color: #5B6B80; line-height: 1.45; }
+.apercu { display: flex; align-items: flex-start; gap: 9px; padding: 9px 12px; border-radius: 12px; background: white; border: 1px solid #F2C894; }
+.apercuPoint { width: 8px; height: 8px; border-radius: 50%; background: #E68B23; flex-shrink: 0; margin-top: 6px; }
+.apercuTx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.apercuTx b { font: 700 13.5px 'Plus Jakarta Sans', sans-serif; color: #A95808; }
+.apercuTx small { font-size: 12.5px; font-weight: 600; color: #6B5A45; }
+.clientMot { display: flex; flex-direction: column; gap: 6px; }
+.clientMot label { font-size: 13px; font-weight: 700; color: #3D4C63; }
+.clientMot label i { font-style: normal; font-weight: 600; color: #8592A6; }
+.zoneClient { width: 100%; box-sizing: border-box; padding: 10px 13px; border-radius: 12px; border: 1px solid #F2C894; background: white; font: 600 14px/1.5 'DM Sans', sans-serif; color: #13243D; resize: vertical; outline: none; min-height: 64px; }
+.client[data-ton="vendu"] .zoneClient { border-color: #CBD5E1; }
+.zoneClient:focus { border-color: #E68B23; box-shadow: 0 0 0 3px rgba(230,139,35,.14); }
+.client[data-ton="vendu"] .zoneClient:focus { border-color: #22497D; box-shadow: 0 0 0 3px rgba(34,73,125,.12); }
+.jamais { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #6B5A45; }
+.jamais svg { flex-shrink: 0; }
+.clientHors { display: flex; align-items: flex-start; gap: 8px; padding: 10px 13px; border-radius: 12px; background: #f4f6f9; color: #5B6B82; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.clientHors svg { margin-top: 2px; flex-shrink: 0; }
 .fPied { display: flex; align-items: center; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid #eef2f7; background: #fafbfd; }
 .fNote { flex: 1 1 auto; display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #64748b; min-width: 0; }
 .fPied .btn, .fPied .btnFort { height: 42px; padding: 0 16px; font-size: 14px; border-radius: 12px; }
