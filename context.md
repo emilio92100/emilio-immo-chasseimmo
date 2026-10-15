@@ -1515,6 +1515,19 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.196 — 15 octobre 2026 · Fiche du bien plus compacte : pas de ligne pour un mot
+
+- Alexandre : « sur PC ça crée des lignes pour rien : En réflexion à côté de Visite effectuée,
+  Faire une offre à côté, sur la même ligne. Et à côté du prix il n'y a rien : les honoraires, on
+  peut les mettre à côté ».
+- « Visite effectuée » (`.vf`) : l'étiquette (`EtiqVisite`) et « Faire une offre » passent dans
+  l'en-tête, à droite (`.vf-actions`) ; sur téléphone (≤ 560 px) ils passent sous le titre, côte à
+  côte. `EtatVisite` prend `enLigne` : « Noté par votre conseiller » suit la phrase
+  (`.vv-src-in`) au lieu d'avoir sa ligne — la carte de « Vos visites » ne change pas.
+- Signature du compte rendu sur une ligne (« AR · Alexandre Rogelet · Votre conseiller »).
+- Le prix : la ligne des honoraires entre dans `.bandeau-prix` (flex-wrap) — à côté du prix dans
+  la fenêtre sur ordinateur (`.feuille.fiche`, ≥ 900 px), dessous sur téléphone.
+
 ### V3.195 — 15 octobre 2026 · Le compte rendu de visite, en haut de la fiche et en carte blanche
 
 - Alexandre : « dans Visites, quand on appuie sur Le compte rendu de votre conseiller, la fiche
