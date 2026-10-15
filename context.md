@@ -1515,6 +1515,37 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.193 — 15 octobre 2026 · Le client voit où en est Alexandre ; une note et un appel se modifient
+
+- Alexandre : « que le client voie que je travaille dessus : un bien où j'attends une réponse, un
+  retour, une messagerie du collègue ». Maquettes (canvas « Son suivi visible par le client ») :
+  il a pris A + B, plus le raccourci « Vendu ». **SQL à passer** :
+  `outils/sql/suivis-agence-client.sql` (`suivis_agence.montrer` boolean, défaut true ;
+  `suivis_agence.mot_client` text). Les appels déjà notés s'affichent donc aussi, en étapes.
+- `src/lib/suivi-client.ts` (pur, CRM et serveur) : `phraseAppel` traduit un appel en étape neutre
+  (« Alexandre a laissé un message au vendeur / Il attend son retour », « Le vendeur a proposé des
+  créneaux », « Il le rappelle ven. 16 oct. »…) ; `appelsMontres` garde les appels montrés, les
+  trois derniers ; `suiviPourClient` en fait les étapes du bien (son avis, les appels, la dernière
+  « en cours », puis « La visite est calée »). **Jamais** : ce qui a été dit (`texte`), l'agence et
+  son numéro (`contact`), l'adresse — l'agence s'appelle « le vendeur ». Les notes rapides restent
+  internes. Rien sans appel montré, rien pour un bien de l'agence, plus disponible ou déjà visité.
+- Espace (`page.tsx`) : lit `suivis_agence` avec ces seules colonnes (`bien_id, genre, reponse,
+  dispo, creneaux, ensuite, rappel_le, mot_client, montrer, created_at`) ; sans le SQL, la lecture
+  échoue et rien ne s'affiche. `EspaceClient` : bloc « Où en est Alexandre » sur la fiche du bien,
+  sous le titre (badge En cours / Visite calée, étapes, « Le mot d'Alexandre »), et une ligne orange
+  sur la carte. Classes préfixées `oe-` (l'espace a déjà `.fait`).
+- « Noter un appel » : section « Ce que <prénom> voit dans son espace » — « Lui montrer l'étape »
+  (cochée d'office), l'aperçu de la phrase, « Un mot pour <prénom> ». Avec « Vendu » coché, à la
+  place : « Le dire à <prénom> : Plus disponible » + son mot → `marquerIndispo` (motif vendu), la
+  liste se recharge. Avant le SQL : l'appel s'enregistre sans les deux colonnes, et le message rouge
+  le dit si un mot ou un « ne pas montrer » se perd.
+- « Pourquoi je ne peux pas changer l'écriture de la note, je suis obligé de la supprimer » : un
+  crayon à côté de la corbeille. Une note se modifie sur place ; un appel rouvre « Modifier
+  l'appel », rempli. Sa relance suit : déplacée si la date change, close (`cloturee`, jamais
+  effacée) s'il n'y a plus à rappeler, recréée seulement si elle était faite et que la date change.
+- Dans l'historique : « Visible par <prénom> » sur les appels qu'il voit vraiment, et
+  « Pour <prénom> : « … » » sous l'appel qui porte un mot.
+
 ### V3.192 — 15 octobre 2026 · « Valider ce créneau » se voit ; l'adresse exacte ; les fenêtres ne se ferment plus d'un clic à côté
 
 - Alexandre : « j'ai fait Valider ce créneau, et rien ne s'est fait : le bouton était toujours là,
