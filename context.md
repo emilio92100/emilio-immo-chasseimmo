@@ -1515,6 +1515,23 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.195 — 15 octobre 2026 · Le compte rendu de visite, en haut de la fiche et en carte blanche
+
+- Alexandre : « dans Visites, quand on appuie sur Le compte rendu de votre conseiller, la fiche
+  s'ouvre et le compte rendu est tout en bas, sur un fond gris. Le monter pour qu'on le voie
+  directement, et le rendre plus joli, avec des icônes. » Pareil depuis Consultés › Visités.
+- FicheBien (EspaceClient) : le bloc « Visite effectuée » quitte le bas de la fiche et passe
+  sous le titre (avant « Où en est Alexandre » et la correspondance). Carte blanche `.vf` :
+  icône maison verte, « Visite effectuée » et la date, puis son état (étiquette, phrase, « Faire
+  une offre », ou la question), puis le compte rendu `.cpr` : « Le compte rendu d'Alexandre »,
+  les étoiles, le texte mis en forme (`TexteCR` : un paragraphe par ligne ; « - », « • », « * »
+  → puces orange ; « + », « ✓ » → puces cochées vertes ; « Intitulé : texte » → intitulé en
+  gras), et la signature (AR, Alexandre Rogelet, Votre conseiller). Sans compte rendu : « Votre
+  conseiller vous fait un retour détaillé de sa visite. »
+- « Le compte rendu de votre conseiller » (CarteVisite, Vos visites) ouvre la fiche avec
+  `versCr` : elle descend jusqu'au compte rendu (`scrollIntoView`, `scroll-margin-top` 72 px pour
+  le bouton retour). Préfixes `vf-` et `cpr-` : `.cr-tete` existait déjà.
+
 ### V3.194 — 15 octobre 2026 · « Voir les N échanges plus anciens »
 
 - Alexandre : « il affiche les trois, et s'il y en a quatre, un petit message : voir tout
