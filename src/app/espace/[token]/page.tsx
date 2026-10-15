@@ -16,6 +16,7 @@ import { texteChauffage } from '@/lib/chauffage';
 import { annoncePourEspace, tableAbsente, type AnnonceEspace } from '@/lib/annonces-client';
 import { offresPourEspace } from '@/lib/offres-serveur';
 import type { OffreEspace, SaisieOffre } from '@/lib/offres';
+import { suiviPourClient, type AppelVisible } from '@/lib/suivi-client';
 
 /**
  * Espace acheteur — /espace/<token>
@@ -126,7 +127,7 @@ export default async function PageEspace({ params, searchParams }: {
     await ecritServeur('Le jeton de la recherche', supabase.from('recherches').update({ token_espace: jetonRecherche }).eq('id', recherche.id));
   }
 
-  const [biensRes, passagesRes, totalRes, visitesRes, finRes, coordRes, signRes, reserve, annoncesRes] = await Promise.all([
+  const [biensRes, passagesRes, totalRes, visitesRes, finRes, coordRes, signRes, reserve, annoncesRes, suivisRes] = await Promise.all([
     supabase.from('biens').select('*').eq('recherche_id', recherche.id).eq('etape', 'presente')
       .order('envoye_le', { ascending: false, nullsFirst: false }),
     /* Les derniers passages : le tout premier dit « la dernière recherche »,
@@ -162,6 +163,13 @@ export default async function PageEspace({ params, searchParams }: {
        la lecture échoue sans bruit et la carte ne s'affiche pas. */
     supabase.from('annonces_client').select('*').eq('recherche_id', recherche.id)
       .order('created_at', { ascending: false }).limit(60),
+    /* V3.193 : les appels d'Alexandre, pour « Où en est Alexandre » sur le
+       bien. Seulement ces colonnes-là : jamais `texte` (ce qui a été dit), ni
+       `contact` (l'agence, son numéro). Avant le SQL
+       (outils/sql/suivis-agence-client.sql), la lecture échoue sans bruit et
+       l'espace ne montre rien. */
+    supabase.from('suivis_agence').select('bien_id, genre, reponse, dispo, creneaux, ensuite, rappel_le, mot_client, montrer, created_at')
+      .eq('recherche_id', recherche.id).eq('genre', 'appel').order('created_at', { ascending: true }).limit(400),
   ]);
   const tous = totalRes.data || [];
   const totalLues = tous.reduce((t, x) => t + (x.nb_lues || 0), 0);
@@ -292,6 +300,24 @@ export default async function PageEspace({ params, searchParams }: {
     : lignesA.map(a => annoncePourEspace(a as Parameters<typeof annoncePourEspace>[0],
       a.bien_id ? ((biensRes.data || []).find(b => b.id === a.bien_id) || biensHors.get(a.bien_id) || null) : null));
 
+  /* V3.193 : les appels de chaque bien, pour ses étapes (src/lib/suivi-client.ts). */
+  const appelsParBien = new Map<string, AppelVisible[]>();
+  for (const a of (suivisRes.error ? [] : suivisRes.data || []) as (AppelVisible & { bien_id: string })[]) {
+    if (!a.bien_id) continue;
+    const l = appelsParBien.get(a.bien_id) || [];
+    l.push({ genre: a.genre, reponse: a.reponse, dispo: a.dispo, creneaux: a.creneaux, ensuite: a.ensuite, rappel_le: a.rappel_le, mot_client: a.mot_client, montrer: a.montrer, created_at: a.created_at });
+    appelsParBien.set(a.bien_id, l);
+  }
+  /* Rien pour un bien de l'agence, un bien plus disponible, ou déjà visité :
+     ces fiches ont déjà leur propre bloc. */
+  const suiviDe = (b: Record<string, unknown>) => {
+    const id = b.id as string;
+    if (b.bien_vente_id || indispoDe(b) || copiesIndispo.has(id) || faiteParBien.has(id)) return null;
+    const l = appelsParBien.get(id);
+    if (!l?.length) return null;
+    return suiviPourClient(l, { avis: b.badge_retour as string | null, retourLe: b.retour_le as string | null, visite: prevueParBien.get(id) || null });
+  };
+
   const biens = (biensRes.data || []).map((b) => ({
     id: b.id,
     titre: b.titre || `${b.type_bien || 'Bien'} — ${b.ville || ''}`,
@@ -339,6 +365,8 @@ export default async function PageEspace({ params, searchParams }: {
     sonMot: annonceParBien.get(b.id)?.mot || null,
     avisConseiller: annonceParBien.get(b.id)?.avis || null,
     vente: (b.bien_vente_id && venteParBien.get(b.bien_vente_id)) || indispoDe(b) || null,
+    /* V3.193 : « Où en est Alexandre » — des étapes neutres, et son mot. */
+    suivi: suiviDe(b),
     offre: (b.bien_vente_id && offreParBien.get(b.bien_vente_id)) || null,
     /* V3.114 : un bien de l'agence. Le visiter ne demande jamais de mandat
        de recherche (visiteBloquee, /api/espace/retour). */
