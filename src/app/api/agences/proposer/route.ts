@@ -5,7 +5,7 @@ import { pagePublique } from '@/lib/page-publique';
 import { analyserPourRecherche } from '@/lib/analyse-bien-serveur';
 import { ecritServeur } from '@/lib/ecritures';
 import { tableAgencesAbsente } from '@/lib/agences-lien';
-import { apercuDe, base, decoderPhoto, ficheNette, limite, nettoie, rechercheDuJeton, signatureValide } from '@/lib/agences-serveur';
+import { apercuDe, base, decoderPhoto, ficheNette, limite, nettoie, rechercheDuJeton, journalServeur, signatureValide, variantesLien } from '@/lib/agences-serveur';
 
 /**
  * Le lien pour les agences (V3.197) : l'agence envoie un bien.
@@ -82,13 +82,40 @@ export async function POST(req: NextRequest) {
     }
     if ((compte.count || 0) >= PAR_JOUR) return NextResponse.json({ ok: false, error: 'trop' }, { status: 429 });
 
-    /* Le même lien, déjà proposé pour ce client ou déjà dans son dossier : rien de nouveau. */
+    /* Le même lien (V3.198 : écrit avec ou sans « www. », avec ou sans « / »
+       final), déjà chez Alexandre pour ce client : déjà proposé par une
+       agence, dans son dossier, dans la Veille (écartés compris : l'agence
+       n'en sait rien) ou envoyé par le client. Rien de nouveau pour la
+       fiche ; une ligne au Suivi dit qui l'a proposé aussi, avec son numéro. */
     if (url) {
-      const [deja, bien] = await Promise.all([
-        sb.from('propositions_agences').select('id').eq('recherche_id', rid).eq('url', url).limit(1).maybeSingle(),
-        sb.from('biens').select('id').eq('recherche_id', rid).eq('url', url).limit(1).maybeSingle(),
+      const v = variantesLien(url);
+      const [deja, bien, veille, client] = await Promise.all([
+        sb.from('propositions_agences').select('agence').eq('recherche_id', rid).in('url', v).limit(1).maybeSingle(),
+        sb.from('biens').select('titre, etape').eq('recherche_id', rid).in('url', v).limit(1).maybeSingle(),
+        sb.from('veille_propositions').select('titre, statut').eq('recherche_id', rid).in('url', v).limit(1).maybeSingle(),
+        sb.from('annonces_client').select('statut').eq('recherche_id', rid).in('url', v).limit(1).maybeSingle(),
       ]);
-      if (deja.data || bien.data) return NextResponse.json({ ok: true, deja: true });
+      for (const [quoi, r] of [['veille', veille], ['annonce du client', client]] as const) {
+        if (r.error) console.error(`[agences/proposer] doublon (${quoi})`, r.error.message);
+      }
+      const ou = bien.data ? (bien.data.etape === 'presente' ? 'dans ses Présentés' : 'dans sa Sélection')
+        : veille.data ? (veille.data.statut === 'ecarte' ? 'écarté dans la Veille' : 'dans la Veille')
+        : client.data ? 'envoyé par le client'
+        : deja.data ? `déjà proposé par ${deja.data.agence || 'une agence'}` : null;
+      if (ou) {
+        /* La même agence qui renvoie son lien (autre appareil, double envoi) : rien à noter. */
+        const memeAgence = !!deja.data && String(deja.data.agence || '').trim().toLowerCase() === agence.toLowerCase();
+        if (!memeAgence) {
+          const qui = [agence, interlocuteur].filter(Boolean).join(' · ');
+          await journalServeur(sb, '[agences/proposer] doublon', {
+            client_id: cid, recherche_id: rid, type: 'proposition_agence',
+            titre: `🏢 Bien déjà connu, proposé aussi par ${agence} — ${ou}`.slice(0, 300),
+            description: [url, qui + (tel ? ` · ${tel}` : '') + (email ? ` · ${email}` : ''), mot ? `« ${mot} »` : ''].filter(Boolean).join('\n'),
+            metadata: { url, deja: ou },
+          });
+        }
+        return NextResponse.json({ ok: true, deja: true });
+      }
     }
 
     /* La fiche : celle lue par api/agences/lire (signée), sinon on lit l'annonce maintenant. */
@@ -156,12 +183,12 @@ export async function POST(req: NextRequest) {
     /* Pour Alexandre : une ligne au Suivi, une relance (une seule en attente à la fois). */
     const qui = [agence, interlocuteur].filter(Boolean).join(' · ');
     const quoi = [String(fiche.titre || ''), fiche.prix_vendeur ? `${Number(fiche.prix_vendeur).toLocaleString('fr-FR')} €` : ''].filter(Boolean).join(' · ');
-    await ecritServeur('[agences/proposer] journal', sb.from('journal').insert({
+    await journalServeur(sb, '[agences/proposer] journal', {
       client_id: cid, recherche_id: rid, type: 'proposition_agence',
       titre: `🏢 Bien proposé par ${agence} — ${quoi}`.slice(0, 300),
       description: [url || `${urls.length} photo${urls.length > 1 ? 's' : ''}, sans lien`, qui + (tel ? ` · ${tel}` : '') + (email ? ` · ${email}` : ''), mot ? `« ${mot} »` : ''].filter(Boolean).join('\n'),
       metadata: { proposition_agence_id: id },
-    }));
+    });
     const { count: dejaRelance } = await sb.from('relances').select('id', { count: 'exact', head: true })
       .eq('recherche_id', rid).eq('statut', 'en_attente').like('note', `${PREFIXE_RELANCE}%`);
     if (!dejaRelance) {
