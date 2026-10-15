@@ -19,8 +19,13 @@ export type AppelVisible = {
   creneaux?: CreneauC[] | null; ensuite?: string | null; rappel_le?: string | null;
   mot_client?: string | null; montrer?: boolean | null; created_at?: string | null;
 };
-export type EtapeClient = { t: string; sous?: string; le?: string; etat: 'fait' | 'encours' | 'avenir'; mot?: string };
+/** `ancien` : un appel d'avant les trois derniers — replié chez le client,
+    « Voir les N échanges plus anciens » le déplie (V3.194). */
+export type EtapeClient = { t: string; sous?: string; le?: string; etat: 'fait' | 'encours' | 'avenir'; mot?: string; ancien?: boolean };
 export type SuiviClient = { etapes: EtapeClient[]; calee: boolean };
+
+/** Les appels visibles d'emblée ; les plus anciens se déplient. */
+export const APPELS_VISIBLES = 3;
 
 const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
 const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -58,19 +63,19 @@ export function phraseAppel(l: AppelVisible): { t: string; sous: string } | null
   return { t: 'Alexandre a parlé au vendeur', sous: '' };
 }
 
-/** Les étapes d'un bien, pour son espace. `null` : rien à montrer (aucun
-    appel montré). */
-/** Les appels que le client voit vraiment : montrés, avec une phrase, les
-    trois derniers. Le CRM s'en sert pour marquer « Visible par … ». */
+/** Les appels que le client voit : montrés et avec une phrase, du plus
+    ancien au plus récent. Tous, depuis la V3.194 (les plus anciens repliés
+    chez lui). Le CRM s'en sert pour marquer « Visible par … ». */
 export function appelsMontres(appels: AppelVisible[]): { a: AppelVisible; p: { t: string; sous: string } }[] {
   return appels
     .filter(a => (a.genre || 'appel') === 'appel' && a.montrer !== false)
     .map(a => ({ a, p: phraseAppel(a) }))
     .filter((x): x is { a: AppelVisible; p: { t: string; sous: string } } => !!x.p)
-    .sort((x, y) => String(x.a.created_at || '').localeCompare(String(y.a.created_at || '')))
-    .slice(-3);
+    .sort((x, y) => String(x.a.created_at || '').localeCompare(String(y.a.created_at || '')));
 }
 
+/** Les étapes d'un bien, pour son espace. `null` : rien à montrer (aucun
+    appel montré). */
 export function suiviPourClient(appels: AppelVisible[], o: {
   avis?: string | null; retourLe?: string | null; visite?: { date: string; heure?: string | null } | null;
 }): SuiviClient | null {
@@ -83,7 +88,8 @@ export function suiviPourClient(appels: AppelVisible[], o: {
   vus.forEach(({ a, p }, i) => {
     const dernier = i === vus.length - 1 && !o.visite;
     const mot = String(a.mot_client || '').trim();
-    etapes.push({ t: p.t, sous: dernier ? p.sous || undefined : undefined, le: a.created_at || undefined, etat: dernier ? 'encours' : 'fait', ...(mot ? { mot } : {}) });
+    const ancien = i < vus.length - APPELS_VISIBLES;
+    etapes.push({ t: p.t, sous: dernier ? p.sous || undefined : undefined, le: a.created_at || undefined, etat: dernier ? 'encours' : 'fait', ...(mot ? { mot } : {}), ...(ancien ? { ancien } : {}) });
   });
   if (o.visite) {
     const quand = [jour(o.visite.date), o.visite.heure ? `à ${heure(o.visite.heure)}` : ''].filter(Boolean).join(' ');
