@@ -34,7 +34,7 @@ import { reprendreSuspendus } from '@/lib/suspension';
 import FichesOuvertes, { type FicheOuverte, EVT_FICHE_OUVERTE, EVT_BIEN_ACTIF, EVT_DOC_ACTIF, lireFiches, ecrireFiches, ajouterFiche } from '@/components/layout/FichesOuvertes';
 import { nomFoyer } from '@/lib/foyer';
 import { signalerEchec } from '@/lib/ecritures';
-import { signalerMaj } from '@/lib/intentions';
+import { signalerMaj, prendreOuvertureUrl, lireOuvertureFiche } from '@/lib/intentions';
 import SqueletteFiche from '@/components/shared/SqueletteFiche';
 
 /**
@@ -213,6 +213,8 @@ export default function AppLayout() {
       setFicheClient(null);
       setActivePage(page === 'fiche' ? 'clients' : page);
     };
+    /* V3.191 : un lien qui vise un bien (Ringover, quand une agence appelle). */
+    prendreOuvertureUrl();
     ouvrir(lireUrl());
     const retour = () => { ouvrir(lireUrl()); };
     window.addEventListener('popstate', retour);
@@ -242,6 +244,9 @@ export default function AppLayout() {
       setFiches(l => ajouterFiche(l, f));
       setChargeFiche(false);
       setActivePage('fiche');
+      /* V3.191 : une demande précise (un bien à ouvrir) sur la fiche déjà
+         affichée : on la remonte, pour qu'elle la lise. */
+      if (lireOuvertureFiche(c.id)) setNavN(n => n + 1);
       ecrireUrl('fiche', c.id);
       return;
     }

@@ -4,7 +4,8 @@ import AvatarContact, { teinteDe } from '@/components/contacts/AvatarContact';
 import { supabase } from '@/lib/supabase';
 import { toutLire } from '@/lib/registre';
 import styles from './Topbar.module.css';
-import { EVT_MAJ, demanderNouveauClient, demanderNouveauMail, demanderNouveauRdv } from '@/lib/intentions';
+import { EVT_MAJ, demanderNouveauClient, demanderNouveauMail, demanderNouveauRdv, demanderOuvertureFiche } from '@/lib/intentions';
+import { lireBiensSuivis, parBoutDeNumero, parNom, estUnNumero, ouEnEst, telNational, texteDernier, type BienSuivi } from '@/lib/agences-suivies';
 import { Icone } from '@/components/fiche/ParcoursBien';
 import { estAcheteur, estArchive, lirePro, lireStructure, typeDe, typesDe } from '@/lib/contacts';
 import { conjointDe } from '@/lib/foyer';
@@ -19,6 +20,10 @@ import { Ic } from '@/components/documents/ApercuActe';
    contacts ; trois au plus sous chaque contact. */
 type BienRecherche = { id: string; client_id: string | null; etape: string; archive: boolean | null; titre: string | null; type_bien: string | null; ville: string | null; code_postal: string | null; surface: number | null; nb_pieces: number | null; prix: number | null; photo: string | null };
 const BIENS_MAX = 3;
+/* V3.191 : les biens de ses clients retrouvés par leur agence, six au plus. */
+const SUIVIS_MAX = 6;
+/** « 0146424242 » → « 01 46 42 42 42 ». */
+const espacer = (t: string) => (/^0\d{9}$/.test(t) ? t.replace(/(\d{2})(?=\d)/g, '$1 ') : t);
 const titreDe = (b: BienRecherche) => b.titre || titreBien({ typeBien: b.type_bien || undefined, pieces: b.nb_pieces ?? undefined, surface: b.surface ?? undefined } as unknown as Donnees) || 'Son bien';
 
 /* Minuscules, sans accents ni ponctuation : « Rue de l'Église » → « rue de l eglise ». */
@@ -161,10 +166,21 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
      « Longchamp » sortirait des dizaines d'annonces et noierait le contact
      qu'on cherche. Choix d'Alexandre, le 26 septembre.
 
+     V3.191 — sauf par leur AGENCE (Alexandre : « une agence me rappelle,
+     je ne connais que son numéro ») : un bout de numéro, le nom de l'agence
+     ou de la personne notée dans le suivi sort les biens de ses clients,
+     sous les contacts ; un clic ouvre la fiche du client au bon onglet, ce
+     bien ouvert en grand (lib/agences-suivies.ts). Une rue ou une ville
+     seule ne les sort toujours pas.
+
      Le fichier est petit : on le charge une fois, à la première frappe, puis
      on cherche dans le navigateur. Il se recharge quand un écran signale un
      changement (EVT_MAJ) ou au bout de deux minutes. */
-  const index = useRef<{ le: number; clients: any[]; biens: Record<string, BienRecherche[]> } | null>(null);
+  /* V3.191 : `suivis` — les biens des recherches de ses clients, avec leur
+     agence et ses numéros (lib/agences-suivies.ts). */
+  const index = useRef<{ le: number; clients: any[]; biens: Record<string, BienRecherche[]>; suivis: BienSuivi[] } | null>(null);
+  /* La première photo des biens trouvés par leur agence, lue après coup. */
+  const [photosSuivis, setPhotosSuivis] = useState<Record<string, string>>({});
   const chargement = useRef<Promise<void> | null>(null);
   useEffect(() => {
     const perimer = () => { index.current = null; };
@@ -184,13 +200,18 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
       if (c.erreur) c = await lire('id, prenom, nom, reference, statut, adresse, bien_actuel_adresse, emails, telephones');
       if (c.erreur) { chargement.current = null; return; }
       /* Les biens (V3.86) : s'ils ne se lisent pas, la recherche des contacts marche quand même. */
-      const b = await toutLire<BienRecherche>((de, a) => supabase.from('biens_vente').select('id, client_id, etape, archive, titre, type_bien, ville, code_postal, surface, nb_pieces, prix, photo').order('id').range(de, a));
+      /* V3.191 : les agences des biens de ses clients, lues en même temps. Une
+         lecture ratée ne gêne pas la recherche des contacts. */
+      const [b, suivis] = await Promise.all([
+        toutLire<BienRecherche>((de, a) => supabase.from('biens_vente').select('id, client_id, etape, archive, titre, type_bien, ville, code_postal, surface, nb_pieces, prix, photo').order('id').range(de, a)),
+        lireBiensSuivis(supabase).catch(() => [] as BienSuivi[]),
+      ]);
       const biens: Record<string, BienRecherche[]> = {};
       for (const x of b.erreur ? [] : b.data || []) {
         if (!x.client_id || x.archive) continue;
         (biens[x.client_id] ||= []).push(x);
       }
-      index.current = { le: Date.now(), clients: c.data || [], biens };
+      index.current = { le: Date.now(), clients: c.data || [], biens, suivis };
       chargement.current = null;
     })();
     return chargement.current;
@@ -210,7 +231,11 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
           .or(`prenom.ilike.%${q}%,nom.ilike.%${q}%,reference.ilike.%${q}%`).limit(8);
         setResults((data || []).map((c: any) => ({ genre: 'client', c })));
       } else {
-        setResults(chercher(index.current, mots));
+        /* V3.191 : et les biens de ses clients, par le numéro de l'agence
+           (ou un bout), le nom de l'agence ou de la personne. */
+        const suivis = (estUnNumero(query) ? parBoutDeNumero(index.current.suivis, query) : parNom(index.current.suivis, mots)).slice(0, SUIVIS_MAX);
+        setResults([...chercher(index.current, mots), ...suivis.map(b => ({ genre: 'suivi', b }))]);
+        void photosDe(suivis);
       }
       setCherchee(query);
       setOpen(true);
@@ -233,6 +258,30 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     bien_trouve: 'Bien trouvé', perdu: 'Perdu', offre_ecrite: 'Offre écrite',
   };
 
+  /* La première photo de chaque bien trouvé : dans `biens` ou dans la veille. */
+  async function photosDe(l: BienSuivi[]) {
+    const manque = l.filter(b => !(b.id in photosSuivis));
+    if (!manque.length) return;
+    const lire = async (table: string, ids: string[]) => {
+      if (!ids.length) return [] as { id: string; photos: string[] | null }[];
+      const { data } = await supabase.from(table).select('id, photos').in('id', ids);
+      return (data || []) as { id: string; photos: string[] | null }[];
+    };
+    const [x, y] = await Promise.all([
+      lire('biens', manque.filter(b => b.onglet !== 'veille').map(b => b.id)),
+      lire('veille_propositions', manque.filter(b => b.onglet === 'veille').map(b => b.id)),
+    ]);
+    const m: Record<string, string> = {};
+    for (const b of manque) m[b.id] = '';
+    for (const r of [...x, ...y]) m[r.id] = (r.photos || []).find(Boolean) || '';
+    setPhotosSuivis(p => ({ ...p, ...m }));
+  }
+  /* Ouvrir la fiche du client au bon onglet, ce bien ouvert en grand. */
+  function selectSuivi(b: BienSuivi) {
+    const c = index.current?.clients.find((x: any) => x.id === b.client_id) || { id: b.client_id };
+    demanderOuvertureFiche({ clientId: b.client_id, onglet: b.onglet, rechercheId: b.recherche_id, bienId: b.id, enGrand: true });
+    selectClient(c);
+  }
   function selectClient(client: any) {
     setQuery('');
     setCherchee('');
@@ -248,6 +297,8 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
     onNavigate('biens', { bien: id });
   }
   const lesClients = results.filter(r => r.genre === 'client');
+  const lesSuivis = results.filter(r => r.genre === 'suivi').map(r => r.b as BienSuivi);
+  const numeroTape = estUnNumero(cherchee);
   const attente = !!query.trim() && (loading || cherchee !== query);
   const motsTapes = sansAccent(cherchee).split(/[\s,;]+/).filter(Boolean);
 
@@ -272,7 +323,7 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
           ref={champ}
           type="text"
           enterKeyHint="search"
-          placeholder="Rechercher un contact, référence EMI..."
+          placeholder="Rechercher un contact, une agence, un numéro…"
           className={styles.searchInput}
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -297,7 +348,9 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                 ))}
               </div>
             ) : results.length === 0 ? (
-              <div className={`${styles.searchEmpty} ${styles.searchApparait}`}>{`Aucun contact ne correspond à « ${cherchee.trim()} ».`}</div>
+              <div className={`${styles.searchEmpty} ${styles.searchApparait}`}>{numeroTape
+                ? `Aucun contact ni aucune agence n’a le numéro « ${cherchee.trim()} ».`
+                : `Aucun contact ne correspond à « ${cherchee.trim()} ».`}</div>
             ) : (
               <div key={cherchee} className={styles.searchListe}>
                 {lesClients.length > 0 && <div className={styles.searchSection}>{`Contacts · ${lesClients.length}`}</div>}
@@ -378,6 +431,31 @@ export default function Topbar({ onNavigate, onMenu, menuReduit = false, onBascu
                     </div>
                   )}
                   </div>
+                  );
+                })}
+                {/* V3.191 — Les biens de ses clients, retrouvés par leur agence. */}
+                {lesSuivis.length > 0 && <div className={styles.searchSection}>{`Biens de vos clients · par l’agence · ${lesSuivis.length}`}</div>}
+                {lesSuivis.map((b, i) => {
+                  const nomC = (() => { const c = index.current?.clients.find((x: any) => x.id === b.client_id); return c ? `${c.prenom || ''} ${c.nom || ''}`.trim() : ''; })();
+                  const tel = numeroTape ? b.tels.find(t => t.includes(telNational(cherchee))) || '' : '';
+                  const ph = photosSuivis[b.id];
+                  return (
+                    <button key={`${b.onglet}-${b.id}`} type="button" className={`${styles.searchItem} ${styles.searchSuivi}`} onClick={() => selectSuivi(b)}
+                      style={{ animationDelay: `${Math.min(lesClients.length + i, 10) * 28}ms` }} title="Ouvrir ce bien dans la fiche du client">
+                      <span className={styles.searchBienPh}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {ph ? <img src={ph} alt="" /> : <Ic n="maison" t={15} />}
+                      </span>
+                      <span className={styles.searchInfo}>
+                        <span className={styles.searchName}>{[b.titre || 'Bien', b.prix ? euros(b.prix) : ''].filter(Boolean).join(' · ')}</span>
+                        <span className={styles.searchSuiviAg}>
+                          <Ic n="immeuble" t={13} />
+                          <span>{tel ? `${espacer(tel)} · ` : ''}<Surligne texte={[b.agence || 'Agence', ...b.interlocuteurs.slice(0, 1)].join(' · ')} mots={numeroTape ? [] : motsTapes} /></span>
+                        </span>
+                        <span className={styles.searchSuiviPour}>{[nomC ? `Pour ${nomC}` : '', ouEnEst(b), texteDernier(b.dernier)].filter(Boolean).join(' · ')}</span>
+                      </span>
+                      <span className={styles.searchBienVa}><Ic n="droite" t={13} e={2.3} /></span>
+                    </button>
                   );
                 })}
               </div>
