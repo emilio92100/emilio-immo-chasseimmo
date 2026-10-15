@@ -1515,6 +1515,17 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.194 — 15 octobre 2026 · « Voir les N échanges plus anciens »
+
+- Alexandre : « il affiche les trois, et s'il y en a quatre, un petit message : voir tout
+  l'historique des échanges, ça se déplie en mode fluide, et il peut replier ». Le client ne perd
+  plus les appels d'avant les trois derniers : `appelsMontres` les rend tous, `suiviPourClient`
+  marque les plus anciens `ancien` (`APPELS_VISIBLES` = 3). Dans « Où en est Alexandre »
+  (EspaceClient, `OuEnEst` + `EtapeOE`), ils restent repliés à leur place, sous son avis, derrière
+  « Voir les 2 échanges plus anciens » ; un appui les déplie (grille 0fr → 1fr, 0,4 s), le bouton
+  devient « Replier les échanges plus anciens ». Rien en dessous de quatre appels. Dans le CRM,
+  « Visible par <prénom> » marque donc tous les appels montrés.
+
 ### V3.193 — 15 octobre 2026 · Le client voit où en est Alexandre ; une note et un appel se modifient
 
 - Alexandre : « que le client voie que je travaille dessus : un bien où j'attends une réponse, un
