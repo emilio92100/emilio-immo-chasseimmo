@@ -118,3 +118,38 @@ export function limite(cle: string, n: number, fenetreMs: number): boolean {
 
 export const nettoie = (s: unknown, max = 600) =>
   typeof s === 'string' ? s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, max) : '';
+
+/* V3.198 — Le même lien, écrit un peu autrement : avec ou sans « www. »,
+   avec ou sans « / » final. La requête à la question (`id=…`) est gardée :
+   sur certains sites, c'est elle qui désigne l'annonce. */
+export function variantesLien(url: string): string[] {
+  const out = new Set<string>([url]);
+  let u: URL;
+  try { u = new URL(url); } catch { return [url]; }
+  const hotes = [u.hostname, u.hostname.startsWith('www.') ? u.hostname.slice(4) : `www.${u.hostname}`];
+  const chemin = u.pathname.length > 1 && u.pathname.endsWith('/') ? u.pathname.slice(0, -1) : u.pathname;
+  const chemins = chemin === '/' ? ['/'] : [chemin, `${chemin}/`];
+  for (const h of hotes) for (const c of chemins) {
+    const v = new URL(url); v.hostname = h; v.pathname = c;
+    out.add(v.toString());
+    /* `new URL` remet un « / » après l'hôte : la forme sans, telle qu'un portail l'écrit. */
+    if (c === '/' && !v.search) out.add(v.toString().replace(/\/$/, ''));
+  }
+  return Array.from(out).slice(0, 10);
+}
+
+/* V3.198 — Une ligne au journal, côté serveur. Comme addJournal : un type que
+   la base refuse (sa liste fermée, code 23514 ; « proposition_agence » n'y
+   est peut-être pas) est gardé sous « statut_change », le type voulu en
+   metadata. Jamais bloquant : un échec reste dans les journaux du serveur. */
+export type LigneJournal = { client_id: string; recherche_id?: string | null; bien_id?: string | null; type: string; titre: string; description?: string | null; metadata?: Record<string, unknown> };
+export async function journalServeur(sb: SupabaseClient, quoi: string, ligne: LigneJournal): Promise<void> {
+  const { error } = await sb.from('journal').insert(ligne);
+  if (!error) return;
+  if ((error as { code?: string }).code === '23514' && ligne.type !== 'statut_change') {
+    const { error: e2 } = await sb.from('journal').insert({ ...ligne, type: 'statut_change', metadata: { ...(ligne.metadata || {}), type_voulu: ligne.type } });
+    if (e2) console.error(`[écriture] ${quoi} : ${e2.message}`);
+    return;
+  }
+  console.error(`[écriture] ${quoi} : ${error.message}`);
+}

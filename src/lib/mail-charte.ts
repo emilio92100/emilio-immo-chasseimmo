@@ -24,6 +24,8 @@ export const LIEN_POLICE_MAIL = '<link href="https://fonts.googleapis.com/css2?f
    proxy laisse passer les images : src/proxy.ts). */
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://emilio-immo-chasseimmo.vercel.app').replace(/\/+$/, '');
 export const LOGO_BLANC_MAIL = `${SITE}/logo_high_resolution_white.png`;
+/* V3.198 : l'adresse où les mails trouvent leurs images (public/mail/…). */
+export const SITE_MAIL = SITE;
 
 /* Le logo en <img>, prêt à poser dans une bande bleue. `mention` : un petit
    mot à droite (« CRM » pour les alertes envoyées à Alexandre). */
