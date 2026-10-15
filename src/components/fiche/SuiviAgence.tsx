@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { signalerEchec, verifie } from '@/lib/ecritures';
@@ -10,6 +10,8 @@ import {
   type Creneau, type LigneSuivi, type VisiteCalee,
 } from '@/lib/suivi-agence';
 import { appelsMontres, phraseAppel } from '@/lib/suivi-client';
+import { messageAgence } from '@/lib/agences-lien';
+import { envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterEnvoi, type Canal, type Destinataire } from '@/lib/lien-agences-envois';
 import { ChoixDateHeure, ChoixJour } from '@/components/pages/PageAgenda';
 import { Icone } from './ParcoursBien';
 import s from './SuiviAgence.module.css';
@@ -31,7 +33,12 @@ import s from './SuiviAgence.module.css';
    message au vendeur », src/lib/suivi-client.ts), avec un mot de lui s'il en
    écrit un ; les notes rapides restent à lui. Un appel et une note se
    modifient (« je suis obligé de la supprimer et de la réécrire »).
-   Tout est déclaré au niveau du module (AGENTS.md §2.4). */
+   Tout est déclaré au niveau du module (AGENTS.md §2.4).
+
+   V3.198 (maquette 5 du canevas « Le lien pour les agences ») — à côté du
+   téléphone et du mail de l'agence : « Le lien pour Didier ». Le SMS ou le
+   mail s'ouvre rempli, avec son contact déjà noté ; l'envoi s'inscrit ici en
+   note (jamais montrée au client) et au journal. src/lib/lien-agences-envois.ts */
 
 const CLE_OUVERTS = 'suivi.ouverts';
 const lireOuverts = (): string[] => { try { const v = JSON.parse(sessionStorage.getItem(CLE_OUVERTS) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
@@ -71,6 +78,7 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
   /* V3.193 : la note rapide en cours de modification, sur place. */
   const [enEdition, setEnEdition] = useState<{ id: string; texte: string } | null>(null);
   const [envoiEd, setEnvoiEd] = useState(false);
+  const [lienOuvert, setLienOuvert] = useState(false);
 
   const basculer = () => setOuvert(o => { if (!seul) garderOuvert(b.id, !o); return !o; });
   const etat = etatSuivi(lignes, visite, veutVisiter);
@@ -156,7 +164,17 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
             </span>
             {contact.tel && <a className={s.lienFort} href={`tel:${contact.tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={14} epaisseur={2.1} />{contact.tel}</a>}
             {contact.email && <a className={s.lien} href={`mailto:${contact.email}`}><Icone nom="mail" taille={14} epaisseur={2.1} />E-mail</a>}
+            {contact.avec === 'agence' && rechercheId && (
+              <button type="button" className={s.lienAg} onClick={() => setLienOuvert(o => !o)} aria-expanded={lienOuvert}>
+                <Icone nom="lien" taille={14} epaisseur={2.2} />{String(prenom || '').trim() ? `Le lien pour ${String(prenom).trim()}` : 'Le lien pour les agences'}
+              </button>
+            )}
           </div>
+          {lienOuvert && rechercheId && (
+            <PanneauLien bienId={b.id} clientId={clientId} rechercheId={rechercheId} prenom={prenom}
+              dest={{ nom: contact.nom || 'L’agence', interlocuteur: contact.interlocuteur || null, tel: contact.tel || null, email: contact.email || null }}
+              onFait={() => { setLienOuvert(false); onChange(); }} onFermer={() => setLienOuvert(false)} />
+          )}
 
           {vendu && onIndispo && (
             <div className={s.alerte}>
@@ -255,6 +273,86 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
           onFermer={() => setAppel(null)}
           onFait={indispo => { setAppel(null); if (!ouvert) basculer(); onChange(); if (indispo) onBiens?.(); }} />
       )}
+    </div>
+  );
+}
+
+/* ═══ « Le lien pour Didier » : l'envoyer à l'agence de ce bien (V3.198) ════
+   Le lien de la recherche (créé s'il n'existe pas), le message avec le
+   prénom de la personne ; SMS sur un portable, mail sur une adresse, sinon
+   le message à copier. Chaque envoi est noté (noterEnvoi). */
+function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFermer }: {
+  bienId: string; clientId: string; rechercheId: string; prenom?: string | null; dest: Destinataire;
+  onFait: () => void; onFermer: () => void;
+}) {
+  const [etat, setEtat] = useState<{ k: 'lecture' } | { k: 'pret'; jeton: string } | { k: 'absent' } | { k: 'erreur'; m: string }>({ k: 'lecture' });
+  const [dit, setDit] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const [secours, setSecours] = useState<string | null>(null);
+  const zone = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const r = await lireOuCreerJeton(rechercheId);
+      if (!vivant) return;
+      setEtat('jeton' in r ? { k: 'pret', jeton: r.jeton } : 'absent' in r ? { k: 'absent' } : { k: 'erreur', m: r.erreur });
+    })();
+    return () => { vivant = false; };
+  }, [rechercheId]);
+  useEffect(() => { zone.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, []);
+
+  const pour = String(prenom || '').trim();
+  const msg = etat.k === 'pret' ? messagePour(messageAgence(etat.jeton), dest.interlocuteur) : '';
+  const mobile = !!dest.tel && estMobile(dest.tel);
+  const mail = !!dest.email && mailValide(dest.email);
+  async function noter(canal: Canal) {
+    if (await noterEnvoi({ clientId, rechercheId, prenom, dest, canal, bienId })) onFait();
+  }
+  /* Le joli mail (maquettes 7 et 8), envoyé par le CRM après un « oui ». */
+  async function mailer() {
+    if (!dest.email || envoi) return;
+    if (!window.confirm(`Envoyer le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
+    setSecours(null); setEnvoi(true);
+    const r = await envoyerMailAgence(rechercheId, dest);
+    setEnvoi(false);
+    if (!r.ok) { setSecours(r.erreur); return; }
+    await noter('mail');
+  }
+  async function copier() {
+    try { await navigator.clipboard.writeText(msg); } catch { setDit('La copie n’a pas marché : réessaie depuis la fenêtre du lien (onglet Veille).'); return; }
+    await noter('copie');
+  }
+
+  return (
+    <div ref={zone} className={s.panneauLien} role="group" aria-label={pour ? `Le lien pour ${pour}` : 'Le lien pour les agences'}>
+      <div className={s.panneauTete}>
+        <b>{`Lui envoyer le lien${pour ? ` pour ${pour}` : ''}`}</b>
+        <span>{'Il pourra te proposer ses autres biens : ils arrivent dans ta Veille, analysés.'}</span>
+        <button type="button" className={s.panneauFermer} onClick={onFermer} aria-label="Fermer"><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
+      </div>
+      {etat.k === 'lecture' ? (
+        <div className={s.aide}>{'Préparation du lien…'}</div>
+      ) : etat.k === 'absent' ? (
+        <div className={s.aide}>{'À activer : un petit SQL à passer dans Supabase, outils/sql/lien-agences.sql.'}</div>
+      ) : etat.k === 'erreur' ? (
+        <div className={s.aide}>{`Le lien n’a pas pu être lu : ${etat.m}`}</div>
+      ) : (
+        <div className={s.panneauBtns}>
+          {mobile && <a className={s.lienFort} href={lienSms(dest.tel!, msg)} onClick={() => { void noter('sms'); }}><Icone nom="mobile" taille={14} epaisseur={2.1} />{`Par SMS au ${dest.tel}`}</a>}
+          {mail && <button type="button" className={mobile ? s.lien : s.lienFort} disabled={envoi} onClick={() => { void mailer(); }}><Icone nom="mail" taille={14} epaisseur={2.1} />{envoi ? 'Envoi du mail…' : `Par mail à ${dest.email}`}</button>}
+          <button type="button" className={s.btn} onClick={() => { void copier(); }}><Icone nom="copie" taille={14} epaisseur={2.1} />Copier le message</button>
+        </div>
+      )}
+      {etat.k === 'pret' && !mobile && !mail && (
+        <div className={s.aide}>{dest.tel ? 'Un fixe ne reçoit pas de SMS : copie le message, ou ajoute son portable ou son mail avec « Noter un appel ».' : 'Pas de portable ni de mail noté : ajoute-les avec « Noter un appel », ou copie le message.'}</div>
+      )}
+      {secours && dest.email && (
+        <div className={s.panneauSecours} role="alert">
+          <span>{`Le mail n’est pas parti : ${secours}`}</span>
+          <a className={s.lien} href={lienMail(dest.email, msg)} onClick={() => { setSecours(null); void noter('mail'); }}><Icone nom="mail" taille={14} epaisseur={2.1} />Ouvrir ma messagerie à la place</a>
+        </div>
+      )}
+      {dit && <div className={s.aide} role="status">{dit}</div>}
     </div>
   );
 }

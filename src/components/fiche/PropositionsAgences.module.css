@@ -24,7 +24,7 @@
 
 /* ── La fenêtre ── */
 .voile { position: fixed; inset: 0; z-index: 1300; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.fenetre { width: min(560px, 100%); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: white; border-radius: 22px;
+.fenetre { width: min(640px, 100%); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: white; border-radius: 22px;
   box-shadow: 0 30px 80px -20px rgba(17,35,64,.5); font-family: 'DM Sans', system-ui, sans-serif; color: #13243D; overflow: hidden; }
 .fTete { display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 14px; border-bottom: 1px solid #eef2f7; }
 .fTete h2 { margin: 0; font: 800 17px 'Plus Jakarta Sans', sans-serif; }
@@ -66,3 +66,54 @@
   .boutons .btn { flex: 1 1 auto; }
   .fCorps { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* V3.198 — « Sans doute le même bien » : à vérifier avant de retenir. */
+.meme { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; border-radius: 11px; background: #fff7ed; border: 1px solid #fed7aa;
+  color: #9a3412; font-size: 13px; font-weight: 700; line-height: 1.45; }
+.meme svg { margin-top: 1px; }
+.motA .meme { margin-top: 6px; }
+
+/* V3.198 — Les agences de ce client, dans la fenêtre du lien (maquette 6). */
+.agences { display: flex; flex-direction: column; gap: 8px; }
+.agence { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px; border: 1px solid #e3e8f0; background: white; }
+.agTx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.agTx b { font-size: 14px; font-weight: 800; color: #13243D; overflow-wrap: anywhere; }
+.agTx small { font-size: 12.5px; font-weight: 600; color: #64748b; overflow-wrap: anywhere; }
+.puceEtat { flex: 0 0 auto; padding: 3px 9px; border-radius: 99px; background: #f1f5f9; color: #475569; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.puceEtat[data-ton="vert"] { background: #dcfce7; color: #166534; }
+.puceEtat[data-ton="prune"] { background: #f5f3ff; color: #5b21b6; }
+.agBtns { flex: 0 0 auto; display: flex; gap: 6px; }
+.btnMini { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 11px; border-radius: 9px; border: none;
+  background: #22497D; color: white; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.btnMini:hover { background: #1a3a66; color: white; }
+.btnMini[data-ton="doux"] { background: white; color: #22497D; border: 1px solid #c9d6e8; }
+.btnMini[data-ton="doux"]:hover { border-color: #22497D; background: white; color: #22497D; }
+.plus { align-self: flex-start; background: none; border: none; padding: 4px 2px; color: #22497D; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.autre { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 13px; border: 1.5px dashed #c9d6e8; background: #fbfcfe; }
+.autreT { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: #22497D; }
+.autreGrille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.champ > span { font-size: 12px; font-weight: 700; color: #475569; }
+.champ > span i { font-style: normal; font-weight: 600; color: #94a3b8; }
+.champ input { width: 100%; box-sizing: border-box; height: 40px; border: 1.5px solid #e3e8f0; border-radius: 10px; padding: 0 11px; font: 500 14px 'DM Sans', sans-serif;
+  color: #13243D; background: white; outline: none; }
+.champ input:focus { border-color: #22497D; }
+.autrePied { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.autrePied .aide { flex: 1 1 220px; }
+.details { display: block; }
+.details > * + * { margin-top: 8px; }
+.details > .zone { display: block; }
+.details summary { cursor: pointer; font-size: 13px; font-weight: 700; color: #22497D; padding: 4px 0; }
+.cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 600px) {
+  .agence { flex-wrap: wrap; }
+  .agTx { flex: 1 1 100%; }
+  .agBtns { margin-left: auto; }
+  .autreGrille { grid-template-columns: 1fr; }
+  .autrePied .btnFort { flex: 1 1 100%; }
+}
+.secours { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #fef2f2; border: 1px solid #fecaca;
+  color: #991b1b; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.secours > span { flex: 1 1 220px; }
+.btnMini:disabled { opacity: .6; cursor: default; }

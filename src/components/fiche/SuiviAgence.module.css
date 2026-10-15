@@ -43,6 +43,23 @@
 .contactTx b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #13243D; overflow-wrap: anywhere; }
 .contactTx small { font-size: 12.5px; font-weight: 600; color: #5B6B82; }
 
+/* V3.198 — « Le lien pour Didier » : l'envoyer à l'agence de ce bien. */
+.lienAg { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 10px; box-sizing: border-box;
+  font: 800 13px 'DM Sans', sans-serif; white-space: nowrap; cursor: pointer; background: #FFF6EC; color: #A95808; border: 1.5px solid #F2B266; }
+.lienAg:hover, .lienAg[aria-expanded="true"] { border-color: #E68B23; background: #FDEBD5; }
+.panneauLien { display: flex; flex-direction: column; gap: 10px; padding: 12px 13px; border-radius: 12px; background: #FFFAF3; border: 1px solid #F7D5B0; }
+.panneauTete { position: relative; display: flex; flex-direction: column; gap: 2px; padding-right: 36px; }
+.panneauTete b { font: 800 14px 'Plus Jakarta Sans', sans-serif; color: #13243D; }
+.panneauTete span { font-size: 12.5px; font-weight: 600; color: #6B5A45; }
+.panneauFermer { position: absolute; top: 0; right: 0; width: 30px; height: 30px; border-radius: 8px; border: 1px solid #F2D2AC; background: white; color: #8F5A1C;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.panneauBtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.panneauBtns .lienFort, .panneauBtns .lien { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.panneauBtns button:disabled { opacity: .6; cursor: default; }
+.panneauSecours { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 11px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca;
+  color: #991b1b; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.panneauSecours > span { flex: 1 1 200px; }
+
 .alerte { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 13px; border-radius: 12px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; font-size: 13.5px; font-weight: 700; }
 .alerte > span { flex: 1 1 200px; }
 
@@ -120,6 +137,8 @@
   .corps { padding: 2px 12px 14px; }
   .contact { gap: 10px; }
   .contact .lienFort, .contact .lien { flex: 1 1 0; }
+  .contact .lienAg { flex: 1 1 100%; }
+  .panneauBtns > * { flex: 1 1 100%; }
 }
 
 /* ═══ La fenêtre « Noter un appel » ═══ */

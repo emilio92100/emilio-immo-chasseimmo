@@ -220,7 +220,7 @@ export default function OngletVeille({ clientId, rechercheId, onChange, prenom, 
           recherche={recherche} analyser={analyser} onRemplir={onRemplir} onChange={onChange} />
       )}
       {/* V3.197 : les biens proposés par les agences, par le lien de la recherche. */}
-      <PropositionsAgences clientId={clientId} rechercheId={rechercheId} recherche={recherche} onChange={onChange} />
+      <PropositionsAgences clientId={clientId} rechercheId={rechercheId} recherche={recherche} prenom={prenom} onChange={onChange} />
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
