@@ -5399,6 +5399,7 @@ ${signatureMail()}`,
         {tab === 'selection' && (
           <div key="p-selection" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="selection"
+            vise={ouverture?.onglet === 'selection' ? ouverture.bienId || null : null} viseEnGrand={!!ouverture?.enGrand}
             onChange={() => { load(); chargerVeilleCount(); }}
             onMail={async (id) => { await load(); openEnvoiBien(id); }}
             onMailGroupe={async (ids) => { await load(); openEnvoiMulti(ids); }}
@@ -5412,7 +5413,7 @@ ${signatureMail()}`,
         {tab === 'presentes' && (
           <div key="p-presentes" className="emilio-panneau"><OngletBiens
             clientId={client.id} rechercheId={rechercheId} client={client} mode="presentes"
-            vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null}
+            vise={ouverture?.onglet === 'presentes' ? ouverture.bienId || null : null} viseEnGrand={!!ouverture?.enGrand}
             onDocument={ouvrirOffreDoc('Présentés')} onTransaction={() => setTab('transaction')}
             onBienVente={id => onNavigate('biens', { bien: id })}
             onChange={() => { load(); chargerVeilleCount(); }}
@@ -5434,6 +5435,7 @@ ${signatureMail()}`,
               onRemplir={remplirDepuisAnnonce}
               rafraichir={versionVeille}
               analyser={demandeAnalyse}
+              vise={ouverture?.onglet === 'veille' ? ouverture.bienId || null : null}
             />
           </div>
         )}

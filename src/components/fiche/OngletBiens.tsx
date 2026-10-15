@@ -163,6 +163,8 @@ interface Props {
   rafraichir?: number;
   /** V3.129 : le bien à amener à l'écran et à entourer un instant (Visites › « Voir sur sa fiche »). */
   vise?: string | null;
+  /** V3.191 : et l'ouvrir en grand (une agence retrouvée par son numéro, la recherche du haut ou Ringover). */
+  viseEnGrand?: boolean;
   /** V3.189 : « Son offre » sous chaque bien présenté — où ouvrir l'offre, et la transaction. */
   onDocument?: (id: string, o?: { editer?: boolean }) => void;
   onTransaction?: () => void;
@@ -170,7 +172,7 @@ interface Props {
   onBienVente?: (bienVenteId: string) => void;
 }
 
-export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, onDocument, onTransaction, onBienVente }: Props) {
+export default function OngletBiens({ clientId, rechercheId, client, mode, onChange, onMail, onFiche, onVisite, onMailGroupe, rafraichir = 0, vise = null, viseEnGrand = false, onDocument, onTransaction, onBienVente }: Props) {
   const [biens, setBiens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [obs, setObs] = useState<any>(null);
@@ -235,10 +237,12 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     viseFait.current = true;
     setFiltreP('tout');
     setEclaire(vise);
+    /* V3.191 : le bien s'ouvre en grand, son suivi avec l'agence dessous. */
+    if (viseEnGrand) setGrand({ id: vise, i: 0 });
     /* Sans nettoyage : un rechargement de la liste ne doit pas annuler la descente. */
     window.setTimeout(() => document.getElementById(`bien-${vise}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 700);
     window.setTimeout(() => setEclaire(null), 6000);
-  }, [vise, chargement, biens]);
+  }, [vise, viseEnGrand, chargement, biens]);
 
   const recharge = () => { setTick(t => t + 1); onChange?.(); };
 

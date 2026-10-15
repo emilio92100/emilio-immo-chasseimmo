@@ -32,9 +32,11 @@ interface Props {
   rafraichir?: number;
   /** V3.186 : la fiche d'une annonce du client vient d'être enregistrée : à analyser. */
   analyser?: { id: string; n: number } | null;
+  /** V3.191 : la proposition à ouvrir en grand (une agence retrouvée par son numéro). */
+  vise?: string | null;
 }
 
-export default function OngletVeille({ clientId, rechercheId, onChange, prenom, onRemplir, rafraichir = 0, analyser }: Props) {
+export default function OngletVeille({ clientId, rechercheId, onChange, prenom, onRemplir, rafraichir = 0, analyser, vise = null }: Props) {
   const [props_, setProps] = useState<any[]>([]);
   const [ecartees, setEcartees] = useState<any[]>([]);
   const [passage, setPassage] = useState<any>(null);
@@ -82,6 +84,15 @@ export default function OngletVeille({ clientId, rechercheId, onChange, prenom, 
   }, [rechercheId]);
 
   useEffect(() => { charger(); }, [charger]);
+
+  /* V3.191 : venu pour une proposition précise (son agence retrouvée par
+     son numéro) : elle s'ouvre en grand, une fois la liste lue. */
+  const viseFait = useRef(false);
+  useEffect(() => {
+    if (!vise || viseFait.current || chargement || !props_.some(p => p.id === vise)) return;
+    viseFait.current = true;
+    setGrand({ id: vise, i: Math.max(0, props_.findIndex(p => p.id === vise)) });
+  }, [vise, chargement, props_]);
 
   async function retenir(p: any) {
     if (enTraitement) return;
