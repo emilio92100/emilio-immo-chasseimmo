@@ -1,4 +1,4 @@
-import { LIEN_POLICE_MAIL, LOGO_BLANC_MAIL, MAIL, POLICE_MAIL, SITE_MAIL } from '@/lib/mail-charte';
+import { IMAGES_MAIL, LIEN_POLICE_MAIL, LOGO_BLANC_MAIL, MAIL, POLICE_MAIL } from '@/lib/mail-charte';
 import type { ResumeAgence } from '@/lib/agences-lien';
 
 /* ═══ Le mail du lien pour les agences (V3.198) ═══════════════════════════
@@ -9,13 +9,14 @@ import type { ResumeAgence } from '@/lib/agences-lien';
    « Comment ça marche », la signature.
 
    Écrit pour les messageries : des tableaux, des styles en ligne, des
-   icônes en PNG servies par le CRM (public/mail/agence/, dessinées en 2x),
+   icônes en PNG (public/mail/agence/, dessinées en 2x) chargées depuis
+   espace.emilio-immo.com (IMAGES_MAIL), pas de texte caché,
    jamais de SVG (Gmail les retire). Les critères vont deux par deux sur
    ordinateur et passent l'un sous l'autre sur un téléphone, sans media
    query (des blocs en ligne de 246 px au plus). */
 
 const echappe = (t: string) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const ICO = `${SITE_MAIL}/mail/agence`;
+const ICO = `${IMAGES_MAIL}/mail/agence`;
 const TEL = '06 58 95 76 32';
 const TEL_URL = '+33658957632';
 const MAIL_ALEX = 'arogelet@emilio-immo.com';
@@ -74,7 +75,6 @@ export function mailLienAgence(o: { lien: string; interlocuteur?: string | null;
   const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${LIEN_POLICE_MAIL}<title>${echappe(SUJET_AGENCE)}</title>
 <style>@media (max-width:480px){ .ag-pad{ padding-left:18px !important; padding-right:18px !important; } .ag-titre{ font-size:23px !important; } }</style></head>
 <body style="margin:0;padding:0;background:${MAIL.fondPage};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Ce que cherche mon client, et le lien pour me proposer votre bien en un clic.</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${MAIL.fondPage};"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;font-family:${POLICE_MAIL};">
   <tr><td class="ag-pad" style="background:${MAIL.marque};border-radius:18px 18px 0 0;border-bottom:3px solid ${MAIL.or};padding:24px 28px 22px;">

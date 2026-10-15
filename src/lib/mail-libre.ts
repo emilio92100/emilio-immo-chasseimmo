@@ -20,7 +20,7 @@
 
 import { IDENTITE_DEFAUT, type IdentiteAgence } from './agence';
 import { conseillerDe, personnaliser, type PourMail } from './mail-variables';
-import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
+import { LIEN_POLICE_MAIL, LOGO_BLANC_MAIL } from '@/lib/mail-charte';
 
 export type StyleMail = 'simple' | 'emilio';
 
@@ -166,7 +166,8 @@ export function habillageDe(reglages: Record<string, string | undefined>, identi
     telephone: (reglages.conseiller_telephone || '').trim() || '06 58 95 76 32',
     agence: id.nom || 'Emilio Immobilier',
     mentions: [`${id.nom} — ${id.societe}${id.forme ? `, ${id.forme}` : ''}`, adresse, id.carte ? `carte professionnelle ${id.carte}` : ''].filter(Boolean).join(' · '),
-    logo: `${site.replace(/\/+$/, '')}/logo_high_resolution_white.png`,
+    /* V3.198 : le logo depuis espace.emilio-immo.com (src/lib/mail-charte.ts), plus depuis `site`. */
+    logo: LOGO_BLANC_MAIL,
   };
 }
 

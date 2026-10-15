@@ -41,7 +41,7 @@
 
 import { lienEspace } from '@/lib/jeton';
 import { acheteurEnCours, colonneContactAbsente, estAcheteur, estArchive, reventePossible } from '@/lib/contacts';
-import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
+import { LIEN_POLICE_MAIL, LOGO_BLANC_MAIL } from '@/lib/mail-charte';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Base = any;
@@ -390,7 +390,7 @@ ${LIEN_POLICE_MAIL}
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td><img src="${site}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td><img src="${LOGO_BLANC_MAIL}" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE RECHERCHE</td>
           </tr></table>
         </td></tr>

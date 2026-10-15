@@ -20,12 +20,14 @@ export const MAIL = {
 export const POLICE_MAIL = "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 export const LIEN_POLICE_MAIL = '<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap" rel="stylesheet" />';
 
-/* Le logo blanc, posé sur la bande bleue. Servi par le CRM lui-même (le
-   proxy laisse passer les images : src/proxy.ts). */
-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://emilio-immo-chasseimmo.vercel.app').replace(/\/+$/, '');
-export const LOGO_BLANC_MAIL = `${SITE}/logo_high_resolution_white.png`;
-/* V3.198 : l'adresse où les mails trouvent leurs images (public/mail/…). */
-export const SITE_MAIL = SITE;
+/* Le logo blanc, posé sur la bande bleue.
+   V3.198 — Les images des mails (logo, icônes) se chargent depuis le domaine
+   d'Alexandre, celui qui envoie, et non depuis l'adresse technique du CRM
+   (…vercel.app) : un domaine partagé par beaucoup de sites, dont les filtres
+   anti-spam se méfient. espace.emilio-immo.com sert les fichiers de public/
+   comme le CRM (le proxy laisse passer les images). */
+export const IMAGES_MAIL = (process.env.NEXT_PUBLIC_MAIL_IMAGES_URL || 'https://espace.emilio-immo.com').replace(/\/+$/, '');
+export const LOGO_BLANC_MAIL = `${IMAGES_MAIL}/logo_high_resolution_white.png`;
 
 /* Le logo en <img>, prêt à poser dans une bande bleue. `mention` : un petit
    mot à droite (« CRM » pour les alertes envoyées à Alexandre). */
