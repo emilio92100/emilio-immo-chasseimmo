@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { lienEspace, lienBienPublic, BIENS_PAR_MAIL } from '@/lib/jeton';
+import { lienEspace, lienBienPublic, BIENS_PAR_MAIL, HOTE_ESPACE } from '@/lib/jeton';
 import { nommerRecherche } from '@/lib/espace';
 import { tauxDe, forfaitDe, honorairesCourt, honorairesDuPrix, DUREE, RETRACTATION_JOURS, type Honoraires } from '@/lib/mandat';
 import { ecritServeur } from '@/lib/ecritures';
 import { personnaliser, conseillerDe } from '@/lib/mail-variables';
-import { LIEN_POLICE_MAIL } from '@/lib/mail-charte';
+import { LIEN_POLICE_MAIL, LOGO_BLANC_MAIL } from '@/lib/mail-charte';
 import { adresseVente } from '@/lib/adresse-vente';
 import { prixDuBien } from '@/lib/honoraires-bien';
 import { versBienAcheteur, type BienVente } from '@/lib/biens-vente';
@@ -22,6 +22,10 @@ const supabase = createClient(
 const FROM_EMAIL = process.env.MAILJET_FROM_EMAIL || 'arogelet@emilio-immo.com';
 const FROM_NAME = process.env.MAILJET_FROM_NAME || 'Alexandre ROGELET — Emilio Immobilier';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://emilio-immo-chasseimmo.vercel.app';
+/* V3.199 : un client sans espace ouvre l'adresse d'Emilio, jamais l'adresse
+   technique (…vercel.app), mal vue des filtres anti-spam. SITE_URL ne sert plus
+   qu'aux anciens jetons de 64 caractères (lienEspace). */
+const ESPACE_URL = `https://${HOTE_ESPACE}`;
 
 /* V3.118 : les couleurs du site emilio-immo.com (src/lib/mail-charte.ts). */
 const BLEU = '#22497D';
@@ -275,7 +279,7 @@ ${LIEN_POLICE_MAIL}
         <!-- En-tête -->
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td><img src="${LOGO_BLANC_MAIL}" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">${etiquette}</td>
           </tr></table>
         </td></tr>
@@ -346,7 +350,7 @@ ${LIEN_POLICE_MAIL}
 function buildBienvenue(opts: { prenom: string; token?: string | null }): string {
   const { token } = opts;
   const prenom = escapeHtml(opts.prenom);
-  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  const lien = token ? lienEspace(token, SITE_URL) : ESPACE_URL;
 
   /* L'emoji posé dans le même rond ivoire bordé d'or que dans l'espace. */
   const rond = (e: string, t = 44, police = 20) => `
@@ -401,7 +405,7 @@ ${LIEN_POLICE_MAIL}
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td><img src="${LOGO_BLANC_MAIL}" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
           </tr></table>
         </td></tr>
@@ -506,7 +510,7 @@ ${LIEN_POLICE_MAIL}
 
 /* La version texte, pour les messageries qui n'affichent pas le HTML. */
 function texteBienvenue(prenom: string, token?: string | null): string {
-  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  const lien = token ? lienEspace(token, SITE_URL) : ESPACE_URL;
   return `Bienvenue, ${prenom}.
 
 Ravi de commencer cette recherche avec vous. Elle est enregistrée : j'ai maintenant ce qu'il me faut pour parcourir le marché, et je vous ai ouvert un espace personnel où tout se retrouve au même endroit.
@@ -543,7 +547,7 @@ function buildNouvelle(opts: { prenom: string; recherche: string; token?: string
   const deux = (opts.total || 2) <= 2;
   const prenom = escapeHtml(opts.prenom);
   const recherche = escapeHtml(opts.recherche);
-  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  const lien = token ? lienEspace(token, SITE_URL) : ESPACE_URL;
 
   const rond = (e: string, t = 44, police = 20) => `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -595,7 +599,7 @@ ${LIEN_POLICE_MAIL}
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td><img src="${LOGO_BLANC_MAIL}" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
           </tr></table>
         </td></tr>
@@ -666,7 +670,7 @@ ${LIEN_POLICE_MAIL}
 }
 
 function texteNouvelle(prenom: string, recherche: string, token?: string | null, total?: number): string {
-  const lien = token ? lienEspace(token, SITE_URL) : SITE_URL;
+  const lien = token ? lienEspace(token, SITE_URL) : ESPACE_URL;
   const deux = (total || 2) <= 2;
   return `${deux ? 'Une deuxième recherche' : 'Une nouvelle recherche'}, ${prenom}.
 
@@ -723,7 +727,7 @@ ${LIEN_POLICE_MAIL}
 
         <tr><td class="bord" style="background:${BLEU};border-bottom:3px solid ${DORE};padding:20px 28px;">
           <table role="presentation" width="100%"><tr>
-            <td><img src="${SITE_URL}/logo_high_resolution_white.png" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
+            <td><img src="${LOGO_BLANC_MAIL}" alt="Emilio Immobilier" height="34" style="height:34px;width:auto;display:block;border:0;" /></td>
             <td align="right" style="font-size:10px;color:${DORE_CLAIR};letter-spacing:2.5px;font-weight:600;">VOTRE ESPACE</td>
           </tr></table>
         </td></tr>
