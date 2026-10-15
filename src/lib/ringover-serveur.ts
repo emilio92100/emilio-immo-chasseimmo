@@ -31,6 +31,7 @@ import { typesDe, typeDe, ligneContact } from '@/lib/contacts';
 import { conjointDe } from '@/lib/foyer';
 import { etapeDe, titreBien, type Donnees } from '@/lib/biens-vente';
 import { euros } from '@/lib/mandat';
+import { lireBiensSuivis, parNumero, lienFiche, ouEnEst, texteDernier, type BienSuivi } from '@/lib/agences-suivies';
 
 export const crmUrl = () => (process.env.NEXT_PUBLIC_CRM_URL || 'https://crm.emilio-immo.com').replace(/\/+$/, '');
 
@@ -127,9 +128,62 @@ const phraseRecherche = (r: RechercheLue) => [
   (r.secteurs || []).filter(Boolean).slice(0, 2).join(', '),
 ].filter(Boolean).join(' · ') || String(r.nom || '').trim() || 'Recherche ouverte';
 
+/* ═══ V3.191 · Une agence qui appelle ═══════════════════════════════════
+   Alexandre : « si une agence me rappelle un jour plus tard, retrouver
+   l'annonce en un seul clic ». Un numéro qui n'est pas celui d'un contact
+   peut être celui d'une agence qui a un bien d'un de ses clients : le numéro
+   relevé sur l'annonce, ou noté dans « Noter un appel »
+   (lib/agences-suivies.ts). Ringover affiche alors l'agence, le bien, pour
+   qui, où il en est, et le lien ouvre la fiche du client sur ce bien. Rien à
+   enregistrer dans Ringover. */
+let cacheSuivis: { le: number; liste: BienSuivi[] } | null = null;
+async function biensSuivis(sb: SupabaseClient): Promise<BienSuivi[]> {
+  if (cacheSuivis && Date.now() - cacheSuivis.le < 60_000) return cacheSuivis.liste;
+  const liste = await lireBiensSuivis(sb);
+  cacheSuivis = { le: Date.now(), liste };
+  return liste;
+}
+/** Les lignes « Bien », « Bien 2 »… : le bien, pour qui, où il en est. */
+function lignesBiens(trouves: BienSuivi[], clients: ClientLu[], max: number): Record<string, string> {
+  const nomDe = (id: string) => { const c = clients.find(x => x.id === id); return c ? [c.prenom, c.nom].filter(Boolean).join(' ') : ''; };
+  const data: Record<string, string> = {};
+  trouves.slice(0, max).forEach((b, i) => {
+    const nom = nomDe(b.client_id);
+    data[i ? `Bien ${i + 1}` : 'Bien'] = [
+      [b.titre || 'Bien', b.ville, b.prix ? euros(b.prix) : ''].filter(Boolean).join(' · '),
+      nom ? `pour ${nom}` : '', ouEnEst(b),
+    ].filter(Boolean).join(' — ');
+  });
+  if (trouves.length > max) data['Et aussi'] = `${trouves.length - max} autre${trouves.length - max > 1 ? 's' : ''} bien${trouves.length - max > 1 ? 's' : ''} de vos clients`;
+  const d = trouves.find(b => b.dernier)?.dernier;
+  if (d) data['Dernier contact'] = texteDernier(d);
+  return data;
+}
+
+export async function agencePour(numero: string, sb: SupabaseClient = baseServeur()): Promise<ReponseRingover | null> {
+  const trouves = parNumero(await biensSuivis(sb), numero);
+  if (!trouves.length) return null;
+  const clients = await lireContacts(sb);
+  const b0 = trouves[0];
+  const nom0 = (() => { const c = clients.find(x => x.id === b0.client_id); return c ? [c.prenom, c.nom].filter(Boolean).join(' ') : ''; })();
+  const data: Record<string, string> = { Type: 'Agence' };
+  if (b0.interlocuteurs.length) data['Contact'] = b0.interlocuteurs.slice(0, 2).join(', ');
+  Object.assign(data, lignesBiens(trouves, clients, 3));
+  return {
+    uuid: b0.id,
+    firstname: '',
+    lastname: b0.agence || 'Agence',
+    company: trouves.length > 1 ? `Agence · ${trouves.length} biens de vos clients` : `Agence · pour ${nom0 || 'un client'}`,
+    url: lienFiche(crmUrl(), b0),
+    data,
+    is_shared: true,
+  };
+}
+
 export async function reponsePour(numero: string, sb: SupabaseClient = baseServeur()): Promise<ReponseRingover | null> {
   const trouves = trouverNumero(await lireContacts(sb), numero);
-  if (!trouves.length) return null;
+  /* V3.191 : pas un contact ? Peut-être une agence. */
+  if (!trouves.length) return agencePour(numero, sb);
   const { c, conjoint } = trouves[0];
   const types = typesDe(c);
   const libTypes = types.map(t => typeDe(t).lib).join(' · ');
@@ -161,6 +215,18 @@ export async function reponsePour(numero: string, sb: SupabaseClient = baseServe
     }).join(', ');
   }
 
+  /* V3.191 : un contact qui n'est pas acheteur (un confrère enregistré, par
+     exemple) et dont le numéro est aussi celui d'une agence qui a un bien de
+     vos clients : les biens s'ajoutent, et le lien ouvre le premier. */
+  let lienBien = '';
+  if (!types.includes('acheteur')) {
+    const biensAg = parNumero(await biensSuivis(sb).catch(() => [] as BienSuivi[]), numero);
+    if (biensAg.length) {
+      Object.assign(data, lignesBiens(biensAg, await lireContacts(sb), 2));
+      lienBien = lienFiche(crmUrl(), biensAg[0]);
+    }
+  }
+
   const prenom = (j ? j.prenom : c.prenom) || '';
   const nom = (j ? j.nom : c.nom) || '';
   return {
@@ -168,7 +234,7 @@ export async function reponsePour(numero: string, sb: SupabaseClient = baseServe
     firstname: prenom,
     lastname: nom || (prenom ? '' : 'Contact sans nom'),
     company: ligneContact(c) || libTypes,
-    url: `${crmUrl()}/?page=fiche&client=${encodeURIComponent(c.id)}`,
+    url: lienBien || `${crmUrl()}/?page=fiche&client=${encodeURIComponent(c.id)}`,
     data,
     is_shared: true,
   };

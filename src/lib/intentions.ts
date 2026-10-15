@@ -91,6 +91,8 @@ export type OuvertureFiche = {
   rappro?: { source: 'mandats' | 'veilles' | 'deux'; cocher?: string[] };
   /* V3.129 : le bien à amener à l'écran (Visites › « Voir sur sa fiche »). */
   bienId?: string;
+  /* V3.191 : et l'ouvrir en grand (une agence retrouvée par son numéro). */
+  enGrand?: boolean;
 };
 const CLE_FICHE = 'emi-fiche';
 
@@ -112,6 +114,28 @@ export function lireOuvertureFiche(clientId: string): OuvertureFiche | null {
 
 export function oublierOuvertureFiche() {
   try { window.sessionStorage.removeItem(CLE_FICHE); } catch { /* rien à faire */ }
+}
+
+/* V3.191 — Le lien que Ringover affiche quand une agence appelle :
+   `/?page=fiche&client=<id>&onglet=selection&recherche=<id>&bien=<id>`
+   (lib/agences-suivies.ts, `lienFiche`). Lu une fois en arrivant : la
+   demande passe dans la session comme les autres, et l'adresse redevient
+   celle de la fiche (un rechargement ne rouvre pas le bien). */
+const ONGLETS_URL = ['veille', 'selection', 'presentes'] as const;
+export function prendreOuvertureUrl() {
+  if (typeof window === 'undefined') return;
+  const p = new URLSearchParams(window.location.search);
+  const onglet = p.get('onglet') || '';
+  const clientId = p.get('client') || '';
+  if (p.get('page') !== 'fiche' || !clientId || !onglet) return;
+  if ((ONGLETS_URL as readonly string[]).includes(onglet)) {
+    demanderOuvertureFiche({
+      clientId, onglet: onglet as OuvertureFiche['onglet'],
+      rechercheId: p.get('recherche') || null, bienId: p.get('bien') || undefined, enGrand: !!p.get('bien'),
+    });
+  }
+  const propre = new URLSearchParams({ page: 'fiche', client: clientId });
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}?${propre.toString()}`);
 }
 
 /* D'où vient une relance, et donc où ouvrir la fiche :
