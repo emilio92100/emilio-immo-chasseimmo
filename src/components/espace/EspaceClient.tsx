@@ -4274,7 +4274,9 @@ function AvisVisite({ v, onRepondre, sansNote, sansSuite, onFaireOffre }: { v: V
 
 /* Où en est un bien visité : l'étiquette, la phrase qui dit la suite, ses
    raisons, et qui a donné l'avis. */
-function EtatVisite({ b, v }: { b: Bien; v: VisiteE }) {
+function EtatVisite({ b, v, enLigne }: { b: Bien; v: VisiteE;
+  /* V3.196 : sur la fiche, « Noté par votre conseiller » suit la phrase au lieu d'une ligne à lui. */
+  enLigne?: boolean }) {
   const eo = etatOffre(b);
   const offreFaite = !!eo;
   const i = v.issue;
@@ -4288,7 +4290,7 @@ function EtatVisite({ b, v }: { b: Bien; v: VisiteE }) {
     : 'Noté par votre conseiller';
   return (
     <>
-      {ligne && <div className="vv-ligne">{ligne}</div>}
+      {ligne && <div className="vv-ligne">{ligne}{enLigne && source ? <span className="vv-src-in">{` · ${source}`}</span> : null}</div>}
       {v.motifs.length > 0 && i && (
         <div className="reponses lu vv-lu">
           {v.motifs.map(m => {
@@ -4298,7 +4300,7 @@ function EtatVisite({ b, v }: { b: Bien; v: VisiteE }) {
         </div>
       )}
       {v.mot && <div className="vv-mot">{`« ${v.mot} »`}</div>}
-      {source && <div className="vv-src">{source}</div>}
+      {source && !(enLigne && ligne) && <div className="vv-src">{source}</div>}
     </>
   );
 }
@@ -4865,24 +4867,27 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
           </button>
         </div>
       )}
+      {/* V3.196 — Alexandre : « à côté du prix il n'y a rien : les honoraires,
+          on peut les mettre à côté ». Ils entrent dans le bandeau : à côté du
+          prix sur ordinateur, dessous sur téléphone (CSS). */}
       <div className="bandeau-prix">
         <span className="p tab">{b.prix ? <span className="nv">{PRIX(b.prix)}<BtnAide cle="prix" onAide={() => setAidePrix(true)} /></span> : PRIX(b.prix)}</span>
+        {/* V3.145 : ses honoraires, seulement quand ils s'ajoutent — en petit. */}
+        {/* V3.188 (Alexandre : « quand il y a un prix affiché en plus, une petite
+            interrogation ») : un « ? » collé au dernier mot, pour qu'il ne parte
+            pas seul à la ligne sur téléphone. */}
+        {b.prix && b.hono ? (() => {
+          const t = honoDe(b);
+          const i = t.lastIndexOf(' ');
+          return (
+            <span className="hono-l">
+              {t.slice(0, i + 1)}
+              <span className="hono-fin">{t.slice(i + 1)}<BtnAide cle="honoraires" onAide={() => setAideHono(true)} /></span>
+            </span>
+          );
+        })() : null}
         {b.prix && b.surface ? <span className="m2 tab">{Math.round(b.prix / b.surface).toLocaleString('fr-FR').replace(/[  ]/g, ' ')} €/m²</span> : null}
       </div>
-      {/* V3.145 : ses honoraires, seulement quand ils s'ajoutent — en petit. */}
-      {/* V3.188 (Alexandre : « quand il y a un prix affiché en plus, une petite
-          interrogation ») : un « ? » collé au dernier mot, pour qu'il ne parte
-          pas seul à la ligne sur téléphone. */}
-      {b.prix && b.hono ? (() => {
-        const t = honoDe(b);
-        const i = t.lastIndexOf(' ');
-        return (
-          <div className="hono-l">
-            {t.slice(0, i + 1)}
-            <span className="hono-fin">{t.slice(i + 1)}<BtnAide cle="honoraires" onAide={() => setAideHono(true)} /></span>
-          </div>
-        );
-      })() : null}
       <div className="tete-f" style={{ paddingTop: 10 }}>
         <div><h3>{b.titre}</h3>
           {b.secteur && <div className="meta" style={{ color: 'var(--plume)', fontSize: 13, marginTop: 5, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -4920,6 +4925,10 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
           const faites = (visitesB as VisiteE[]).filter(v => v.passee).sort((a, c) => cle(c).localeCompare(cle(a)));
           const v = faites[0];
           const et = b.visiteFaite.etoiles || 0;
+          /* V3.196 — Alexandre : « En réflexion à côté de Visite effectuée,
+             Faire une offre à côté, sur la même ligne : ne pas créer des
+             lignes pour un mot ». */
+          const avecEtat = !b.offreSuivi && !!v && !!(v.issue || etatOffre(b));
           return (
             <div className="vf">
               <div className="vf-tete">
@@ -4928,20 +4937,21 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
                   <b>{'Visite effectuée'}</b>
                   {b.visiteFaite.date && <small>{dateLongue(b.visiteFaite.date)}</small>}
                 </span>
+                {avecEtat && v && (
+                  <span className="vf-actions">
+                    <EtiqVisite b={b} v={v} />
+                    {onFaireOffre && v.issue !== 'non' && (
+                      <button type="button" className="ofr-mini" onClick={onFaireOffre}><Ico n="euro" t={14} /><span>{v.issue === 'offre' ? 'Préparer mon offre moi-même' : 'Faire une offre'}</span></button>
+                    )}
+                  </span>
+                )}
               </div>
               {/* V3.189 : son offre, avec tout son historique ; sinon son avis,
                   et « Faire une offre » tant qu'aucune ne court. */}
               {b.offreSuivi
                 ? <CarteOffre o={b.offreSuivi} indispo={indispo(b)} historique {...(actionsOffre || {})} />
-                : v && (v.issue || etatOffre(b))
-                  ? (
-                    <div className="vf-etat">
-                      <EtiqVisite b={b} v={v} /><EtatVisite b={b} v={v} />
-                      {onFaireOffre && v.issue !== 'non' && (
-                        <button type="button" className="ofr-mini" onClick={onFaireOffre}><Ico n="euro" t={14} /><span>{v.issue === 'offre' ? 'Préparer mon offre moi-même' : 'Faire une offre'}</span></button>
-                      )}
-                    </div>
-                  )
+                : avecEtat && v
+                  ? <div className="vf-etat"><EtatVisite b={b} v={v} enLigne /></div>
                   : v && onRepondreVisite ? <AvisVisite v={v} onRepondre={onRepondreVisite} sansSuite={indispo(b)} onFaireOffre={onFaireOffre} /> : null}
               {b.visiteFaite.commentaire ? (
                 <div className="cpr" ref={refCr}>
@@ -4953,7 +4963,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
                   <TexteCR texte={b.visiteFaite.commentaire} />
                   <div className="cpr-sign">
                     <span className="cpr-av" aria-hidden="true">AR</span>
-                    <span><b>{AGENT.nom}</b><small>{'Votre conseiller'}</small></span>
+                    <span><b>{AGENT.nom}</b><small>{' · Votre conseiller'}</small></span>
                   </div>
                 </div>
               ) : (
@@ -7001,7 +7011,7 @@ input, textarea, select{font-family:inherit}
 .ape-c .lien-ap{color:var(--or-fonce); word-break:break-all}
 .err{margin-top:8px; font-size:12.5px; font-weight:700; color:var(--brique)}
 .mention{font-size:12.5px; color:var(--plume-clair); text-align:center; margin-bottom:0}
-.bandeau-prix{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:16px 20px 0}
+.bandeau-prix{display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; column-gap:12px; row-gap:5px; padding:16px 20px 0}
 
 /* — la correspondance avec la recherche —
    Une carte qui s'ouvre sur son détail. L'or ne marque que la note. */
@@ -7072,8 +7082,14 @@ input, textarea, select{font-family:inherit}
 .vf-tt{display:flex; flex-direction:column; gap:1px; min-width:0}
 .vf-tt b{font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; color:var(--encre)}
 .vf-tt small{font-size:13px; font-weight:600; color:var(--plume)}
-.vf-etat{display:flex; flex-direction:column; align-items:flex-start; gap:8px}
+.vf-tete{flex-wrap:wrap; row-gap:10px}
+.vf-actions{margin-left:auto; display:flex; align-items:center; flex-wrap:wrap; gap:8px}
+.vf-actions .ofr-mini{margin-top:0}
+.vf-etat{display:flex; flex-direction:column; align-items:flex-start; gap:6px}
 .vf-etat .vv-ligne{margin-top:0}
+.vf-etat .vv-lu, .vf-etat .vv-mot{margin-top:2px !important}
+.vv-src-in{font-size:12px; font-weight:700; color:var(--plume-clair); white-space:nowrap}
+@media(max-width:560px){ .vf-actions{margin-left:0; flex:1 1 100%} }
 .vf-attente{display:flex; align-items:center; gap:9px; padding:11px 13px; border-radius:13px; background:var(--fond); color:var(--plume); font-size:13.5px; line-height:1.5; scroll-margin-top:72px}
 .vf-attente svg{flex-shrink:0}
 .cpr{display:flex; flex-direction:column; gap:12px; padding:14px 15px 13px; border-radius:15px; background:linear-gradient(180deg,#FFFBF5,#fff 70%); border:1px solid var(--or-trait); scroll-margin-top:72px}
@@ -7091,9 +7107,9 @@ input, textarea, select{font-family:inherit}
 .cpr-pc::before{content:''; width:7px; height:7px; border-radius:50%; background:var(--or)}
 .cpr-puces li[data-plus] .cpr-pc{background:var(--vert-fond); color:var(--vert); border:1px solid var(--vert-trait)}
 .cpr-puces li[data-plus] .cpr-pc::before{display:none}
-.cpr-sign{display:flex; align-items:center; gap:10px; padding-top:11px; border-top:1px solid #F3E6D4}
-.cpr-av{flex:0 0 auto; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--marque); color:#fff; font-size:12.5px; font-weight:800; letter-spacing:.5px}
-.cpr-sign > span:last-child{display:flex; flex-direction:column; min-width:0}
+.cpr-sign{display:flex; align-items:center; gap:9px; padding-top:10px; border-top:1px solid #F3E6D4}
+.cpr-av{flex:0 0 auto; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--marque); color:#fff; font-size:11px; font-weight:800; letter-spacing:.4px}
+.cpr-sign > span:last-child{min-width:0; line-height:1.4}
 .cpr-sign b{font-size:14px; font-weight:800; color:var(--encre)}
 .cpr-sign small{font-size:12.5px; font-weight:600; color:var(--plume)}
 /* V3.193 : « Où en est Alexandre » sur la fiche, et sa ligne sur la carte.
@@ -7147,7 +7163,9 @@ input, textarea, select{font-family:inherit}
 .bandeau-prix .m2{font-size:12.5px; color:var(--plume-clair); font-weight:700}
 .bandeau-prix .nv{position:relative; display:inline-block; padding-right:22px}
 .bandeau-prix .nv .aide-pt{position:absolute; right:0; top:4px}
-.hono-l{padding:5px 20px 0; font-size:12px; line-height:1.45; color:var(--plume); font-weight:600}
+.hono-l{font-size:12px; line-height:1.45; color:var(--plume); font-weight:600}
+/* V3.196 : dans le bandeau du prix — dessous (téléphone), à côté (ordinateur). */
+.bandeau-prix .hono-l{order:3; flex:1 0 100%}
 .hono-fin{white-space:nowrap}
 .hono-l .aide-pt{margin-left:5px; vertical-align:middle; position:relative; top:-1px}
 .bien .hono-c{display:block; font-size:11.5px; color:var(--plume); font-weight:600; margin-top:3px}
@@ -7471,7 +7489,8 @@ label.lab{display:block; font-size:10px; letter-spacing:1.3px; text-transform:up
   .feuille.fiche .compteur{top:14px; left:66px; right:auto}
   .feuille.fiche .points{display:none}
   .feuille.fiche .bandeau-prix{padding:22px 26px 0}
-  .feuille.fiche .hono-l{padding:5px 26px 0}
+  .feuille.fiche .bandeau-prix .hono-l{order:2; flex:1 1 220px; font-size:13px}
+  .feuille.fiche .bandeau-prix .m2{order:3}
   .feuille.fiche .tete-f{padding:14px 26px 12px}
   .feuille.fiche .corps-f{padding:0 26px}
   .feuille.fiche .corps-f .txt{max-width:74ch}
