@@ -9,6 +9,7 @@ import { telAgence } from '@/lib/rapprochement';
 import FenetreBien, { LigneListe, BoutonPied, Ressort, ChampPied, InfoPied } from './FenetreBien';
 import { champsChauffage } from '@/lib/chauffage';
 import AnnoncesClient, { type AnnonceCrm } from './AnnoncesClient';
+import PropositionsAgences from './PropositionsAgences';
 
 /**
  * Onglet Veille — les biens trouvés par la veille, en attente d'arbitrage.
@@ -218,6 +219,8 @@ export default function OngletVeille({ clientId, rechercheId, onChange, prenom, 
         <AnnoncesClient clientId={clientId} rechercheId={rechercheId} prenom={prenom} rafraichir={rafraichir}
           recherche={recherche} analyser={analyser} onRemplir={onRemplir} onChange={onChange} />
       )}
+      {/* V3.197 : les biens proposés par les agences, par le lien de la recherche. */}
+      <PropositionsAgences clientId={clientId} rechercheId={rechercheId} recherche={recherche} onChange={onChange} />
 
       <div className="emi-arrivee" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>

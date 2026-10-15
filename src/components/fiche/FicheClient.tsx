@@ -998,13 +998,16 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     if (!rechercheId) { setVeilleCount(0); return; }
     /* V3.184 : plus les annonces que le client a envoyées, pas encore vues
        (sans la table, la lecture échoue sans bruit). */
-    const [{ count }, an] = await Promise.all([
+    /* V3.197 : plus les biens proposés par les agences (même règle sans la table). */
+    const [{ count }, an, ag] = await Promise.all([
       supabase.from('veille_propositions').select('id', { count: 'exact', head: true })
         .eq('recherche_id', rechercheId).eq('statut', 'nouveau'),
       supabase.from('annonces_client').select('id', { count: 'exact', head: true })
         .eq('recherche_id', rechercheId).eq('statut', 'nouveau'),
+      supabase.from('propositions_agences').select('id', { count: 'exact', head: true })
+        .eq('recherche_id', rechercheId).eq('statut', 'nouveau'),
     ]);
-    setVeilleCount((count || 0) + (an.error ? 0 : an.count || 0));
+    setVeilleCount((count || 0) + (an.error ? 0 : an.count || 0) + (ag.error ? 0 : ag.count || 0));
   }, [rechercheId]);
 
   useEffect(() => { chargerVeilleCount(); }, [chargerVeilleCount]);
