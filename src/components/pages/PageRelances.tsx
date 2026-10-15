@@ -138,6 +138,8 @@ function origineDe(r: any, typeAction?: string | null): Origine {
   if (r.type === 'auto') return { lib: 'Biens présentés', ico: 'envoi' };
   if (r.type === 'message_client' && String(r.note || '').startsWith('Annonce envoyée')) return { lib: 'Annonce du client', ico: 'bulle' };
   if (r.type === 'message_client') return { lib: 'Message du client', ico: 'bulle' };
+  /* V3.197 : un bien arrivé par le lien pour les agences (api/agences/proposer). */
+  if (String(r.note || '').startsWith('Bien proposé par')) return { lib: 'Proposé par une agence', ico: 'envoi', fort: true };
   const pre = prefixeDe(r.note);
   if (pre) return pre.o;
   if (estRelanceOffre(r.note)) {
