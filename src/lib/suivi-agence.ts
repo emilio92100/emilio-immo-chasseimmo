@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { verifie } from '@/lib/ecritures';
 
 /* ═══ Le suivi avec l'agence, sous chaque bien présenté (V3.182) ═══════════
    Alexandre : « un truc interne pour moi : qui je dois contacter, le compte
@@ -124,6 +125,34 @@ export function contactDu(b: any, lignes: LigneSuivi[]): ContactSuivi & { avec: 
     tel: c.tel || texteOuNull(b?.agence_tel) || undefined,
     email: c.email,
   };
+}
+
+/** « 9:30 », « 09:30:00 » → « 09:30 » : l'heure d'un créneau et celle d'une visite se comparent. */
+export function heureNette(h: unknown): string {
+  const [a, b] = String(h || '').split(':');
+  return a ? `${a.padStart(2, '0')}:${String(b || '00').slice(0, 2).padStart(2, '0')}` : '';
+}
+/** Ce créneau est celui de la visite calée. */
+export function creneauDeLaVisite(c: Creneau, v: VisiteCalee | undefined): boolean {
+  return !!v && String(v.date_visite || '').slice(0, 10) === c.date && heureNette(v.heure) === heureNette(c.heure);
+}
+
+/* ── L'adresse exacte (V3.192) ──
+   Alexandre : « où est-ce que je valide l'adresse exacte, si l'adresse sortie
+   de la veille n'est pas bonne ? Et qu'elle se mette à jour aussi dans la
+   proposition de la veille ». Le bien prend l'adresse ; la proposition de la
+   veille dont il vient aussi (la veille s'en sert pour le reconnaître quand
+   il revient sous un autre lien). Rend false si le bien n'a pas pu la prendre. */
+export async function corrigerAdresse(bienId: string, adresse: string): Promise<boolean> {
+  const a = adresse.trim();
+  if (!a) return true;
+  const ok = await verifie('L’adresse du bien', supabase.from('biens').update({ adresse: a }).eq('id', bienId).select('id'), { ligne: true });
+  if (ok) await reporterAdresseVeille(bienId, a);
+  return ok;
+}
+/** La même adresse sur la proposition de la veille d'où vient le bien (s'il en vient). */
+export async function reporterAdresseVeille(bienId: string, adresse: string | null) {
+  await verifie('L’adresse dans la proposition de la veille', supabase.from('veille_propositions').update({ adresse: adresse || null }).eq('bien_id', bienId).select('id'));
 }
 
 /** Le contact en une ligne, pour la visite (« Contact agence / vendeur »). */
