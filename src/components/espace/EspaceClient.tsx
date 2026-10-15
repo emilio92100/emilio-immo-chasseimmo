@@ -17,6 +17,7 @@ import { CarteAnnonce, EnvoiAnnonce, ListeAnnonces, CSS_ANNONCES, type ResultatE
 import type { AnnonceEspace } from '@/lib/annonces-client';
 import FaireOffre, { CarteOffre, CarteOffreAccueil, offreAAccueil, phraseOffre, libelleOffre, ETIQ_TON, CSS_OFFRE, type BienOffre, type HonoOffre, type ModeOffre } from './FaireOffre';
 import { ETATS_CLIENT, FINIES, type OffreEspace, type SaisieOffre } from '@/lib/offres';
+import type { SuiviClient } from '@/lib/suivi-client';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -72,6 +73,9 @@ type Bien = {
      serveur refait), et son offre du moment (src/lib/offres-serveur.ts). */
   honoOffre?: HonoOffre;
   offreSuivi?: OffreEspace | null;
+  /* V3.193 : « Où en est Alexandre » — les étapes tirées de ses appels, et
+     son mot (src/lib/suivi-client.ts). Jamais ce qui a été dit, ni l'agence. */
+  suivi?: SuiviClient | null;
 };
 const motVente = (v: NonNullable<Bien['vente']>) => (v.vous ? (v.etat === 'vendu' ? 'Votre achat' : 'Votre compromis')
   : v.etat === 'vendu' ? 'Vendu' : v.etat === 'retire' ? 'Plus en vente' : v.etat === 'pause' ? 'En pause' : 'Sous compromis');
@@ -3332,6 +3336,11 @@ function Liste({ biens, onOuvrir, vide, sansEtiq, crit }: { biens: Bien[]; onOuv
                   <span className="mc-c">{`« ${b.avisConseiller} »`}</span>
                 </span>
               )}
+              {/* V3.193 : où en est Alexandre, d'un coup d'œil (le détail est sur la fiche). */}
+              {b.suivi && !b.suivi.calee && (() => {
+                const e = b.suivi.etapes.find(x => x.etat === 'encours');
+                return e ? <span className="suivi-l"><span className="suivi-pt" aria-hidden="true" /><span>{e.t}</span></span> : null;
+              })()}
               {b.visitePrevue && !b.visiteFaite && (
                 <span className="rdv-l"><Ico n="calendrier" t={13} />
                   Visite le {dateCourte(b.visitePrevue.date)}
@@ -4541,6 +4550,53 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
    carte, et en bas trois grands boutons de réponse à la place de la barre
    « Qu'en pensez-vous ? ». `colonne` : sur ordinateur, elle prend la colonne
    de droite — les photos restent à gauche, la galerie n'est pas répétée. */
+/* ══ V3.193 : « Où en est Alexandre », sur la fiche du bien ══════════════
+   Alexandre : « que le client voie que je travaille dessus ». Des étapes
+   neutres (« Alexandre a laissé un message au vendeur »), la dernière en
+   cours, et son mot quand il en écrit un. Maquettes validées le 15 octobre
+   (canvas « Son suivi visible par le client », A + B). */
+const debutJour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+function quandEtape(iso?: string) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const j = Math.round((debutJour(new Date()) - debutJour(d)) / 86400000);
+  if (j === 0) return 'Aujourd’hui';
+  if (j === 1) return 'Hier';
+  return `Le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+}
+function OuEnEst({ s }: { s: SuiviClient }) {
+  return (
+    <div className="oe">
+      <div className="oe-tete">
+        <span className="oe-t">{'Où en est Alexandre'}</span>
+        <span className={'oe-b' + (s.calee ? ' oe-ok' : '')}>{s.calee ? 'Visite calée' : 'En cours'}</span>
+      </div>
+      <ol className="oe-fil">
+        {s.etapes.map((e, i) => {
+          const quand = e.etat !== 'avenir' ? quandEtape(e.le) : '';
+          return (
+            <li key={i} className={'oe-e oe-' + e.etat}>
+              <span className="oe-p" aria-hidden="true">{e.etat === 'fait' ? <Ico n="check" t={13} /> : e.etat === 'encours' ? <span className="oe-pt" /> : null}</span>
+              <span className="oe-c">
+                <b>{e.t}</b>
+                {(quand || e.sous) && <small>{[quand, e.sous].filter(Boolean).join(' · ')}</small>}
+                {e.mot && (
+                  <span className="oe-mot">
+                    <i>{'Le mot d’Alexandre'}</i>
+                    <span>{`« ${e.mot} »`}</span>
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="oe-pied">{'Les étapes se mettent à jour à chaque appel d’Alexandre.'}</p>
+    </div>
+  );
+}
+
 function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, visitesB = [], onRepondreVisite, decouverte, onFaireOffre, actionsOffre }: any) {
   const dec = decouverte as ActionsFiche | undefined;
   /* ⚠️ `avis` vient de `badge_retour`, et un bien présenté mais sans réponse
@@ -4772,6 +4828,7 @@ function FicheBien({ b, client, crit, onFermer, onAvis, onPartager, onCarte, vis
             {b.sonMot && <span><i>{'Votre mot\u00a0: '}</i>{`«\u00a0${b.sonMot}\u00a0»`}</span>}
           </div>
         )}
+        {b.suivi && <OuEnEst s={b.suivi} />}
         {corr && (
           <button type="button" className="corresp" onClick={() => setVoirCorr(true)}>
             <AnneauNote note={corr.note} />
@@ -6908,6 +6965,35 @@ input, textarea, select{font-family:inherit}
 .ruban-vente{position:absolute; top:10px; left:10px; z-index:2; padding:5px 10px; border-radius:99px; background:rgba(19,36,61,.88); color:#fff; font-size:12px; font-weight:800; letter-spacing:.2px}
 .ruban-vente.vous{background:var(--or); color:#13243D}
 .avis-vente{display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:14px; background:#F2F5F9; color:#13243D; font-size:14px; line-height:1.5; margin-bottom:14px}
+/* V3.193 : « Où en est Alexandre » sur la fiche, et sa ligne sur la carte.
+   ⚠️ Classes préfixées : l'espace a déjà .fait (un bloc) et d'autres mots courts. */
+.oe{display:flex; flex-direction:column; gap:12px; margin:0 0 16px; padding:15px 15px 13px; border-radius:18px; background:#fff; border:1px solid var(--trait); box-shadow:0 10px 26px -20px rgba(19,36,61,.5)}
+.oe-tete{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.oe-t{font-size:11.5px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--plume)}
+.oe-b{flex-shrink:0; font-size:12px; font-weight:700; color:var(--or-fonce); background:var(--or-fond); border:1px solid var(--or-trait); border-radius:99px; padding:3px 10px}
+.oe-b.oe-ok{color:var(--vert); background:var(--vert-fond); border-color:var(--vert-trait)}
+.oe-fil{list-style:none; margin:0; padding:0; display:flex; flex-direction:column}
+.oe-e{position:relative; display:flex; gap:12px; padding-bottom:14px}
+.oe-e:last-child{padding-bottom:0}
+.oe-e::before{content:''; position:absolute; left:12px; top:28px; bottom:2px; width:2px; border-radius:2px; background:var(--trait)}
+.oe-e.oe-fait::before{background:var(--vert-trait)}
+.oe-e:last-child::before{display:none}
+.oe-p{flex:0 0 auto; width:26px; height:26px; border-radius:50%; box-sizing:border-box; display:flex; align-items:center; justify-content:center; background:#fff; border:2px solid #D5DDE8; position:relative; z-index:1}
+.oe-e.oe-fait .oe-p{background:var(--vert); border-color:var(--vert); color:#fff}
+.oe-e.oe-encours .oe-p{border:3px solid var(--or)}
+.oe-pt{width:8px; height:8px; border-radius:50%; background:var(--or)}
+.oe-c{display:flex; flex-direction:column; gap:2px; min-width:0; padding-top:3px}
+.oe-c > b{font-size:14.5px; font-weight:700; line-height:1.35; color:var(--encre)}
+.oe-e.oe-encours .oe-c > b{font-weight:800; color:var(--or-fonce)}
+.oe-e.oe-avenir .oe-c > b{color:#8592A6}
+.oe-c > small{font-size:12.5px; font-weight:600; line-height:1.45; color:var(--plume)}
+.oe-e.oe-avenir .oe-c > small{color:#8592A6}
+.oe-mot{display:flex; flex-direction:column; gap:4px; margin-top:6px; padding:10px 12px; border-radius:13px; background:#FFF8EF; border:1px solid #F7DDBC}
+.oe-mot i{font-style:normal; font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:var(--or-fonce)}
+.oe-mot > span{font-size:14px; font-weight:600; line-height:1.55; color:var(--encre); overflow-wrap:anywhere}
+.oe-pied{margin:0; padding-top:10px; border-top:1px solid #EEF2F7; font-size:12.5px; line-height:1.5; color:var(--plume)}
+.suivi-l{display:flex; align-items:center; gap:7px; margin-top:9px; font-size:12.5px; font-weight:700; line-height:1.35; color:var(--or-fonce)}
+.suivi-pt{flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:var(--or)}
 /* V3.164 : le mot du conseiller sur un bien plus disponible. */
 .mot-indispo{display:flex; flex-direction:column; gap:4px; margin:-6px 0 14px; padding:11px 14px; border-radius:14px; background:white; border:1px solid #E3E8F0; border-left:3px solid var(--or); color:#13243D; font-size:14px; line-height:1.55}
 .mot-indispo i{font-style:normal; font-size:11.5px; font-weight:700; letter-spacing:.3px; text-transform:uppercase; color:#8592A6}
