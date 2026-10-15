@@ -1515,6 +1515,36 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.200 — 15 octobre 2026 · La fenêtre du lien, large et rangée
+
+- Alexandre : « que ce soit plus joli, que je comprenne à qui ça a été envoyé, une fonction
+  dépliée ». Maquettes 9 et 10 du canevas « Le lien pour les agences », validées.
+- `FenetreLien` (src/components/fiche/PropositionsAgences.tsx) : sur ordinateur, 1 000 px de
+  large, deux colonnes qui défilent chacune : à gauche le lien (« Copier »), « Ce que l'agence
+  voit » en pastilles, « Le mail » (aperçu réel du mail, `mailLienAgence` dans une iframe sans
+  script) / « Le SMS » (le message, modifiable, « Copier »), « Couper ce lien » ; à droite « Ses
+  agences » en trois parties qui se déplient : « À contacter » (ouverte ; d'où le CRM la connaît
+  — `ORIGINES`), « Déjà contactées » (« Lien envoyé le 13 oct. à 14 h 20 par mail », « Renvoyer
+  le mail »), « Ont proposé des biens » ; une petite explication dans chaque partie ; « Une autre
+  agence » replié derrière un bouton ; en tête « 2 contactées · 3 biens reçus ». Téléphone : une
+  colonne (`.flGauche { display: contents }` et `order`) : le lien, ses agences, puis le reste.
+- `agencesDuClient` rend `origine` (bien présenté, Sélection, suivi, Veille, proposition, envoi).
+- Mail du lien : le badge « RECHERCHE ACQUÉREUR » se cache sous 380 px.
+
+### V3.199 — 15 octobre 2026 · Les mails sans l'adresse technique du CRM
+
+- Alexandre : « le mail que j'ai envoyé arrive en spam alors que tout a été validé chez OVH ».
+  Les réglages OVH étaient bons ; le logo et les icônes venaient de « …vercel.app », un domaine
+  partagé dont les filtres se méfient. `IMAGES_MAIL` (src/lib/mail-charte.ts,
+  `NEXT_PUBLIC_MAIL_IMAGES_URL`, sinon https://espace.emilio-immo.com) sert désormais le logo de
+  TOUS les mails (`LOGO_BLANC_MAIL` : send-mail, mail libre, point automatique, enveloppe des mails
+  courts) et les icônes du mail aux agences ; le bouton d'un client sans espace mène à
+  espace.emilio-immo.com (send-mail, `ESPACE_URL`). Mail du lien : plus de texte caché.
+- Testé sur mail-tester le 15 octobre, envois réels depuis le CRM : mail du lien **9,8/10**,
+  « Nouveau mail » style Emilio (court) **9,1/10** ; SPF, DKIM, DMARC « pass », aucune liste
+  noire. Reste : `HEADER_FROM_DIFFERENT_DOMAINS` (adresse de rebond Mailjet, −0,25) et, pour un
+  message très court avec logo, `HTML_IMAGE_ONLY_28` (−0,7).
+
 ### V3.198 — 15 octobre 2026 · Le lien pour les agences : envoyer, se souvenir, reconnaître
 
 - Pas de SQL. Maquettes 5 à 8 du canevas « Le lien pour les agences », validées.
