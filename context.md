@@ -1515,6 +1515,36 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.191 — 15 octobre 2026 · Une agence qui rappelle : retrouvée par son numéro
+
+- Alexandre : « je vais appeler plusieurs agences pour un seul client, et m'occuper d'autres
+  clients. Si une agence me rappelle un jour plus tard, retrouver l'annonce en un seul clic… je
+  connaîtrai juste le numéro de l'agence ». Rien à enregistrer : le numéro est déjà dans le CRM —
+  sur le bien (`biens.agence_tel`), sur une proposition de la veille (`veille_propositions.agence_tel`),
+  et dans « Noter un appel » (`suivis_agence.contact.tel`, avec la personne).
+- `src/lib/agences-suivies.ts` : `lireBiensSuivis(sb)` rassemble, bien par bien, l'agence (la
+  dernière notée dans le suivi, sinon celle de l'annonce, comme `contactDu`), les personnes, les
+  numéros (`numerosDans` : « 01 46… / 06… », « +33 (0)1… »), où il en est (Veille, Sélection,
+  Présentés + son retour) et le dernier appel ; `parBoutDeNumero`, `parNumero` (9 derniers
+  chiffres), `parNom` (au moins un mot dans un nom : une ville ou une rue seule ne sort rien, choix
+  du 26 septembre), `lienFiche`.
+- **Recherche du haut** (Topbar) : sous les contacts, « Biens de vos clients · par l'agence » — le
+  bien, le numéro et l'agence, pour qui et où il en est, le dernier appel ; six au plus, les biens
+  qui ont un suivi d'abord, puis les plus récents. Un clic ouvre la fiche du client au bon onglet,
+  le bien en grand (son suivi avec l'agence dessous) : `demanderOuvertureFiche({ …, bienId, enGrand })`,
+  `vise` + `viseEnGrand` (OngletBiens, Sélection et Présentés), `vise` (OngletVeille). La fiche du
+  même client déjà ouverte est remontée (AppLayout, `navN`) pour lire la demande. Placeholder :
+  « Rechercher un contact, une agence, un numéro… ».
+- **Ringover** (« Contact Call ») : un numéro qui n'est pas un contact peut être une agence —
+  `agencePour` (ringover-serveur.ts) répond avec l'agence, la personne, les biens (trois au plus,
+  « pour <client> — Présentés · Ça lui plaît ») et le dernier contact ; le lien ouvre la fiche sur ce
+  bien : `/?page=fiche&client=…&onglet=…&recherche=…&bien=…`, lu une fois par `prendreOuvertureUrl`
+  (intentions.ts) puis l'adresse redevient celle de la fiche. Un contact non acheteur dont le numéro
+  est aussi celui d'une agence : ses biens s'ajoutent, le lien ouvre le premier. Gardé une minute,
+  comme les contacts. Essai sans téléphoner : `/api/ringover/contact?numero=01…` (connecté au CRM).
+- Limite : un numéro noté nulle part (le portable perso de l'agent) ne trouve rien — le nom de
+  l'agence ou de la personne, si.
+
 ### V3.190 — 14 octobre 2026 · L'offre d'achat sur un bien de son mandat, le même circuit
 
 - Alexandre : « même si c'est un mandat que j'ai, et que le bien est présenté, et qu'ensuite visite,
