@@ -11,7 +11,7 @@ import {
   lienAgences, messageAgence, quiPropose, resumePourAgence, tableAgencesAbsente, type PropositionAgence,
 } from '@/lib/agences-lien';
 import {
-  ORIGINES, agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterContact, noterEnvoi,
+  ORIGINES, agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterContact, noterEnvoi,
   type AgenceConnue, type Canal, type Destinataire, type Jeton,
 } from '@/lib/lien-agences-envois';
 import { mailLienAgence } from '@/lib/mail-agence';
@@ -39,6 +39,14 @@ import a from './PropositionsAgences.module.css';
  * que celui qu'Alexandre a déjà (son dossier, la Veille, une annonce du
  * client, une autre agence) est rapproché par sa surface, sa ville, ses
  * pièces et son prix (src/lib/meme-bien.ts). Une ligne le dit sur la carte.
+ *
+ * V3.202 — Le PDF (maquette 14) : sa première page en image, « PDF · 4 p. »,
+ * « Ouvrir le PDF » (un lien de quelques minutes, api/lien-agences/pdf) ;
+ * « Lecture du PDF… » le temps que le serveur le lise, « Lire le PDF » s'il
+ * n'y est pas arrivé. « Après ton mail du 14 oct. » : la proposition est
+ * venue par le lien qu'Alexandre a envoyé à cette personne (le code).
+ * Dans la fenêtre du lien, chaque envoi à une personne précise porte son
+ * code ; « Copier le lien » reste le lien simple.
  */
 
 const couleurNote = (n: number) => (n >= 85 ? '#16a34a' : n >= 70 ? OR : n >= 50 ? '#d97706' : '#dc2626');
@@ -57,6 +65,28 @@ function quandPropose(iso: string) {
 }
 
 type EtatAnalyse = { etat: 'encours' } | { etat: 'erreur'; erreur: string };
+
+/* V3.202 */
+const lienPdf = (id: string) => `/api/lien-agences/pdf?id=${encodeURIComponent(id)}`;
+const taillePdf = (o: number) => (o < 1024 * 1024 ? `${Math.max(1, Math.round(o / 1024))} Ko` : `${(o / 1024 / 1024).toFixed(1).replace('.', ',')} Mo`);
+/** « Après ton mail du 14 oct. » */
+function phraseEnvoi(e: PropositionAgence['envoi']): string | null {
+  if (!e?.le) return null;
+  const d = new Date(e.le);
+  if (isNaN(d.getTime())) return null;
+  const quoi = e.canal === 'sms' ? 'ton SMS' : e.canal === 'mail' ? 'ton mail' : 'ton message';
+  return `Après ${quoi} du ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
+}
+async function relirePdf(id: string): Promise<{ ok: true; lecture: string } | { ok: false; erreur: string }> {
+  try {
+    const r = await fetch('/api/lien-agences/pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    const d = await r.json().catch(() => null) as { ok?: boolean; lecture?: string; erreur?: string } | null;
+    if (!r.ok || !d?.ok) return { ok: false, erreur: d?.erreur || `le serveur a répondu ${r.status}` };
+    return { ok: true, lecture: d.lecture || '' };
+  } catch (e) {
+    return { ok: false, erreur: (e as Error).message || 'pas de réponse' };
+  }
+}
 
 const court = (t: string) => (t.length > 64 ? `${t.slice(0, 62).trim()}…` : t);
 
@@ -146,6 +176,7 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
   const [enCours, setEnCours] = useState<string | null>(null);
   const [dit, setDit] = useState<string | null>(null);
   const [analyses, setAnalyses] = useState<Record<string, EtatAnalyse>>({});
+  const [lectures, setLectures] = useState<Record<string, EtatAnalyse>>({});
   const [grand, setGrand] = useState<{ id: string; i: number } | null>(null);
   const [messageGrand, setMessageGrand] = useState<string | null>(null);
   const [fenetreLien, setFenetreLien] = useState(false);
@@ -186,6 +217,18 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
       .update({ fiche: { ...sansAnalyse(f), ...r.analyse } }).eq('id', p.id).select('id'), { ligne: true });
     setAnalyses(m => { const x = { ...m }; if (ok) delete x[p.id]; else x[p.id] = { etat: 'erreur', erreur: 'elle n’a pas été enregistrée' }; return x; });
     await charger();
+  }
+
+  /* V3.202 — Le PDF que le serveur n'a pas lu (ou mal) : le relire, puis l'analyser. */
+  async function lirePdf(p: PropositionAgence) {
+    setLectures(m => ({ ...m, [p.id]: { etat: 'encours' } }));
+    const r = await relirePdf(p.id);
+    if (!r.ok) { setLectures(m => ({ ...m, [p.id]: { etat: 'erreur', erreur: r.erreur } })); return; }
+    setLectures(m => { const x = { ...m }; delete x[p.id]; return x; });
+    const { data } = await supabase.from('propositions_agences').select('*').eq('id', p.id).maybeSingle();
+    await charger();
+    const np = data as PropositionAgence | null;
+    if (np && (np.lecture === 'ok' || np.lecture === 'partielle') && !aUneAnalyse(np.fiche || {})) await analyser(np);
   }
 
   async function ecarter(p: PropositionAgence) {
@@ -343,6 +386,11 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
       {liste.map(p => {
         const f: Record<string, any> = p.fiche && typeof p.fiche === 'object' ? p.fiche : {};
         const vues: string[] = Array.isArray(f.photos) && f.photos.length ? f.photos.filter(Boolean) : (p.photos || []).filter(Boolean);
+        const pdf = p.pdf?.chemin ? p.pdf : null;
+        const vig = vues[0] || pdf?.apercu || null;
+        const viaEnvoi = phraseEnvoi(p.envoi);
+        const recentP = Date.now() - new Date(p.created_at).getTime() < 2 * 60_000;
+        const lec = lectures[p.id];
         const prixF = Number(f.prix_acquereur || f.prix_vendeur || p.prix) || null;
         const puces = [
           f.surface || p.surface ? `${f.surface || p.surface} m²` : null, f.nb_pieces ? `${f.nb_pieces} p.` : null,
@@ -356,15 +404,19 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
         return (
           <div key={p.id} className={s.carte} style={{ borderLeftColor: '#7c3aed' }} data-attente={enCours === p.id ? 'oui' : undefined}>
             <div className={s.haut}>
-              <span className={s.photo} data-vide={vues[0] ? undefined : 'oui'}>
-                {vues[0] ? <img src={vues[0]} alt="" loading="lazy" /> : <span className={s.sans}><Icone nom="immeuble" taille={22} /></span>}
+              <span className={`${s.photo}${!vues[0] && pdf?.apercu ? ` ${a.photoPdf}` : ''}`} data-vide={vig ? undefined : 'oui'}>
+                {vig ? <img src={vig} alt="" loading="lazy" /> : <span className={s.sans}><Icone nom="immeuble" taille={22} /></span>}
                 {vues.length > 1 && <span className={s.nbPh}><Icone nom="photos" taille={11} epaisseur={2.2} />{vues.length}</span>}
+                {pdf && !vues[0] && <span className={a.badgePdf}>{pdf.pages ? `PDF · ${pdf.pages} p.` : 'PDF'}</span>}
               </span>
               <div className={s.texte}>
                 <span className={s.ligne1}>
                   <b>{f.titre || 'Bien proposé'}</b>
                   {p.lecture === 'echec' && <span className={s.etiq} data-ton="photo">Annonce non lue</span>}
                   {p.lecture === 'sans_lien' && <span className={s.etiq} data-ton="photo">Sans lien</span>}
+                  {pdf && !p.url && (p.lecture === 'ok' || p.lecture === 'partielle') && <span className={s.etiq} data-ton="deux">Lu dans le PDF</span>}
+                  {p.lecture === 'pdf' && <span className={s.etiq} data-ton="photo">{recentP ? 'PDF en lecture' : 'PDF à lire'}</span>}
+                  {p.lecture === 'pdf_illisible' && <span className={s.etiq} data-ton="photo">PDF non lu</span>}
                   <span className={s.quand}>{quandPropose(p.created_at)}</span>
                 </span>
                 <span className={s.fiche}>
@@ -377,6 +429,7 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
                   <span>{quiPropose(p)}</span>
                   {p.tel && <a href={`tel:${p.tel.replace(/[^\d+]/g, '')}`}>{p.tel}</a>}
                   {p.email && <a href={`mailto:${p.email}`}>{p.email}</a>}
+                  {viaEnvoi && <small className={a.via}>{viaEnvoi}</small>}
                 </span>
                 {ligneMeme(p.id)}
                 {p.mot && <span className={a.motA}><i>Son mot</i><span>{`« ${p.mot} »`}</span></span>}
@@ -385,12 +438,33 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
                     ? `${site?.nom || 'Le site'} n’a pas laissé lire l’annonce : ouvre-la pour voir le détail. Retenu, le bien part avec ce que l’agence a écrit.`
                     : 'Pas d’annonce en ligne : ses photos et ce qu’elle a écrit.'}</span>
                 )}
+                {(p.lecture === 'pdf' || p.lecture === 'pdf_illisible') && (
+                  lec?.etat === 'encours' || (p.lecture === 'pdf' && recentP && !lec) ? (
+                    <div className={s.analyse} data-etat="encours" role="status"><span className={s.rond} aria-hidden="true" />
+                      <span>{lec ? 'Lecture du PDF… (une vingtaine de secondes)' : 'Lecture du PDF en cours sur le serveur… rouvre l’onglet dans un instant.'}</span></div>
+                  ) : (
+                    <div className={s.analyse} data-etat={lec?.etat === 'erreur' || p.lecture === 'pdf_illisible' ? 'erreur' : undefined}>
+                      <Icone nom={p.lecture === 'pdf_illisible' ? 'alerte' : 'doc'} taille={15} epaisseur={2.1} />
+                      <span>{lec?.etat === 'erreur' ? `La lecture du PDF n’a pas marché : ${lec.erreur}`
+                        : p.lecture === 'pdf_illisible' ? 'Le PDF n’a pas pu être lu automatiquement : ouvre-le. Retenu, le bien part avec ce que l’agence a écrit.'
+                          : 'Le PDF n’a pas encore été lu.'}</span>
+                      <button type="button" className={s.relancer} onClick={() => { void lirePdf(p); }}>{p.lecture === 'pdf_illisible' ? 'Relire le PDF' : 'Lire le PDF'}</button>
+                    </div>
+                  )
+                )}
                 {(p.lecture === 'ok' || p.lecture === 'partielle') && blocAnalyse(p, f)}
+                {pdf && (
+                  <a className={a.lignePdf} href={lienPdf(p.id)} target="_blank" rel="noopener noreferrer">
+                    <Icone nom="doc" taille={15} epaisseur={2.1} /><b>{pdf.nom}</b>
+                    <span>{[pdf.pages ? `${pdf.pages} page${pdf.pages > 1 ? 's' : ''}` : null, taillePdf(pdf.taille)].filter(Boolean).join(' · ')}</span>
+                  </a>
+                )}
                 {p.url && <a className={s.url} href={p.url} target="_blank" rel="noopener noreferrer" title={p.url}>{lienCourt(p.url)}</a>}
               </div>
             </div>
             <div className={s.pied}>
               {p.url && <a className={s.bouton} href={p.url} target="_blank" rel="noopener noreferrer"><Icone nom="lien" taille={15} epaisseur={2} />Ouvrir l’annonce</a>}
+              {p.pdf?.chemin && <a className={s.bouton} href={lienPdf(p.id)} target="_blank" rel="noopener noreferrer"><Icone nom="doc" taille={15} epaisseur={2} />Ouvrir le PDF</a>}
               <button type="button" className={s.bouton} onClick={() => ouvrir(p.id)}><Icone nom="agrandir" taille={15} epaisseur={2} />Voir en grand</button>
               {p.tel && <a className={s.bouton} href={`tel:${p.tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={15} epaisseur={2} />{prenom ? `Appeler ${prenom}` : 'Appeler'}</a>}
               <span className={s.ressort} />
@@ -408,7 +482,8 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
         <div key={p.id} className={s.ecartee}>
           <span className={s.ecTitre}>{p.fiche?.titre || 'Bien proposé'}</span>
           <span className={s.ecRep}>{`${quiPropose(p)} · ${quandPropose(p.created_at)}`}</span>
-          {p.url && <a className={s.ecLien} href={p.url} target="_blank" rel="noopener noreferrer">Voir</a>}
+          {p.url ? <a className={s.ecLien} href={p.url} target="_blank" rel="noopener noreferrer">Voir</a>
+            : p.pdf?.chemin ? <a className={s.ecLien} href={lienPdf(p.id)} target="_blank" rel="noopener noreferrer">Le PDF</a> : null}
           <button type="button" className={s.ecLien} onClick={() => { void remettre(p); }}>Remettre</button>
         </div>
       ))}
@@ -427,6 +502,7 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
                 <i>{`Proposé par ${quiPropose(p)} · ${quandPropose(p.created_at)}`}</i>
                 {p.mot ? <span>{`« ${p.mot} »`}</span> : <span className={s.vide}>Pas de mot.</span>}
                 {(p.tel || p.email) && <small>{[p.tel, p.email].filter(Boolean).join(' · ')}</small>}
+                {p.pdf?.chemin && <a className={a.lignePdf} href={lienPdf(p.id)} target="_blank" rel="noopener noreferrer"><Icone nom="doc" taille={15} epaisseur={2.1} /><b>{p.pdf.nom}</b><span>Ouvrir le PDF</span></a>}
                 {ligneMeme(p.id)}
               </div>
             );
@@ -495,7 +571,9 @@ type Partie = 'contacter' | 'contactees' | 'proposees';
    Sans `nomFixe`, le nom de l'agence se tape aussi (« Une autre agence »).
    Au moins un portable ou un mail ; un fixe s'enregistre, sans SMS. */
 type ActionsContact = {
-  envoiMail: string | null; cle: string; message: string;
+  envoiMail: string | null; cle: string;
+  /** V3.202 : le message pour CETTE personne (son prénom, le lien avec son code) */
+  pour: (d: Destinataire) => string;
   onMail: (d: Destinataire) => Promise<boolean>; onSms: (d: Destinataire) => Promise<void>; onEnregistrer: (d: Destinataire) => Promise<boolean>;
 };
 function FormContact({ nomFixe, initial, actions, onFini, onAnnuler }: {
@@ -541,7 +619,7 @@ function FormContact({ nomFixe, initial, actions, onFini, onAnnuler }: {
       <p className={a.flFormAide} data-erreur={erreur ? 'oui' : undefined}>{aide}</p>
       <div className={a.flFormBtns}>
         {mobile && (
-          <a className={a.flBtn} data-ton={mailOk ? 'doux' : undefined} href={lienSms(t, messagePour(actions.message, dest.interlocuteur))}
+          <a className={a.flBtn} data-ton={mailOk ? 'doux' : undefined} href={lienSms(t, actions.pour(dest))}
             onClick={e => { if (!verifier()) { e.preventDefault(); return; } void actions.onSms(dest).then(onFini); }}>
             <Icone nom="mobile" taille={15} epaisseur={2.1} />Envoyer par SMS
           </a>
@@ -570,7 +648,7 @@ function LigneAgence({ g, partie, edition, onEdition, actions, onCopier }: {
 }) {
   const dest: Destinataire = { nom: g.nom, interlocuteur: g.interlocuteur, tel: g.tel, email: g.email };
   const mobile = !!g.tel && estMobile(g.tel);
-  const msg = messagePour(actions.message, g.interlocuteur);
+  const msg = actions.pour(dest);
   const dernier = g.envois[0];
   const re = partie !== 'contacter' && !!dernier;
   const [fond, encre] = teinte(g.nom);
@@ -744,6 +822,23 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
   const [secours, setSecours] = useState<{ dest: Destinataire; erreur: string } | null>(null);
   const minuteurDit = useRef<number | undefined>(undefined);
   const pour = String(prenom || '').trim();
+  /* V3.202 — « Montrer ses précisions aux agences » : une copie (recherches.precisions_agences),
+     que les agences lisent ; ses précisions (recherches.notes) ne bougent pas. `null` : cachées. */
+  const notes = String(recherche?.notes || '').trim();
+  const [precAg, setPrecAg] = useState<string | null>(null);
+  const [precOuvert, setPrecOuvert] = useState(false);
+  const [precTexte, setPrecTexte] = useState('');
+  const [precTravail, setPrecTravail] = useState(false);
+  useEffect(() => {
+    let vivant = true;
+    supabase.from('recherches').select('precisions_agences').eq('id', rechercheId).maybeSingle().then(({ data, error }) => {
+      if (!vivant || error) return; /* la colonne absente (SQL pas passé) : la case reste décochée */
+      const v = (data as { precisions_agences?: string | null } | null)?.precisions_agences;
+      const val = typeof v === 'string' && v.trim() ? v : null;
+      setPrecAg(val); setPrecOuvert(val !== null); setPrecTexte(val ?? '');
+    });
+    return () => { vivant = false; };
+  }, [rechercheId]);
 
   const dire = (m: string) => {
     setDit(m);
@@ -789,14 +884,17 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     if (ok) { setJeton(null); setCoupe(true); }
   }
 
-  /* L'envoi : le SMS (sms:) s'ouvre tout seul ; ici, on le note. */
+  /* V3.202 — Le message pour cette personne : son prénom, et le lien avec son code. */
+  const pourDest = (d: Destinataire) => messagePourAgence(message, jeton, d);
+
+  /* L'envoi : le SMS (sms:) s'ouvre tout seul ; ici, on le note (avec le code). */
   async function noter(dest: Destinataire, canal: Canal) {
-    const ok = await noterEnvoi({ clientId, rechercheId, prenom, dest, canal });
+    const ok = await noterEnvoi({ clientId, rechercheId, prenom, dest, canal, jeton });
     if (ok) dire(canal === 'copie' ? `Message copié pour ${dest.interlocuteur || dest.nom} : c’est noté.` : `SMS préparé pour ${dest.interlocuteur || dest.nom} : l’envoi est noté.`);
     await chargerAgences();
   }
   async function copierPour(dest: Destinataire) {
-    if (await copier(messagePour(message, dest.interlocuteur), 'Message')) await noter(dest, 'copie');
+    if (await copier(pourDest(dest), 'Message')) await noter(dest, 'copie');
   }
   /* Le joli mail, envoyé par le CRM (après un « oui ») ; s'il ne part pas,
      la messagerie d'Alexandre reste possible, avec le message simple. */
@@ -804,14 +902,27 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     if (!dest.email || envoiMail) return false;
     if (!window.confirm(`Envoyer le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return false;
     setSecours(null); setEnvoiMail(cle);
-    const r = await envoyerMailAgence(rechercheId, dest);
+    const r = await envoyerMailAgence(rechercheId, dest, jeton);
     setEnvoiMail(null);
     if (!r.ok) { setSecours({ dest, erreur: r.erreur }); return false; }
-    await noterEnvoi({ clientId, rechercheId, prenom, dest, canal: 'mail' });
+    await noterEnvoi({ clientId, rechercheId, prenom, dest, canal: 'mail', jeton });
     dire(`Mail envoyé à ${dest.interlocuteur || dest.nom}.`);
     await chargerAgences();
     return true;
   }
+  async function ecrirePrecisions(v: string | null): Promise<boolean> {
+    setPrecTravail(true);
+    const ok = await verifie('Les précisions pour les agences', supabase.from('recherches').update({ precisions_agences: v }).eq('id', rechercheId).select('id'), { ligne: true });
+    setPrecTravail(false);
+    if (ok) { setPrecAg(v); dire(v ? 'Enregistré : les agences lisent ce texte.' : 'Les agences ne voient plus ses précisions.'); }
+    return ok;
+  }
+  function basculerPrecisions(on: boolean) {
+    if (on) { setPrecOuvert(true); if (precAg === null) setPrecTexte(notes); return; }
+    setPrecOuvert(false);
+    if (precAg !== null) void ecrirePrecisions(null);
+  }
+
   async function enregistrer(dest: Destinataire): Promise<boolean> {
     const ok = await noterContact({ clientId, rechercheId, dest });
     if (ok) dire(`Contact de ${dest.nom} enregistré.`);
@@ -819,13 +930,13 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
     return ok;
   }
   const actions = (cle: string): ActionsContact => ({
-    envoiMail, cle, message,
+    envoiMail, cle, pour: pourDest,
     onMail: d => mailer(d, cle),
     onSms: d => noter(d, 'sms'),
     onEnregistrer: enregistrer,
   });
 
-  const resume = recherche ? resumePourAgence(recherche) : null;
+  const resume = recherche ? resumePourAgence({ ...recherche, precisions_agences: precAg }) : null;
   const lien = jeton ? lienAgences(jeton) : '';
   const liste = agences || [];
   const parties: Record<Partie, AgenceConnue[]> = {
@@ -896,7 +1007,25 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
                   {resume.important.map(x => <span key={x} className={a.flPastille} data-ton="blanc"><Icone nom="coche" taille={12} epaisseur={2.6} />{x}</span>)}
                 </div>
               )}
-              <span className={a.flPetit}>{'Jamais son nom, ni ses précisions, ni ses biens déjà vus.'}</span>
+              <label className={a.flCase} data-on={precOuvert ? 'oui' : undefined}>
+                <input type="checkbox" checked={precOuvert} onChange={e => basculerPrecisions(e.target.checked)} disabled={precTravail} />
+                <span><b>Montrer ses précisions aux agences</b><small>{'Une copie, que tu peux raccourcir'}</small></span>
+              </label>
+              {precOuvert && (
+                <div className={a.flPrec}>
+                  <label className={a.flLib} htmlFor="prec-agences">Ce que les agences lisent</label>
+                  <textarea id="prec-agences" className={a.zone} rows={5} value={precTexte} maxLength={1500}
+                    placeholder={'Ses précisions sont vides : écris ici ce que les agences doivent savoir.'}
+                    onChange={e => setPrecTexte(e.target.value)} />
+                  <span className={a.flPetit}>{'Repris de ses précisions. Ce que tu changes ici ne touche pas sa recherche.'}</span>
+                  <div className={a.flPrecBtns}>
+                    <button type="button" className={a.btnFort} disabled={precTravail || !precTexte.trim() || precTexte.trim() === (precAg || '').trim()}
+                      onClick={() => { void ecrirePrecisions(precTexte.trim()); }}>{precAg !== null && precTexte.trim() === precAg.trim() ? 'Enregistré' : 'Enregistrer'}</button>
+                    {notes && precTexte.trim() !== notes && <button type="button" className={a.btn} onClick={() => setPrecTexte(notes)}>Reprendre ses précisions</button>}
+                  </div>
+                </div>
+              )}
+              <span className={a.flPetit}>{precAg !== null ? 'Jamais son nom, ni ses biens déjà vus.' : 'Jamais son nom, ni ses précisions, ni ses biens déjà vus.'}</span>
             </div>
             <div className={a.flBloc} style={{ order: 4 }}>
               <span className={a.flLib}>{'Ce qu’elle reçoit'}</span>
@@ -947,7 +1076,7 @@ function FenetreLien({ clientId, rechercheId, prenom, recherche, stats, absent, 
               {secours && (
                 <div className={a.secours} role="alert">
                   <span>{`Le mail à ${secours.dest.email} n’est pas parti : ${secours.erreur}`}</span>
-                  <a className={a.btn} href={lienMail(secours.dest.email || '', messagePour(message, secours.dest.interlocuteur))}
+                  <a className={a.btn} href={lienMail(secours.dest.email || '', pourDest(secours.dest))}
                     onClick={() => { const d = secours.dest; setSecours(null); void noter(d, 'mail'); }}><Icone nom="mail" taille={14} epaisseur={2.1} />Ouvrir ma messagerie à la place</a>
                 </div>
               )}

@@ -11,7 +11,7 @@ import {
 } from '@/lib/suivi-agence';
 import { appelsMontres, phraseAppel } from '@/lib/suivi-client';
 import { messageAgence } from '@/lib/agences-lien';
-import { envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePour, noterEnvoi, type Canal, type Destinataire } from '@/lib/lien-agences-envois';
+import { envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterEnvoi, type Canal, type Destinataire } from '@/lib/lien-agences-envois';
 import { ChoixDateHeure, ChoixJour } from '@/components/pages/PageAgenda';
 import { Icone } from './ParcoursBien';
 import s from './SuiviAgence.module.css';
@@ -280,7 +280,8 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
 /* ═══ « Le lien pour Didier » : l'envoyer à l'agence de ce bien (V3.198) ════
    Le lien de la recherche (créé s'il n'existe pas), le message avec le
    prénom de la personne ; SMS sur un portable, mail sur une adresse, sinon
-   le message à copier. Chaque envoi est noté (noterEnvoi). */
+   le message à copier. Chaque envoi est noté (noterEnvoi).
+   V3.202 : le lien porte le code de cette personne (sa page s'ouvre remplie). */
 function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFermer }: {
   bienId: string; clientId: string; rechercheId: string; prenom?: string | null; dest: Destinataire;
   onFait: () => void; onFermer: () => void;
@@ -302,18 +303,19 @@ function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFe
   useEffect(() => { zone.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, []);
 
   const pour = String(prenom || '').trim();
-  const msg = etat.k === 'pret' ? messagePour(messageAgence(etat.jeton), dest.interlocuteur) : '';
+  const jeton = etat.k === 'pret' ? etat.jeton : null;
+  const msg = jeton ? messagePourAgence(messageAgence(jeton), jeton, dest) : '';
   const mobile = !!dest.tel && estMobile(dest.tel);
   const mail = !!dest.email && mailValide(dest.email);
   async function noter(canal: Canal) {
-    if (await noterEnvoi({ clientId, rechercheId, prenom, dest, canal, bienId })) onFait();
+    if (await noterEnvoi({ clientId, rechercheId, prenom, dest, canal, bienId, jeton })) onFait();
   }
   /* Le joli mail (maquettes 7 et 8), envoyé par le CRM après un « oui ». */
   async function mailer() {
     if (!dest.email || envoi) return;
     if (!window.confirm(`Envoyer le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
     setSecours(null); setEnvoi(true);
-    const r = await envoyerMailAgence(rechercheId, dest);
+    const r = await envoyerMailAgence(rechercheId, dest, jeton);
     setEnvoi(false);
     if (!r.ok) { setSecours(r.erreur); return; }
     await noter('mail');

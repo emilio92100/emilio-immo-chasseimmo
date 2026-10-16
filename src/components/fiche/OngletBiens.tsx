@@ -282,6 +282,25 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
     });
     return () => { vivant = false; };
   }, [biens, chargement]);
+  /* V3.202 — Le PDF qu'une agence a déposé par son lien suit le bien retenu :
+     « Ouvrir le PDF » (un lien de quelques minutes, api/lien-agences/pdf).
+     Sans la colonne (SQL pas passé), la lecture échoue sans bruit. */
+  const [pdfsAgence, setPdfsAgence] = useState<Record<string, { id: string; agence: string | null; nom: string; pages: number | null }>>({});
+  useEffect(() => {
+    if (chargement || !biens.length) return;
+    let vivant = true;
+    supabase.from('propositions_agences').select('id, bien_id, agence, pdf').in('bien_id', biens.map(b => b.id)).not('pdf', 'is', null).then(({ data, error }) => {
+      if (!vivant || error) return;
+      const m: Record<string, { id: string; agence: string | null; nom: string; pages: number | null }> = {};
+      for (const x of (data || []) as { id: string; bien_id: string | null; agence: string | null; pdf: { nom?: string; pages?: number | null; chemin?: string } | null }[]) {
+        if (x.bien_id && x.pdf?.chemin) m[x.bien_id] = { id: x.id, agence: x.agence, nom: x.pdf.nom || 'Le PDF de l’agence', pages: x.pdf.pages ?? null };
+      }
+      setPdfsAgence(m);
+    });
+    return () => { vivant = false; };
+  }, [biens, chargement]);
+  const lienPdfAgence = (b: { id: string }) => (pdfsAgence[b.id] ? `/api/lien-agences/pdf?id=${encodeURIComponent(pdfsAgence[b.id].id)}` : null);
+
   const prenomC = (client?.prenom || '').trim() || 'le client';
   const leJour = (d?: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '');
 
@@ -517,9 +536,17 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
        chez lui dans « Ça me plaît » (et ici dans « Ça lui plaît »). */
     const an = annonces[b.id];
     const pdf = basPdf(b);
-    if (!an) return pdf;
+    const pa = pdfsAgence[b.id];
+    const ligneAgence = pa ? (
+      <BasLigne couleur="#5b21b6" fond="#f5f3ff" bord="#ddd6fe" icone="doc"
+        etat={`Le PDF de ${pa.agence || 'l’agence'}`}
+        mot={<small>{[pa.nom, pa.pages ? `${pa.pages} page${pa.pages > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')}</small>} vide
+        boutons={<BoutonBas onClick={() => { const u = lienPdfAgence(b); if (u) window.open(u, '_blank', 'noopener'); }}>Ouvrir le PDF</BoutonBas>} />
+    ) : null;
+    if (!an) return <>{ligneAgence}{pdf}</>;
     return (
       <>
+        {ligneAgence}
         <BasLigne couleur="#a17d2c" fond="#fdfaf1" bord="#ecdcb4" icone="lien"
           etat={`Proposé par ${prenomC} le ${leJour(an.created_at)}`}
           mot={an.mot ? <>{`« ${an.mot} »`}{' '}<small>{'· envoyé, il ira dans « Ça lui plaît »'}</small></> : <small>{'Envoyé, il ira directement dans « Ça lui plaît ».'}</small>}
@@ -653,6 +680,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         <>
           <LienRetirer onClick={() => retirer(b)} />
           <Ressort />
+          {lienPdfAgence(b) && <BoutonPied href={lienPdfAgence(b)!}><Icone nom="doc" taille={16} epaisseur={2} />Le PDF de l’agence</BoutonPied>}
           {b.pdf_statut === 'pret' && b.pdf_url ? (
             <BoutonPied href={b.pdf_url}><Icone nom="doc" taille={16} epaisseur={2} />Fiche prête : la consulter</BoutonPied>
           ) : b.pdf_statut === 'demande' ? (
@@ -674,6 +702,7 @@ export default function OngletBiens({ clientId, rechercheId, client, mode, onCha
         <LienPied onClick={() => renvoyerEnSelection(b.id)}>Remettre en sélection</LienPied>
         <LienRetirer onClick={() => retirer(b)} />
         <Ressort />
+        {lienPdfAgence(b) && <BoutonPied href={lienPdfAgence(b)!}><Icone nom="doc" taille={16} epaisseur={2} />Le PDF de l’agence</BoutonPied>}
         {b.pdf_url && <BoutonPied href={b.pdf_url}><Icone nom="doc" taille={16} epaisseur={2} />Le PDF</BoutonPied>}
         <BoutonPied ton="navy" onClick={() => setObs(b)}><Icone nom="note" taille={16} epaisseur={2} />Noter son retour</BoutonPied>
         {indispo
