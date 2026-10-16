@@ -13,7 +13,7 @@
    Pur : rien n'est lu ni écrit ici. La même phrase sert à l'aperçu dans
    « Noter un appel » (CRM) et à l'espace du client (le serveur). */
 
-export type CreneauC = { date: string; heure: string };
+export type CreneauC = { date: string; heure: string; fin?: string };
 export type AppelVisible = {
   id?: string; genre?: string | null; reponse?: string | null; dispo?: string | null;
   creneaux?: CreneauC[] | null; ensuite?: string | null; rappel_le?: string | null;

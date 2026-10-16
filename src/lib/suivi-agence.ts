@@ -8,8 +8,13 @@ import { verifie } from '@/lib/ecritures';
    (outils/sql/suivis-agence.sql). Interne : l'espace du client ne la lit
    jamais. Le bloc est dans src/components/fiche/SuiviAgence.tsx. */
 
-export type Creneau = { date: string; heure: string };
-export type ContactSuivi = { nom?: string; interlocuteur?: string; tel?: string; email?: string };
+/** Un créneau proposé par l'agence : une heure précise, ou — V3.205 — une
+    plage (« entre 14 h et 17 h ») quand `fin` est là. */
+export type Creneau = { date: string; heure: string; fin?: string };
+/** `tel` : le numéro de l'agence (ou du propriétaire) ; `telDirect` — V3.205 — celui de la
+    personne qui gère le dossier (« je prends son numéro, mais j'aimerais laisser celui de
+    l'agence »), gardé dans le suivi sous `tel_direct`. */
+export type ContactSuivi = { nom?: string; interlocuteur?: string; tel?: string; email?: string; telDirect?: string };
 export type LigneSuivi = {
   id: string; bien_id: string; recherche_id: string | null; client_id: string | null;
   genre: 'note' | 'appel';
@@ -50,13 +55,16 @@ function lire(x: any): LigneSuivi {
     id: String(x.id), bien_id: String(x.bien_id), recherche_id: x.recherche_id || null, client_id: x.client_id || null,
     genre: x.genre === 'appel' ? 'appel' : 'note',
     avec: ['agence', 'proprietaire', 'autre'].includes(x.avec) ? x.avec : null,
-    contact: { nom: texteOuNull(c.nom) || undefined, interlocuteur: texteOuNull(c.interlocuteur) || undefined, tel: texteOuNull(c.tel) || undefined, email: texteOuNull(c.email) || undefined },
+    contact: { nom: texteOuNull(c.nom) || undefined, interlocuteur: texteOuNull(c.interlocuteur) || undefined, tel: texteOuNull(c.tel) || undefined, email: texteOuNull(c.email) || undefined, telDirect: texteOuNull(c.tel_direct) || undefined },
     reponse: ['repondu', 'message', 'sans_reponse'].includes(x.reponse) ? x.reponse : null,
     dispo: ['disponible', 'sous_offre', 'vendu'].includes(x.dispo) ? x.dispo : null,
     texte: texteOuNull(x.texte),
     creneaux: (Array.isArray(x.creneaux) ? x.creneaux : [])
       .filter((k: any) => k && /^\d{4}-\d{2}-\d{2}$/.test(String(k.date)) && /^\d{1,2}:\d{2}$/.test(String(k.heure)))
-      .map((k: any) => ({ date: String(k.date), heure: String(k.heure) })),
+      .map((k: any) => {
+        const fin = /^\d{1,2}:\d{2}$/.test(String(k.fin || '')) && heureNette(k.fin) > heureNette(k.heure) ? String(k.fin) : null;
+        return { date: String(k.date), heure: String(k.heure), ...(fin ? { fin } : {}) };
+      }),
     ensuite: x.ensuite === 'attente' || x.ensuite === 'rappeler' ? x.ensuite : null,
     rappel_le: x.rappel_le || null,
     relance_id: x.relance_id || null,
@@ -109,12 +117,14 @@ export const cleDuJour = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMont
 const JOURS_C = ['Dim.', 'Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
 const MOIS_C = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 export const heureCourte = (h: string) => { const [hh, mm] = h.split(':').map(Number); return `${hh} h${mm ? ` ${pad(mm)}` : ''}`; };
-/** « Jeu. 16 oct. · 18 h » */
+/** « Jeu. 16 oct. · 18 h », ou pour une plage « Jeu. 16 oct. · de 14 h à 17 h » */
 export function texteCreneau(c: Creneau) {
   const [y, m, j] = c.date.split('-').map(Number);
   const d = new Date(y, m - 1, j);
-  return `${JOURS_C[d.getDay()]} ${j} ${MOIS_C[m - 1]} · ${heureCourte(c.heure)}`;
+  return `${JOURS_C[d.getDay()]} ${j} ${MOIS_C[m - 1]} · ${c.fin ? `de ${heureCourte(c.heure)} à ${heureCourte(c.fin)}` : heureCourte(c.heure)}`;
 }
+/** Ce qui distingue deux créneaux (le jour, l'heure, la fin d'une plage). */
+export const cleCreneau = (c: Creneau) => `${c.date}-${heureNette(c.heure)}-${c.fin ? heureNette(c.fin) : ''}`;
 /** « Aujourd'hui, 14 h 20 », « Hier, 17 h 05 », « Lun. 12 oct., 9 h » */
 export function quandNote(iso: string) {
   const d = new Date(iso);
@@ -128,7 +138,7 @@ export function quandNote(iso: string) {
 
 /** Le contact du bien : le dernier noté, complété par la fiche du bien. */
 export function contactDu(b: any, lignes: LigneSuivi[]): ContactSuivi & { avec: 'agence' | 'proprietaire' | 'autre' } {
-  const dernier = lignes.find(l => l.contact.nom || l.contact.tel || l.contact.interlocuteur || l.contact.email);
+  const dernier = lignes.find(l => l.contact.nom || l.contact.tel || l.contact.interlocuteur || l.contact.email || l.contact.telDirect);
   const avec = dernier?.avec || (b?.est_particulier ? 'proprietaire' : 'agence');
   const c = dernier?.contact || {};
   return {
@@ -138,6 +148,8 @@ export function contactDu(b: any, lignes: LigneSuivi[]): ContactSuivi & { avec: 
     interlocuteur: c.interlocuteur || (avec === 'agence' ? texteOuNull(b?.agence_interlocuteur) || undefined : undefined),
     tel: c.tel || texteOuNull(b?.agence_tel) || undefined,
     email: c.email || texteOuNull(b?.agence_email) || undefined,
+    /* V3.205 : le numéro de la personne, noté dans le suivi ou sur la fiche du bien. */
+    telDirect: c.telDirect || (avec === 'agence' ? texteOuNull(b?.agence_interlocuteur_tel) || undefined : undefined),
   };
 }
 
@@ -146,9 +158,11 @@ export function heureNette(h: unknown): string {
   const [a, b] = String(h || '').split(':');
   return a ? `${a.padStart(2, '0')}:${String(b || '00').slice(0, 2).padStart(2, '0')}` : '';
 }
-/** Ce créneau est celui de la visite calée. */
+/** Ce créneau est celui de la visite calée (pour une plage : la visite tombe dedans). */
 export function creneauDeLaVisite(c: Creneau, v: VisiteCalee | undefined): boolean {
-  return !!v && String(v.date_visite || '').slice(0, 10) === c.date && heureNette(v.heure) === heureNette(c.heure);
+  if (!v || String(v.date_visite || '').slice(0, 10) !== c.date) return false;
+  const h = heureNette(v.heure);
+  return c.fin ? !!h && h >= heureNette(c.heure) && h <= heureNette(c.fin) : h === heureNette(c.heure);
 }
 
 /* ── L'adresse exacte (V3.192) ──
@@ -169,8 +183,17 @@ export async function reporterAdresseVeille(bienId: string, adresse: string | nu
   await verifie('L’adresse dans la proposition de la veille', supabase.from('veille_propositions').update({ adresse: adresse || null }).eq('bien_id', bienId).select('id'));
 }
 
+/** V3.205 — Le numéro où envoyer un SMS : celui de la personne s'il est un portable,
+    sinon celui de l'agence s'il en est un, sinon le premier noté. */
+const portable = (t?: string) => /^(0|33|0033)[67]\d{8}$/.test(String(t || '').replace(/\D/g, ''));
+export function telPourSms(c: ContactSuivi): string | undefined {
+  if (portable(c.telDirect)) return c.telDirect;
+  if (portable(c.tel)) return c.tel;
+  return c.telDirect || c.tel || undefined;
+}
+
 /** Le contact en une ligne, pour la visite (« Contact agence / vendeur »). */
-export const contactEnLigne = (c: ContactSuivi) => [c.nom, c.interlocuteur, c.tel, c.email].filter(Boolean).join(' · ');
+export const contactEnLigne = (c: ContactSuivi) => [c.nom, c.interlocuteur, c.telDirect, c.tel, c.email].filter(Boolean).join(' · ');
 
 /** Les créneaux encore à venir du dernier appel qui en a donné. */
 export function creneauxOuverts(lignes: LigneSuivi[]): { ligne: string; creneaux: Creneau[] } | null {

@@ -157,9 +157,14 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
   const veilleAvecTel = () => supabase.from('veille_propositions').select('agence, agence_tel, est_particulier, created_at').eq('recherche_id', rechercheId).eq('statut', 'nouveau').limit(500);
   /* V3.203 : la personne et le mail de l'agence, notés sur la fiche du bien (sans le SQL : sans eux). */
   const biensAvecContact = async () => {
+    /* V3.205 : et le numéro de la personne (`agence_interlocuteur_tel`) — sans le SQL, sans lui. */
+    const r0 = await supabase.from('biens').select('agence_nom, agence_tel, agence_interlocuteur, agence_interlocuteur_tel, agence_email, est_particulier, etape, created_at').eq('recherche_id', rechercheId).limit(500);
+    if (!r0.error) return r0;
     const r = await supabase.from('biens').select('agence_nom, agence_tel, agence_interlocuteur, agence_email, est_particulier, etape, created_at').eq('recherche_id', rechercheId).limit(500);
     return r.error ? supabase.from('biens').select('agence_nom, agence_tel, est_particulier, etape, created_at').eq('recherche_id', rechercheId).limit(500) : r;
   };
+  /* Le numéro pour le lien : celui de la personne s'il est un portable, sinon celui de l'agence. */
+  const telLien = (agence: unknown, direct: unknown) => (estMobile(direct) ? String(direct) : String(agence || '').trim() || String(direct || '').trim() || null);
   const [b, s, pa, envois, v0, cn] = await Promise.all([
     biensAvecContact(),
     supabase.from('suivis_agence').select('avec, contact, created_at').eq('recherche_id', rechercheId).limit(1000),
@@ -176,10 +181,10 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
   }
 
   const traces: Trace[] = [];
-  for (const x of (b.data || []) as any[]) if (!x.est_particulier && x.agence_nom) traces.push({ nom: x.agence_nom, interlocuteur: x.agence_interlocuteur || null, tel: x.agence_tel, email: x.agence_email || null, le: x.created_at || '', origine: x.etape === 'presente' ? 'presente' : 'selection' });
+  for (const x of (b.data || []) as any[]) if (!x.est_particulier && x.agence_nom) traces.push({ nom: x.agence_nom, interlocuteur: x.agence_interlocuteur || null, tel: telLien(x.agence_tel, x.agence_interlocuteur_tel), email: x.agence_email || null, le: x.created_at || '', origine: x.etape === 'presente' ? 'presente' : 'selection' });
   for (const x of (s.data || []) as any[]) {
     const c = x.contact && typeof x.contact === 'object' ? x.contact : {};
-    if ((x.avec === 'agence' || !x.avec) && c.nom) traces.push({ nom: c.nom, interlocuteur: c.interlocuteur, tel: c.tel, email: c.email, le: x.created_at || '', origine: 'suivi' });
+    if ((x.avec === 'agence' || !x.avec) && c.nom) traces.push({ nom: c.nom, interlocuteur: c.interlocuteur, tel: telLien(c.tel, c.tel_direct), email: c.email, le: x.created_at || '', origine: 'suivi' });
   }
   for (const x of (v.data || []) as any[]) if (!x.est_particulier && x.agence) traces.push({ nom: x.agence, tel: x.agence_tel || null, le: x.created_at || '', origine: 'veille' });
   for (const x of (pa.data || []) as any[]) if (x.agence) traces.push({ nom: x.agence, interlocuteur: x.interlocuteur, tel: x.tel, email: x.email, le: x.created_at || '', propose: true, origine: 'propose' });
