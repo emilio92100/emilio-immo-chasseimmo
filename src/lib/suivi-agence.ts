@@ -134,9 +134,10 @@ export function contactDu(b: any, lignes: LigneSuivi[]): ContactSuivi & { avec: 
   return {
     avec,
     nom: c.nom || (avec === 'agence' ? texteOuNull(b?.agence_nom) || undefined : avec === 'proprietaire' ? texteOuNull(b?.agence_nom) || undefined : undefined),
-    interlocuteur: c.interlocuteur,
+    /* V3.203 : la personne et le mail notés sur la fiche du bien (« Détail du bien », partie Agence). */
+    interlocuteur: c.interlocuteur || (avec === 'agence' ? texteOuNull(b?.agence_interlocuteur) || undefined : undefined),
     tel: c.tel || texteOuNull(b?.agence_tel) || undefined,
-    email: c.email,
+    email: c.email || texteOuNull(b?.agence_email) || undefined,
   };
 }
 
