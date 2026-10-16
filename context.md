@@ -1515,6 +1515,57 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.202 — 16 octobre 2026 · Le PDF, le code au bout du lien, ses précisions, une page agence plus vivante
+
+- Alexandre : « est-ce qu'il y a possibilité qu'il mette un PDF ? Le CRM arrive à lire les PDF
+  pour que ça parte en veille ? », « qu'on puisse faire gagner du temps aux agences, que leurs
+  infos soient pré-remplies », « les précisions de la recherche, ils ne les voient pas ? », puis
+  « un logo pour chaque critère… plus vivant, là c'est trop brut », « que ce soit fluide quand
+  il appuie ». Maquettes 11 à 16 du canevas « Le lien pour les agences », validées le 16 octobre.
+- **SQL** : `outils/sql/lien-agences-pdf.sql` (passé le 16 octobre) — `propositions_agences.pdf`
+  et `.envoi` (jsonb), `recherches.precisions_agences` (text), le dossier PRIVÉ `agences-pdf`
+  (20 Mo, `application/pdf`).
+- **Le PDF, côté agence** (`PageAgence.tsx`, `src/lib/pdf-navigateur.ts`) : « Déposer un PDF » à
+  côté des photos. pdf.js (paquet `pdfjs-dist` épinglé en 6.3.289, chargé à la demande) ouvre le
+  PDF dans SON navigateur, gratuitement : la première page en image, le texte, et ce qu'il dit
+  (`infosDuTexte` : prix hors honoraires/charges/taxe, surface hors pièces/terrain/extérieurs,
+  pièces, chambres). « Lecture du PDF… », puis « PDF lu · 3 pièces · 52 m² · 265 000 € » ou « PDF
+  reçu » (rien d'écrit : une plaquette faite d'images). Trop lourd, pas un PDF, protégé : le
+  message sous le bouton. ⚠️ Le « worker » de pdf.js est copié en
+  `public/pdfjs/pdf.worker-<version>.min.js` (un nom en .js : src/proxy.ts laisse passer) : à
+  recopier si on change de version (sinon : « PDF reçu », rien ne casse).
+- **Le PDF, l'envoi** : `api/agences/pdf` rend un lien d'envoi signé (Vercel refuse plus de
+  4,5 Mo) ; la page envoie le PDF tout droit au dossier (`<recherche>/<uuid>.pdf`), puis
+  `api/agences/proposer` vérifie qu'il est arrivé (`pdfDepose`), garde la première page
+  (photos-biens, `pdf.apercu`), pose `lecture: 'pdf'`, puis, après la réponse,
+  `lirePdfProposition` (`src/lib/pdf-agence-serveur.ts`) : le PDF lu par l'IA comme une page
+  d'annonce (document par lien signé, sinon le texte tiré par la page ; `CHAMPS_ANNONCE`, Haiku),
+  enregistré (`ok` / `partielle` / `pdf_illisible`), puis l'analyse habituelle s'il reste du temps
+  (la route a 60 s). Le PDF est GARDÉ, même écarté (choix d'Alexandre).
+- **Le PDF, côté CRM** : la carte montre la première page (« PDF · 4 p. »), « Lu dans le PDF »,
+  la ligne du fichier et « Ouvrir le PDF » (`api/lien-agences/pdf?id=` : un lien de 10 minutes) ;
+  « PDF en lecture » les deux premières minutes, puis « Lire le PDF » (POST de la même route, puis
+  l'analyse). Retenu, le bien garde « Le PDF de l'agence » (Sélection et pied de « Voir en grand »,
+  `OngletBiens.tsx`) ; le PDF ne rejoint pas ses photos.
+- **Le code au bout du lien** (`codeEnvoi`, `lienAvecCode`, `messagePourAgence`) : un envoi à une
+  personne précise (mail, SMS, message copié pour elle ; fenêtre du lien et suivi d'un bien) porte
+  `?de=<code>` (10 caractères, calculé depuis le jeton et le contact : le même pour la même
+  personne), noté au journal (`metadata.code_lien`). La page (`proposer/[token]/page.tsx`,
+  `envoiDuCode`) remplit « Vous » (« Repris du message d'Alexandre », « Modifier ») et dit
+  « Bonjour Julie, ». Garde-fous : « Copier le lien » reste le lien simple ; ce que l'appareil a
+  gardé passe avant le code ; la proposition garde l'envoi (`envoi`, « Après ton mail du
+  14 oct. ») seulement si l'agence envoyée est celle du code.
+- **Ses précisions** : dans la fenêtre du lien, « Montrer ses précisions aux agences »
+  (décochée au départ) : le texte de `notes` repris dans une case, raccourci si besoin,
+  « Enregistrer » → `recherches.precisions_agences` ; décocher l'efface. `resumePourAgence` le rend
+  (`precisions`) : la page (« Ses précisions », encadré au trait orange) et le mail le montrent.
+- **La page agence, plus vivante** : `criteresAgence` (partagé avec le mail) range le type et les
+  pièces, la surface, les secteurs, le budget en tuiles à icône ; « Important pour lui » (encadré
+  vert, étoile, coches rondes) ; une icône dans chaque case (`Saisie`) et dans les titres
+  (`TitreCarte`) ; « Vous » une case par ligne sur téléphone ; les cartes montent l'une après
+  l'autre, les lectures apparaissent en fondu, les boutons répondent ; tout se coupe sous
+  `prefers-reduced-motion` (sauf le rond qui tourne).
+
 ### V3.201 — 16 octobre 2026 · Le contact sur place, les aperçus en grand
 
 - Alexandre : « pourquoi “Ajouter son contact” renvoie en bas, dans “une autre agence” ? »,
