@@ -11,7 +11,10 @@ import {
 } from '@/lib/suivi-agence';
 import { appelsMontres, phraseAppel } from '@/lib/suivi-client';
 import { messageAgence } from '@/lib/agences-lien';
-import { envoisDuLien, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterEnvoi, type Canal, type Destinataire, type Envoi } from '@/lib/lien-agences-envois';
+import {
+  canalLong, envoisPartages, envoisPour, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterEnvoi, proposesPar, quandEnvoi, surNouvelEnvoi,
+  type Canal, type Destinataire, type Envoi,
+} from '@/lib/lien-agences-envois';
 import { ChoixDateHeure, ChoixJour } from '@/components/pages/PageAgenda';
 import { Icone } from './ParcoursBien';
 import s from './SuiviAgence.module.css';
@@ -49,6 +52,29 @@ const garderOuvert = (id: string, ouvert: boolean) => {
   } catch { /* sans mémoire : il se replie au prochain passage */ }
 };
 
+/* V3.204 — Les envois du lien de cette recherche : lus une fois pour toute la
+   fiche, relus après chaque envoi, où qu'il parte (ce panneau, « Noter un
+   appel », la fenêtre du lien de la Veille). src/lib/lien-agences-envois.ts */
+function useEnvoisLien(rechercheId: string | null): Envoi[] | null {
+  const [envois, setEnvois] = useState<Envoi[] | null>(null);
+  useEffect(() => {
+    if (!rechercheId) return;
+    let vivant = true;
+    const lire = () => { void envoisPartages(rechercheId).then(e => { if (vivant) setEnvois(e); }); };
+    lire();
+    const fin = surNouvelEnvoi(rid => { if (rid === rechercheId) lire(); });
+    return () => { vivant = false; fin(); };
+  }, [rechercheId]);
+  return envois;
+}
+const nomNet = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+/** « Déjà envoyé le 14 oct. à 22 h 33 par mail · 2 envois » — et à qui, quand ce n'est plus la même personne. */
+function phraseDeja(liste: Envoi[], d: Destinataire): string {
+  const e = liste[0];
+  const autre = e.interlocuteur && nomNet(e.interlocuteur) !== nomNet(d.interlocuteur) ? ` à ${e.interlocuteur}` : '';
+  return `Déjà envoyé${autre} ${quandEnvoi(e.le)} ${canalLong(e.canal)}${liste.length > 1 ? ` · ${liste.length} envois` : ''}`;
+}
+
 function Chevron({ haut }: { haut?: boolean }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
@@ -83,6 +109,10 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
   const basculer = () => setOuvert(o => { if (!seul) garderOuvert(b.id, !o); return !o; });
   const etat = etatSuivi(lignes, visite, veutVisiter);
   const contact = contactDu(b, lignes);
+  /* V3.204 : le lien déjà parti à cette agence — une coche verte sur le bouton « Le lien pour… ». */
+  const envois = useEnvoisLien(contact.avec === 'agence' ? rechercheId : null);
+  const destLien: Destinataire = { nom: contact.nom || 'L’agence', interlocuteur: contact.interlocuteur || null, tel: contact.tel || null, email: contact.email || null };
+  const envoisAg = envois ? envoisPour(envois, destLien) : [];
   const ouverts = visite ? null : creneauxOuverts(lignes);
   const dernier = lignes[0];
   const extrait = dernier
@@ -148,9 +178,12 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
           {/* V3.203 (maquette 18) : le lien pour l'agence, dans la barre, visible même replié —
               aussi dans « Voir en grand », où ce suivi est à part (un seul bouton par fenêtre). */}
           {contact.avec === 'agence' && rechercheId && (
-            <button type="button" className={s.lienAg} aria-expanded={lienOuvert}
+            <button type="button" className={s.lienAg} aria-expanded={lienOuvert} data-envoye={envoisAg.length ? 'oui' : undefined}
+              title={envoisAg.length ? phraseDeja(envoisAg, destLien).replace(/^Déjà envoyé/, 'Lien déjà envoyé') : undefined}
               onClick={() => { if (!ouvert) { basculer(); setLienOuvert(true); } else setLienOuvert(o => !o); }}>
               <Icone nom="lien" taille={14} epaisseur={2.2} />{String(prenom || '').trim() ? `Le lien pour ${String(prenom).trim()}` : 'Le lien pour les agences'}
+              {envoisAg.length > 0 && <span className={s.lienAgCoche} aria-hidden="true"><Icone nom="coche" taille={11} epaisseur={3.4} /></span>}
+              {envoisAg.length > 0 && <span className={s.cache}>{', déjà envoyé'}</span>}
             </button>
           )}
           {(ouvert || !lignes.length) && (
@@ -174,8 +207,7 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
             {contact.email && <a className={s.lien} href={`mailto:${contact.email}`}><Icone nom="mail" taille={14} epaisseur={2.1} />E-mail</a>}
           </div>
           {lienOuvert && rechercheId && (
-            <PanneauLien bienId={b.id} clientId={clientId} rechercheId={rechercheId} prenom={prenom}
-              dest={{ nom: contact.nom || 'L’agence', interlocuteur: contact.interlocuteur || null, tel: contact.tel || null, email: contact.email || null }}
+            <PanneauLien bienId={b.id} clientId={clientId} rechercheId={rechercheId} prenom={prenom} dest={destLien} envois={envois}
               onFait={() => { setLienOuvert(false); onChange(); }} onFermer={() => setLienOuvert(false)} />
           )}
 
@@ -284,9 +316,13 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
    Le lien de la recherche (créé s'il n'existe pas), le message avec le
    prénom de la personne ; SMS sur un portable, mail sur une adresse, sinon
    le message à copier. Chaque envoi est noté (noterEnvoi).
-   V3.202 : le lien porte le code de cette personne (sa page s'ouvre remplie). */
-function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFermer }: {
+   V3.202 : le lien porte le code de cette personne (sa page s'ouvre remplie).
+   V3.204 : « Déjà envoyé le 14 oct. par mail », « Renvoyer par mail », et ce
+   que l'agence a proposé par ce lien. */
+function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, envois, onFait, onFermer }: {
   bienId: string; clientId: string; rechercheId: string; prenom?: string | null; dest: Destinataire;
+  /** les envois du lien de cette recherche (null : en lecture) */
+  envois: Envoi[] | null;
   onFait: () => void; onFermer: () => void;
 }) {
   const [etat, setEtat] = useState<{ k: 'lecture' } | { k: 'pret'; jeton: string } | { k: 'absent' } | { k: 'erreur'; m: string }>({ k: 'lecture' });
@@ -304,19 +340,29 @@ function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFe
     return () => { vivant = false; };
   }, [rechercheId]);
   useEffect(() => { zone.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, []);
+  /* V3.204 : ce que cette agence a déjà proposé par le lien. */
+  const [proposes, setProposes] = useState<number | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    void proposesPar(rechercheId, { nom: dest.nom, tel: dest.tel, email: dest.email }).then(n => { if (vivant) setProposes(n); });
+    return () => { vivant = false; };
+  }, [rechercheId, dest.nom, dest.tel, dest.email]);
 
   const pour = String(prenom || '').trim();
   const jeton = etat.k === 'pret' ? etat.jeton : null;
   const msg = jeton ? messagePourAgence(messageAgence(jeton), jeton, dest) : '';
   const mobile = !!dest.tel && estMobile(dest.tel);
   const mail = !!dest.email && mailValide(dest.email);
+  const deja = envois ? envoisPour(envois, dest) : [];
+  const copies = envois && !deja.length ? envoisPour(envois, dest, { copies: true }) : [];
+  const re = deja.length > 0;
   async function noter(canal: Canal) {
     if (await noterEnvoi({ clientId, rechercheId, prenom, dest, canal, bienId, jeton })) onFait();
   }
   /* Le joli mail (maquettes 7 et 8), envoyé par le CRM après un « oui ». */
   async function mailer() {
     if (!dest.email || envoi) return;
-    if (!window.confirm(`Envoyer le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
+    if (!window.confirm(`${re ? 'Renvoyer' : 'Envoyer'} le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
     setSecours(null); setEnvoi(true);
     const r = await envoyerMailAgence(rechercheId, dest, jeton);
     setEnvoi(false);
@@ -331,10 +377,17 @@ function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFe
   return (
     <div ref={zone} className={s.panneauLien} role="group" aria-label={pour ? `Le lien pour ${pour}` : 'Le lien pour les agences'}>
       <div className={s.panneauTete}>
-        <b>{`Lui envoyer le lien${pour ? ` pour ${pour}` : ''}`}</b>
-        <span>{'Il pourra te proposer ses autres biens : ils arrivent dans ta Veille, analysés.'}</span>
+        <b>{`${re ? 'Lui renvoyer' : 'Lui envoyer'} le lien${pour ? ` pour ${pour}` : ''}`}</b>
+        <span>{re ? 'Le même lien, toujours valable : sa page s’ouvre avec ses coordonnées déjà remplies.' : 'Il pourra te proposer ses autres biens : ils arrivent dans ta Veille, analysés.'}</span>
         <button type="button" className={s.panneauFermer} onClick={onFermer} aria-label="Fermer"><Icone nom="fermer" taille={13} epaisseur={2.4} /></button>
       </div>
+      {(re || copies.length > 0 || !!proposes) && (
+        <div className={s.panneauEtat}>
+          {re && <span className={s.panneauDeja}><Icone nom="coche" taille={13} epaisseur={2.6} />{phraseDeja(deja, dest)}</span>}
+          {!re && copies.length > 0 && <span className={s.panneauNote}><Icone nom="copie" taille={13} epaisseur={2.1} />{`Message copié ${quandEnvoi(copies[0].le)} : aucun envoi noté`}</span>}
+          {!!proposes && <span className={s.panneauNote} data-ton="prune"><Icone nom="maison" taille={13} epaisseur={2.1} />{`L’agence t’a déjà proposé ${proposes} bien${proposes > 1 ? 's' : ''} par ce lien`}</span>}
+        </div>
+      )}
       {etat.k === 'lecture' ? (
         <div className={s.aide}>{'Préparation du lien…'}</div>
       ) : etat.k === 'absent' ? (
@@ -343,8 +396,8 @@ function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFe
         <div className={s.aide}>{`Le lien n’a pas pu être lu : ${etat.m}`}</div>
       ) : (
         <div className={s.panneauBtns}>
-          {mobile && <a className={s.lienFort} href={lienSms(dest.tel!, msg)} onClick={() => { void noter('sms'); }}><Icone nom="mobile" taille={14} epaisseur={2.1} />{`Par SMS au ${dest.tel}`}</a>}
-          {mail && <button type="button" className={mobile ? s.lien : s.lienFort} disabled={envoi} onClick={() => { void mailer(); }}><Icone nom="mail" taille={14} epaisseur={2.1} />{envoi ? 'Envoi du mail…' : `Par mail à ${dest.email}`}</button>}
+          {mobile && <a className={s.lienFort} href={lienSms(dest.tel!, msg)} onClick={() => { void noter('sms'); }}><Icone nom="mobile" taille={14} epaisseur={2.1} />{`${re ? 'Renvoyer par SMS' : 'Par SMS'} au ${dest.tel}`}</a>}
+          {mail && <button type="button" className={mobile ? s.lien : s.lienFort} disabled={envoi} onClick={() => { void mailer(); }}><Icone nom="mail" taille={14} epaisseur={2.1} />{envoi ? 'Envoi du mail…' : `${re ? 'Renvoyer par mail' : 'Par mail'} à ${dest.email}`}</button>}
           <button type="button" className={s.btn} onClick={() => { void copier(); }}><Icone nom="copie" taille={14} epaisseur={2.1} />Copier le message</button>
         </div>
       )}
@@ -366,27 +419,19 @@ function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFe
    Maquette 17 : sous le contact de l'agence, l'envoyer d'un appui (SMS sur un
    portable, le joli mail, ou le message à copier), avec le contact tel qu'il
    est tapé dans la fenêtre — le lien porte le code de cette personne. « Déjà
-   envoyé le 14 oct. par mail » quand le CRM le sait. */
-const chiffres9 = (t: unknown) => String(t || '').replace(/\D/g, '').slice(-9);
-const nomNet = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-function dejaEnvoye(envois: Envoi[], d: Destinataire): Envoi | null {
-  const t = chiffres9(d.tel), m = String(d.email || '').trim().toLowerCase(), n = nomNet(d.nom);
-  return envois.find(e => e.canal !== 'copie' && ((t.length === 9 && chiffres9(e.tel) === t) || (m && String(e.email || '').trim().toLowerCase() === m) || (n && nomNet(e.nom) === n))) || null;
-}
+   envoyé le 14 oct. par mail » quand le CRM le sait (V3.204 : et « Renvoyer »). */
 function LienAppel({ b, clientId, rechercheId, prenom, dest, onEnvoi }: {
   b: any; clientId: string; rechercheId: string; prenom: string; dest: Destinataire; onEnvoi?: () => void;
 }) {
   const [jeton, setJeton] = useState<string | null | undefined>(undefined);
-  const [envois, setEnvois] = useState<Envoi[]>([]);
+  const envois = useEnvoisLien(rechercheId);
   const [travail, setTravail] = useState(false);
   const [dit, setDit] = useState<string | null>(null);
   useEffect(() => {
     let vivant = true;
     (async () => {
-      const [r, e] = await Promise.all([lireOuCreerJeton(rechercheId), envoisDuLien(rechercheId)]);
-      if (!vivant) return;
-      setJeton('jeton' in r ? r.jeton : null);
-      setEnvois(e);
+      const r = await lireOuCreerJeton(rechercheId);
+      if (vivant) setJeton('jeton' in r ? r.jeton : null);
     })();
     return () => { vivant = false; };
   }, [rechercheId]);
@@ -396,16 +441,16 @@ function LienAppel({ b, clientId, rechercheId, prenom, dest, onEnvoi }: {
   const msg = jeton ? messagePourAgence(messageAgence(jeton), jeton, dest) : '';
   const mobile = !!dest.tel && estMobile(dest.tel);
   const mail = !!dest.email && mailValide(dest.email);
-  const deja = dejaEnvoye(envois, dest);
-  const quand = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  const deja = envois ? envoisPour(envois, dest) : [];
+  const re = deja.length > 0;
   async function noter(canal: Canal) {
     const ok = await noterEnvoi({ clientId, rechercheId, prenom: pour || null, dest, canal, bienId: b.id, jeton });
-    if (ok) { setEnvois(await envoisDuLien(rechercheId)); onEnvoi?.(); }
+    if (ok) onEnvoi?.();
     return ok;
   }
   async function mailer() {
     if (!mail || travail || !jeton) return;
-    if (!window.confirm(`Envoyer le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
+    if (!window.confirm(`${re ? 'Renvoyer' : 'Envoyer'} le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
     setTravail(true); setDit(null);
     const r = await envoyerMailAgence(rechercheId, dest, jeton);
     setTravail(false);
@@ -426,20 +471,20 @@ function LienAppel({ b, clientId, rechercheId, prenom, dest, onEnvoi }: {
           <small>{`${qui.charAt(0).toUpperCase()}${qui.slice(1)} pourra te proposer ses autres biens`}</small>
         </span>
       </div>
+      {re && <span className={s.lienAppelDeja}><Icone nom="coche" taille={13} epaisseur={2.6} />{phraseDeja(deja, dest)}</span>}
       {jeton === undefined ? (
         <span className={s.lienAppelAide}>{'Préparation du lien…'}</span>
       ) : jeton === null ? (
         <span className={s.lienAppelAide}>{'Le lien n’a pas pu être préparé : ouvre la fenêtre du lien depuis l’onglet Veille.'}</span>
       ) : (
         <div className={s.lienAppelBtns}>
-          {mobile && <a className={s.lienAppelFort} href={lienSms(dest.tel!, msg)} onClick={() => { void noter('sms').then(ok => { if (ok) setDit(`SMS préparé pour ${qui} : l’envoi est noté.`); }); }}><Icone nom="mobile" taille={15} epaisseur={2.1} />Par SMS</a>}
-          {mail && <button type="button" className={mobile ? s.lienAppelBtn : s.lienAppelFort} onClick={() => { void mailer(); }} disabled={travail}><Icone nom="mail" taille={15} epaisseur={2.1} />{travail ? 'Envoi…' : 'Par mail'}</button>}
+          {mobile && <a className={s.lienAppelFort} href={lienSms(dest.tel!, msg)} onClick={() => { void noter('sms').then(ok => { if (ok) setDit(`SMS préparé pour ${qui} : l’envoi est noté.`); }); }}><Icone nom="mobile" taille={15} epaisseur={2.1} />{re ? 'Renvoyer par SMS' : 'Par SMS'}</a>}
+          {mail && <button type="button" className={mobile ? s.lienAppelBtn : s.lienAppelFort} onClick={() => { void mailer(); }} disabled={travail}><Icone nom="mail" taille={15} epaisseur={2.1} />{travail ? 'Envoi…' : re ? 'Renvoyer par mail' : 'Par mail'}</button>}
           <button type="button" className={s.lienAppelBtn} onClick={() => { void copier(); }}><Icone nom="copie" taille={15} epaisseur={2.1} />Copier</button>
         </div>
       )}
       {!mobile && !mail && jeton && <span className={s.lienAppelAide}>{'Ajoute son portable ou son mail juste au-dessus : le lien partira par SMS ou par mail.'}</span>}
-      {dit ? <span className={s.lienAppelDit} role="status">{dit}</span>
-        : deja && <span className={s.lienAppelDeja}><Icone nom="coche" taille={13} epaisseur={2.6} />{`Déjà envoyé le ${quand(deja.le)} ${deja.canal === 'sms' ? 'par SMS' : 'par mail'}`}</span>}
+      {dit && <span className={s.lienAppelDit} role="status">{dit}</span>}
       {dit && /pas parti/.test(dit) && mail && (
         <a className={s.lienAppelBtn} href={lienMail(dest.email!, msg)} onClick={() => { void noter('mail'); }}><Icone nom="mail" taille={15} epaisseur={2.1} />Ouvrir ma messagerie à la place</a>
       )}

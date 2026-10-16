@@ -53,6 +53,14 @@
 .panneauTete span { font-size: 12.5px; font-weight: 600; color: #6B5A45; }
 .panneauFermer { position: absolute; top: 0; right: 0; width: 30px; height: 30px; border-radius: 8px; border: 1px solid #F2D2AC; background: white; color: #8F5A1C;
   display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+/* V3.204 — le lien déjà parti : une coche verte sur le bouton, le rappel dans le panneau. */
+.lienAgCoche { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #059669; color: white; flex-shrink: 0; margin-right: -3px; }
+.panneauEtat { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.panneauDeja { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; box-sizing: border-box; padding: 7px 11px; border-radius: 10px; background: #ECFDF5; border: 1px solid #A7F3D0;
+  color: #065F46; font-size: 13px; font-weight: 700; line-height: 1.4; }
+.panneauDeja svg, .panneauNote svg { flex-shrink: 0; }
+.panneauNote { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; line-height: 1.4; color: #6B5A45; }
+.panneauNote[data-ton="prune"] { color: #6D28D9; }
 .panneauBtns { display: flex; gap: 8px; flex-wrap: wrap; }
 .panneauBtns .lienFort, .panneauBtns .lien { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .panneauBtns button:disabled { opacity: .6; cursor: default; }
@@ -183,7 +191,9 @@
 .lienAppelFort:disabled, .lienAppelBtn:disabled { opacity: .6; cursor: default; }
 .lienAppelAide { font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #6B5A45; }
 .lienAppelDit { font-size: 12.5px; font-weight: 700; color: #A95808; }
-.lienAppelDeja { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #0E6B43; }
+.lienAppelDeja { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; box-sizing: border-box; padding: 6px 10px; border-radius: 9px;
+  background: #ECFDF5; border: 1px solid #A7F3D0; font-size: 12.5px; font-weight: 700; line-height: 1.4; color: #065F46; }
+.lienAppelDeja svg { flex-shrink: 0; }
 .section { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .deux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .lib { display: inline-flex; align-items: center; gap: 7px; font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #475569; text-transform: uppercase; letter-spacing: .5px; }

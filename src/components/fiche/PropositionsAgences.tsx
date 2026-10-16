@@ -11,7 +11,7 @@ import {
   lienAgences, messageAgence, quiPropose, resumePourAgence, tableAgencesAbsente, type PropositionAgence,
 } from '@/lib/agences-lien';
 import {
-  ORIGINES, agencesDuClient, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterContact, noterEnvoi,
+  ORIGINES, agencesDuClient, canalLong, creerJeton, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterContact, noterEnvoi, quandEnvoi,
   type AgenceConnue, type Canal, type Destinataire, type Jeton,
 } from '@/lib/lien-agences-envois';
 import { mailLienAgence } from '@/lib/mail-agence';
@@ -538,18 +538,7 @@ export default function PropositionsAgences({ clientId, rechercheId, recherche, 
    téléphone ; l'envoi est noté (src/lib/lien-agences-envois.ts). */
 
 const PAR_PARTIE = 5;
-const pad2 = (n: number) => String(n).padStart(2, '0');
-/** « aujourd'hui à 22 h 33 », « hier à 9 h 05 », « le 13 oct. à 14 h 20 » */
-function quandEnvoi(iso: string) {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const h = `${d.getHours()} h ${pad2(d.getMinutes())}`;
-  const j = Math.round((new Date(new Date().toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000);
-  if (j === 0) return `aujourd’hui à ${h}`;
-  if (j === 1) return `hier à ${h}`;
-  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${h}`;
-}
-const canalLong = (c: Canal) => (c === 'sms' ? 'par SMS' : c === 'mail' ? 'par mail' : 'message copié');
+/* « le 13 oct. à 14 h 20 » et « par mail » : quandEnvoi et canalLong, src/lib/lien-agences-envois.ts (V3.204). */
 const MOTS_VIDES = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'l', 'd', 'agence', 'immobilier', 'immobiliere', 'immo']);
 function initiales(nom: string) {
   const mots = nom.normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^A-Za-z0-9]+/).filter(Boolean);
