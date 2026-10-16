@@ -1515,6 +1515,29 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.205 — 16 octobre 2026 · « Noter un appel » : un champ par ligne, deux numéros, des plages horaires
+
+- Alexandre : « on ne voit pas le nom en entier, et surtout l'e-mail, c'est coupé » ; « quand une
+  agence nous propose entre 14 h et 17 h, on est obligé de mettre une heure » ; « je prends le
+  numéro de la personne, mais j'aimerais laisser celui de l'agence ».
+- **Le contact, un champ par ligne** (`.grilleUne`) : Agence, Téléphone de l'agence,
+  Interlocuteur, son numéro, E-mail — en entier (et en bulle au survol).
+- **Deux numéros** : « Ajouter son numéro (celui de l'agence reste) » → « Numéro de Guillaume ».
+  Gardé dans le suivi (`contact.tel_direct`, `ContactSuivi.telDirect`) et, avec « Mettre aussi
+  ce contact sur la fiche du bien », dans `biens.agence_interlocuteur_tel` — **SQL** :
+  `outils/sql/biens-agence-contact.sql` (la colonne ajoutée au fichier de la V3.203, sans danger
+  à repasser). Sans lui, tout s'enregistre sans ce champ, et on le dit. « Détail du bien »,
+  partie Agence : l'agence et son numéro sur une ligne, la personne et le sien sur la suivante
+  (« Appeler » à côté de chacun). Le suivi montre les deux (icône personnage, icône immeuble) ;
+  le SMS du lien part au portable de la personne (`telPourSms`), `agencesDuClient` aussi ; la
+  relance dit les deux ; `contactEnLigne` (la visite) aussi.
+- **Les plages** : un créneau peut avoir une `fin` (`Creneau.fin`, dans le même jsonb : pas de
+  SQL) — « Une heure précise » / « Une plage horaire », puis la date, « De », « À »
+  (`ChoixDateHeure` avec `fin` et `onFin`). « Sam. 17 oct. · de 14 h à 17 h ». Une fin avant le
+  début est refusée. « Ajouter un autre créneau » reprend le dernier choix. Une visite calée dans
+  la plage la coche (`creneauDeLaVisite`) ; « Valider ce créneau » ouvre « Planifier une visite »
+  à l'heure du début.
+
 ### V3.204 — 16 octobre 2026 · « Déjà envoyé le… » et « Renvoyer », partout où part le lien
 
 - Alexandre : « dans n'importe quelle situation, il y a toujours un rappel de quand le lien a été
