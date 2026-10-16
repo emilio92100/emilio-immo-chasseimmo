@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { jetonValide, rechercheFermee } from '@/lib/agences-lien';
+import { codeValide, jetonValide, rechercheFermee } from '@/lib/agences-lien';
 
 /* ═══ Le lien pour les agences, côté serveur (V3.197) ═════════════════════
    Ce que partagent la page /proposer/<jeton> et les routes /api/agences/ :
@@ -152,4 +152,22 @@ export async function journalServeur(sb: SupabaseClient, quoi: string, ligne: Li
     return;
   }
   console.error(`[écriture] ${quoi} : ${error.message}`);
+}
+
+/* V3.202 — Le code au bout du lien (src/lib/agences-lien.ts) : l'envoi du
+   CRM qu'il désigne, noté au journal par noterEnvoi (`metadata.code_lien`).
+   Ce qu'Alexandre a noté de la personne remplit « Vous » sur la page.
+   `null` : code inconnu pour cette recherche (la page s'ouvre vide). */
+export type EnvoiDuCode = { agence: string; interlocuteur: string | null; tel: string | null; email: string | null; le: string; canal: string | null };
+export async function envoiDuCode(sb: SupabaseClient, rid: string, code: unknown): Promise<EnvoiDuCode | null> {
+  if (!codeValide(code)) return null;
+  const { data, error } = await sb.from('journal').select('created_at, metadata').eq('recherche_id', rid)
+    .contains('metadata', { code_lien: code }).order('created_at', { ascending: false }).limit(1);
+  if (error) { console.error('[agences] code du lien', error.message); return null; }
+  const x = (data || [])[0] as { created_at: string; metadata: Record<string, unknown> | null } | undefined;
+  const m = x?.metadata || {};
+  const t = (k: string, max: number) => (typeof m[k] === 'string' ? String(m[k]).trim().slice(0, max) : '') || null;
+  const agence = t('agence', 120);
+  if (!x || !agence) return null;
+  return { agence, interlocuteur: t('interlocuteur', 120), tel: t('tel', 40), email: t('email', 160), le: x.created_at, canal: t('canal', 10) };
 }

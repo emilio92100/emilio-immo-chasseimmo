@@ -1,5 +1,5 @@
 import { IMAGES_MAIL, LIEN_POLICE_MAIL, LOGO_BLANC_MAIL, MAIL, POLICE_MAIL } from '@/lib/mail-charte';
-import type { ResumeAgence } from '@/lib/agences-lien';
+import { criteresAgence, type CritereAgence, type ResumeAgence } from '@/lib/agences-lien';
 
 /* ═══ Le mail du lien pour les agences (V3.198) ═══════════════════════════
    Alexandre : « le mail qu'il reçoit, est-ce qu'il est bien joli ? avec de
@@ -30,28 +30,13 @@ export function bonjourAgence(interlocuteur?: string | null): string {
   return /^(M\.|Mme|Mlle|Monsieur|Madame)\s/i.test(i) ? `Bonjour ${i},` : `Bonjour ${i.split(/\s+/)[0]},`;
 }
 
-/* Les critères, rangés comme sur la maquette : le type et les pièces, la
-   surface, les secteurs, le budget. Ce que le résumé ne range pas suit. */
-type Critere = { ico: string; titre: string; sous: string; or?: boolean };
-function criteres(r: ResumeAgence): Critere[] {
-  const p = [...r.puces];
-  const prendre = (test: (x: string) => boolean) => { const i = p.findIndex(test); return i >= 0 ? p.splice(i, 1)[0] : null; };
-  const pieces = prendre(x => /pièce/.test(x));
-  const chambres = prendre(x => /chambre/.test(x));
-  const surface = prendre(x => /m²/.test(x));
-  const type = p.length && !/,/.test(p[0]) && p[0].length < 40 ? p.shift()! : null;
-  const secteurs = p.length ? p.join(', ') : null;
-  const l: Critere[] = [];
-  const detail = [pieces, chambres?.replace(' au moins', '')].filter(Boolean).join(' · ');
-  if (type || detail) l.push({ ico: 'maison', titre: type || detail, sous: type ? detail || 'Le type de bien' : 'Le bien' });
-  if (surface) l.push({ ico: 'surface', titre: surface, sous: 'Surface habitable' });
-  if (secteurs) l.push({ ico: 'lieu', titre: secteurs, sous: 'Les secteurs' });
-  if (r.budget) l.push({ ico: 'budget', titre: r.budget, sous: 'Budget maximum', or: true });
-  return l;
-}
+/* Les critères (le type et les pièces, la surface, les secteurs, le budget) :
+   src/lib/agences-lien.ts, les mêmes que sur la page de l'agence (V3.202). */
+type Critere = CritereAgence;
+const criteres = (r: ResumeAgence): Critere[] => criteresAgence(r);
 
 const ETAPES = [
-  { ico: 'etape-lien', t: 'Collez votre annonce', s: 'Votre site, SeLoger, Leboncoin… ou quelques photos.' },
+  { ico: 'etape-lien', t: 'Collez votre annonce', s: 'Votre site, SeLoger, Leboncoin… ou sa plaquette PDF, ou des photos.' },
   { ico: 'etape-lue', t: 'Elle est lue toute seule', s: 'Photos, prix, surface : rien à ressaisir.' },
   { ico: 'etape-tel', t: 'Je vous rappelle', s: 'Si le bien correspond à mon client.' },
 ];
@@ -62,6 +47,8 @@ export function mailLienAgence(o: { lien: string; interlocuteur?: string | null;
   const bonjour = echappe(bonjourAgence(o.interlocuteur));
   const crit = criteres(o.resume);
   const imp = o.resume.important;
+  /* V3.202 : ses précisions, quand Alexandre a choisi de les montrer (une copie). */
+  const prec = o.resume.precisions || '';
 
   const bloc = (c: Critere) => `<div style="display:inline-block;width:100%;max-width:246px;vertical-align:top;margin:0 0 12px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -89,12 +76,16 @@ export function mailLienAgence(o: { lien: string; interlocuteur?: string | null;
     <div style="font-size:15px;font-weight:700;color:${MAIL.encre};">${bonjour}</div>
     <div style="margin-top:10px;font-size:15px;line-height:1.65;font-weight:500;color:${MAIL.texte};">Comme convenu, voici le lien pour me proposer vos biens pour mon client. Ce qu’il cherche est juste en dessous ; si vous avez quelque chose qui correspond, collez simplement le lien de votre annonce : je l’étudie et je reviens vers vous.</div>
 
-    ${crit.length || imp.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px;"><tr><td style="background:${MAIL.fond};border:1px solid ${MAIL.trait};border-radius:16px;padding:18px 18px 8px;">
+    ${crit.length || imp.length || prec ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px;"><tr><td style="background:${MAIL.fond};border:1px solid ${MAIL.trait};border-radius:16px;padding:18px 18px 8px;">
       <div style="font-size:11.5px;font-weight:800;letter-spacing:1.3px;color:${MAIL.plume};margin-bottom:14px;">CE QUE CHERCHE MON CLIENT</div>
       ${crit.map(bloc).join('')}
       ${imp.length ? `<div style="border-top:1px solid ${MAIL.trait};padding:12px 0 10px;">
         <div style="font-size:12.5px;font-weight:700;color:${MAIL.plume};margin-bottom:8px;">Important pour lui</div>
         ${imp.map(x => `<div style="font-size:13.5px;font-weight:700;line-height:1.5;color:${MAIL.encre};margin:0 0 6px;"><img src="${ICO}/coche.png" width="16" height="16" alt="" style="width:16px;height:16px;border:0;vertical-align:-3px;margin-right:7px;" />${echappe(x)}</div>`).join('')}
+      </div>` : ''}
+      ${prec ? `<div style="border-top:1px solid ${MAIL.trait};padding:12px 0 12px;">
+        <div style="font-size:12.5px;font-weight:700;color:${MAIL.plume};margin-bottom:8px;">Ses précisions</div>
+        <div style="font-size:14px;font-weight:600;line-height:1.55;color:${MAIL.encre};background:#ffffff;border:1px solid ${MAIL.trait};border-radius:12px;padding:11px 13px;">${echappe(prec).replace(/\n/g, '<br />')}</div>
       </div>` : ''}
     </td></tr></table>` : ''}
 
@@ -137,8 +128,9 @@ export function mailLienAgence(o: { lien: string; interlocuteur?: string | null;
     'Ce qu’il cherche :',
     ...crit.map(c => `- ${c.titre}${c.sous && !/^(Le type de bien|Le bien|Surface habitable|Les secteurs|Budget maximum)$/.test(c.sous) ? ` (${c.sous})` : ''}`),
     ...(imp.length ? ['Important pour lui :', ...imp.map(x => `- ${x}`)] : []),
+    ...(prec ? ['Ses précisions :', prec] : []),
     '',
-    'Il suffit d’y coller le lien de votre annonce (votre site, SeLoger, Leboncoin…) ou quelques photos : elle arrive directement chez moi, je l’étudie et je reviens vers vous.',
+    'Il suffit d’y coller le lien de votre annonce (votre site, SeLoger, Leboncoin…), sa plaquette PDF ou quelques photos : elle arrive directement chez moi, je l’étudie et je reviens vers vous.',
     '',
     'Alexandre Rogelet',
     'Chasseur immobilier · Emilio Immobilier',

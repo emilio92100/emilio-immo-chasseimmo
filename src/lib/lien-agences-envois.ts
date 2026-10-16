@@ -1,6 +1,6 @@
 import { supabase, addJournal } from '@/lib/supabase';
 import { verifie } from '@/lib/ecritures';
-import { jetonAgences, tableAgencesAbsente } from '@/lib/agences-lien';
+import { codeEnvoi, jetonAgences, lienAgences, lienAvecCode, tableAgencesAbsente } from '@/lib/agences-lien';
 
 /* ═══ Envoyer le lien à une agence, et s'en souvenir (V3.198) ═════════════
    Alexandre : « est-ce que je sais quand le lien a été envoyé ? est-ce que
@@ -54,6 +54,15 @@ export function messagePour(message: string, interlocuteur?: string | null): str
   const civil = /^(M\.|Mme|Mlle|Monsieur|Madame)\s/i.test(i);
   return message.replace(/^Bonjour,/, `Bonjour ${civil ? i : i.split(/\s+/)[0]},`);
 }
+/** V3.202 — Le message pour CETTE personne : « Bonjour Julien, » et le lien
+    avec son code (src/lib/agences-lien.ts), pour que la page remplisse ses
+    coordonnées. Le message modifié à la main garde ses mots : seul le lien
+    simple, s'il y est, prend le code. */
+export function messagePourAgence(message: string, jeton: string | null | undefined, d: Destinataire): string {
+  const m = messagePour(message, d.interlocuteur);
+  if (!jeton) return m;
+  return m.split(lienAgences(jeton)).join(lienAvecCode(jeton, codeEnvoi(jeton, d)));
+}
 export const lienSms = (tel: string, message: string) => `sms:${String(tel).replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(message)}`;
 export const lienMail = (email: string, message: string) =>
   `mailto:${String(email).trim()}?subject=${encodeURIComponent('Un bien pour mon client')}&body=${encodeURIComponent(message)}`;
@@ -64,11 +73,14 @@ const parCanal = (c: Canal) => (c === 'sms' ? 'par SMS' : c === 'mail' ? 'par ma
 /** Noter l'envoi : au journal, et dans le suivi du bien quand il part de là. */
 export async function noterEnvoi(o: {
   clientId: string; rechercheId: string; prenom?: string | null; dest: Destinataire; canal: Canal; bienId?: string | null;
+  /** V3.202 : le jeton du lien, pour noter le code de cet envoi (la page le relit) */
+  jeton?: string | null;
 }): Promise<boolean> {
   const d = o.dest;
   const metadata = {
     lien_agences: true, canal: o.canal, agence: d.nom.trim(),
     interlocuteur: d.interlocuteur?.trim() || null, tel: d.tel?.trim() || null, email: d.email?.trim() || null,
+    ...(o.jeton ? { code_lien: codeEnvoi(o.jeton, d) } : {}),
   };
   const titre = o.canal === 'copie'
     ? `🔗 Lien pour les agences : message copié pour ${quiEst(d)}`
@@ -218,11 +230,15 @@ export async function agencesDuClient(rechercheId: string): Promise<AgenceConnue
 /** V3.198 — Le joli mail (maquettes 7 et 8), envoyé par le CRM au nom
     d'Alexandre : src/app/api/lien-agences/mail. Rien n'est noté ici : à
     l'appelant de noter l'envoi s'il est parti. */
-export async function envoyerMailAgence(rechercheId: string, dest: Destinataire): Promise<{ ok: true } | { ok: false; erreur: string }> {
+export async function envoyerMailAgence(rechercheId: string, dest: Destinataire, jeton?: string | null): Promise<{ ok: true } | { ok: false; erreur: string }> {
   try {
     const r = await fetch('/api/lien-agences/mail', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recherche_id: rechercheId, email: dest.email, agence: dest.nom, interlocuteur: dest.interlocuteur || null }),
+      body: JSON.stringify({
+        recherche_id: rechercheId, email: dest.email, agence: dest.nom, interlocuteur: dest.interlocuteur || null,
+        /* V3.202 : le code de cette personne, au bout du lien du mail */
+        code: jeton ? codeEnvoi(jeton, dest) : null,
+      }),
     });
     const d = await r.json().catch(() => null) as { ok?: boolean; error?: string } | null;
     if (!r.ok || !d?.ok) return { ok: false, erreur: d?.error || `le serveur a répondu ${r.status}` };
