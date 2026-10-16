@@ -1515,6 +1515,31 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.203 — 16 octobre 2026 · Le contact de l'agence sur la fiche du bien, « Noter un appel » en large
+
+- Alexandre : « pourquoi dans la catégorie agence [du Détail du bien], je n'ai pas le mail ? »,
+  « depuis Noter un appel, un petit bouton pour le lien, et aussi depuis la partie Présentés »,
+  « Noter un appel, c'est trop centré : plus rectangulaire, plus joli ». Maquettes 17 et 18 du
+  canevas « Le lien pour les agences », validées le 16 octobre.
+- **SQL** : `outils/sql/biens-agence-contact.sql` — `biens.agence_interlocuteur`, `biens.agence_email`.
+  Sans lui, tout s'enregistre sans ces deux champs (et le dit).
+- **Détail du bien, partie Agence** (`DetailBien.tsx`) : le nom et « Personne qui gère le
+  dossier » côte à côte, puis le téléphone (« Appeler ») et le mail (« Écrire »), et une phrase
+  qui dit où ils servent ; un particulier : son nom, son téléphone, son mail. Enregistrés par
+  `saveFicheBien` (FicheClient). Icône `personne` ajoutée à `ParcoursBien.tsx`.
+- **Repris partout** : `contactDu` (src/lib/suivi-agence.ts) prend la personne et le mail de la
+  fiche quand le suivi ne les a pas ; `agencesDuClient` aussi (fenêtre du lien). « Noter un
+  appel » : « Mettre aussi ce contact sur la fiche du bien » écrit le nom, le téléphone, le mail
+  et la personne.
+- **« Noter un appel » en large** (`FenetreAppel`, 1 060 px) : à gauche l'agence, sur fond doux
+  (avec qui, son contact dans une carte avec une icône par case, `LienAppel` — « Le lien pour
+  Constance » : par SMS, par mail, copier, « Déjà envoyé le 14 oct. par mail » —, l'adresse) ; à
+  droite l'appel (la réponse et le bien côte à côte, ce qui a été dit, les créneaux, la suite, ce
+  que le client voit). Une colonne sous 860 px. Un envoi depuis la fenêtre rafraîchit le suivi.
+- **« Le lien pour Constance » dans la barre de « Mon suivi avec l'agence »** (visible même
+  replié : il déplie et ouvre le panneau), à la place du bouton de la carte du contact. Dans « Voir
+  en grand », ce suivi est déjà là avec ce bouton : pas de second bouton dans le pied.
+
 ### V3.202 — 16 octobre 2026 · Le PDF, le code au bout du lien, ses précisions, une page agence plus vivante
 
 - Alexandre : « est-ce qu'il y a possibilité qu'il mette un PDF ? Le CRM arrive à lire les PDF
