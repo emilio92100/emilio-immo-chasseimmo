@@ -77,27 +77,34 @@ export async function noterEnvoi(o: {
   jeton?: string | null;
 }): Promise<boolean> {
   const d = o.dest;
+  /* V3.204 : un renvoi se dit (« renvoyé, 2e envoi »), dans le journal comme dans le suivi du bien. */
+  const avant = o.canal === 'copie' ? 0 : envoisPour(await envoisDuLien(o.rechercheId), d).length;
+  const n = avant + 1;
   const metadata = {
     lien_agences: true, canal: o.canal, agence: d.nom.trim(),
     interlocuteur: d.interlocuteur?.trim() || null, tel: d.tel?.trim() || null, email: d.email?.trim() || null,
     ...(o.jeton ? { code_lien: codeEnvoi(o.jeton, d) } : {}),
+    ...(avant ? { envoi_n: n } : {}),
   };
   const titre = o.canal === 'copie'
     ? `🔗 Lien pour les agences : message copié pour ${quiEst(d)}`
-    : `🔗 Lien pour les agences envoyé à ${quiEst(d)}, ${parCanal(o.canal)}`;
+    : avant ? `🔗 Lien pour les agences renvoyé à ${quiEst(d)}, ${parCanal(o.canal)} (${n}e envoi)`
+      : `🔗 Lien pour les agences envoyé à ${quiEst(d)}, ${parCanal(o.canal)}`;
   const ok = await addJournal(o.clientId, 'lien_agences', titre.slice(0, 300), [d.tel, d.email].filter(Boolean).join(' · ') || undefined, metadata,
     { rechercheId: o.rechercheId, bienId: o.bienId || null });
   if (o.bienId) {
     const pour = String(o.prenom || '').trim() || 'ton client';
     const texte = o.canal === 'copie'
       ? `Message du lien pour ${pour} copié, pour l’envoyer à ${d.interlocuteur || d.nom}.`
-      : `Envoi du lien pour ${pour}, ${parCanal(o.canal)} : l’agence peut y proposer ses autres biens.`;
+      : avant ? `Lien pour ${pour} renvoyé ${parCanal(o.canal)} (${n}e envoi) : le même lien, toujours valable.`
+        : `Envoi du lien pour ${pour}, ${parCanal(o.canal)} : l’agence peut y proposer ses autres biens.`;
     await verifie('L’envoi dans le suivi du bien', supabase.from('suivis_agence').insert({
       bien_id: o.bienId, recherche_id: o.rechercheId, client_id: o.clientId, genre: 'note', avec: 'agence',
       contact: { nom: metadata.agence || undefined, interlocuteur: metadata.interlocuteur || undefined, tel: metadata.tel || undefined, email: metadata.email || undefined },
       texte,
     }).select('id'), { ligne: true });
   }
+  envoiNote(o.rechercheId);
   return ok;
 }
 
@@ -251,4 +258,72 @@ export async function envoyerMailAgence(rechercheId: string, dest: Destinataire,
   } catch (e) {
     return { ok: false, erreur: (e as Error).message || 'pas de réponse' };
   }
+}
+
+/* ═══ V3.204 — « Déjà envoyé le… », partout où le lien part ════════════════
+   Alexandre : « dans n'importe quelle situation, il y a toujours un rappel de
+   quand le lien a été envoyé ? est-ce que je peux le renvoyer ? ». Le lien ne
+   change jamais (et le code d'une même personne non plus) : le renvoyer est
+   toujours possible. Les trois endroits d'où il part le rappellent — la
+   fenêtre du lien (Veille), « Noter un appel », et le panneau « Le lien
+   pour… » de la barre du suivi, dont le bouton porte une coche verte. */
+
+/** Le nom générique (« L'agence ») ne désigne personne : il ne sert pas à rapprocher. */
+const nomUtile = (n: unknown) => { const k = normNom(String(n || '')).replace(/ /g, ''); return k === 'lagence' || k === 'agence' ? '' : k; };
+/** La même agence : même numéro, même mail, ou même nom (« CENTURY 21 - Montparnasse » = « Century 21 Montparnasse »). */
+export function memeAgence(a: Destinataire, b: Destinataire): boolean {
+  const ta = chiffres(a.tel).slice(-9);
+  if (ta.length === 9 && ta === chiffres(b.tel).slice(-9)) return true;
+  const ma = String(a.email || '').trim().toLowerCase();
+  if (ma && ma === String(b.email || '').trim().toLowerCase()) return true;
+  const na = nomUtile(a.nom);
+  return !!na && na === nomUtile(b.nom);
+}
+/** Les envois du lien à cette agence, du plus récent au plus ancien — ou, avec `copies`, les messages seulement copiés. */
+export function envoisPour(envois: Envoi[], d: Destinataire, o?: { copies?: boolean }): Envoi[] {
+  return envois.filter(e => (o?.copies ? e.canal === 'copie' : e.canal !== 'copie') && memeAgence(e, d));
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+/** « aujourd'hui à 22 h 33 », « hier à 9 h 05 », « le 13 oct. à 14 h 20 » */
+export function quandEnvoi(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const h = `${d.getHours()} h ${pad2(d.getMinutes())}`;
+  const j = Math.round((new Date(new Date().toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000);
+  if (j === 0) return `aujourd’hui à ${h}`;
+  if (j === 1) return `hier à ${h}`;
+  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${h}`;
+}
+/** « par SMS », « par mail », « message copié » */
+export const canalLong = parCanal;
+
+/* Une seule lecture des envois par recherche, partagée par tous les suivis de
+   la fiche (une minute au plus), relue après chaque envoi noté — où qu'il
+   parte. */
+const memoire = new Map<string, { le: number; p: Promise<Envoi[]> }>();
+const ecouteurs = new Set<(rechercheId: string) => void>();
+export function envoisPartages(rechercheId: string): Promise<Envoi[]> {
+  const m = memoire.get(rechercheId);
+  if (m && Date.now() - m.le < 60000) return m.p;
+  const p = envoisDuLien(rechercheId);
+  memoire.set(rechercheId, { le: Date.now(), p });
+  return p;
+}
+/** Être prévenu après chaque envoi noté. Rend de quoi se désabonner. */
+export function surNouvelEnvoi(f: (rechercheId: string) => void): () => void {
+  ecouteurs.add(f);
+  return () => { ecouteurs.delete(f); };
+}
+function envoiNote(rechercheId: string) {
+  memoire.delete(rechercheId);
+  ecouteurs.forEach(f => f(rechercheId));
+}
+
+/** Combien de biens cette agence a proposés par le lien (null : pas lisible). */
+export async function proposesPar(rechercheId: string, d: Destinataire): Promise<number | null> {
+  const { data, error } = await supabase.from('propositions_agences').select('agence, tel, email').eq('recherche_id', rechercheId).limit(500);
+  if (error) return null;
+  return ((data || []) as { agence: string | null; tel: string | null; email: string | null }[])
+    .filter(x => memeAgence({ nom: x.agence || '', tel: x.tel, email: x.email }, d)).length;
 }
