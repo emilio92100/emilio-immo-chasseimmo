@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { base } from '@/lib/agences-serveur';
-import { lienAgences, resumePourAgence, tableAgencesAbsente } from '@/lib/agences-lien';
+import { codeValide, lienAvecCode, resumePourAgence, tableAgencesAbsente } from '@/lib/agences-lien';
 import { mailLienAgence } from '@/lib/mail-agence';
 import { envoyerMail } from '@/lib/mandat-serveur';
 import { avecRemises } from '@/lib/remise-mail';
@@ -8,7 +8,10 @@ import { avecRemises } from '@/lib/remise-mail';
 /**
  * Le joli mail du lien pour les agences (V3.198, maquettes 7 et 8).
  *
- *   POST { recherche_id, email, agence?, interlocuteur? } → { ok } | { ok: false, error }
+ *   POST { recherche_id, email, agence?, interlocuteur?, code? } → { ok } | { ok: false, error }
+ *
+ * V3.202 : `code`, celui de cette personne (src/lib/agences-lien.ts), va au
+ * bout du lien : la page de l'agence remplit ses coordonnées.
  *
  * Envoyé au nom d'Alexandre, comme ses autres mails (Mailjet, src/lib/
  * mandat-serveur.ts) ; la remise est suivie (« Bien arrivé », remise-mail).
@@ -33,6 +36,7 @@ async function envoyer(req: NextRequest) {
     const email = String(body?.email || '').trim();
     const interlocuteur = String(body?.interlocuteur || '').trim().slice(0, 120) || null;
     const agence = String(body?.agence || '').trim().slice(0, 120) || null;
+    const code = codeValide(body?.code) ? body.code : null;
     if (!uuid(rid)) return NextResponse.json({ ok: false, error: 'La recherche manque.' }, { status: 400 });
     if (!mailValide(email)) return NextResponse.json({ ok: false, error: 'Cette adresse mail ne semble pas valide.' }, { status: 400 });
 
@@ -44,7 +48,7 @@ async function envoyer(req: NextRequest) {
     const jeton = (r as Record<string, unknown> | null)?.token_agences;
     if (!r || typeof jeton !== 'string' || !jeton) return NextResponse.json({ ok: false, error: 'Le lien de cette recherche n’existe pas (ou il a été coupé).' }, { status: 409 });
 
-    const m = mailLienAgence({ lien: lienAgences(jeton), interlocuteur, resume: resumePourAgence(r as Record<string, unknown>) });
+    const m = mailLienAgence({ lien: lienAvecCode(jeton, code), interlocuteur, resume: resumePourAgence(r as Record<string, unknown>) });
     const erreur = await envoyerMail({ a: email, nomA: interlocuteur || agence || undefined, sujet: m.sujet, texte: m.texte, html: m.html, deLaPartDe: 'alexandre' });
     if (erreur) return NextResponse.json({ ok: false, error: `Le mail n’est pas parti : ${erreur}` }, { status: 502 });
     return NextResponse.json({ ok: true });
