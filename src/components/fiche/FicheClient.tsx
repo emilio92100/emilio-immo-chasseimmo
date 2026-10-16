@@ -3019,7 +3019,7 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       commission_val: parseFloat(editBienForm.commission_val)||null,
       prix_acquereur: prixAcqEdit||null,
     };
-    const enregistre = await verifie('La fiche du bien', supabase.from('biens').update({
+    const valeursBien: Record<string, unknown> = {
       photos: photosFinales,
       titre: editBienForm.titre,
       ville: editBienForm.ville,
@@ -3071,8 +3071,19 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       source_portail: editBienForm.source_portail,
       agence_nom: (editBienForm.agence_nom || '').trim() || null,
       agence_tel: (editBienForm.agence_tel || '').trim() || null,
+      /* V3.203 : la personne qui gère le dossier et son mail (outils/sql/biens-agence-contact.sql). */
+      agence_interlocuteur: editBienForm.est_particulier ? null : (editBienForm.agence_interlocuteur || '').trim() || null,
+      agence_email: (editBienForm.agence_email || '').trim() || null,
       url: editBienForm.url||null,
-    }).eq('id', ficheBienId).select('id'), { ligne: true });
+    };
+    let repBien = await supabase.from('biens').update(valeursBien).eq('id', ficheBienId).select('id');
+    /* Avant le SQL : la fiche s'enregistre sans eux, et on le dit. */
+    if (repBien.error && /agence_(interlocuteur|email)/.test(repBien.error.message || '')) {
+      const { agence_interlocuteur: _i, agence_email: _e, ...sans } = valeursBien;
+      repBien = await supabase.from('biens').update(sans).eq('id', ficheBienId).select('id');
+      if (!repBien.error && (_i || _e)) signalerEchec('La personne et le mail de l’agence', 'pas enregistrés : il faut d’abord passer outils/sql/biens-agence-contact.sql dans Supabase (SQL Editor)');
+    }
+    const enregistre = await verifie('La fiche du bien', Promise.resolve(repBien), { ligne: true });
     /* Pas enregistrée : la fenêtre reste ouverte, rien n'est perdu. */
     if (!enregistre) { setSaving(false); return; }
     /* V3.192 : une adresse changée ici change aussi dans la proposition de la veille. */

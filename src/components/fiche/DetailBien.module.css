@@ -103,6 +103,14 @@
 
 /* l'agence */
 .appeler { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 42px; padding: 0 16px; border-radius: 11px; background: #34496e; color: white; font-size: 13.5px; font-weight: 800; text-decoration: none; white-space: nowrap; align-self: end; }
+.appeler:hover { background: #22497D; }
+/* V3.203 — Le téléphone et le mail de l'agence, chacun avec son bouton ; la petite phrase qui dit où ils servent. */
+.ligneBouton { display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
+.ligneBouton > :first-child { flex: 1 1 auto; min-width: 0; }
+.ecrire { background: white; color: #34496e; border: 1.5px solid #c9d6e8; }
+.ecrire:hover { background: #eef3fa; }
+.infoAgence { grid-column: 1 / -1; margin: 2px 0 0; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #f5f8fc; border: 1px solid #e3e8f0; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #5b6b80; }
+.infoAgence svg { flex-shrink: 0; margin-top: 1px; color: #34496e; }
 
 /* les photos */
 .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 9px; }

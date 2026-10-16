@@ -200,6 +200,7 @@ export default function DetailBien({ form, setForm, saving, onFermer, onEnregist
       ? Math.round(nombre(f.prix_vendeur) * (1 + nombre(f.commission_val) / 100))
       : nombre(f.prix_vendeur) + nombre(f.commission_val);
   const tel = String(f.agence_tel || '').trim();
+  const mailAgence = String(f.agence_email || '').trim();
   const manque = (k: string) => (vide(f[k]) ? 'à compléter' : null);
   const ajouterPhoto = () => {
     const u = urlPhoto.trim();
@@ -490,15 +491,32 @@ export default function DetailBien({ form, setForm, saving, onFermer, onEnregist
                     <button type="button" className={s.pastille} data-actif={!!f.est_particulier} aria-pressed={!!f.est_particulier} onClick={() => set('est_particulier', true)}>Un particulier</button>
                   </span>
                 </Champ>
-                <Champ etiquette={f.est_particulier ? 'Nom (facultatif)' : 'Nom de l’agence'} icone="immeuble" manque={f.est_particulier ? null : manque('agence_nom')} className={s.g2}>
-                  <Saisie valeur={f.agence_nom} onChange={v => set('agence_nom', v)} vide={!f.est_particulier && vide(f.agence_nom)} />
+                {/* V3.203 — Alexandre : « pourquoi dans la catégorie agence, je n'ai pas le mail ? ».
+                    La personne qui gère le dossier et son mail, à côté du nom et du téléphone :
+                    repris par « Mon suivi avec l'agence », « Noter un appel » et le lien pour les agences. */}
+                <Champ etiquette={f.est_particulier ? 'Nom (facultatif)' : 'Nom de l’agence'} icone="immeuble" manque={f.est_particulier ? null : manque('agence_nom')} className={f.est_particulier ? s.g4 : s.g2}>
+                  <Saisie valeur={f.agence_nom} onChange={v => set('agence_nom', v)} vide={!f.est_particulier && vide(f.agence_nom)} placeholder={f.est_particulier ? 'M. et Mme Martin' : 'Century 21 Montparnasse'} />
                 </Champ>
-                <Champ etiquette="Téléphone" icone="tel" manque={f.est_particulier ? null : manque('agence_tel')}>
-                  <Saisie valeur={f.agence_tel} onChange={v => set('agence_tel', v)} vide={!f.est_particulier && vide(f.agence_tel)} type="tel" placeholder="01 23 45 67 89" />
-                </Champ>
-                {tel ? (
-                  <a className={s.appeler} href={`tel:${tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={15} epaisseur={2} />Appeler</a>
-                ) : <span />}
+                {!f.est_particulier && (
+                  <Champ etiquette="Personne qui gère le dossier" icone="personne" className={s.g2}>
+                    <Saisie valeur={f.agence_interlocuteur} onChange={v => set('agence_interlocuteur', v)} placeholder="Julie Bernard, négociatrice" />
+                  </Champ>
+                )}
+                <div className={`${s.g2} ${s.ligneBouton}`}>
+                  <Champ etiquette="Téléphone" icone="tel" manque={f.est_particulier ? null : manque('agence_tel')}>
+                    <Saisie valeur={f.agence_tel} onChange={v => set('agence_tel', v)} vide={!f.est_particulier && vide(f.agence_tel)} type="tel" placeholder="06 12 34 56 78" />
+                  </Champ>
+                  {tel && <a className={s.appeler} href={`tel:${tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={15} epaisseur={2} />Appeler</a>}
+                </div>
+                <div className={`${s.g2} ${s.ligneBouton}`}>
+                  <Champ etiquette="Mail" icone="mail">
+                    <Saisie valeur={f.agence_email} onChange={v => set('agence_email', v)} type="email" mode="email" placeholder={f.est_particulier ? 'martin@gmail.com' : 'julie.bernard@agence.fr'} />
+                  </Champ>
+                  {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mailAgence) && <a className={`${s.appeler} ${s.ecrire}`} href={`mailto:${mailAgence}`}><Icone nom="mail" taille={15} epaisseur={2} />Écrire</a>}
+                </div>
+                {!f.est_particulier && (
+                  <p className={s.infoAgence}><Icone nom="info" taille={15} epaisseur={2} /><span>{'Repris dans « Mon suivi avec l’agence », dans « Noter un appel », et pour lui envoyer le lien pour les agences (le mail part directement).'}</span></p>
+                )}
               </div>
             </Partie>
 

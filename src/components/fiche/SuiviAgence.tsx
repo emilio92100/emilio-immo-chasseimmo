@@ -11,7 +11,7 @@ import {
 } from '@/lib/suivi-agence';
 import { appelsMontres, phraseAppel } from '@/lib/suivi-client';
 import { messageAgence } from '@/lib/agences-lien';
-import { envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterEnvoi, type Canal, type Destinataire } from '@/lib/lien-agences-envois';
+import { envoisDuLien, envoyerMailAgence, estMobile, lienMail, lienSms, lireOuCreerJeton, mailValide, messagePourAgence, noterEnvoi, type Canal, type Destinataire, type Envoi } from '@/lib/lien-agences-envois';
 import { ChoixDateHeure, ChoixJour } from '@/components/pages/PageAgenda';
 import { Icone } from './ParcoursBien';
 import s from './SuiviAgence.module.css';
@@ -145,6 +145,14 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
             : <span className={s.extrait} data-vide={extrait ? undefined : 'oui'}>{extrait || (lignes.length ? '' : 'Rien de noté pour l’instant')}</span>}
         </button>
         <span className={s.actions}>
+          {/* V3.203 (maquette 18) : le lien pour l'agence, dans la barre, visible même replié —
+              aussi dans « Voir en grand », où ce suivi est à part (un seul bouton par fenêtre). */}
+          {contact.avec === 'agence' && rechercheId && (
+            <button type="button" className={s.lienAg} aria-expanded={lienOuvert}
+              onClick={() => { if (!ouvert) { basculer(); setLienOuvert(true); } else setLienOuvert(o => !o); }}>
+              <Icone nom="lien" taille={14} epaisseur={2.2} />{String(prenom || '').trim() ? `Le lien pour ${String(prenom).trim()}` : 'Le lien pour les agences'}
+            </button>
+          )}
           {(ouvert || !lignes.length) && (
             <button type="button" className={s.btn} onClick={() => setAppel({})}><Icone nom="tel" taille={14} epaisseur={2.1} />Noter un appel</button>
           )}
@@ -164,11 +172,6 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
             </span>
             {contact.tel && <a className={s.lienFort} href={`tel:${contact.tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={14} epaisseur={2.1} />{contact.tel}</a>}
             {contact.email && <a className={s.lien} href={`mailto:${contact.email}`}><Icone nom="mail" taille={14} epaisseur={2.1} />E-mail</a>}
-            {contact.avec === 'agence' && rechercheId && (
-              <button type="button" className={s.lienAg} onClick={() => setLienOuvert(o => !o)} aria-expanded={lienOuvert}>
-                <Icone nom="lien" taille={14} epaisseur={2.2} />{String(prenom || '').trim() ? `Le lien pour ${String(prenom).trim()}` : 'Le lien pour les agences'}
-              </button>
-            )}
           </div>
           {lienOuvert && rechercheId && (
             <PanneauLien bienId={b.id} clientId={clientId} rechercheId={rechercheId} prenom={prenom}
@@ -270,7 +273,7 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
 
       {appel && (
         <FenetreAppel b={b} lignes={lignes} ligne={appel.ligne} clientId={clientId} rechercheId={rechercheId} prenom={prenomC} clientPret={clientPret || !lignes.length} horsSuivi={horsSuivi}
-          onFermer={() => setAppel(null)}
+          onFermer={() => setAppel(null)} onEnvoi={onChange}
           onFait={indispo => { setAppel(null); if (!ouvert) basculer(); onChange(); if (indispo) onBiens?.(); }} />
       )}
     </div>
@@ -359,6 +362,91 @@ function PanneauLien({ bienId, clientId, rechercheId, prenom, dest, onFait, onFe
   );
 }
 
+/* ═══ V3.203 — « Le lien pour Constance », dans « Noter un appel » ══════════
+   Maquette 17 : sous le contact de l'agence, l'envoyer d'un appui (SMS sur un
+   portable, le joli mail, ou le message à copier), avec le contact tel qu'il
+   est tapé dans la fenêtre — le lien porte le code de cette personne. « Déjà
+   envoyé le 14 oct. par mail » quand le CRM le sait. */
+const chiffres9 = (t: unknown) => String(t || '').replace(/\D/g, '').slice(-9);
+const nomNet = (t: unknown) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+function dejaEnvoye(envois: Envoi[], d: Destinataire): Envoi | null {
+  const t = chiffres9(d.tel), m = String(d.email || '').trim().toLowerCase(), n = nomNet(d.nom);
+  return envois.find(e => e.canal !== 'copie' && ((t.length === 9 && chiffres9(e.tel) === t) || (m && String(e.email || '').trim().toLowerCase() === m) || (n && nomNet(e.nom) === n))) || null;
+}
+function LienAppel({ b, clientId, rechercheId, prenom, dest, onEnvoi }: {
+  b: any; clientId: string; rechercheId: string; prenom: string; dest: Destinataire; onEnvoi?: () => void;
+}) {
+  const [jeton, setJeton] = useState<string | null | undefined>(undefined);
+  const [envois, setEnvois] = useState<Envoi[]>([]);
+  const [travail, setTravail] = useState(false);
+  const [dit, setDit] = useState<string | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const [r, e] = await Promise.all([lireOuCreerJeton(rechercheId), envoisDuLien(rechercheId)]);
+      if (!vivant) return;
+      setJeton('jeton' in r ? r.jeton : null);
+      setEnvois(e);
+    })();
+    return () => { vivant = false; };
+  }, [rechercheId]);
+
+  const pour = prenom && prenom !== 'le client' ? prenom : '';
+  const qui = dest.interlocuteur || (dest.nom !== 'L’agence' ? dest.nom : '') || 'l’agence';
+  const msg = jeton ? messagePourAgence(messageAgence(jeton), jeton, dest) : '';
+  const mobile = !!dest.tel && estMobile(dest.tel);
+  const mail = !!dest.email && mailValide(dest.email);
+  const deja = dejaEnvoye(envois, dest);
+  const quand = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  async function noter(canal: Canal) {
+    const ok = await noterEnvoi({ clientId, rechercheId, prenom: pour || null, dest, canal, bienId: b.id, jeton });
+    if (ok) { setEnvois(await envoisDuLien(rechercheId)); onEnvoi?.(); }
+    return ok;
+  }
+  async function mailer() {
+    if (!mail || travail || !jeton) return;
+    if (!window.confirm(`Envoyer le mail du lien à ${dest.interlocuteur ? `${dest.interlocuteur} (${dest.email})` : dest.email} ?`)) return;
+    setTravail(true); setDit(null);
+    const r = await envoyerMailAgence(rechercheId, dest, jeton);
+    setTravail(false);
+    if (!r.ok) { setDit(`Le mail n’est pas parti : ${r.erreur}`); return; }
+    if (await noter('mail')) setDit(`Mail envoyé à ${qui}.`);
+  }
+  async function copier() {
+    try { await navigator.clipboard.writeText(msg); } catch { setDit('La copie n’a pas marché.'); return; }
+    if (await noter('copie')) setDit('Message copié : colle-le où tu veux.');
+  }
+
+  return (
+    <div className={s.lienAppel}>
+      <div className={s.lienAppelTete}>
+        <span className={s.lienAppelIc} aria-hidden="true"><Icone nom="lien" taille={16} epaisseur={2.2} /></span>
+        <span className={s.lienAppelTx}>
+          <b>{pour ? `Le lien pour ${pour}` : 'Le lien pour les agences'}</b>
+          <small>{`${qui.charAt(0).toUpperCase()}${qui.slice(1)} pourra te proposer ses autres biens`}</small>
+        </span>
+      </div>
+      {jeton === undefined ? (
+        <span className={s.lienAppelAide}>{'Préparation du lien…'}</span>
+      ) : jeton === null ? (
+        <span className={s.lienAppelAide}>{'Le lien n’a pas pu être préparé : ouvre la fenêtre du lien depuis l’onglet Veille.'}</span>
+      ) : (
+        <div className={s.lienAppelBtns}>
+          {mobile && <a className={s.lienAppelFort} href={lienSms(dest.tel!, msg)} onClick={() => { void noter('sms').then(ok => { if (ok) setDit(`SMS préparé pour ${qui} : l’envoi est noté.`); }); }}><Icone nom="mobile" taille={15} epaisseur={2.1} />Par SMS</a>}
+          {mail && <button type="button" className={mobile ? s.lienAppelBtn : s.lienAppelFort} onClick={() => { void mailer(); }} disabled={travail}><Icone nom="mail" taille={15} epaisseur={2.1} />{travail ? 'Envoi…' : 'Par mail'}</button>}
+          <button type="button" className={s.lienAppelBtn} onClick={() => { void copier(); }}><Icone nom="copie" taille={15} epaisseur={2.1} />Copier</button>
+        </div>
+      )}
+      {!mobile && !mail && jeton && <span className={s.lienAppelAide}>{'Ajoute son portable ou son mail juste au-dessus : le lien partira par SMS ou par mail.'}</span>}
+      {dit ? <span className={s.lienAppelDit} role="status">{dit}</span>
+        : deja && <span className={s.lienAppelDeja}><Icone nom="coche" taille={13} epaisseur={2.6} />{`Déjà envoyé le ${quand(deja.le)} ${deja.canal === 'sms' ? 'par SMS' : 'par mail'}`}</span>}
+      {dit && /pas parti/.test(dit) && mail && (
+        <a className={s.lienAppelBtn} href={lienMail(dest.email!, msg)} onClick={() => { void noter('mail'); }}><Icone nom="mail" taille={15} epaisseur={2.1} />Ouvrir ma messagerie à la place</a>
+      )}
+    </div>
+  );
+}
+
 /* ═══ La fenêtre « Noter un appel » ═══════════════════════════════════════ */
 
 function Pastille({ on, ic, children, onClick, ton }: { on: boolean; ic: string; children: React.ReactNode; onClick: () => void; ton?: string }) {
@@ -371,7 +459,7 @@ function Pastille({ on, ic, children, onClick, ton }: { on: boolean; ic: string;
 
 const demain = () => { const d = new Date(); d.setDate(d.getDate() + 1); return cleDuJour(d); };
 
-function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientPret, horsSuivi, onFermer, onFait }: {
+function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientPret, horsSuivi, onFermer, onFait, onEnvoi }: {
   b: any; lignes: LigneSuivi[];
   /** V3.193 : l'appel à modifier ; sans lui, un nouvel appel. */
   ligne?: LigneSuivi;
@@ -384,6 +472,8 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
   onFermer: () => void;
   /** `indispo` : le bien vient d'être dit « Plus disponible ». */
   onFait: (indispo: boolean) => void;
+  /** V3.203 : le lien vient d'être envoyé à l'agence depuis la fenêtre (une note s'ajoute au suivi). */
+  onEnvoi?: () => void;
 }) {
   const depart = contactDu(b, lignes);
   const [avec, setAvec] = useState(ligne?.avec || depart.avec);
@@ -420,8 +510,13 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
   }, [envoi, onFermer]);
 
   const titreBien = b.titre || [b.type_bien, b.ville].filter(Boolean).join(' — ') || 'ce bien';
-  const surFiche = { nom: String(b.agence_nom || '').trim(), tel: String(b.agence_tel || '').trim() };
-  const change = (nom.trim() || tel.trim()) && (nom.trim() !== surFiche.nom || tel.trim() !== surFiche.tel) && avec !== 'autre';
+  /* V3.203 : la fiche du bien garde aussi la personne et le mail (« Détail du bien », partie Agence). */
+  const surFiche = {
+    nom: String(b.agence_nom || '').trim(), tel: String(b.agence_tel || '').trim(),
+    interlocuteur: String(b.agence_interlocuteur || '').trim(), email: String(b.agence_email || '').trim(),
+  };
+  const change = (nom.trim() || tel.trim() || email.trim()) && avec !== 'autre' && (nom.trim() !== surFiche.nom || tel.trim() !== surFiche.tel
+    || email.trim() !== surFiche.email || (avec === 'agence' && interlocuteur.trim() !== surFiche.interlocuteur));
   const rien = !texte.trim() && !creneaux.length && !dispo && !reponse;
   const lieAjout = (c: Creneau) => setCreneaux(l => (l.some(x => x.date === c.date && x.heure === c.heure) ? l : [...l, c].sort((x, y) => `${x.date}${x.heure}`.localeCompare(`${y.date}${y.heure}`))));
   /* L'étape telle que le client la lira (src/lib/suivi-client.ts). */
@@ -495,7 +590,16 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
         signalerEchec(`Ce que ${prenom} voit`, `l’appel est enregistré, mais pas ton choix pour ${prenom} : il faut d’abord passer le fichier ${SQL_CLIENT} dans Supabase (SQL Editor), une seule fois`);
       }
       if (change && garder) {
-        await verifie('Les coordonnées sur la fiche du bien', supabase.from('biens').update({ agence_nom: c.nom || null, agence_tel: c.tel || null }).eq('id', b.id).select('id'), { ligne: true });
+        const surBien: Record<string, string | null> = {
+          agence_nom: c.nom || null, agence_tel: c.tel || null, agence_email: c.email || null,
+          ...(avec === 'agence' ? { agence_interlocuteur: c.interlocuteur || null } : {}),
+        };
+        let rb = await supabase.from('biens').update(surBien).eq('id', b.id).select('id');
+        /* Avant le SQL de la V3.203 (outils/sql/biens-agence-contact.sql) : le nom et le téléphone seulement. */
+        if (rb.error && /agence_(interlocuteur|email)/.test(rb.error.message || '')) {
+          rb = await supabase.from('biens').update({ agence_nom: surBien.agence_nom, agence_tel: surBien.agence_tel }).eq('id', b.id).select('id');
+        }
+        await verifie('Les coordonnées sur la fiche du bien', Promise.resolve(rb), { ligne: true });
       }
       /* V3.192 : l'adresse corrigée va sur le bien et sur sa proposition de la veille. */
       if (adresse.trim() && adresse.trim() !== adresseFiche) await corrigerAdresse(b.id, adresse);
@@ -524,28 +628,42 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
           <button type="button" className={s.fFermer} onClick={onFermer} aria-label="Fermer" disabled={envoi}><Icone nom="fermer" taille={16} epaisseur={2.4} /></button>
         </div>
 
+        {/* V3.203 (maquette 17) — En large : à gauche l'agence (avec qui, son contact, le lien,
+            l'adresse), à droite l'appel ; une colonne sur un téléphone. */}
         <div className={s.fCorps}>
+          <div className={s.fGauche}>
           <section className={s.section}>
             <div className={s.lib}><Icone nom="clients" taille={14} epaisseur={2.2} />Avec qui</div>
             <div className={s.pastilles}>
               {AVEC.map(a => <Pastille key={a.k} on={avec === a.k} ic={a.ic} onClick={() => setAvec(a.k)}>{a.l}</Pastille>)}
             </div>
+          </section>
+          <div className={s.carteContact}>
             <div className={s.grille}>
               <label className={s.champ}><span>{avec === 'agence' ? 'Agence' : avec === 'proprietaire' ? 'Nom du propriétaire' : 'Nom'}</span>
-                <input value={nom} onChange={e => setNom(e.target.value)} placeholder={avec === 'agence' ? 'Nom de l’agence' : 'Nom'} /></label>
+                <span className={s.saisie}><Icone nom={avec === 'agence' ? 'immeuble' : 'personne'} taille={15} epaisseur={2} />
+                  <input value={nom} onChange={e => setNom(e.target.value)} placeholder={avec === 'agence' ? 'Nom de l’agence' : 'Nom'} /></span></label>
               {avec === 'agence' && (
                 <label className={s.champ}><span>Interlocuteur</span>
-                  <input value={interlocuteur} onChange={e => setInterlocuteur(e.target.value)} placeholder="Mme Durand, négociatrice" /></label>
+                  <span className={s.saisie}><Icone nom="personne" taille={15} epaisseur={2} />
+                    <input value={interlocuteur} onChange={e => setInterlocuteur(e.target.value)} placeholder="Mme Durand, négociatrice" /></span></label>
               )}
               <label className={s.champ}><span>Téléphone</span>
-                <input value={tel} onChange={e => setTel(e.target.value)} type="tel" placeholder="01 23 45 67 89" /></label>
-              <label className={s.champ}><span>E-mail</span>
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="contact@agence.fr" /></label>
+                <span className={s.saisie}><Icone nom="tel" taille={15} epaisseur={2} />
+                  <input value={tel} onChange={e => setTel(e.target.value)} type="tel" placeholder="06 12 34 56 78" /></span></label>
+              <label className={`${s.champ}${avec === 'agence' ? '' : ` ${s.champLarge}`}`}><span>E-mail</span>
+                <span className={s.saisie}><Icone nom="mail" taille={15} epaisseur={2} />
+                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="contact@agence.fr" /></span></label>
             </div>
             {change && (
-              <label className={s.coche}><input type="checkbox" checked={garder} onChange={e => setGarder(e.target.checked)} />{'Mettre aussi ce nom et ce téléphone sur la fiche du bien'}</label>
+              <label className={s.coche}><input type="checkbox" checked={garder} onChange={e => setGarder(e.target.checked)} />{'Mettre aussi ce contact sur la fiche du bien'}</label>
             )}
-          </section>
+          </div>
+          {avec === 'agence' && rechercheId && (
+            <LienAppel b={b} clientId={clientId} rechercheId={rechercheId} prenom={prenom}
+              dest={{ nom: nom.trim() || 'L’agence', interlocuteur: interlocuteur.trim() || null, tel: tel.trim() || null, email: email.trim() || null }}
+              onEnvoi={onEnvoi} />
+          )}
 
           {/* V3.192 — L'adresse exacte du bien. */}
           <section className={s.section}>
@@ -561,7 +679,9 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
               ? 'Corrige-la si l’agence ou le propriétaire t’en donne une autre : elle change sur la fiche du bien et dans la proposition de la veille.'
               : 'Vérifie-la au téléphone. Écrite ici, elle devient l’adresse du bien, et celle de sa proposition dans la veille.'}</div>
           </section>
+          </div>
 
+          <div className={s.fDroite}>
           <div className={s.deux}>
             <section className={s.section}>
               <div className={s.lib}><Icone nom="tel" taille={14} epaisseur={2.2} />L’appel</div>
@@ -674,6 +794,7 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
               <span className={s.jamais}><Icone nom="cadenas" taille={13} epaisseur={2.3} />{'Jamais montré : ce qui a été dit, l’agence, son numéro, l’adresse.'}</span>
             </section>
           )}
+          </div>
         </div>
 
         <div className={s.fPied}>

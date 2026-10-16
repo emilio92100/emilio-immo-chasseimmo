@@ -133,7 +133,9 @@
   .ligne { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
   .bascule { flex: 1 1 100%; }
   .extrait { flex: 1 1 100%; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .actions { flex: 1 1 100%; justify-content: flex-end; }
+  .actions { flex: 1 1 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .actions > * { flex: 1 1 auto; justify-content: center; }
+  .actions > .lienAg { flex: 1 1 100%; }
   .corps { padding: 2px 12px 14px; }
   .contact { gap: 10px; }
   .contact .lienFort, .contact .lien { flex: 1 1 0; }
@@ -144,7 +146,7 @@
 /* ═══ La fenêtre « Noter un appel » ═══ */
 .voile { position: fixed; inset: 0; z-index: 1300; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; padding: 18px; }
 .fenetre {
-  width: min(660px, 100%); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: white; border-radius: 22px;
+  width: min(1060px, 100%); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: white; border-radius: 22px;
   box-shadow: 0 30px 80px -20px rgba(17,35,64,.5); font-family: 'DM Sans', system-ui, sans-serif; color: #13243D; overflow: hidden;
 }
 .fTete { display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 12px; border-bottom: 1px solid #eef2f7; }
@@ -152,7 +154,36 @@
 .fTete p { margin: 3px 0 0; font-size: 13px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fIc { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #eaf1fb; color: #22497D; }
 .fFermer { margin-left: auto; flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e3e8f0; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.fCorps { flex: 1 1 auto; overflow-y: auto; padding: 14px 18px 8px; display: flex; flex-direction: column; gap: 16px; }
+.fCorps { flex: 1 1 auto; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: stretch; }
+/* V3.203 (maquette 17) — à gauche l'agence, sur un fond doux ; à droite l'appel. */
+.fGauche { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 18px; background: #f8fafd; border-right: 1px solid #eef2f7; min-width: 0; }
+.fDroite { display: flex; flex-direction: column; gap: 16px; padding: 16px 22px 18px; min-width: 0; }
+.carteContact { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: white; border: 1px solid #e3e8f0; }
+.saisie { position: relative; display: block; }
+.saisie > svg { position: absolute; left: 12px; top: 13.5px; color: #94a3b8; pointer-events: none; transition: color .15s ease; }
+.saisie:focus-within > svg { color: #22497D; }
+.saisie > input { width: 100%; padding-left: 36px !important; }
+.champLarge { grid-column: 1 / -1; }
+/* V3.203 — « Le lien pour Constance », dans « Noter un appel ». */
+.lienAppel { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: #FFF8EF; border: 1.5px solid #F2C894; }
+.lienAppelTete { display: flex; align-items: center; gap: 10px; }
+.lienAppelIc { width: 34px; height: 34px; border-radius: 10px; background: white; border: 1px solid #F2C894; color: #A95808; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.lienAppelTx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lienAppelTx b { font: 800 14.5px 'Plus Jakarta Sans', sans-serif; color: #13243D; }
+.lienAppelTx small { font-size: 12.5px; font-weight: 600; color: #6B5A45; }
+.lienAppelBtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.lienAppelFort, .lienAppelBtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 13px; border-radius: 11px; box-sizing: border-box;
+  font: 800 13.5px 'DM Sans', sans-serif; text-decoration: none; cursor: pointer; transition: background .15s ease, transform .12s ease;
+}
+.lienAppelFort { border: none; background: #E68B23; color: #13243D; }
+.lienAppelFort:hover { background: #F09A35; }
+.lienAppelBtn { border: 1.5px solid #F2C894; background: white; color: #A95808; }
+.lienAppelBtn:hover { background: #FDEBD5; }
+.lienAppelFort:disabled, .lienAppelBtn:disabled { opacity: .6; cursor: default; }
+.lienAppelAide { font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #6B5A45; }
+.lienAppelDit { font-size: 12.5px; font-weight: 700; color: #A95808; }
+.lienAppelDeja { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #0E6B43; }
 .section { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .deux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .lib { display: inline-flex; align-items: center; gap: 7px; font: 800 12px 'Plus Jakarta Sans', sans-serif; color: #475569; text-transform: uppercase; letter-spacing: .5px; }
@@ -230,9 +261,15 @@
 .fNote { flex: 1 1 auto; display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #64748b; min-width: 0; }
 .fPied .btn, .fPied .btnFort { height: 42px; padding: 0 16px; font-size: 14px; border-radius: 12px; }
 
+@media (max-width: 860px) {
+  .fCorps { display: flex; flex-direction: column; }
+  .fGauche { border-right: none; border-bottom: 1px solid #eef2f7; }
+}
 @media (max-width: 600px) {
   .voile { align-items: flex-end; padding: 0; }
   .fenetre { width: 100%; border-radius: 22px 22px 0 0; max-height: 94dvh; }
+  .fGauche, .fDroite { padding-left: 16px; padding-right: 16px; }
+  .lienAppelBtns > * { flex: 1 1 auto; }
   .deux, .grille { grid-template-columns: 1fr; }
   .fPied { flex-wrap: wrap; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
   .fNote { flex: 1 1 100%; }
