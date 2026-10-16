@@ -1515,6 +1515,27 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.204 — 16 octobre 2026 · « Déjà envoyé le… » et « Renvoyer », partout où part le lien
+
+- Alexandre : « dans n'importe quelle situation, il y a toujours un rappel de quand le lien a été
+  envoyé ? Est-ce que je peux le renvoyer ? ». Oui : le lien ne change jamais, et le code d'une
+  même personne non plus (sa page s'ouvre toujours remplie).
+- **Une seule mémoire des envois** (`src/lib/lien-agences-envois.ts`) : `envoisPartages` (une
+  lecture du journal par recherche pour toute la fiche, une minute au plus), `surNouvelEnvoi`
+  (relue après chaque envoi noté, où qu'il parte), `envoisPour` / `memeAgence` (même numéro,
+  même mail ou même nom — « L'agence » ne rapproche rien), `quandEnvoi` et `canalLong` (sortis de
+  PropositionsAgences), `proposesPar` (ce que cette agence a proposé par le lien).
+- **La coche** : le bouton « Le lien pour Constance » de la barre du suivi porte une coche verte
+  quand le lien est déjà parti à cette agence — d'ici, de « Noter un appel » ou de la fenêtre du
+  lien (Veille) ; au survol : « Lien déjà envoyé le 12 oct. à 22 h 34 par mail · 2 envois ».
+- **Le panneau** : « Lui renvoyer le lien pour Constance », « Le même lien, toujours valable »,
+  « Déjà envoyé le … par mail · 2 envois » (et à qui, si ce n'est plus la même personne),
+  « L'agence t'a déjà proposé 1 bien par ce lien », « Renvoyer par SMS / par mail » ; un message
+  seulement copié se dit (« aucun envoi noté »).
+- **« Noter un appel »** : le rappel au-dessus des boutons, devenus « Renvoyer par SMS / par mail ».
+- **Un renvoi se dit** : au journal « renvoyé à …, par mail (3e envoi) » (`metadata.envoi_n`),
+  dans le suivi du bien « Lien pour Constance renvoyé par mail (3e envoi) ».
+
 ### V3.203 — 16 octobre 2026 · Le contact de l'agence sur la fiche du bien, « Noter un appel » en large
 
 - Alexandre : « pourquoi dans la catégorie agence [du Détail du bien], je n'ai pas le mail ? »,
