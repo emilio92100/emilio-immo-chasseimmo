@@ -2074,26 +2074,39 @@ export function ChoixQuand({ date, heure, duree, onDate, onHeure, onDuree, duree
 /* V3.182 — La date et l'heure seules, sans durée : un créneau proposé par
    l'agence (« Noter un appel », SuiviAgence.tsx). Alexandre : « le même
    design du calendrier et de l'horaire ». Le jour choisi ouvre l'heure ;
-   les minutes choisies referment. */
-export function ChoixDateHeure({ date, heure, onDate, onHeure, ouvrir = null }: {
+   les minutes choisies referment.
+   V3.205 — avec `fin` et `onFin`, une PLAGE : « De » et « À » sous la date
+   (Alexandre : « quand une agence nous propose entre 14 h et 17 h »). Le
+   début choisi ouvre la fin. */
+export function ChoixDateHeure({ date, heure, onDate, onHeure, ouvrir = null, fin, onFin }: {
   date: string; heure: string; onDate: (k: string) => void; onHeure: (h: string) => void; ouvrir?: null | 'date' | 'heure';
+  fin?: string; onFin?: (h: string) => void;
 }) {
-  const [panneau, setPanneau] = useState<null | 'date' | 'heure'>(ouvrir);
-  const [hh, mm] = (heure || '10:00').split(':').map(Number);
-  const debut = depuisCle(date || cleDe(new Date())); debut.setHours(hh || 0, mm || 0, 0, 0);
+  const [panneau, setPanneau] = useState<null | 'date' | 'heure' | 'fin'>(ouvrir);
+  const plage = fin !== undefined && !!onFin;
+  const aLHeure = (h: string) => { const [a, b] = (h || '10:00').split(':').map(Number); const d = depuisCle(date || cleDe(new Date())); d.setHours(a || 0, b || 0, 0, 0); return d; };
+  const debut = aLHeure(heure);
   const ecart = Math.round((depuisCle(date || cleDe(new Date())).getTime() - depuisCle(cleDe(new Date())).getTime()) / 86400000);
   const relatif = ecart === 0 ? 'Aujourd’hui' : ecart === 1 ? 'Demain' : ecart > 1 ? `Dans ${ecart} jours` : `Il y a ${-ecart} jours`;
+  const bascule = (q: 'date' | 'heure' | 'fin') => setPanneau(p => (p === q ? null : q));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontFamily: "'DM Sans', system-ui, sans-serif", color: NAVY }}>
       <StylesAgenda />
       <div className="ag-quand" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-        <BoutonChamp ico="calendrier" etiquette="Date" ouvert={panneau === 'date'} onClick={() => setPanneau(p => (p === 'date' ? null : 'date'))}
-          valeur={maj(jourLong(debut))} aide={relatif} />
-        <BoutonChamp ico="horloge" etiquette="Heure" ouvert={panneau === 'heure'} onClick={() => setPanneau(p => (p === 'heure' ? null : 'heure'))}
-          valeur={heureFr(debut)} aide="choisir l’heure" />
+        <div style={plage ? { gridColumn: '1 / -1' } : undefined}>
+          <BoutonChamp ico="calendrier" etiquette="Date" ouvert={panneau === 'date'} onClick={() => bascule('date')}
+            valeur={maj(jourLong(debut))} aide={relatif} />
+        </div>
+        <BoutonChamp ico="horloge" etiquette={plage ? 'Début de la plage' : 'Heure'} ouvert={panneau === 'heure'} onClick={() => bascule('heure')}
+          valeur={plage ? `De ${heureFr(debut)}` : heureFr(debut)} aide={plage ? 'début de la plage' : 'choisir l’heure'} />
+        {plage && (
+          <BoutonChamp ico="horloge" etiquette="Fin de la plage" ouvert={panneau === 'fin'} onClick={() => bascule('fin')}
+            valeur={`À ${heureFr(aLHeure(fin || ''))}`} aide="fin de la plage" />
+        )}
       </div>
       {panneau === 'date' && <PanneauCalendrier valeur={date} min={cleDe(new Date())} occupes={{}} onChoisir={k => { onDate(k); setPanneau('heure'); }} />}
-      {panneau === 'heure' && <PanneauHeure valeur={heure} prises={new Set()} onChoisir={onHeure} onFini={() => setPanneau(null)} />}
+      {panneau === 'heure' && <PanneauHeure valeur={heure} prises={new Set()} onChoisir={onHeure} onFini={() => setPanneau(plage ? 'fin' : null)} />}
+      {panneau === 'fin' && plage && <PanneauHeure valeur={fin || ''} prises={new Set()} onChoisir={onFin!} onFini={() => setPanneau(null)} />}
       <style>{`@media (max-width: 560px){.ag-quand{grid-template-columns:1fr !important}}`}</style>
     </div>
   );
