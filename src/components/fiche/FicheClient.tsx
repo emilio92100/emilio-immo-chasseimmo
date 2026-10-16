@@ -3074,15 +3074,25 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
       /* V3.203 : la personne qui gère le dossier et son mail (outils/sql/biens-agence-contact.sql). */
       agence_interlocuteur: editBienForm.est_particulier ? null : (editBienForm.agence_interlocuteur || '').trim() || null,
       agence_email: (editBienForm.agence_email || '').trim() || null,
+      /* V3.205 : le numéro de la personne, à côté de celui de l'agence. */
+      agence_interlocuteur_tel: editBienForm.est_particulier ? null : (editBienForm.agence_interlocuteur_tel || '').trim() || null,
       url: editBienForm.url||null,
     };
     let repBien = await supabase.from('biens').update(valeursBien).eq('id', ficheBienId).select('id');
-    /* Avant le SQL : la fiche s'enregistre sans eux, et on le dit. */
-    if (repBien.error && /agence_(interlocuteur|email)/.test(repBien.error.message || '')) {
-      const { agence_interlocuteur: _i, agence_email: _e, ...sans } = valeursBien;
+    /* Avant le SQL : la fiche s'enregistre sans eux, et on le dit — sans le numéro de la
+       personne (V3.205), puis sans la personne et le mail (V3.203). */
+    let manquants = false;
+    if (repBien.error && /agence_interlocuteur_tel/.test(repBien.error.message || '')) {
+      const { agence_interlocuteur_tel: _t, ...sans } = valeursBien;
       repBien = await supabase.from('biens').update(sans).eq('id', ficheBienId).select('id');
-      if (!repBien.error && (_i || _e)) signalerEchec('La personne et le mail de l’agence', 'pas enregistrés : il faut d’abord passer outils/sql/biens-agence-contact.sql dans Supabase (SQL Editor)');
+      manquants = !!_t;
     }
+    if (repBien.error && /agence_(interlocuteur|email)/.test(repBien.error.message || '')) {
+      const { agence_interlocuteur: _i, agence_email: _e, agence_interlocuteur_tel: _t2, ...sans } = valeursBien;
+      repBien = await supabase.from('biens').update(sans).eq('id', ficheBienId).select('id');
+      manquants = manquants || !!(_i || _e || _t2);
+    }
+    if (!repBien.error && manquants) signalerEchec('La personne de l’agence, son numéro et son mail', 'pas enregistrés : il faut d’abord passer outils/sql/biens-agence-contact.sql dans Supabase (SQL Editor)');
     const enregistre = await verifie('La fiche du bien', Promise.resolve(repBien), { ligne: true });
     /* Pas enregistrée : la fenêtre reste ouverte, rien n'est perdu. */
     if (!enregistre) { setSaving(false); return; }

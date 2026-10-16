@@ -6,7 +6,7 @@ import { signalerEchec, verifie } from '@/lib/ecritures';
 import { signalerMaj } from '@/lib/intentions';
 import { lireIndispo, marquerIndispo } from '@/lib/biens-indispo';
 import {
-  AVEC, DISPOS, REPONSES, SQL_CLIENT, cleDuJour, colonnesClientAbsentes, contactDu, contactEnLigne, corrigerAdresse, creneauDeLaVisite, creneauxOuverts, etatSuivi, quandNote, texteCreneau,
+  AVEC, DISPOS, REPONSES, SQL_CLIENT, cleDuJour, colonnesClientAbsentes, cleCreneau, contactDu, contactEnLigne, corrigerAdresse, creneauDeLaVisite, creneauxOuverts, etatSuivi, quandNote, telPourSms, texteCreneau,
   type Creneau, type LigneSuivi, type VisiteCalee,
 } from '@/lib/suivi-agence';
 import { appelsMontres, phraseAppel } from '@/lib/suivi-client';
@@ -111,7 +111,7 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
   const contact = contactDu(b, lignes);
   /* V3.204 : le lien déjà parti à cette agence — une coche verte sur le bouton « Le lien pour… ». */
   const envois = useEnvoisLien(contact.avec === 'agence' ? rechercheId : null);
-  const destLien: Destinataire = { nom: contact.nom || 'L’agence', interlocuteur: contact.interlocuteur || null, tel: contact.tel || null, email: contact.email || null };
+  const destLien: Destinataire = { nom: contact.nom || 'L’agence', interlocuteur: contact.interlocuteur || null, tel: telPourSms(contact) || null, email: contact.email || null };
   const envoisAg = envois ? envoisPour(envois, destLien) : [];
   const ouverts = visite ? null : creneauxOuverts(lignes);
   const dernier = lignes[0];
@@ -201,9 +201,11 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
             <span className={s.contactIc}><Icone nom={icTete} taille={18} epaisseur={2} /></span>
             <span className={s.contactTx}>
               <b>{contact.interlocuteur ? `${nomContact} · ${contact.interlocuteur}` : nomContact}</b>
-              <small>{contact.avec === 'agence' ? 'L’agence qui a le mandat' : contact.avec === 'proprietaire' ? 'Le propriétaire, en direct' : 'Le contact pour ce bien'}{contact.tel || contact.email ? '' : ' · ses coordonnées s’ajoutent avec « Noter un appel »'}</small>
+              <small>{contact.avec === 'agence' ? 'L’agence qui a le mandat' : contact.avec === 'proprietaire' ? 'Le propriétaire, en direct' : 'Le contact pour ce bien'}{contact.tel || contact.email || contact.telDirect ? '' : ' · ses coordonnées s’ajoutent avec « Noter un appel »'}</small>
             </span>
-            {contact.tel && <a className={s.lienFort} href={`tel:${contact.tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={14} epaisseur={2.1} />{contact.tel}</a>}
+            {/* V3.205 : le numéro de la personne (icône personnage) à côté de celui de l'agence (icône immeuble). */}
+            {contact.telDirect && <a className={s.lienFort} href={`tel:${contact.telDirect.replace(/[^\d+]/g, '')}`} title={contact.interlocuteur ? `Le numéro de ${contact.interlocuteur}` : 'Son numéro'}><Icone nom="personne" taille={14} epaisseur={2.1} />{contact.telDirect}</a>}
+            {contact.tel && <a className={contact.telDirect ? s.lien : s.lienFort} href={`tel:${contact.tel.replace(/[^\d+]/g, '')}`} title={contact.telDirect && contact.avec === 'agence' ? 'Le numéro de l’agence' : undefined}><Icone nom={contact.telDirect && contact.avec === 'agence' ? 'immeuble' : 'tel'} taille={14} epaisseur={2.1} />{contact.tel}</a>}
             {contact.email && <a className={s.lien} href={`mailto:${contact.email}`}><Icone nom="mail" taille={14} epaisseur={2.1} />E-mail</a>}
           </div>
           {lienOuvert && rechercheId && (
@@ -281,7 +283,7 @@ export default function SuiviAgence({ b, lignes, absent, visite, clientId, reche
                             /* V3.192 : le créneau validé le dit, une coche verte à côté. */
                             const retenu = creneauDeLaVisite(c, visite);
                             return (
-                              <span key={`${c.date}-${c.heure}`} className={s.creneau} data-actif={actifs ? 'oui' : undefined} data-retenu={retenu ? 'oui' : undefined}>
+                              <span key={cleCreneau(c)} className={s.creneau} data-actif={actifs ? 'oui' : undefined} data-retenu={retenu ? 'oui' : undefined}>
                                 {texteCreneau(c)}
                                 {actifs && <button type="button" className={s.valider} onClick={() => onValider(c, contactEnLigne(contact))}>Valider ce créneau</button>}
                                 {retenu && <span className={s.retenu}><Icone nom="coche" taille={12} epaisseur={2.8} />Visite calée</span>}
@@ -503,6 +505,12 @@ function Pastille({ on, ic, children, onClick, ton }: { on: boolean; ic: string;
 }
 
 const demain = () => { const d = new Date(); d.setDate(d.getDate() + 1); return cleDuJour(d); };
+/* V3.205 — « 14:00 » + 3 → « 17:00 », sans dépasser 21 h (la dernière heure proposée). */
+const plusHeures = (h: string, n: number) => { const [a, b] = h.split(':').map(Number); return `${String(Math.min((a || 0) + n, 21)).padStart(2, '0')}:${String(b || 0).padStart(2, '0')}`; };
+/** « Guillaume VASSOR, négociateur » → « Guillaume » ; « M. Arnaud » reste « M. Arnaud ». */
+const appelCourt = (i: string) => { const m = i.trim().split(/[\s,]+/); return /^(M\.|Mme|Mlle|Monsieur|Madame)$/i.test(m[0] || '') ? m.slice(0, 2).join(' ') : m[0] || ''; };
+/** Un créneau en cours d'ajout : une heure précise, ou une plage (avec `fin`). */
+type Ajout = { date: string; heure: string; fin: string; plage: boolean; neuf?: boolean; heureChoisie?: boolean };
 
 function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientPret, horsSuivi, onFermer, onFait, onEnvoi }: {
   b: any; lignes: LigneSuivi[];
@@ -525,13 +533,18 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
   const [nom, setNom] = useState(ligne?.contact.nom || depart.nom || '');
   const [interlocuteur, setInterlocuteur] = useState(ligne?.contact.interlocuteur || depart.interlocuteur || '');
   const [tel, setTel] = useState(ligne?.contact.tel || depart.tel || '');
+  /* V3.205 : le numéro de la personne, à côté de celui de l'agence (qui reste). */
+  const [telDirect, setTelDirect] = useState(ligne?.contact.telDirect || (ligne ? '' : depart.telDirect) || '');
+  const [voirDirect, setVoirDirect] = useState(!!(ligne?.contact.telDirect || (ligne ? '' : depart.telDirect)));
   const [email, setEmail] = useState(ligne?.contact.email || depart.email || '');
   const [garder, setGarder] = useState(true);
   const [reponse, setReponse] = useState<string | null>(ligne ? ligne.reponse : 'repondu');
   const [dispo, setDispo] = useState<string | null>(ligne?.dispo || null);
   const [texte, setTexte] = useState(ligne?.texte || '');
   const [creneaux, setCreneaux] = useState<Creneau[]>(ligne?.creneaux || []);
-  const [ajout, setAjout] = useState<Creneau | null>(null);
+  const [ajout, setAjout] = useState<Ajout | null>(null);
+  /* V3.205 : « Ajouter un autre créneau » reprend le dernier choix (une heure, ou une plage). */
+  const [enPlage, setEnPlage] = useState(() => (ligne?.creneaux || []).some(c => !!c.fin));
   const [ensuite, setEnsuite] = useState<string | null>(ligne?.ensuite || null);
   const [rappel, setRappel] = useState(ligne?.rappel_le || demain());
   const [envoi, setEnvoi] = useState(false);
@@ -559,11 +572,26 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
   const surFiche = {
     nom: String(b.agence_nom || '').trim(), tel: String(b.agence_tel || '').trim(),
     interlocuteur: String(b.agence_interlocuteur || '').trim(), email: String(b.agence_email || '').trim(),
+    telDirect: String(b.agence_interlocuteur_tel || '').trim(),
   };
-  const change = (nom.trim() || tel.trim() || email.trim()) && avec !== 'autre' && (nom.trim() !== surFiche.nom || tel.trim() !== surFiche.tel
-    || email.trim() !== surFiche.email || (avec === 'agence' && interlocuteur.trim() !== surFiche.interlocuteur));
+  const change = (nom.trim() || tel.trim() || email.trim() || telDirect.trim()) && avec !== 'autre' && (nom.trim() !== surFiche.nom || tel.trim() !== surFiche.tel
+    || email.trim() !== surFiche.email || (avec === 'agence' && (interlocuteur.trim() !== surFiche.interlocuteur || telDirect.trim() !== surFiche.telDirect)));
   const rien = !texte.trim() && !creneaux.length && !dispo && !reponse;
-  const lieAjout = (c: Creneau) => setCreneaux(l => (l.some(x => x.date === c.date && x.heure === c.heure) ? l : [...l, c].sort((x, y) => `${x.date}${x.heure}`.localeCompare(`${y.date}${y.heure}`))));
+  const lieAjout = (c: Creneau) => setCreneaux(l => (l.some(x => cleCreneau(x) === cleCreneau(c)) ? l : [...l, c].sort((x, y) => cleCreneau(x).localeCompare(cleCreneau(y)))));
+  /* V3.205 — le créneau tel qu'il s'ajoutera, et ce qui l'empêche (une plage qui finit avant de commencer). */
+  const ajoutCreneau: Creneau | null = ajout ? (ajout.plage ? { date: ajout.date, heure: ajout.heure, fin: ajout.fin } : { date: ajout.date, heure: ajout.heure }) : null;
+  const ajoutFaux = !!ajout && ajout.plage && ajout.fin <= ajout.heure;
+  const nouvelAjout = () => setAjout({ date: demain(), heure: enPlage ? '14:00' : '18:00', fin: '17:00', plage: enPlage, neuf: true });
+  const changerMode = (plage: boolean) => {
+    setEnPlage(plage);
+    setAjout(a => {
+      if (!a) return a;
+      if (!plage) return { ...a, plage, neuf: false };
+      /* Sans heure choisie, la plage type d'un après-midi : de 14 h à 17 h. */
+      const debut = !a.heureChoisie || a.heure >= '20:00' ? '14:00' : a.heure;
+      return { ...a, plage, neuf: false, heure: debut, fin: a.fin > debut ? a.fin : plusHeures(debut, 3) };
+    });
+  };
   /* L'étape telle que le client la lira (src/lib/suivi-client.ts). */
   const apercu = phraseAppel({ reponse, dispo, creneaux, ensuite, rappel_le: ensuite === 'rappeler' ? rappel : null });
   const vendu = dispo === 'vendu';
@@ -572,7 +600,7 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
     if (envoi || rien) return;
     setEnvoi(true);
     try {
-      const c = { nom: nom.trim(), interlocuteur: avec === 'agence' ? interlocuteur.trim() : '', tel: tel.trim(), email: email.trim() };
+      const c = { nom: nom.trim(), interlocuteur: avec === 'agence' ? interlocuteur.trim() : '', tel: tel.trim(), email: email.trim(), tel_direct: telDirect.trim() };
       const contact = Object.fromEntries(Object.entries(c).filter(([, v]) => v));
       /* « Rappeler le… » : une relance dans Relances, comme les autres. Sur
          un appel modifié, la sienne se déplace, ou se clôt s'il n'y a plus à
@@ -580,7 +608,7 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
       const quiAppeler = c.interlocuteur || c.nom || (avec === 'proprietaire' ? 'le propriétaire' : 'l’agence');
       const valeursRelance = {
         date_echeance: new Date(`${rappel}T09:00:00`).toISOString(),
-        note: `Rappeler ${quiAppeler}${c.tel ? ` (${c.tel})` : ''} pour « ${titreBien} »`,
+        note: `Rappeler ${quiAppeler}${c.tel_direct || c.tel ? ` (${[c.tel_direct, c.tel].filter(Boolean).join(' ou ')})` : ''} pour « ${titreBien} »`,
       };
       let relanceId: string | null = ligne?.relance_id || null;
       let relanceCreee: string | null = null;
@@ -637,14 +665,24 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
       if (change && garder) {
         const surBien: Record<string, string | null> = {
           agence_nom: c.nom || null, agence_tel: c.tel || null, agence_email: c.email || null,
-          ...(avec === 'agence' ? { agence_interlocuteur: c.interlocuteur || null } : {}),
+          ...(avec === 'agence' ? { agence_interlocuteur: c.interlocuteur || null, agence_interlocuteur_tel: c.tel_direct || null } : {}),
         };
         let rb = await supabase.from('biens').update(surBien).eq('id', b.id).select('id');
-        /* Avant le SQL de la V3.203 (outils/sql/biens-agence-contact.sql) : le nom et le téléphone seulement. */
+        /* Avant le SQL (outils/sql/biens-agence-contact.sql) : sans le numéro de la personne
+           (V3.205), puis sans la personne et le mail (V3.203) — et on le dit. */
+        let manque = false;
+        if (rb.error && /agence_interlocuteur_tel/.test(rb.error.message || '')) {
+          const { agence_interlocuteur_tel: _t, ...sans } = surBien;
+          rb = await supabase.from('biens').update(sans).eq('id', b.id).select('id');
+          manque = !!_t;
+        }
         if (rb.error && /agence_(interlocuteur|email)/.test(rb.error.message || '')) {
           rb = await supabase.from('biens').update({ agence_nom: surBien.agence_nom, agence_tel: surBien.agence_tel }).eq('id', b.id).select('id');
+          manque = manque || !!(surBien.agence_interlocuteur || surBien.agence_email);
         }
-        await verifie('Les coordonnées sur la fiche du bien', Promise.resolve(rb), { ligne: true });
+        if (await verifie('Les coordonnées sur la fiche du bien', Promise.resolve(rb), { ligne: true }) && manque) {
+          signalerEchec('Le contact sur la fiche du bien', 'le nom et le numéro de l’agence y sont, pas encore la personne, son numéro et son mail : il faut d’abord passer outils/sql/biens-agence-contact.sql dans Supabase (SQL Editor). L’appel, lui, garde tout.');
+        }
       }
       /* V3.192 : l'adresse corrigée va sur le bien et sur sa proposition de la veille. */
       if (adresse.trim() && adresse.trim() !== adresseFiche) await corrigerAdresse(b.id, adresse);
@@ -684,21 +722,32 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
             </div>
           </section>
           <div className={s.carteContact}>
-            <div className={s.grille}>
+            {/* V3.205 — un champ par ligne : « on ne voit pas le nom en entier, et surtout l'e-mail, c'est coupé ». */}
+            <div className={`${s.grille} ${s.grilleUne}`}>
               <label className={s.champ}><span>{avec === 'agence' ? 'Agence' : avec === 'proprietaire' ? 'Nom du propriétaire' : 'Nom'}</span>
                 <span className={s.saisie}><Icone nom={avec === 'agence' ? 'immeuble' : 'personne'} taille={15} epaisseur={2} />
-                  <input value={nom} onChange={e => setNom(e.target.value)} placeholder={avec === 'agence' ? 'Nom de l’agence' : 'Nom'} /></span></label>
+                  <input value={nom} onChange={e => setNom(e.target.value)} placeholder={avec === 'agence' ? 'Nom de l’agence' : 'Nom'} title={nom || undefined} /></span></label>
+              <label className={s.champ}><span>{avec === 'agence' ? 'Téléphone de l’agence' : 'Téléphone'}</span>
+                <span className={s.saisie}><Icone nom="tel" taille={15} epaisseur={2} />
+                  <input value={tel} onChange={e => setTel(e.target.value)} type="tel" placeholder={avec === 'agence' ? '01 23 45 67 89' : '06 12 34 56 78'} /></span></label>
               {avec === 'agence' && (
                 <label className={s.champ}><span>Interlocuteur</span>
                   <span className={s.saisie}><Icone nom="personne" taille={15} epaisseur={2} />
-                    <input value={interlocuteur} onChange={e => setInterlocuteur(e.target.value)} placeholder="Mme Durand, négociatrice" /></span></label>
+                    <input value={interlocuteur} onChange={e => setInterlocuteur(e.target.value)} placeholder="Mme Durand, négociatrice" title={interlocuteur || undefined} /></span></label>
               )}
-              <label className={s.champ}><span>Téléphone</span>
-                <span className={s.saisie}><Icone nom="tel" taille={15} epaisseur={2} />
-                  <input value={tel} onChange={e => setTel(e.target.value)} type="tel" placeholder="06 12 34 56 78" /></span></label>
-              <label className={`${s.champ}${avec === 'agence' ? '' : ` ${s.champLarge}`}`}><span>E-mail</span>
+              {/* V3.205 — un second numéro : celui de la personne, sans perdre celui de l'agence. */}
+              {voirDirect ? (
+                <label className={s.champ}><span>{avec === 'agence' ? (interlocuteur.trim() ? `Numéro de ${appelCourt(interlocuteur)}` : 'Numéro de l’interlocuteur') : 'Autre numéro'}</span>
+                  <span className={s.saisie}><Icone nom={avec === 'agence' ? 'personne' : 'tel'} taille={15} epaisseur={2} />
+                    <input value={telDirect} onChange={e => setTelDirect(e.target.value)} type="tel" placeholder="06 12 34 56 78" autoFocus={!telDirect} /></span></label>
+              ) : (
+                <button type="button" className={s.ajoutNumero} onClick={() => setVoirDirect(true)}>
+                  <Icone nom="plus" taille={14} epaisseur={2.4} />{avec === 'agence' ? 'Ajouter son numéro (celui de l’agence reste)' : 'Ajouter un autre numéro'}
+                </button>
+              )}
+              <label className={s.champ}><span>E-mail</span>
                 <span className={s.saisie}><Icone nom="mail" taille={15} epaisseur={2} />
-                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="contact@agence.fr" /></span></label>
+                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="contact@agence.fr" title={email || undefined} /></span></label>
             </div>
             {change && (
               <label className={s.coche}><input type="checkbox" checked={garder} onChange={e => setGarder(e.target.checked)} />{'Mettre aussi ce contact sur la fiche du bien'}</label>
@@ -706,7 +755,7 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
           </div>
           {avec === 'agence' && rechercheId && (
             <LienAppel b={b} clientId={clientId} rechercheId={rechercheId} prenom={prenom}
-              dest={{ nom: nom.trim() || 'L’agence', interlocuteur: interlocuteur.trim() || null, tel: tel.trim() || null, email: email.trim() || null }}
+              dest={{ nom: nom.trim() || 'L’agence', interlocuteur: interlocuteur.trim() || null, tel: telPourSms({ tel: tel.trim(), telDirect: telDirect.trim() }) || null, email: email.trim() || null }}
               onEnvoi={onEnvoi} />
           )}
 
@@ -753,26 +802,34 @@ function FenetreAppel({ b, lignes, ligne, clientId, rechercheId, prenom, clientP
             {creneaux.length > 0 && (
               <div className={s.pastilles}>
                 {creneaux.map(c => (
-                  <span key={`${c.date}-${c.heure}`} className={s.creneauF}>
+                  <span key={cleCreneau(c)} className={s.creneauF}>
                     <Icone nom="calendrier" taille={14} epaisseur={2.1} />{texteCreneau(c)}
                     <button type="button" onClick={() => setCreneaux(l => l.filter(x => x !== c))} aria-label={`Retirer le créneau ${texteCreneau(c)}`}><Icone nom="fermer" taille={12} epaisseur={2.6} /></button>
                   </span>
                 ))}
               </div>
             )}
-            {ajout ? (
+            {ajout && ajoutCreneau ? (
               <div className={s.ajout}>
-                <ChoixDateHeure date={ajout.date} heure={ajout.heure} ouvrir="date"
-                  onDate={k => setAjout(a => (a ? { ...a, date: k } : a))} onHeure={h => setAjout(a => (a ? { ...a, heure: h } : a))} />
+                {/* V3.205 : une heure précise, ou une plage (« entre 14 h et 17 h »). */}
+                <div className={s.modeCreneau} role="group" aria-label="Le genre de créneau">
+                  <button type="button" aria-pressed={!ajout.plage} onClick={() => changerMode(false)}><Icone nom="horloge" taille={14} epaisseur={2.2} />Une heure précise</button>
+                  <button type="button" aria-pressed={ajout.plage} onClick={() => changerMode(true)}><Icone nom="calendrier" taille={14} epaisseur={2.2} />Une plage horaire</button>
+                </div>
+                <ChoixDateHeure key={ajout.plage ? 'plage' : 'heure'} date={ajout.date} heure={ajout.heure} ouvrir={ajout.neuf ? 'date' : null}
+                  onDate={k => setAjout(a => (a ? { ...a, date: k } : a))}
+                  onHeure={h => setAjout(a => (a ? { ...a, heure: h, heureChoisie: true, fin: a.plage && a.fin <= h ? plusHeures(h, 3) : a.fin } : a))}
+                  {...(ajout.plage ? { fin: ajout.fin, onFin: (h: string) => setAjout(a => (a ? { ...a, fin: h } : a)) } : {})} />
+                {ajoutFaux && <div className={s.aide} role="alert" style={{ color: '#B42318' }}>{'La fin de la plage doit venir après son début.'}</div>}
                 <div className={s.ajoutPied}>
                   <button type="button" className={s.btn} onClick={() => setAjout(null)}>Annuler</button>
-                  <button type="button" className={s.btnFort} onClick={() => { lieAjout(ajout); setAjout(null); }}>{`Ajouter · ${texteCreneau(ajout)}`}</button>
+                  <button type="button" className={s.btnFort} disabled={ajoutFaux} onClick={() => { lieAjout(ajoutCreneau); setAjout(null); }}>{`Ajouter · ${texteCreneau(ajoutCreneau)}`}</button>
                 </div>
               </div>
             ) : (
-              <button type="button" className={s.ajouter} onClick={() => setAjout({ date: demain(), heure: '18:00' })}><Icone nom="plus" taille={14} epaisseur={2.4} />Ajouter un créneau</button>
+              <button type="button" className={s.ajouter} onClick={nouvelAjout}><Icone nom="plus" taille={14} epaisseur={2.4} />{creneaux.length ? 'Ajouter un autre créneau' : 'Ajouter un créneau'}</button>
             )}
-            <div className={s.aide}>{'Ce ne sont que des propositions : rien n’est réservé. Sur la fiche, « Valider ce créneau » ouvre « Planifier une visite », déjà rempli.'}</div>
+            <div className={s.aide}>{'Ce ne sont que des propositions : rien n’est réservé. Une heure précise ou une plage, autant que l’agence en donne. Sur la fiche, « Valider ce créneau » ouvre « Planifier une visite », déjà rempli.'}</div>
           </section>
 
           <section className={s.section}>

@@ -200,6 +200,7 @@ export default function DetailBien({ form, setForm, saving, onFermer, onEnregist
       ? Math.round(nombre(f.prix_vendeur) * (1 + nombre(f.commission_val) / 100))
       : nombre(f.prix_vendeur) + nombre(f.commission_val);
   const tel = String(f.agence_tel || '').trim();
+  const telPersonne = String(f.agence_interlocuteur_tel || '').trim();
   const mailAgence = String(f.agence_email || '').trim();
   const manque = (k: string) => (vide(f[k]) ? 'à compléter' : null);
   const ajouterPhoto = () => {
@@ -497,17 +498,27 @@ export default function DetailBien({ form, setForm, saving, onFermer, onEnregist
                 <Champ etiquette={f.est_particulier ? 'Nom (facultatif)' : 'Nom de l’agence'} icone="immeuble" manque={f.est_particulier ? null : manque('agence_nom')} className={f.est_particulier ? s.g4 : s.g2}>
                   <Saisie valeur={f.agence_nom} onChange={v => set('agence_nom', v)} vide={!f.est_particulier && vide(f.agence_nom)} placeholder={f.est_particulier ? 'M. et Mme Martin' : 'Century 21 Montparnasse'} />
                 </Champ>
+                {/* V3.205 — sur une ligne l'agence et son numéro, sur la suivante la personne et le sien :
+                    « je prends son numéro, mais j'aimerais laisser celui de l'agence ». */}
+                <div className={`${s.g2} ${s.ligneBouton}`}>
+                  <Champ etiquette={f.est_particulier ? 'Téléphone' : 'Téléphone de l’agence'} icone="tel" manque={f.est_particulier ? null : manque('agence_tel')}>
+                    <Saisie valeur={f.agence_tel} onChange={v => set('agence_tel', v)} vide={!f.est_particulier && vide(f.agence_tel)} type="tel" placeholder={f.est_particulier ? '06 12 34 56 78' : '01 23 45 67 89'} />
+                  </Champ>
+                  {tel && <a className={s.appeler} href={`tel:${tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={15} epaisseur={2} />Appeler</a>}
+                </div>
                 {!f.est_particulier && (
                   <Champ etiquette="Personne qui gère le dossier" icone="personne" className={s.g2}>
                     <Saisie valeur={f.agence_interlocuteur} onChange={v => set('agence_interlocuteur', v)} placeholder="Julie Bernard, négociatrice" />
                   </Champ>
                 )}
-                <div className={`${s.g2} ${s.ligneBouton}`}>
-                  <Champ etiquette="Téléphone" icone="tel" manque={f.est_particulier ? null : manque('agence_tel')}>
-                    <Saisie valeur={f.agence_tel} onChange={v => set('agence_tel', v)} vide={!f.est_particulier && vide(f.agence_tel)} type="tel" placeholder="06 12 34 56 78" />
-                  </Champ>
-                  {tel && <a className={s.appeler} href={`tel:${tel.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={15} epaisseur={2} />Appeler</a>}
-                </div>
+                {!f.est_particulier && (
+                  <div className={`${s.g2} ${s.ligneBouton}`}>
+                    <Champ etiquette="Son numéro" icone="personne">
+                      <Saisie valeur={f.agence_interlocuteur_tel} onChange={v => set('agence_interlocuteur_tel', v)} type="tel" placeholder="06 12 34 56 78" />
+                    </Champ>
+                    {telPersonne && <a className={s.appeler} href={`tel:${telPersonne.replace(/[^\d+]/g, '')}`}><Icone nom="tel" taille={15} epaisseur={2} />Appeler</a>}
+                  </div>
+                )}
                 <div className={`${s.g2} ${s.ligneBouton}`}>
                   <Champ etiquette="Mail" icone="mail">
                     <Saisie valeur={f.agence_email} onChange={v => set('agence_email', v)} type="email" mode="email" placeholder={f.est_particulier ? 'martin@gmail.com' : 'julie.bernard@agence.fr'} />

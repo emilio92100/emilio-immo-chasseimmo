@@ -213,6 +213,11 @@
 .pastille[data-ton="vendu"][aria-pressed="true"] { background: #475569; border-color: #475569; }
 .grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .champ { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+/* V3.205 — « Noter un appel » : le contact, un champ par ligne (les noms et l'e-mail en entier). */
+.grilleUne { grid-template-columns: minmax(0, 1fr); gap: 11px; }
+.ajoutNumero { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1.5px dashed #c2cedf;
+  background: white; color: #22497D; font: 700 13px 'DM Sans', sans-serif; cursor: pointer; max-width: 100%; }
+.ajoutNumero:hover { background: #f4f7fb; border-color: #22497D; }
 .champ span { font-size: 12.5px; font-weight: 700; color: #5B6B82; }
 .champ input {
   height: 42px; box-sizing: border-box; padding: 0 12px; border-radius: 11px; border: 1.5px solid #e3e8f0; background: #f8fafc;
@@ -238,6 +243,13 @@
 .ajouter:hover { background: #faf7ff; }
 .ajout { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #e3e8f0; }
 .ajoutPied { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.ajoutPied .btnFort:disabled { opacity: .5; cursor: default; }
+/* V3.205 — une heure précise, ou une plage. */
+.modeCreneau { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: white; border: 1px solid #e3e8f0; align-self: flex-start; max-width: 100%; box-sizing: border-box; flex-wrap: wrap; }
+.modeCreneau button { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 9px; border: none; background: none;
+  font: 700 13px 'DM Sans', sans-serif; color: #5B6B82; cursor: pointer; white-space: nowrap; transition: background .15s ease, color .15s ease; }
+.modeCreneau button:hover { color: #4C1D95; }
+.modeCreneau button[aria-pressed="true"] { background: #4C1D95; color: white; }
 .aide { font-size: 12.5px; line-height: 1.5; color: #64748b; }
 .pourToi { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; font: 700 11.5px 'DM Sans', sans-serif; letter-spacing: 0; text-transform: none; color: #8593a8; }
 
@@ -281,6 +293,8 @@
   .fGauche, .fDroite { padding-left: 16px; padding-right: 16px; }
   .lienAppelBtns > * { flex: 1 1 auto; }
   .deux, .grille { grid-template-columns: 1fr; }
+  .modeCreneau { align-self: stretch; flex-wrap: nowrap; }
+  .modeCreneau button { flex: 1 1 0; justify-content: center; padding: 0 8px; }
   .fPied { flex-wrap: wrap; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
   .fNote { flex: 1 1 100%; }
   .fPied .btn, .fPied .btnFort { flex: 1 1 0; }
