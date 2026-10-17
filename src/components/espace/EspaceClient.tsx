@@ -18,6 +18,7 @@ import type { AnnonceEspace } from '@/lib/annonces-client';
 import FaireOffre, { CarteOffre, CarteOffreAccueil, offreAAccueil, phraseOffre, libelleOffre, ETIQ_TON, CSS_OFFRE, type BienOffre, type HonoOffre, type ModeOffre } from './FaireOffre';
 import { ETATS_CLIENT, FINIES, type OffreEspace, type SaisieOffre } from '@/lib/offres';
 import type { SuiviClient } from '@/lib/suivi-client';
+import ChoixDispos, { MOMENTS_DISPO, ANCIENS_DISPO, estDateDispo } from './ChoixDispos';
 
 /**
  * L'espace acheteur, côté navigateur.
@@ -418,7 +419,7 @@ const SUITE_AVIS: Record<string, { t: string; p: string; ph: string; btn: string
     /* ⚠️ Jamais un mot sur l'agence, le confrère ou le propriétaire : le client
        n'a qu'un interlocuteur, son conseiller. C'était la seule phrase de tout
        l'espace qui laissait entendre le contraire. */
-    p: 'Sélectionnez un ou plusieurs créneaux. Votre conseiller s’organise pour vous y accompagner, et revient vers vous avec le rendez-vous.',
+    p: 'Choisissez des moments, ou des dates précises dans le calendrier. Votre conseiller organise la visite et revient vers vous avec le rendez-vous.',
     ph: 'Ex : jeudi après 18 h, vendredi midi, samedi matin…',
     btn: 'Envoyer mes disponibilités',
   },
@@ -451,14 +452,10 @@ const PASTILLES: Record<string, { i: string; n: string }[]> = {
     { i: 'immeuble', n: 'L’immeuble' },
     { i: 'euro', n: 'Le prix' },
   ],
-  souhaite_visiter: [
-    { i: 'eclair', n: 'Dès que possible' },
-    { i: 'soleil', n: 'En semaine, en journée' },
-    { i: 'lune', n: 'En semaine après 18 h' },
-    { i: 'calendrier', n: 'Le mercredi' },
-    { i: 'calendrier', n: 'Samedi matin' },
-    { i: 'calendrier', n: 'Samedi après-midi' },
-  ],
+  /* V3.209 : les moments en général ; les dates précises viennent du
+     calendrier (ChoixDispos). « Le mercredi », « Samedi matin »… : retirés
+     (« pourquoi le mercredi et pas les autres jours ? »). */
+  souhaite_visiter: MOMENTS_DISPO.map(x => ({ i: x.i, n: x.n })),
   refuse: [
     { i: 'lune', n: 'Trop sombre' },
     { i: 'travaux', n: 'Trop de travaux' },
@@ -475,6 +472,10 @@ const PASTILLES: Record<string, { i: string; n: string }[]> = {
 /* Pour relire un retour déjà parti sous la forme où il a été coché. */
 const ICO_PASTILLE: Record<string, string> = {};
 Object.values(PASTILLES).forEach(l => l.forEach(x => { ICO_PASTILLE[x.n] = x.i; }));
+/* Les retours envoyés avant la V3.209 se relisent encore en pastilles. */
+ANCIENS_DISPO.forEach(x => { ICO_PASTILLE[x.n] = x.i; });
+/* Une date choisie au calendrier (« Jeu. 22 oct. de 14 h à 17 h ») : un calendrier. */
+const icoPastille = (n: string) => ICO_PASTILLE[n] || (estDateDispo(n) ? 'calendrier' : '');
 /* Ce qui part dans le CRM : les pastilles d'abord, le mot libre ensuite.
    Le champ commentaire ne change pas de forme — il se relit tel quel dans la
    fiche client, et il part dans le même export. */
@@ -4530,19 +4531,29 @@ function SuiteAvis({ avis, choisies, onBasculer, com, setCom, ecrire, setEcrire,
     <div className="apres-avis">
       <div className="aa-t">{s.t}</div>
       <p className="aa-p">{s.p}</p>
-      <div className="reponses">
-        {liste.map((x: { i: string; n: string }) => (
-          <button key={x.n} type="button" className="rep" data-a={ton}
-            aria-pressed={choisies.includes(x.n)} onClick={() => onBasculer(x.n)}>
-            <Ico n={x.i} t={15} /><span>{x.n}</span>
-          </button>
-        ))}
-        {!ecrire && (
-          <button type="button" className="rep plus" onClick={() => setEcrire(true)}>
-            + {avis === 'souhaite_visiter' ? 'Préciser' : 'Ajouter un mot'}
-          </button>
-        )}
-      </div>
+      {/* V3.209 : des moments, et des dates au calendrier (ChoixDispos). */}
+      {avis === 'souhaite_visiter' ? (
+        <>
+          <ChoixDispos choisies={choisies} onBasculer={onBasculer} />
+          {!ecrire && (
+            <div className="reponses" style={{ marginTop: 10 }}>
+              <button type="button" className="rep plus" onClick={() => setEcrire(true)}>+ Ajouter un mot</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="reponses">
+          {liste.map((x: { i: string; n: string }) => (
+            <button key={x.n} type="button" className="rep" data-a={ton}
+              aria-pressed={choisies.includes(x.n)} onClick={() => onBasculer(x.n)}>
+              <Ico n={x.i} t={15} /><span>{x.n}</span>
+            </button>
+          ))}
+          {!ecrire && (
+            <button type="button" className="rep plus" onClick={() => setEcrire(true)}>+ Ajouter un mot</button>
+          )}
+        </div>
+      )}
       {/* Celui qui aime un bien veut souvent le voir : on lui évite de revenir
           changer sa réponse. C'est là que se gagnent les rendez-vous. */}
       {avis === 'interesse' && (
@@ -4569,7 +4580,7 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
   const bouts = texte.split(SEP_LIBRE);
   const noms = bouts[0].split(SEP_PASTILLES).map(x => x.trim()).filter(Boolean);
   const libre = bouts.slice(1).join(SEP_LIBRE).trim();
-  if (noms.length === 0 || !noms.every(n => ICO_PASTILLE[n])) {
+  if (noms.length === 0 || !noms.every(n => icoPastille(n))) {
     return <div className="fige">{texte}</div>;
   }
   return (
@@ -4577,7 +4588,7 @@ function RetourLu({ texte, ton }: { texte: string; ton: string }) {
       <div className="reponses lu">
         {noms.map(n => (
           <span key={n} className="rep" data-a={ton} aria-pressed="true">
-            <Ico n={ICO_PASTILLE[n]} t={15} /><span>{n}</span>
+            <Ico n={icoPastille(n)} t={15} /><span>{n}</span>
           </span>
         ))}
       </div>

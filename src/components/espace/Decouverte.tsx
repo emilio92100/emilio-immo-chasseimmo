@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import ChoixDispos from './ChoixDispos';
 
 /**
  * « Découvrir » — les nouveaux biens, un par un (V3.44).
@@ -96,7 +97,7 @@ const FEUILLES: Record<AvisDecouverte, { tag: string; t: string; p: string; ph: 
   souhaite_visiter: {
     tag: 'Je veux visiter',
     t: 'Quelles sont vos disponibilités ?',
-    p: 'Choisissez un ou plusieurs créneaux. Votre conseiller s’organise pour vous y accompagner et revient vers vous avec le rendez-vous.',
+    p: 'Choisissez des moments, ou des dates précises dans le calendrier. Votre conseiller organise la visite et revient vers vous avec le rendez-vous.',
     ph: 'Ex : jeudi après 18 h, samedi matin…',
     btn: 'Envoyer mes disponibilités', passer: 'Envoyer sans préciser',
   },
@@ -378,6 +379,8 @@ function Question({ avis, bien, photo, pastilles, Ico, onEnvoyer, onPasser, onVe
         <h2>{F.t}</h2>
         <p>{F.p}</p>
       </div>
+      {/* V3.209 : « Je veux visiter » : des moments, et des dates au calendrier. */}
+      {avis === 'souhaite_visiter' ? <ChoixDispos choisies={choix} onBasculer={basculer} /> : (
       <div className="dec-chips">
         {(pastilles[avis] || []).map(x => {
           const on = choix.includes(x.n);
@@ -389,6 +392,7 @@ function Question({ avis, bien, photo, pastilles, Ico, onEnvoyer, onPasser, onVe
           );
         })}
       </div>
+      )}
       {ecrire ? (
         <label className="dec-mot">
           <span>Un mot pour votre conseiller</span>
@@ -929,7 +933,8 @@ export default function Decouverte(props: Props) {
       {question && courant && (
         <div className={'dec-q' + (qEtat === 'on' ? ' on' : '') + (qEtat === 'sort' ? ' sort' : '')}>
           <div className="dec-q-voile" onClick={() => fermerQuestion(remettre)} />
-          <div className="dec-q-boite" role="dialog" aria-modal="true" aria-label={FEUILLES[question].t}>
+          <div className="dec-q-boite" role="dialog" aria-modal="true" aria-label={FEUILLES[question].t}
+            data-large={question === 'souhaite_visiter' ? '' : undefined}>
             <Question key={question} avis={question} bien={courant} photo={courant.photos?.[0] || null}
               pastilles={pastilles} Ico={Ico}
               onEnvoyer={(choix, mot) => conclure(question, texte(choix, mot))}
@@ -1183,6 +1188,8 @@ html.dec-ouvert .feuille:not(.on){box-shadow:none}
   .dec-q.on .dec-q-boite{transform:none; opacity:1}
   .dec-q.sort .dec-q-boite{transform:translateY(18px) scale(.97); opacity:0; transition:transform .3s ease-in, opacity .3s ease-in}
   .dec-q-poignee{display:none}
+  /* V3.209 : le calendrier des disponibilités à côté des moments. */
+  .dec-q-boite[data-large]{width:900px}
   .dec-q-mini{width:64px; height:64px; border-radius:16px}
   .dec-q-bien b{font-size:16px} .dec-q-bien span{font-size:14px}
   .dec-q-tag{font-size:13px; padding:6px 12px}
