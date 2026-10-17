@@ -1515,6 +1515,38 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.207 — 17 octobre 2026 · Un quartier dans chaque ville, « Revente possible » = Propriétaire, le mail simple dans le Suivi
+
+- **Les secteurs** — Alexandre : « quand j'ajoute Clamart, je ne peux pas choisir de secteur ou
+  entrer une valeur libre » ; « dans tous les cas, ça vient d'une ville, le secteur ».
+  `SecteurPicker` : chaque ville a son « + Quartier », connue ou pas (avant, une ville absente de
+  `QUARTIERS` partait dans « Secteurs libres », sans bouton) ; sans liste, on tape le sien
+  (« Quartier de Clamart… »). Le champ « Secteur libre, sans commune » a disparu. Un quartier
+  ajouté prend la place de « Toute la ville » (`avecQuartier`) : le bloc ne saute plus en bas.
+  Ceux déjà notés sans ville se reconnaissent (`useSansVille`, `estUneCommune` dans
+  `src/lib/secteurs.ts` : une entrée sans parenthèses que geo.api.gouv.fr ne connaît pas comme
+  commune ; sans réponse, on la croit commune) : une case « À ranger dans une ville », un clic
+  sur la ville les écrit « Place Marquis (Clamart) ». La fiche (`SecteursListe`) les marque
+  « Ville à préciser » au lieu de « Toute la ville ». Pas de quartiers ajoutés à la liste
+  (Alexandre : « on laisse comme tel »).
+- **« Revente possible après l'achat »** — « ça n'a pas mis le statut propriétaire aussi ? ».
+  Cocher la case classe aussi Propriétaire (`typesAvecRevente`, `src/lib/contacts.ts` : ni un
+  Vendeur, déjà classé autrement, ni un Vendeur signé) et met la situation à « Propriétaire » si
+  elle est vide — à la création (`Clients.tsx`, avec la phrase « Il est aussi classé
+  Propriétaire ») et dans « Modifier » (`saveContact`, noté au Suivi). Les fiches d'avant :
+  **SQL** `outils/sql/revente-proprietaire.sql` (une requête, la liste rendue = les fiches
+  corrigées ; à repasser, elle ne change rien).
+- **Le mail simple dans le Suivi** — « mettre la petite photo du bien, et quand on clique, que ça
+  mène au bien dans le CRM » ; « savoir si le lien a été ouvert, pas le mail ». La ligne « Bien
+  de l'agence présenté · mail simple » (`BienPresente`, `FriseSuivi.tsx`) : la photo du bien
+  (`biens_vente.photo`), son titre et son prix — un clic ouvre sa fiche (`onBienAgence`,
+  FicheClient et FicheContact) ; « Plus dans les biens » s'il a été supprimé. Dessous : « À … »,
+  puis « Lien ouvert le 16 oct. à 22 h 38 » (ou « Lien ouvert 3 jours · dernière fois le … »),
+  « Lien pas encore ouvert », et « Voir la page envoyée » (le lien sans code : il ne compte
+  pas). Les ouvertures se lisent dans `biens_vente_suivi.donnees.vues` (`vuesDe`), quel que soit
+  le filtre ; un mail d'avant la V3.152 (sans `lien_code`) n'affiche rien. Le pixel Mailjet
+  reste coupé (`SUIVI_OUVERTURE`, délivrabilité) : c'est bien le lien qui est suivi.
+
 ### V3.206 — 17 octobre 2026 · Les visites dans l'espace client : la photo, la case du haut, des onglets
 
 - Alexandre, sur l'espace de Hamza : « Visite à venir, il y a trop de texte, on ne pourrait pas
