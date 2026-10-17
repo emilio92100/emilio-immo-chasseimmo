@@ -18,7 +18,7 @@ import {
 import type { CritForm, ModeCrit } from '@/components/shared/CriteresRecherche';
 import { intentions, prendreIntentionNouveauClient, signalerMaj, EVT_NOUVEAU_CLIENT, EVT_DEMANDE_VUE, demanderNouveauBien, annoncerVue, vueDemandee } from '@/lib/intentions';
 import {
-  TYPES_CONTACT, colonneContactAbsente, estAcheteur, estArchive, estPro, lirePro, reventePossible, sansCriteres, structurePropre, typeDe, typesDe,
+  TYPES_CONTACT, colonneContactAbsente, typesAvecRevente, estAcheteur, estArchive, estPro, lirePro, reventePossible, sansCriteres, structurePropre, typeDe, typesDe,
   type InfosPro, type TypeContact,
 } from '@/lib/contacts';
 import { ChampsPro, ChoixTypes, EnteteContacts, LigneContact, Puce, type BienDuContact } from '@/components/contacts/ChampsContact';
@@ -1082,6 +1082,8 @@ export default function Clients({ onNavigate, fenetre }: {
       const adresse = [form.adresse_rue, [form.adresse_cp, form.adresse_ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
       const ent = (v: string) => (v ? parseInt(v) : null);
 
+      /* V3.207 : « Revente possible » en fait aussi un Propriétaire. */
+      const typesEcrits = (acheteur && form.bien_actuel_a_vendre && typesAvecRevente(form.types)) || form.types;
       const ligne = {
         reference, prenom: form.prenom || '', nom: form.nom || '',
         /* Écrits seulement si Alexandre a choisi : avant le SQL « signature-
@@ -1099,7 +1101,7 @@ export default function Clients({ onNavigate, fenetre }: {
         /* Le statut est celui d'un dossier d'achat : un notaire, un vendeur
            n'est pas un acheteur « actif ». */
         statut: acheteur ? form.statut : 'prospect',
-        statut_occupation: form.statut_occupation || (form.types.includes('proprietaire') || form.types.includes('vendeur') ? 'proprietaire' : null),
+        statut_occupation: form.statut_occupation || (typesEcrits.includes('proprietaire') || typesEcrits.includes('vendeur') ? 'proprietaire' : null),
         bien_actuel_a_vendre: form.bien_actuel_a_vendre,
         bien_actuel_type: form.bien_actuel_a_vendre ? (form.bien_actuel_type || null) : null,
         bien_actuel_surface: form.bien_actuel_a_vendre && form.bien_actuel_surface ? parseInt(form.bien_actuel_surface) : null,
@@ -1117,9 +1119,9 @@ export default function Clients({ onNavigate, fenetre }: {
          sans elle, et on le dit. */
       const src = form.source ? { source: form.source, source_detail: form.source_detail.trim() || null } : {};
       const libSrc = libelleSource(form.source, form.source_detail);
-      let r = await supabase.from('clients').insert({ ...ligne, ...src, types: form.types, pro }).select().single();
+      let r = await supabase.from('clients').insert({ ...ligne, ...src, types: typesEcrits, pro }).select().single();
       if (r.error && form.source && colonneSourceAbsente(r.error.message)) {
-        r = await supabase.from('clients').insert({ ...ligne, types: form.types, pro }).select().single();
+        r = await supabase.from('clients').insert({ ...ligne, types: typesEcrits, pro }).select().single();
         if (!r.error) signalerEchec('La source du contact', 'lancez d’abord outils/sql/source-contact.sql dans Supabase, puis choisissez-la depuis sa fiche (« Modifier »).');
       }
       if (r.error && colonneContactAbsente(r.error.message)) {
@@ -1140,7 +1142,7 @@ export default function Clients({ onNavigate, fenetre }: {
         demandeLiee.current = null;
       }
       if (data && !acheteur) {
-        await addJournal(data.id, 'creation', 'Contact créé', `${form.types.map(k => typeDe(k).lib).join(', ')} · ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
+        await addJournal(data.id, 'creation', 'Contact créé', `${typesEcrits.map(k => typeDe(k).lib).join(', ')} · ${reference}${libSrc ? ` · source : ${libSrc}` : ''}`);
       }
       if (data && acheteur) {
         // Créer la 1ère recherche du client avec tous les critères
@@ -1782,9 +1784,10 @@ export default function Clients({ onNavigate, fenetre }: {
                             <option value="autre">Autre</option>
                           </select>
                         </div>
-                        <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
+                        <button type="button" onClick={() => setForm({ ...form, bien_actuel_a_vendre: !form.bien_actuel_a_vendre, ...(!form.bien_actuel_a_vendre && !form.statut_occupation ? { statut_occupation: 'proprietaire' } : {}) })} style={{ ...pill(form.bien_actuel_a_vendre, '#ea580c', '#fff7ed', '#ea580c'), alignSelf: 'flex-start' }}>
                           {form.bien_actuel_a_vendre ? '✓ ' : ''}Revente possible après l&apos;achat (mandat vendeur potentiel)
                         </button>
+                        {form.bien_actuel_a_vendre && !form.types.includes('vendeur') && <div className="nc-aide">Il est aussi classé Propriétaire : un vendeur de demain.</div>}
                         {form.bien_actuel_a_vendre && (
                           <>
                             <div className={styles.formRow}>
