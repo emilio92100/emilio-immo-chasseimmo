@@ -1,14 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { QUARTIERS, searchCommune, type CpSuggestion } from '@/lib/secteurs';
+import { QUARTIERS, searchCommune, useSansVille, type CpSuggestion } from '@/lib/secteurs';
 
 /* Sélecteur de secteurs.
 
    Le format enregistré ne change pas : un tableau de libellés, soit
    « Quartier (Ville) », soit « Ville » seule quand on prend toute la commune.
    Ce qui change ici, c'est l'affichage : au lieu d'une pluie d'étiquettes avec
-   des parenthèses, une commune = un bloc, avec ses quartiers dessous. */
+   des parenthèses, une commune = un bloc, avec ses quartiers dessous.
+
+   V3.207 — Chaque ville a son « + Quartier », connue ou pas (Clamart n'en
+   avait pas : une ville sans quartiers pré-enregistrés passait dans « Secteurs
+   libres »). Et plus de « Secteur libre, sans commune » : un secteur vient
+   toujours d'une ville. Ceux déjà écrits sans elle se rangent en un clic. */
 
 type Bloc = { ville: string; cp: string; quartiers: string[]; toute: boolean };
 
@@ -27,7 +32,7 @@ export default function SecteurPicker({
   const [cpSug, setCpSug] = useState<CpSuggestion[]>([]);
   const [ouvert, setOuvert] = useState<string | null>(null);   // ville dont le tiroir « quartiers » est ouvert
   const [saisieQ, setSaisieQ] = useState('');
-  const [libre, setLibre] = useState('');
+  const sansVille = useSansVille(secteurs);
 
   /* ─── Regroupement des libellés en blocs par commune ─── */
   const blocs: Bloc[] = [];
@@ -44,10 +49,11 @@ export default function SecteurPicker({
     if (quartier) index[ville].quartiers.push(quartier);
     else index[ville].toute = true;
   });
-  /* Les entrées seules, sans quartier ET sans commune reconnue, sont des secteurs libres. */
+  /* Une entrée seule qui n'est pas une commune (geo.api.gouv.fr) : un quartier
+     noté sans sa ville, avant la V3.207. Il attend d'être rangé. */
   for (let i = blocs.length - 1; i >= 0; i--) {
     const b = blocs[i];
-    if (b.toute && b.quartiers.length === 0 && !b.cp) { autres.push(b.ville); blocs.splice(i, 1); }
+    if (b.toute && b.quartiers.length === 0 && sansVille.includes(b.ville)) { autres.unshift(b.ville); blocs.splice(i, 1); }
   }
 
   async function chercher(q: string) {
@@ -67,7 +73,7 @@ export default function SecteurPicker({
     const label = `${q} (${ville})`;
     if (secteurs.includes(label)) return;
     /* Choisir un quartier précise la recherche : « toute la ville » n'a plus lieu d'être. */
-    maj([...secteurs.filter((s) => s !== ville), label]);
+    maj(avecQuartier(secteurs, ville, label));
   }
 
   function retirerQuartier(ville: string, q: string) {
@@ -75,6 +81,12 @@ export default function SecteurPicker({
     /* Dernier quartier retiré : on repasse la commune en « toute la ville » plutôt que de la faire disparaître. */
     const encore = reste.some((s) => s === ville || s.endsWith(`(${ville})`));
     maj(encore ? reste : [...reste, ville]);
+  }
+
+  /* « Place Marquis » devient « Place Marquis (Clamart) », comme un quartier
+     ajouté depuis le bloc de la ville. */
+  function ranger(libre: string, ville: string) {
+    maj(avecQuartier(secteurs.filter((s) => s !== libre), ville, `${libre} (${ville})`));
   }
 
   function basculerToute(b: Bloc) {
@@ -164,7 +176,7 @@ export default function SecteurPicker({
                         value={saisieQ}
                         onChange={(e) => setSaisieQ(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && saisieQ.trim()) { e.preventDefault(); ajouterQuartier(b.ville, saisieQ.trim()); setSaisieQ(''); } }}
-                        placeholder={`Autre quartier de ${b.ville}…`}
+                        placeholder={`${connus.length ? 'Autre quartier' : 'Quartier'} de ${b.ville}…`}
                         style={{ ...inp, flex: 1, padding: '8px 11px', fontSize: 13 }}
                       />
                       <button type="button" onClick={() => { if (saisieQ.trim()) { ajouterQuartier(b.ville, saisieQ.trim()); setSaisieQ(''); } }} style={boutonAjout}>Ajouter</button>
@@ -177,34 +189,43 @@ export default function SecteurPicker({
         </div>
       )}
 
-      {/* ─── Secteurs libres, qui ne correspondent à aucune commune ─── */}
+      {/* ─── Notés sans leur ville (avant la V3.207) : à ranger ─── */}
       {autres.length > 0 && (
-        <div style={{ ...carte, marginTop: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>Secteurs libres</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            {autres.map((s) => (
-              <span key={s} style={puceQuartier}>
+        <div style={{ ...carte, marginTop: 10, background: '#fffbeb', borderColor: '#fde68a' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#854d0e' }}>À ranger dans une ville</div>
+          <div style={{ fontSize: 12, color: '#92400e', marginTop: 2, lineHeight: 1.45 }}>{autres.length > 1 ? 'Notés sans leur ville. Un clic les range dans la bonne.' : 'Noté sans sa ville. Un clic le range dans la bonne.'}</div>
+          {autres.map((s) => (
+            <div key={s} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 9 }}>
+              <span style={puceQuartier}>
                 {s}
                 <button type="button" onClick={() => maj(secteurs.filter((x) => x !== s))} title="Retirer" style={croixPuce}>✕</button>
               </span>
-            ))}
-          </div>
+              {blocs.length > 0 ? (
+                <>
+                  <span style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>Le ranger dans</span>
+                  {blocs.map((b) => (
+                    <button type="button" key={b.ville} onClick={() => ranger(s, b.ville)} title={`${s} (${b.ville})`} style={piluleAjout}>{b.ville}</button>
+                  ))}
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: '#92400e' }}>Ajoutez d’abord sa ville, juste au-dessus.</span>
+              )}
+            </div>
+          ))}
         </div>
       )}
-
-      {/* ─── Saisie libre ─── */}
-      <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <input
-          value={libre}
-          onChange={(e) => setLibre(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && libre.trim()) { e.preventDefault(); if (!secteurs.includes(libre.trim())) maj([...secteurs, libre.trim()]); setLibre(''); } }}
-          placeholder="Secteur libre, sans commune (ex : Triangle d'Or, proche RER…)"
-          style={{ ...inp, flex: 1 }}
-        />
-        <button type="button" onClick={() => { const v = libre.trim(); if (v && !secteurs.includes(v)) maj([...secteurs, v]); setLibre(''); }} style={boutonAjout}>Ajouter</button>
-      </div>
     </div>
   );
+}
+
+/* Le quartier prend la place de « toute la ville », ou se range après ceux de
+   sa ville : le bloc ne saute pas en bas de la liste (V3.207). */
+function avecQuartier(liste: string[], ville: string, label: string): string[] {
+  const i = liste.indexOf(ville);
+  if (i >= 0) return liste.map((s, j) => (j === i ? label : s));
+  let k = -1;
+  liste.forEach((s, j) => { if (s.endsWith(`(${ville})`)) k = j; });
+  return k >= 0 ? [...liste.slice(0, k + 1), label, ...liste.slice(k + 1)] : [...liste, label];
 }
 
 const inp: React.CSSProperties = { width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #e3e8f0', fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
