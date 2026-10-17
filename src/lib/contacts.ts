@@ -87,6 +87,17 @@ export const estPro = (types: TypeContact[]) => !types.some(t => PARTICULIERS.in
    vendu : la case, restée cochée d'avant sa vente, ne veut plus rien dire. */
 export const reventePossible = (c: (AvecTypes & { bien_actuel_a_vendre?: unknown }) | null | undefined) =>
   !!c?.bien_actuel_a_vendre && !typesDe(c).includes('vendeur_signe');
+/* V3.207 — « Revente possible après l'achat » : il possède le bien qu'il
+   revendra, c'est donc aussi un Propriétaire (Alexandre : « ça n'a pas mis
+   le statut propriétaire aussi ? »). Un Vendeur l'est déjà autrement (V3.137 :
+   les deux listes ne se recouvrent pas) ; un Vendeur signé a vendu, la case
+   ne veut plus rien dire pour lui. Rend les types à écrire, ou null si rien
+   ne change. Même règle pour les fiches d'avant : outils/sql/revente-proprietaire.sql. */
+export function typesAvecRevente(types: TypeContact[]): TypeContact[] | null {
+  if (types.includes('proprietaire') || types.includes('vendeur') || types.includes('vendeur_signe')) return null;
+  const n: TypeContact[] = [...types, 'proprietaire'];
+  return TYPES_CONTACT.map(t => t.k).filter(k => n.includes(k));
+}
 
 /* Un acheteur « non filtré » : sa recherche n'a encore aucun critère. On lit
    les colonnes fusionnées sur le contact par la liste (la recherche
