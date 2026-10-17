@@ -385,6 +385,14 @@ export default async function PageEspace({ params, searchParams }: {
   /* Les rendez-vous à venir, et eux seuls. Une visite passée n'est plus « votre
      prochaine visite » : son bien est rangé dans « Visités » (voir faiteParBien),
      et la section « Déjà visités » de l'onglet Visites le montre. */
+  /* « Studio 30 m² · Vanves », « 2 pièces 38 m² · Vanves », « Maison 130 m² · Meudon » */
+  const courtDuBien = (b: any): string | null => {
+    if (!b) return null;
+    const n = Number(b.nb_pieces) || 0, s = Number(b.surface) || 0;
+    const quoi = /maison/i.test(String(b.type_bien || '')) ? 'Maison' : n === 1 ? 'Studio' : n > 1 ? `${n} pièces` : String(b.type_bien || '').trim();
+    const bien = [quoi ? quoi.charAt(0).toUpperCase() + quoi.slice(1) : '', s ? `${String(s).replace('.', ',')} m²` : ''].filter(Boolean).join(' ');
+    return [bien, b.ville].filter(Boolean).join(' · ') || null;
+  };
   const visites = toutesVisites
     .filter((v) => v.statut === 'a_venir' && v.date_visite && !estPassee(v) && !copiesIndispo.has(v.bien_id))
     .map((v) => {
@@ -397,6 +405,8 @@ export default async function PageEspace({ params, searchParams }: {
         adresse: [b?.adresse || b?.adresse_probable || b?.quartier, b?.ville].filter(Boolean).join(', '),
         /* La photo du bien : un rappel de visite sans image ne dit pas lequel. */
         photo: (b?.photos || [])[0] || null,
+        /* V3.206 : le bien en court, pour l'accueil (« Studio 30 m² · Vanves »). */
+        court: courtDuBien(b),
         bienId: v.bien_id as string | null,
       };
     });
