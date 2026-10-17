@@ -1515,6 +1515,28 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.206 — 17 octobre 2026 · Les visites dans l'espace client : la photo, la case du haut, des onglets
+
+- Alexandre, sur l'espace de Hamza : « Visite à venir, il y a trop de texte, on ne pourrait pas
+  remettre la photo du bien à côté » ; « Vos visites, je ne la trouve pas belle, on ne peut pas
+  cliquer sur En cours, on est obligé de scroller ». Canevas « Les visites dans l'espace
+  client » : il a pris la planche 2 (accueil, photo discrète), la 3 au téléphone, la 4 (onglets).
+- **L'accueil** (`ProchainesVisites`, à la place de `VisiteCourte`) : une case « Votre prochaine
+  visite » / « Vos prochaines visites · 2 », une ligne par visite — la photo en petit avec le jour
+  dessus, « Mar. 20 oct. · 17 h 30 », le bien en court (`court`, calculé dans
+  `src/app/espace/[token]/page.tsx` : « Studio 30 m² · Vanves »), « Dans 3 jours ». Trois au plus,
+  puis « Tout voir ». Sous 1 024 px, la première prend la photo en grand (le jour, l'heure et
+  « Dans 3 jours » posés dessus). L'heure s'écrit `heureVisite` (« 18 h », « 17 h 30 », insécables).
+- **« Vos visites »** (`VueVisites`) : une case en haut, « 5 biens avec votre conseiller », et
+  trois pastilles qui s'additionnent (« 1 à venir », « 4 déjà visités », « dont 1 attend votre
+  avis ») ; « Prochainement » : la carte violette (`ProchaineVisite`), avec la photo du bien à
+  gauche (en haut au téléphone), « Revoir le bien » et l'agenda sur une ligne ; « Déjà visités » :
+  des onglets (Tout, Vos offres, Votre avis, En cours, Pas pour moi — seulement ceux qui ont des
+  biens, et pas d'onglets pour un seul rang), une phrase par onglet, les cartes en grille (3 par
+  ligne, 2 sur une tablette, 1 au téléphone). `CarteVisite` : la photo en haut, son étiquette
+  dessus, le prix et « visité le … », puis la suite comme avant (l'avis, l'offre, le compte
+  rendu). « 1 pièces » devient « Studio ».
+
 ### V3.205 — 16 octobre 2026 · « Noter un appel » : un champ par ligne, deux numéros, des plages horaires
 
 - Alexandre : « on ne voit pas le nom en entier, et surtout l'e-mail, c'est coupé » ; « quand une
