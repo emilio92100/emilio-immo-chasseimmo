@@ -51,6 +51,27 @@ function nomNaissance(c: CommuneApi): string {
   return dep && !nom.startsWith(dep) ? `${nom} (${dep})` : nom;
 }
 
+/* ── V3.208 : « Paris 12 », « Lyon 3e », « Marseille 8 » ──
+   Un client, au mandat : « quand je mets Paris 12, ça ne s'affiche pas ; il y
+   a tous les autres arrondissements ». La base classe ses réponses par
+   population et n'en rend que sept : Paris, puis les 15e, 20e, 18e, 13e…
+   et le 12e n'y arrivait jamais. Un nom de ces trois villes suivi d'un numéro
+   est donc reconnu ici, sans la base, et proposé en premier : l'arrondissement
+   pour la naissance, la ville avec son code postal pour l'adresse. */
+const AVEC_ARR: Record<string, { nom: string; dep: string; max: number; cp: (n: number) => string[] }> = {
+  paris: { nom: 'Paris', dep: 'Paris', max: 20, cp: n => (n === 16 ? ['75016', '75116'] : [`750${String(n).padStart(2, '0')}`]) },
+  lyon: { nom: 'Lyon', dep: 'Rhône', max: 9, cp: n => [`6900${n}`] },
+  marseille: { nom: 'Marseille', dep: 'Bouches-du-Rhône', max: 16, cp: n => [`130${String(n).padStart(2, '0')}`] },
+};
+export function arrondissementTape(q: string): { arr: CommuneApi; ville: CommuneApi } | null {
+  const m = /^(paris|lyon|marseille)\s*(\d{1,2})(?!\d)/.exec(sansAccent(q));
+  const v = m ? AVEC_ARR[m[1]] : null;
+  const n = m ? Number(m[2]) : 0;
+  if (!v || n < 1 || n > v.max) return null;
+  const codesPostaux = v.cp(n), departement = { nom: v.dep };
+  return { arr: { nom: `${v.nom} ${n}${n === 1 ? 'er' : 'e'} Arrondissement`, codesPostaux, departement }, ville: { nom: v.nom, codesPostaux, departement } };
+}
+
 async function communes(q: string, signal: AbortSignal, avecArrondissements: boolean): Promise<CommuneApi[]> {
   const t = q.trim();
   const cp = /^\d{5}$/.test(t);
@@ -59,10 +80,21 @@ async function communes(q: string, signal: AbortSignal, avecArrondissements: boo
   if (cp) p.set('codePostal', t);
   else { p.set('nom', t); p.set('boost', 'population'); p.set('limit', '7'); }
   if (avecArrondissements) p.set('type', 'arrondissement-municipal,commune-actuelle');
-  const r = await fetch(`${URL_COMMUNES}?${p}`, { signal });
-  if (!r.ok) return [];
-  const j = await r.json().catch(() => []);
-  return Array.isArray(j) ? (j as CommuneApi[]).slice(0, 7) : [];
+  const a = cp ? null : arrondissementTape(t);
+  let l: CommuneApi[] = [];
+  try {
+    const r = await fetch(`${URL_COMMUNES}?${p}`, { signal });
+    const j = r.ok ? await r.json().catch(() => []) : [];
+    l = Array.isArray(j) ? (j as CommuneApi[]) : [];
+  } catch (e) {
+    /* Hors ligne : l'arrondissement reconnu reste proposé. */
+    if (!a || signal.aborted) throw e;
+  }
+  if (a) {
+    const premier = avecArrondissements ? a.arr : a.ville;
+    l = [premier, ...l.filter(c => sansAccent(c.nom) !== sansAccent(premier.nom))];
+  }
+  return l.slice(0, 7);
 }
 
 type AdresseApi = { properties?: { name?: string; postcode?: string; city?: string; type?: string; label?: string } };
@@ -293,7 +325,14 @@ export function BlocAdresse({ adr, onAdr, champs, tiers = false, autoNav = true,
             if (/^\d/.test(q.trim())) return [];
             const l: Suggestion[] = [];
             for (const c of await communes(q, signal, false)) {
-              for (const cp of (c.codesPostaux || []).slice(0, 3)) l.push({ cle: `${c.nom}|${cp}`, titre: c.nom, sous: cp, v: { cp, ville: c.nom } });
+              const cps = c.codesPostaux || [];
+              /* V3.208 : Paris a vingt codes postaux ; en montrer trois (75001, 75002,
+                 75003) laissait croire que c'étaient les seuls. Au-delà de trois, la
+                 ville seule : le code postal se tape à côté (ou « Paris 12 »). */
+              if (cps.length > 3) {
+                const garde = cps.includes(adr.cp.trim()) ? adr.cp.trim() : '';
+                l.push({ cle: `${c.nom}|*`, titre: c.nom, sous: garde || 'Précisez le code postal', v: { cp: garde, ville: c.nom } });
+              } else for (const cp of cps) l.push({ cle: `${c.nom}|${cp}`, titre: c.nom, sous: cp, v: { cp, ville: c.nom } });
             }
             return l.slice(0, 7);
           }}
