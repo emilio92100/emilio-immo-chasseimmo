@@ -1515,6 +1515,27 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.209 — 17 octobre 2026 · « Quelles sont vos disponibilités ? » : des moments et un calendrier
+
+- Alexandre, après un client : « le mercredi, samedi matin, samedi après-midi : c'est pas très
+  logique, il faudrait tous les autres jours » ; « choisir une date avec un beau calendrier,
+  l'horaire, ou une plage horaire ». Canevas « Vos disponibilités pour visiter » : planche A.
+- `src/components/espace/ChoixDispos.tsx` (nouveau), pour « Je veux visiter » dans la fiche d'un
+  bien (`SuiteAvis`) et dans « Découvrir » (`Question`) :
+  · « En général », plusieurs à la fois : Dès que possible, En semaine en journée, En semaine le
+    soir, Le week-end (`MOMENTS_DISPO`) ;
+  · « Des dates précises » : un calendrier (le mois, trois mois d'avance, les jours passés
+    éteints, un point sous les jours déjà pris), puis « Toute la journée », « À une heure » ou
+    « Une plage » (heure de début puis de fin, de 8 h à 20 h), « Ajouter », autant qu'il veut ;
+  · « Votre conseiller recevra » : la phrase telle qu'elle part.
+  Large (≥ 700 px de conteneur, `@container`) : le calendrier ouvert à droite ; étroit : il
+  s'ouvre sur « Choisir une date » ; une colonne sous 340 px (la fiche au téléphone).
+  « Découvrir » sur ordinateur : la fenêtre passe à 900 px pour cette question (`data-large`).
+- Rien ne change pour le CRM : chaque choix est une phrase (« Jeu. 22 oct. de 14 h à 17 h »,
+  « Sam. 24 oct., toute la journée »), séparées par « · » comme les pastilles (Visites « Ses
+  disponibilités », le mail à Alexandre, la relance). `RetourLu` relit les dates en pastilles
+  (icône calendrier, `estDateDispo`) ; les anciennes (« Le mercredi »…) aussi (`ANCIENS_DISPO`).
+
 ### V3.208 — 17 octobre 2026 · « Paris 12 » au mandat
 
 - Un client, à la signature du mandat de recherche (étape 2) : « quand je mets Paris 12, ça ne
