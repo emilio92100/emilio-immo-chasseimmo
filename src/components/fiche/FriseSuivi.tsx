@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { euros } from '@/lib/mandat';
 import { etapeDe } from '@/lib/biens-vente';
 import { lireRemises, type RemiseClient } from '@/lib/remise-client';
+import { vuesDe } from '@/lib/bien-suivi';
 import s from './FriseSuivi.module.css';
 import Curseur from '@/components/shared/Curseur';
 
@@ -382,6 +383,100 @@ function useMailsOuverts(items: LigneSuivi[]): (j: { metadata?: Record<string, u
   };
 }
 
+/* V3.207 — Un bien de l'agence présenté par simple mail, dans le Suivi d'un
+   contact. Alexandre : « mettre la petite photo du bien, et quand on clique
+   dessus, que ça mène directement au bien dans le CRM » — comme l'avatar du
+   contact dans l'historique du bien, dans l'autre sens. Et « savoir si le
+   lien a été ouvert, pas le mail, mais le lien » : les ouvertures se lisent là
+   où la page du bien les écrit (`biens_vente_suivi.donnees.vues`, une par jour,
+   src/lib/bien-suivi.ts), quel que soit le filtre choisi. Une lecture ratée
+   ne montre rien de plus : la ligne reste comme avant. */
+type BienAgence = { id: string; titre: string | null; ville: string | null; photo: string | null };
+function useMailsSimples(items: LigneSuivi[]) {
+  const lignes = items.filter(it => it.kind === 'event' && estMailSimple(it.data));
+  const ids = [...new Set(lignes.map(it => String(it.data.metadata.bien_vente_id)))].sort();
+  const cle = `${ids.join(',')}|${lignes.length}`;
+  const [biensAg, setBiensAg] = useState<Record<string, BienAgence> | null>(null);
+  const [vues, setVues] = useState<Record<string, string[]> | null>(null);
+  useEffect(() => {
+    if (!ids.length) return;
+    let vivant = true;
+    (async () => {
+      const [rb, rs] = await Promise.all([
+        supabase.from('biens_vente').select('id, titre, ville, photo').in('id', ids),
+        supabase.from('biens_vente_suivi').select('donnees').in('bien_id', ids).eq('type', 'envoi'),
+      ]);
+      if (!vivant) return;
+      if (rb.error) console.error('[suivi] les biens présentés par mail', rb.error.message);
+      else setBiensAg(Object.fromEntries(((rb.data || []) as BienAgence[]).map(b => [b.id, b])));
+      if (rs.error) console.error('[suivi] les ouvertures des liens', rs.error.message);
+      else {
+        const v: Record<string, string[]> = {};
+        for (const l of (rs.data || []) as { donnees: unknown }[]) for (const x of vuesDe(l.donnees)) v[x.code] = x.le;
+        setVues(v);
+      }
+    })();
+    return () => { vivant = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cle]);
+  return { biensAg, vues };
+}
+const jourHeure = (iso: string) => {
+  const d = new Date(iso);
+  const jour = d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'short' });
+  const h = d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).replace(':', '\u00a0h\u00a0');
+  return `${jour} à ${h}`;
+};
+function texteOuvert(le: string[]): string {
+  const l = [...le].sort();
+  const dernier = jourHeure(l[l.length - 1]);
+  return l.length > 1 ? `Lien ouvert ${l.length} jours · dernière fois le ${dernier}` : `Lien ouvert le ${dernier}`;
+}
+function BienPresente({ j, bien, lus, vues, onOuvrir }: {
+  j: any; bien: BienAgence | null; lus: boolean; vues: Record<string, string[]> | null; onOuvrir?: (id: string) => void;
+}) {
+  const lignes = String(j.description || '').split('\n').map((x: string) => x.trim()).filter(Boolean);
+  const tete = lignes[0] || '';
+  const a = (lignes.find((x: string) => x.startsWith('À : ')) || '').slice(4).trim() || String(j.metadata?.email || '');
+  const lien = lignes.find((x: string) => /^https?:\/\//.test(x)) || '';
+  /* « Maison 7 pièces — Clamart · 1 090 000 € » : le prix à part. */
+  const m = /^(.*?) · ([0-9][0-9\s\u00a0\u202f.,]*\s?€)$/.exec(tete);
+  const titre = (m ? m[1] : tete) || bien?.titre || 'Le bien';
+  const prix = m ? m[2] : '';
+  const id = String(j.metadata.bien_vente_id);
+  const code = typeof j.metadata?.lien_code === 'string' ? j.metadata.lien_code : '';
+  const vu = code && vues ? (vues[code] || []) : null;
+  /* Lu, mais plus dans les biens (supprimé) : la ligne ne mène nulle part. */
+  const absent = lus && !bien;
+  const contenu = (
+    <>
+      {bien?.photo
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={bien.photo} alt="" />
+        : <span className={s.bpIc}><IcSuivi n="maison" t={20} /></span>}
+      <span className={s.bpTxt}>
+        <b>{titre}</b>
+        {(prix || absent) && <span>{absent ? `${prix ? `${prix} · ` : ''}plus dans les biens` : prix}</span>}
+      </span>
+      {onOuvrir && !absent && <IcSuivi n="droite" t={15} e={2.4} />}
+    </>
+  );
+  return (
+    <div className={s.bp}>
+      {onOuvrir && !absent
+        ? <button type="button" className={s.bpBien} onClick={() => onOuvrir(id)} title="Ouvrir la fiche du bien">{contenu}</button>
+        : <div className={s.bpBien}>{contenu}</div>}
+      <div className={s.bpPied}>
+        {a && <span className={s.bpA}>{`À ${a}`}</span>}
+        {vu && (vu.length
+          ? <span className={s.bpVu} data-vu="oui"><IcSuivi n="oeil" t={13} />{texteOuvert(vu)}</span>
+          : <span className={s.bpVu} data-vu="non"><IcSuivi n="oeil" t={13} />Lien pas encore ouvert</span>)}
+        {lien && <a href={lien} target="_blank" rel="noreferrer" className={s.bpLien}>Voir la page envoyée</a>}
+      </div>
+    </div>
+  );
+}
+
 type Props = {
   items: LigneSuivi[];
   filtre: string;
@@ -405,17 +500,21 @@ type Props = {
   onReporter?: (id: string, jour: string) => Promise<boolean>;
   /* V3.150 — « Ouvrir la fiche du bien », depuis la carte d'un bien envoyé. */
   onBien?: (b: any) => void;
+  /* V3.207 — La fiche d'un bien de l'agence (rubrique Biens), depuis un simple mail. */
+  onBienAgence?: (id: string) => void;
   /* La fiche d'un contact qui n'est pas acheteur (V3.23) : « Historique »,
      et seulement les filtres qui ont un sens pour lui. */
   titre?: string;
   filtresVisibles?: string[];
 };
 
-export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, onReporter, onBien, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
+export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, aVenir, relancesAtt, biens, nomAutreRecherche, surligne, modifiable, onModifier, onSupprimer, onAjouter, onAppel, onReporter, onBien, onBienAgence, titre: titreFrise = 'Historique du dossier', filtresVisibles }: Props) {
   /* Le bien ouvert en grand (V3.150). */
   const [bienOuvert, setBienOuvert] = useState<any | null>(null);
   /* V3.152 : un simple mail que Mailjet dit ouvert. */
   const mailOuvert = useMailsOuverts(items);
+  /* V3.207 : les biens présentés par simple mail, et si leur lien a été ouvert. */
+  const { biensAg, vues } = useMailsSimples(items);
   /* L'action d'où vient chaque relance : pour « Voir l'action ». */
   const actionDe = new Map<string, string>();
   for (const it of items) { const rid = it.kind === 'event' ? it.data?.metadata?.relance_id : null; if (rid) actionDe.set(rid, it.data.id); }
@@ -692,7 +791,9 @@ export default function FriseSuivi({ items, filtre, comptes, onFiltre, enPlus, a
                     <span className={s.heure}>{quand(j.created_at)}</span>
                     {place}
                   </div>
-                  {mj ? (
+                  {estMailSimple(j) ? (
+                    <BienPresente j={j} bien={biensAg?.[String(j.metadata.bien_vente_id)] || null} lus={!!biensAg} vues={vues} onOuvrir={onBienAgence} />
+                  ) : mj ? (
                     <>
                       <p className={s.sous}>{`À ${mj.a}`}</p>
                       <MailPlie objet={String(j.titre || '').split(' — ').slice(1).join(' — ')} a={mj.a} corps={mj.corps}

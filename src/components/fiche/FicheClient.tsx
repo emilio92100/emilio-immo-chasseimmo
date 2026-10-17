@@ -2,7 +2,7 @@
 import { FenetreMail, type ContactMail } from '@/components/pages/PageMail';
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import AvatarContact from '@/components/contacts/AvatarContact';
-import { estAcheteur, estArchive, lirePro, lireStructure, reventePossible, typeDe, typesDe } from '@/lib/contacts';
+import { estAcheteur, estArchive, lirePro, lireStructure, reventePossible, typeDe, typesDe, typesAvecRevente } from '@/lib/contacts';
 import { createPortal } from 'react-dom';
 import { supabase, addJournal } from '@/lib/supabase';
 import { effacerPhotosBien, effacerPhotosDeBiens } from '@/lib/photos';
@@ -15,6 +15,7 @@ import { eurosRonds } from '@/lib/activite';
 import type { Client, Recherche } from '@/lib/supabase';
 import styles from './FicheClient.module.css';
 import SecteurPicker from '@/components/shared/SecteurPicker';
+import { useSansVille } from '@/lib/secteurs';
 import ArretPicker, { PastilleArret } from '@/components/shared/ArretPicker';
 import ChoixDate from '@/components/shared/ChoixDate';
 import { retirerFicheOuverte } from '@/components/layout/FichesOuvertes';
@@ -268,6 +269,8 @@ function FamilleCrit({ titre, couleur, fond, trait, ico, lignes }:
    retrait et un peu plus petits, pour en tenir deux par ligne. */
 const QUARTIER: React.CSSProperties = { fontSize: 12.5, padding: '3px 10px' };
 function SecteursListe({ secteurs }: { secteurs: string[] }) {
+  /* V3.207 : un quartier noté sans sa ville n'est pas « toute la ville ». */
+  const sansVille = useSansVille(secteurs);
   const bv: Record<string, string[]> = {};
   secteurs.forEach((s: string) => {
     const m = s.match(/^(.+?)\s*\((.+?)\)$/);
@@ -283,7 +286,9 @@ function SecteursListe({ secteurs }: { secteurs: string[] }) {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21.5S19 15 19 10a7 7 0 1 0-14 0c0 5 7 11.5 7 11.5z" /><circle cx="12" cy="10" r="2.6" /></svg>
             </span>
             <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--emilio)' }}>{ville}</span>
-            {qs.length === 0 && <span className={styles.secteurTag} style={QUARTIER}>Toute la ville</span>}
+            {qs.length === 0 && (sansVille.includes(ville)
+              ? <span className={styles.secteurTag} style={{ ...QUARTIER, background: '#fffbeb', color: '#92400e', borderColor: '#fde68a' }} title="Noté sans sa ville : à ranger dans « Modifier »">Ville à préciser</span>
+              : <span className={styles.secteurTag} style={QUARTIER}>Toute la ville</span>)}
           </div>
           {qs.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 36 }}>
@@ -2125,7 +2130,12 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     if ((client.adresse||'') !== (cf.adresse||'')) changes.push(`Adresse mise à jour`);
     if (JSON.stringify(nettoyer(client.emails || [], 'mail')) !== JSON.stringify(newEmails)) changes.push(newEmails.length > 1 ? `E-mails : ${newEmails.join(', ')}` : `E-mail : ${newEmails[0] || '—'}`);
     if (JSON.stringify(nettoyer(client.telephones || [], 'tel')) !== JSON.stringify(newTels)) changes.push(newTels.length > 1 ? `Téléphones : ${newTels.join(', ')}` : `Téléphone : ${newTels[0] || '—'}`);
-    if (((client as any).statut_occupation||'') !== cf.statut_occupation) changes.push(`Situation actuelle modifiée`);
+    /* V3.207 : « Revente possible » en fait aussi un Propriétaire (et sa
+       situation, si elle n'est pas dite). */
+    const occupation = cf.statut_occupation || (cf.bien_actuel_a_vendre ? 'proprietaire' : '');
+    const typesRevente = cf.bien_actuel_a_vendre && 'types' in client && estAcheteur(client) ? typesAvecRevente(typesDe(client)) : null;
+    if (((client as any).statut_occupation||'') !== occupation) changes.push(`Situation actuelle modifiée`);
+    if (typesRevente) changes.push('Classé aussi Propriétaire (revente possible après l’achat)');
     /* Une personne ou un couple : écrit seulement si la colonne existe (SQL
        « signature-plusieurs » lancé) ou si Alexandre vient de choisir. */
     const jAvant = conjointDe(client.conjoint);
@@ -2142,7 +2152,8 @@ export default function FicheClient({ client: init, onBack, onNavigate, retourVe
     const { data, error: eContact } = await supabase.from('clients').update({
       ...foyer,
       prenom: cf.prenom, nom: cf.nom, adresse: cf.adresse||null, emails: newEmails, telephones: newTels,
-      statut_occupation: cf.statut_occupation||null,
+      statut_occupation: occupation||null,
+      ...(typesRevente ? { types: typesRevente } : {}),
       bien_actuel_a_vendre: cf.bien_actuel_a_vendre,
       bien_actuel_type: cf.bien_actuel_a_vendre ? (cf.bien_actuel_type||null) : null,
       bien_actuel_surface: cf.bien_actuel_a_vendre && cf.bien_actuel_surface ? parseInt(cf.bien_actuel_surface) : null,
@@ -5521,6 +5532,7 @@ ${signatureMail()}`,
               onAppel={() => nouvelleAction('appel')}
               onReporter={reporterDepuisSuivi}
               onBien={b => (b.bien_vente_id ? onNavigate('biens', { bien: b.bien_vente_id }) : openFicheBien(b.id))}
+              onBienAgence={id => onNavigate('biens', { bien: id })}
             />
           </div>
         )}
@@ -5598,7 +5610,7 @@ ${signatureMail()}`,
                 </select>
               </div>
               {/* Revente possible après l'achat — interrupteur indépendant du statut */}
-              <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_a_vendre: !f.bien_actuel_a_vendre }))} style={{ marginTop: 10, padding: '8px 14px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_a_vendre ? '#ea580c' : '#e2e8f0'}`, background: cf.bien_actuel_a_vendre ? '#fff7ed' : 'white', color: cf.bien_actuel_a_vendre ? '#ea580c' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Revente possible après l&apos;achat (mandat vendeur potentiel)</button>
+              <button type="button" onClick={() => setCf(f => ({ ...f, bien_actuel_a_vendre: !f.bien_actuel_a_vendre, ...(!f.bien_actuel_a_vendre && !f.statut_occupation ? { statut_occupation: 'proprietaire' } : {}) }))} style={{ marginTop: 10, padding: '8px 14px', borderRadius: 20, border: `1px solid ${cf.bien_actuel_a_vendre ? '#ea580c' : '#e2e8f0'}`, background: cf.bien_actuel_a_vendre ? '#fff7ed' : 'white', color: cf.bien_actuel_a_vendre ? '#ea580c' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{cf.bien_actuel_a_vendre ? '✓ ' : ''}🏷️ Revente possible après l&apos;achat (mandat vendeur potentiel)</button>
               {cf.bien_actuel_a_vendre && (
                 <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div className={styles.formRow}>
