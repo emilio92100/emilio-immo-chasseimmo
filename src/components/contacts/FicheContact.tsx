@@ -654,7 +654,7 @@ function FicheContact({ client: depart, onBack, onNavigate, retourVers }: { clie
                       onSupprimer={async j => { if (await supprimerActionContact(j, x.id)) recharger(); }}
                       onAjouter={() => setAction({ edition: null, type: 'note' })}
                       onAppel={() => setAction({ edition: null, type: 'appel' })}
-                      onReporter={reporterDepuisSuivi} />
+                      onReporter={reporterDepuisSuivi} onBienAgence={id => ouvrirBien(id)} />
                   </div>
                 </section>
               )}
