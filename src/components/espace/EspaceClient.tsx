@@ -2846,7 +2846,7 @@ function Accueil({ client, crit, neufs, vus, donnes, nbPlusDispo = 0, passage, s
 
         <div className="acc-d">
           {visites?.length > 0 && (
-            <VisiteCourte v={visites[0]} autres={visites.length - 1} onVoir={() => aller('visites')} />
+            <ProchainesVisites visites={visites} onVoir={() => aller('visites')} />
           )}
           {/* V3.184 : sur ordinateur, en haut de la colonne de droite, à côté
               des nouveaux biens (au téléphone : à gauche, sous eux). */}
@@ -3119,29 +3119,52 @@ function DerniersRetours({ biens, onOuvrir, aller, carte }: { biens: Bien[]; onO
   );
 }
 
-/* La prochaine visite, en une ligne : la date, l'heure, le bien. Le détail
-   (adresse, agenda) est dans l'onglet Visites. */
-function VisiteCourte({ v, autres, onVoir }: { v: any; autres: number; onVoir: () => void }) {
-  const x = new Date(String(v.date).slice(0, 10) + 'T12:00:00');
-  const ok = !isNaN(x.getTime());
-  const bientot = joursAvant(v.date);
-  const heure = v.heure ? String(v.heure).slice(0, 5).replace(':', ' h ') : '';
-  const bas = [bientot ? bientot.charAt(0).toUpperCase() + bientot.slice(1) : v.adresse,
-    autres > 0 ? `et ${autres} autre${autres > 1 ? 's' : ''} ensuite` : ''].filter(Boolean).join(' · ');
+/* V3.206 (canevas « Les visites dans l'espace client », planches 2 et 3) —
+   Alexandre : « trop de texte, on ne pourrait pas remettre la photo du bien à
+   côté ». Ses prochaines visites, une ligne chacune : la photo en petit avec
+   le jour dessus, le jour et l'heure, le bien en court (page.tsx, `court`).
+   Au téléphone, la première prend la photo en grand. Trois au plus, puis
+   « Tout voir ». Le détail (adresse, agenda) est dans l'onglet Visites. */
+const capi = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+/** « 18:00 » → « 18 h », « 17:30 » → « 17 h 30 » (insécables : l'heure ne se coupe pas en fin de ligne) */
+const heureVisite = (h: unknown) => {
+  const [a, b] = String(h || '').split(':');
+  return a ? `${Number(a)}\u00a0h${b && b.slice(0, 2) !== '00' ? `\u00a0${b.slice(0, 2)}` : ''}` : '';
+};
+function ProchainesVisites({ visites, onVoir }: { visites: any[]; onVoir: () => void }) {
+  const n = visites.length;
   return (
-    <button type="button" className="vc" onClick={onVoir}>
-      <span className="vc-d">
-        <i>{ok ? JOURS_L[x.getDay()].slice(0, 3) + '.' : ''}</i>
-        <b className="tab">{ok ? x.getDate() : ''}</b>
-        <i>{ok ? MOIS[x.getMonth()] : ''}</i>
-      </span>
-      <span className="vc-t">
-        <span className="vc-s">{heure ? `Visite à venir · ${heure}` : 'Visite à venir'}</span>
-        <span className="vc-b">{v.titre}</span>
-        {bas && <span className="vc-a">{bas}</span>}
-      </span>
-      <span className="vc-f"><Ico n="fleche" t={18} /></span>
-    </button>
+    <section className="va">
+      <div className="va-t">
+        <Ico n="calendrier" t={14} /><span>{n > 1 ? `Vos prochaines visites · ${n}` : 'Votre prochaine visite'}</span>
+        {n > 1 && <button type="button" className="va-tout" onClick={onVoir}>Tout voir</button>}
+      </div>
+      {visites.slice(0, 3).map((v, i) => {
+        const x = new Date(String(v.date).slice(0, 10) + 'T12:00:00');
+        const ok = !isNaN(x.getTime());
+        const bientot = joursAvant(v.date);
+        const heure = heureVisite(v.heure);
+        const jour = ok ? `${capi(JOURS_L[x.getDay()].slice(0, 3))}. ${x.getDate()}\u00a0${MOIS[x.getMonth()]}` : '';
+        return (
+          <button key={v.id} type="button" className={'va-l' + (i === 0 ? ' va-1' : '')} onClick={onVoir}>
+            <span className="va-ph">
+              {v.photo ? <img src={v.photo} alt="" /> : <span className="va-vide"><Ico n="maison" t={22} /></span>}
+              <span className="va-j"><b className="tab">{ok ? x.getDate() : ''}</b><i>{ok ? MOIS[x.getMonth()] : ''}</i></span>
+              <span className="va-jg"><i>{ok ? JOURS_L[x.getDay()].slice(0, 3) + '.' : ''}</i><b className="tab">{ok ? x.getDate() : ''}</b><i>{ok ? MOIS[x.getMonth()] : ''}</i></span>
+              {bientot && <span className="va-bg">{capi(bientot)}</span>}
+              {heure && <span className="va-hg">{heure}</span>}
+            </span>
+            <span className="va-x">
+              <b className="va-q">{[jour, heure].filter(Boolean).join(' · ')}</b>
+              <span className="va-b">{v.court || v.titre}</span>
+              {bientot && <span className="va-c">{capi(bientot)}</span>}
+            </span>
+            <span className="va-f"><Ico n="fleche" t={18} /></span>
+          </button>
+        );
+      })}
+      {n > 3 && <button type="button" className="va-plus" onClick={onVoir}>{`Et ${n - 3} autre${n - 3 > 1 ? 's' : ''} ensuite : tout voir`}</button>}
+    </section>
   );
 }
 
@@ -4319,14 +4342,18 @@ function CarteVisite({ b, v, onOuvrir, onCompteRendu, onRepondre, onFaireOffre, 
   const ph = (b.photos || [])[0];
   const quand = v.date ? `visité le ${dateCourte(v.date)}` : 'visité';
   const o = b.offreSuivi;
+  /* V3.206 (planche 4) : la photo en haut, son étiquette dessus ; le prix et
+     la date de la visite, puis ce qui suit — trois cartes par ligne. */
   return (
     <div className={'vv-carte' + (v.issue === 'non' || etatOffre(b)?.fini ? ' gris' : '')}>
-      <button type="button" className="vv-haut" onClick={onOuvrir}>
-        <span className="vv-ph">{ph ? <img src={ph} alt="" /> : <Ico n="maison" t={20} />}</span>
-        <span className="vv-t">
-          <span className="vv-l1"><b className="vv-prix tab">{PRIX(b.prix)}</b><EtiqVisite b={b} v={v} /></span>
-          <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur, quand].filter(Boolean).join(' · ')}</span>
-        </span>
+      <button type="button" className="vv-photo" onClick={onOuvrir} aria-label="Ouvrir le bien">
+        {ph ? <img src={ph} alt="" /> : <Ico n="maison" t={28} />}
+        <span className="vv-etq"><EtiqVisite b={b} v={v} /></span>
+      </button>
+      <div className="vv-corps">
+      <button type="button" className="vv-tete" onClick={onOuvrir}>
+        <span className="vv-l1"><b className="vv-prix tab">{PRIX(b.prix)}</b><span className="vv-quand">{quand}</span></span>
+        <span className="vv-meta">{[b.pieces === 1 ? 'Studio' : b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur].filter(Boolean).join(' · ')}</span>
       </button>
       {o ? <CarteOffre o={o} indispo={indispo(b)} sansEtiquette {...(actionsOffre || {})} />
         : v.issue || etatOffre(b) ? (
@@ -4342,6 +4369,7 @@ function CarteVisite({ b, v, onOuvrir, onCompteRendu, onRepondre, onFaireOffre, 
           <Ico n="note" t={14} /><span>{'Le compte rendu de votre conseiller'}</span><Ico n="fleche" t={14} />
         </button>
       )}
+      </div>
     </div>
   );
 }
@@ -4361,7 +4389,7 @@ function CarteAvisAccueil({ b, v, onRepondre, onOuvrir, onVoir, onFaireOffre }: 
           <span className="vv-ph">{ph ? <img src={ph} alt="" /> : <Ico n="maison" t={20} />}</span>
           <span className="vv-t">
             <b className="vv-prix tab">{PRIX(b.prix)}</b>
-            <span className="vv-meta">{[b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur].filter(Boolean).join(' · ')}</span>
+            <span className="vv-meta">{[b.pieces === 1 ? 'Studio' : b.pieces && `${b.pieces} pièces`, b.surface && `${b.surface} m²`, b.ville || b.secteur].filter(Boolean).join(' · ')}</span>
           </span>
         </button>
         <AvisVisite v={v} onRepondre={onRepondre} onFaireOffre={onFaireOffre} />
@@ -4406,14 +4434,30 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
   });
   aVenir.sort((a, c) => cle(a.v).localeCompare(cle(c.v)));
   [offres, avis, retenus, non].forEach(l => l.sort((a, c) => cle(c.v).localeCompare(cle(a.v))));
-  const total = offres.length + aVenir.length + avis.length + retenus.length + non.length;
+  const deja = offres.length + avis.length + retenus.length + non.length;
+  const total = aVenir.length + deja;
   const minus = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
   const nonOffres = non.some(x => etatOffre(x.b)?.fini);
-  const comptes: [string, number, string][] = [
-    ['À venir', aVenir.length, 'c-prune'], ['Votre avis', avis.length, 'c-or'],
-    ...(offres.length ? [['Offres', offres.length, 'c-vert'] as [string, number, string]] : []),
-    ['En cours', retenus.length, 'c-bleu'], ['Pas pour moi', non.length, 'c-brique'],
+  const noteNon = `${apprisClient.length
+    ? `Ce qui ne vous a pas plu sur place oriente la suite de la recherche : ${apprisClient.map(minus).join(', ')}.`
+    : 'Ce qui ne vous a pas plu sur place oriente la suite de la recherche.'}${nonOffres ? ' Les offres qui n’ont pas abouti sont ici aussi : vous pouvez toujours en refaire une.' : ''}`;
+  /* V3.206 (planche 4) — Alexandre : « on ne peut pas cliquer sur En cours, on
+     est obligé de scroller ». Les biens déjà visités, rangés par étape dans
+     des onglets ; « Tout » les montre ensemble. Les onglets vides ne sont pas
+     là, et un seul rang n'en a pas besoin. Les chiffres s'additionnent :
+     « Tout » = la somme des autres ; en haut, à venir + déjà visités = total. */
+  type Onglet = 'tout' | 'offres' | 'avis' | 'encours' | 'non';
+  const [onglet, setOnglet] = useState<Onglet>('tout');
+  const RANGS: { k: Onglet; l: string; l2: L; ton: string; note: string }[] = [
+    { k: 'offres', l: 'Vos offres', l2: offres, ton: 'vert', note: 'Où en est chacune, et ce que le vendeur a répondu.' },
+    { k: 'avis', l: 'Votre avis', l2: avis, ton: 'or', note: 'Un geste suffit : c’est ce qui décide de la suite.' },
+    { k: 'encours', l: 'En cours', l2: retenus, ton: 'bleu', note: 'Ceux que vous gardez en tête, et où on en est.' },
+    { k: 'non', l: 'Pas pour moi', l2: non, ton: 'brique', note: noteNon },
   ];
+  const pleins = RANGS.filter(r => r.l2.length > 0);
+  const actif = pleins.find(r => r.k === onglet) || null;
+  const liste = actif ? actif.l2 : [...offres, ...avis, ...retenus, ...non];
+  const note = actif ? actif.note : pleins.length === 1 ? pleins[0].note : 'Chaque bien visité, rangé d’après votre dernière visite.';
   const carte = ({ b, v }: { b: Bien; v: VisiteE }) => (
     <CarteVisite key={v.id} b={b} v={v} onOuvrir={() => onOuvrir(b)} onCompteRendu={() => onOuvrir(b, { versCr: true })} onRepondre={onRepondre}
       onFaireOffre={onFaireOffre?.(b)} actionsOffre={actionsOffre?.(b)} />
@@ -4421,27 +4465,24 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
 
   return (
     <Vue icone="calendrier" aller={aller} titre="Vos visites"
-      sous={total
-        ? `${total} bien${total > 1 ? 's' : ''} visité${total > 1 ? 's' : ''} ou à visiter avec votre conseiller.`
-        : 'Aucune visite pour l’instant. Quand un bien vous plaît, dites « Je veux visiter » sur sa fiche : votre conseiller organise la visite, et elle s’affiche ici.'}>
+      sous={total ? undefined : 'Aucune visite pour l’instant. Quand un bien vous plaît, dites « Je veux visiter » sur sa fiche : votre conseiller organise la visite, et elle s’affiche ici.'}>
       {total > 0 && (
-        <div className={'vv-comptes' + (comptes.length > 4 ? ' cinq' : '')}>
-          {comptes.map(([t, n, c]) => (
-            <div key={t} className={'vv-compte ' + c}><b className="tab">{n}</b><span>{t}</span></div>
-          ))}
-        </div>
-      )}
-      {offres.length > 0 && (
-        <div className="vv-groupe">
-          <div className="sep"><span>{`Vos offres · ${offres.length}`}</span><i /></div>
-          <p className="vv-note">{'Où en est chacune, et ce que le vendeur a répondu.'}</p>
-          <div className="vv-liste deux">{offres.map(carte)}</div>
+        <div className="vv-res">
+          <span className="vv-res-ic" aria-hidden="true"><Ico n="calendrier" t={22} /></span>
+          <span className="vv-res-t">
+            <b>{`${total} bien${total > 1 ? 's' : ''} avec votre conseiller`}</b>
+            <span>{'Il cale chaque visite et vous accompagne sur place.'}</span>
+          </span>
+          <span className="vv-res-p">
+            {aVenir.length > 0 && <span className="vv-pil" data-ton="prune"><b className="tab">{aVenir.length}</b><span>à venir</span></span>}
+            {deja > 0 && <span className="vv-pil" data-ton="bleu"><b className="tab">{deja}</b><span>{`déjà visité${deja > 1 ? 's' : ''}`}</span></span>}
+            {avis.length > 0 && deja > 0 && <span className="vv-pil" data-ton="or"><span>dont</span><b className="tab">{avis.length}</b><span>{avis.length > 1 ? 'attendent votre avis' : 'attend votre avis'}</span></span>}
+          </span>
         </div>
       )}
       {aVenir.length > 0 && (
         <div className="vv-groupe">
-          <div className="sep"><span>{`À venir · ${aVenir.length}`}</span><i /></div>
-          <p className="vv-note">{'Calées par votre conseiller, qui vous accompagne sur place.'}</p>
+          <div className="sep vv-sep-prune"><span>{`Prochainement · ${aVenir.length}`}</span><i /></div>
           <div className="vv-liste">
             {aVenir.map(({ b, v }, i) => {
               const r = visites.find((x: any) => x.id === v.id);
@@ -4453,27 +4494,23 @@ function VueVisites({ biens, mesV, visites, token, apprisClient, aller, onOuvrir
           </div>
         </div>
       )}
-      {avis.length > 0 && (
+      {deja > 0 && (
         <div className="vv-groupe">
-          <div className="sep"><span>{`Votre avis ? · ${avis.length}`}</span><i /></div>
-          <p className="vv-note">{'Un geste suffit : c’est ce qui décide de la suite.'}</p>
-          <div className="vv-liste deux">{avis.map(carte)}</div>
-        </div>
-      )}
-      {retenus.length > 0 && (
-        <div className="vv-groupe">
-          <div className="sep"><span>{`En cours · ${retenus.length}`}</span><i /></div>
-          <p className="vv-note">{'Ceux que vous gardez en tête, et où on en est.'}</p>
-          <div className="vv-liste deux">{retenus.map(carte)}</div>
-        </div>
-      )}
-      {non.length > 0 && (
-        <div className="vv-groupe">
-          <div className="sep"><span>{`Pas pour moi · ${non.length}`}</span><i /></div>
-          <p className="vv-note">{`${apprisClient.length
-            ? `Ce qui ne vous a pas plu sur place oriente la suite de la recherche : ${apprisClient.map(minus).join(', ')}.`
-            : 'Ce qui ne vous a pas plu sur place oriente la suite de la recherche.'}${nonOffres ? ' Les offres qui n’ont pas abouti sont ici aussi : vous pouvez toujours en refaire une.' : ''}`}</p>
-          <div className="vv-liste deux">{non.map(carte)}</div>
+          <div className="sep"><span>{`Déjà visités · ${deja}`}</span><i /></div>
+          {pleins.length > 1 && (
+            <div className="vv-onglets" role="tablist" aria-label="Vos biens visités, par étape">
+              <button type="button" role="tab" aria-selected={!actif} className="vv-ong" data-ton="encre" onClick={() => setOnglet('tout')}>
+                <i aria-hidden="true" /><span>Tout</span><b className="tab">{deja}</b>
+              </button>
+              {pleins.map(r => (
+                <button key={r.k} type="button" role="tab" aria-selected={actif?.k === r.k} className="vv-ong" data-ton={r.ton} onClick={() => setOnglet(r.k)}>
+                  <i aria-hidden="true" /><span>{r.l}</span><b className="tab">{r.l2.length}</b>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="vv-note">{note}</p>
+          <div className="vv-grille" key={actif?.k || 'tout'}>{liste.map(carte)}</div>
         </div>
       )}
     </Vue>
@@ -5945,40 +5982,35 @@ function lienGoogle(v: { date: string; heure: string | null; titre: string; adre
   return 'https://calendar.google.com/calendar/render?' + p.toString();
 }
 
+/* V3.206 (planche 4) — la carte violette, qu'Alexandre aime, avec la vraie
+   photo du bien : à gauche sur ordinateur, en haut sur un téléphone. */
 function ProchaineVisite({ v, autres, token, onBien, titre = 'Votre prochaine visite' }: { v: any; autres: number; token: string; onBien?: () => void; titre?: string }) {
   const bientot = joursAvant(v.date);
   /* La photo et le titre mènent au bien : quand le rendez-vous tombe une
      semaine plus tard, la première question est « c'était lequel, déjà ? ». */
-  const Rappel = onBien ? 'button' : 'div';
   return (
-    <div className="visite-a-venir">
-      <div className="vav-t"><Ico n="calendrier" t={15} /><span>{titre}</span></div>
-      <div className="vav-q">
-        {dateLongue(v.date)}{v.heure ? ` à ${String(v.heure).slice(0, 5).replace(':', ' h ')}` : ''}
-        {bientot && <span className="vav-b">{bientot}</span>}
+    <div className="visite-a-venir vav2">
+      {v.photo && (onBien
+        ? <button type="button" className="vav-photo" onClick={onBien} aria-label="Revoir le bien"><img src={v.photo} alt="" /></button>
+        : <span className="vav-photo"><img src={v.photo} alt="" /></span>)}
+      <div className="vav-corps">
+        <div className="vav-t"><Ico n="calendrier" t={15} /><span>{titre}</span></div>
+        <div className="vav-q">
+          {dateLongue(v.date)}{v.heure ? ` à ${heureVisite(v.heure)}` : ''}
+          {bientot && <span className="vav-b">{bientot}</span>}
+        </div>
+        <div className="vav-b2">{v.titre}</div>
+        {v.adresse && <div className="vav-a"><Ico n="lieu" t={13} /><span>{v.adresse}</span></div>}
+        <div className="vav-act">
+          {onBien && <button type="button" className="vav-voir2" onClick={onBien}><span>Revoir le bien</span><Ico n="fleche" t={14} /></button>}
+          <span className="vav-ag-t">Ajouter à mon agenda</span>
+          <span className="vav-ag-b">
+            <a className="vav-ics" href={lienGoogle(v)} target="_blank" rel="noopener noreferrer">Google&nbsp;Agenda</a>
+            <a className="vav-ics" href={`/api/espace/agenda?token=${encodeURIComponent(token)}&v=${encodeURIComponent(v.id)}`}>Apple&nbsp;· Outlook</a>
+          </span>
+        </div>
+        {autres > 0 && <div className="vav-p">Et {autres} autre{autres > 1 ? 's' : ''} visite{autres > 1 ? 's' : ''} prévue{autres > 1 ? 's' : ''} ensuite.</div>}
       </div>
-
-      <Rappel className="vav-bien" onClick={onBien} type={onBien ? 'button' : undefined}>
-        <span className="vav-ph">
-          {v.photo
-            ? <img src={v.photo} alt="" />
-            : <span className="vav-ph-vide"><Ico n="lieu" t={18} /></span>}
-        </span>
-        <span className="vav-txt">
-          <span className="vav-b2">{v.titre}</span>
-          {v.adresse && <span className="vav-a"><Ico n="lieu" t={13} /> {v.adresse}</span>}
-          {onBien && <span className="vav-voir">Revoir le bien <Ico n="fleche" t={14} /></span>}
-        </span>
-      </Rappel>
-
-      <div className="vav-ag">
-        <span className="vav-ag-t">Ajouter à mon agenda</span>
-        <span className="vav-ag-b">
-          <a className="vav-ics" href={lienGoogle(v)} target="_blank" rel="noopener noreferrer">Google&nbsp;Agenda</a>
-          <a className="vav-ics" href={`/api/espace/agenda?token=${encodeURIComponent(token)}&v=${encodeURIComponent(v.id)}`}>Apple&nbsp;· Outlook</a>
-        </span>
-      </div>
-      {autres > 0 && <div className="vav-p">Et {autres} autre{autres > 1 ? 's' : ''} visite{autres > 1 ? 's' : ''} prévue{autres > 1 ? 's' : ''} ensuite.</div>}
     </div>
   );
 }
@@ -7873,21 +7905,64 @@ label.lab i{font-style:normal; text-transform:none; letter-spacing:0; font-size:
 .rep[aria-pressed="true"][data-a="bleu"]{background:var(--bleu-fond); border-color:var(--bleu); color:var(--bleu)}
 
 /* ─── Vos visites : les rubriques, les cartes, l'avis après la visite ─── */
-.vv-comptes{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:4px 0 2px}
-.vv-compte{background:var(--carte); border:1px solid var(--trait); border-top:3px solid var(--trait-fort);
-  border-radius:14px; padding:10px 4px 9px; text-align:center; box-shadow:var(--ombre)}
-.vv-compte b{display:block; font-family:'Plus Jakarta Sans',sans-serif; font-size:21px; font-weight:800; line-height:1}
-.vv-compte span{display:block; margin-top:5px; font-size:11.5px; font-weight:700; color:var(--plume); line-height:1.2}
-.vv-compte.c-prune{border-top-color:var(--prune)} .vv-compte.c-prune b{color:var(--prune)}
-.vv-compte.c-or{border-top-color:var(--or)} .vv-compte.c-or b{color:var(--or-fonce)}
-.vv-compte.c-bleu{border-top-color:var(--bleu)} .vv-compte.c-bleu b{color:var(--bleu)}
-.vv-compte.c-brique{border-top-color:var(--brique)} .vv-compte.c-brique b{color:var(--brique)}
+/* V3.206 (planche 4) : la case du haut — combien de biens, et où ils en sont. */
+.vv-res{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:4px; padding:16px 18px;
+  background:var(--carte); border:1px solid var(--trait); border-radius:20px; box-shadow:var(--ombre)}
+.vv-res-ic{width:48px; height:48px; border-radius:15px; background:#f3f0fa; color:#6f60a2; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center}
+.vv-res-t{flex:1 1 220px; min-width:0; display:flex; flex-direction:column; gap:2px}
+.vv-res-t b{font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:800; color:var(--encre)}
+.vv-res-t span{font-size:13.5px; color:var(--plume); line-height:1.45}
+.vv-res-p{display:flex; gap:8px; flex-wrap:wrap}
+.vv-pil{display:inline-flex; align-items:center; gap:6px; padding:9px 13px; border-radius:14px; font-size:13.5px; font-weight:700}
+.vv-pil b{font-family:'Plus Jakarta Sans',sans-serif; font-size:19px; font-weight:800; line-height:1}
+.vv-pil[data-ton="prune"]{background:#f3f0fa; color:#5b4d91}
+.vv-pil[data-ton="bleu"]{background:var(--bleu-fond); color:var(--bleu)}
+.vv-pil[data-ton="or"]{background:var(--or-fond); color:var(--or-fonce)}
+.vv-sep-prune span{color:#6f60a2}
+/* Les onglets des biens déjà visités : un appui, une étape. */
+.vv-onglets{display:flex; gap:4px; padding:5px; margin:0 0 12px; border-radius:16px; background:var(--carte);
+  border:1px solid var(--trait); overflow-x:auto; scrollbar-width:none; width:max-content; max-width:100%; box-sizing:border-box}
+.vv-onglets::-webkit-scrollbar{display:none}
+.vv-ong{flex:0 0 auto; display:inline-flex; align-items:center; gap:8px; padding:9px 13px; border:0; border-radius:12px;
+  background:none; font:inherit; font-size:14px; font-weight:700; color:var(--encre2); cursor:pointer; white-space:nowrap;
+  transition:background .2s, color .2s}
+.vv-ong:hover{background:var(--fond)}
+.vv-ong i{width:8px; height:8px; border-radius:50%; background:var(--trait-fort)}
+.vv-ong b{min-width:22px; height:22px; padding:0 6px; box-sizing:border-box; border-radius:99px; background:var(--fond);
+  display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800}
+.vv-ong[data-ton="vert"] i{background:var(--vert)}
+.vv-ong[data-ton="or"] i{background:var(--or)}
+.vv-ong[data-ton="bleu"] i{background:var(--bleu)}
+.vv-ong[data-ton="brique"] i{background:#b4532a}
+.vv-ong[aria-selected="true"]{background:var(--encre); color:#fff}
+.vv-ong[aria-selected="true"] i{background:#fff}
+.vv-ong[aria-selected="true"] b{background:rgba(255,255,255,.18); color:#fff}
+.vv-grille{display:grid; gap:14px; align-items:start; animation:vvEntre .35s cubic-bezier(.16,1,.3,1) both}
+@keyframes vvEntre{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
+@media(prefers-reduced-motion:reduce){.vv-grille{animation:none}}
+@media(min-width:760px){.vv-grille{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1100px){.vv-grille{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .vv-groupe .sep{margin-top:22px}
 .vv-note{margin:-6px 2px 12px; font-size:12.5px; line-height:1.55; color:var(--plume)}
 .vv-liste{display:grid; gap:10px}
 .vv-liste .visite-a-venir{margin:0}
 @media(min-width:760px){.vv-liste.deux{grid-template-columns:1fr 1fr; align-items:start}}
-.vv-carte{background:var(--carte); border:1px solid var(--trait); border-radius:16px; padding:11px 12px 12px; box-shadow:var(--ombre)}
+.vv-carte{background:var(--carte); border:1px solid var(--trait); border-radius:20px; overflow:hidden; box-shadow:var(--ombre)}
+/* V3.206 : la photo en haut, l'étiquette posée dessus. */
+.vv-photo{position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:160px; padding:0;
+  border:0; background:var(--fond); color:var(--plume-clair); cursor:pointer}
+.vv-photo img{width:100%; height:100%; object-fit:cover; display:block}
+.vv-carte.gris .vv-photo img{filter:grayscale(.55); opacity:.9}
+.vv-etq{position:absolute; top:10px; left:10px; display:flex}
+.vv-etq .etiq{font-size:11.5px; padding:4px 10px; box-shadow:0 6px 14px -8px rgba(19,36,61,.55)}
+.vv-corps{padding:12px 14px 14px}
+.vv-tete{display:flex; flex-direction:column; gap:2px; width:100%; background:none; border:0; padding:0;
+  text-align:left; font:inherit; color:inherit; cursor:pointer}
+.vv-tete .vv-l1{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+.vv-tete .vv-prix{flex:0 1 auto; font-size:18px}
+.vv-quand{font-size:12px; color:var(--plume); white-space:nowrap}
+.vv-tete .vv-meta{font-size:13.5px; color:var(--encre2)}
 .vv-haut{display:flex; gap:11px; align-items:flex-start; width:100%; background:none; border:0; padding:0;
   text-align:left; font:inherit; color:inherit; cursor:pointer}
 .vv-ph{width:76px; height:62px; border-radius:10px; overflow:hidden; flex:0 0 auto; background:var(--fond);
@@ -8069,6 +8144,29 @@ button.vav-bien:hover{background:rgba(255,255,255,.14); border-color:rgba(255,25
   transition:background .18s}
 .vav-ics:hover{background:rgba(255,255,255,.2)}
 .vav-p{position:relative; margin-top:10px; font-size:12px; color:rgba(255,255,255,.5)}
+/* V3.206 (planche 4) : la photo du bien à côté (en haut sur un téléphone). */
+.vav2{display:flex; flex-direction:column; gap:14px}
+.vav-photo{position:relative; z-index:1; display:block; width:100%; height:180px; padding:0; border:0; border-radius:14px;
+  overflow:hidden; background:rgba(255,255,255,.1); cursor:pointer}
+span.vav-photo{cursor:default}
+.vav-photo img{width:100%; height:100%; object-fit:cover; display:block; transition:transform .4s ease}
+button.vav-photo:hover img{transform:scale(1.03)}
+.vav-corps{position:relative; flex:1; min-width:0; display:flex; flex-direction:column}
+.vav2 .vav-b2{margin-top:8px; font-size:15.5px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+.vav2 .vav-a{margin-top:5px; color:rgba(255,255,255,.75)}
+.vav-act{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:13px;
+  border-top:1px solid rgba(255,255,255,.18)}
+.vav-voir2{display:inline-flex; align-items:center; gap:6px; padding:9px 15px; border:0; border-radius:99px;
+  background:#fff; color:#13243D; font:inherit; font-size:13px; font-weight:800; cursor:pointer}
+.vav-act .vav-ag-t{flex:1 1 100%; order:2; margin-top:4px}
+.vav-act .vav-voir2{order:1}
+.vav-act .vav-ag-b{order:3; margin-top:0}
+@media(min-width:760px){
+  .vav2{flex-direction:row; gap:22px; padding:18px}
+  .vav-photo{flex:0 0 280px; width:280px; height:auto; min-height:190px; border-radius:16px}
+  .vav2 .vav-q{font-size:24px}
+  .vav-act .vav-ag-t{flex:0 0 auto; order:2; margin:0 0 0 auto}
+}
 
 /* Le rendez-vous rappelé sur la carte du bien, dans « Mes derniers biens consultés » */
 .rdv-l{display:flex; align-items:center; gap:7px; margin-top:9px; padding:6px 10px; border-radius:9px;
@@ -8274,7 +8372,7 @@ button.auj-c:active{transform:scale(.96)}
 
 /* — les blocs de l'accueil — */
 .acc-cols{display:block}
-.acc-main > section, .acc-d > .vc, .acc-cartes{margin-top:22px}
+.acc-main > section, .acc-d > .va, .acc-cartes{margin-top:22px}
 .acc-cartes{display:flex; flex-direction:column; gap:12px}
 /* V3.152 : chaque bloc d'à côté a son enveloppe (.acc-bl), sans marge ni
    bordure ; les marges de son contenu la traversent, comme avant. Ces 12 px
@@ -8386,18 +8484,54 @@ button.auj-c:active{transform:scale(.96)}
 .dr-t{font-size:13.5px; font-weight:700; line-height:1.3}
 .dr-m{font-size:12px; color:var(--plume); line-height:1.4}
 
-.vc{display:flex; align-items:center; gap:14px; width:100%; text-align:left; font-family:inherit; color:var(--encre);
-  background:var(--carte); border:1px solid #e1dbef; border-radius:22px; padding:14px}
-.vc:active{transform:scale(.99)}
-.vc-d{width:58px; flex:0 0 auto; border-radius:15px; background:#7b6ba8; color:#fff; padding:8px 0;
-  display:flex; flex-direction:column; align-items:center; animation:halo-vio 2.6s ease-out infinite}
-.vc-d i{font-style:normal; font-size:10.5px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#ece8f6}
-.vc-d b{font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; line-height:1.1}
-.vc-t{display:flex; flex-direction:column; gap:3px; flex:1; min-width:0}
-.vc-s{font-size:11px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase; color:#7b6ba8}
-.vc-b{font-size:14.5px; font-weight:700; line-height:1.3}
-.vc-a{font-size:12.5px; color:var(--plume)}
-.vc-f{color:#7b6ba8; flex:0 0 auto; display:flex}
+/* V3.206 — Ses prochaines visites, à l'accueil : une ligne chacune, la photo
+   en petit avec le jour dessus (planche 2) ; au téléphone, la première en
+   grand (planche 3). */
+.va{background:var(--carte); border:1px solid #e1dbef; border-radius:22px; padding:12px 10px 6px;
+  box-shadow:0 18px 34px -26px rgba(79,64,130,.55)}
+.va-t{display:flex; align-items:center; gap:7px; padding:2px 6px 8px; font-size:11px; font-weight:800;
+  letter-spacing:1.1px; text-transform:uppercase; color:#6f60a2}
+.va-tout{margin-left:auto; background:none; border:0; padding:2px 4px; font:inherit; font-size:12.5px; font-weight:700;
+  letter-spacing:0; text-transform:none; color:#6f60a2; cursor:pointer}
+.va-l{display:flex; align-items:center; gap:13px; width:100%; padding:8px 6px; border:0; border-radius:16px;
+  background:none; font:inherit; color:var(--encre); text-align:left; cursor:pointer; transition:background .18s}
+.va-l:hover{background:#f8f6fc}
+.va-l:active{transform:scale(.99)}
+.va-l + .va-l{margin-top:2px}
+.va-ph{position:relative; flex:0 0 96px; height:80px; border-radius:14px; overflow:hidden; background:#f3f0fa;
+  display:flex; align-items:center; justify-content:center; color:#9c8cd0}
+.va-ph img{width:100%; height:100%; object-fit:cover; display:block}
+.va-j{position:absolute; left:6px; bottom:6px; display:flex; align-items:baseline; gap:4px; padding:3px 7px;
+  border-radius:8px; background:#6f60a2; color:#fff}
+.va-j b{font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; line-height:1}
+.va-j i{font-style:normal; font-size:10px; font-weight:800; letter-spacing:.8px; text-transform:uppercase}
+.va-jg, .va-bg, .va-hg{display:none}
+.va-x{flex:1; min-width:0; display:flex; flex-direction:column; gap:3px}
+.va-q{font-family:'Plus Jakarta Sans',sans-serif; font-size:15px; font-weight:800; line-height:1.3}
+.va-b{font-size:13.5px; color:var(--plume); line-height:1.35; overflow:hidden; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical}
+.va-c{margin-top:2px; align-self:flex-start; padding:3px 10px; border-radius:99px; background:#f3f0fa;
+  color:#5b4d91; font-size:12px; font-weight:700}
+.va-f{color:#6f60a2; display:flex; flex:0 0 auto}
+.va-plus{display:block; width:100%; margin:2px 0 4px; padding:8px; border:0; background:none; font:inherit;
+  font-size:13px; font-weight:700; color:#6f60a2; cursor:pointer}
+@media(max-width:1023px){
+  .va-1{flex-direction:column; align-items:stretch; gap:0; padding:0 0 4px; margin-bottom:6px}
+  .va-1:hover{background:none}
+  .va-1 .va-ph{flex:0 0 auto; width:100%; height:170px; border-radius:16px}
+  .va-1 .va-ph::after{content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(19,36,61,0) 45%,rgba(19,36,61,.55))}
+  .va-1 .va-j, .va-1 .va-q, .va-1 .va-c, .va-1 .va-f{display:none}
+  .va-1 .va-jg{display:flex; position:absolute; top:10px; left:10px; z-index:1; width:54px; padding:6px 0;
+    border-radius:13px; background:#fff; flex-direction:column; align-items:center; box-shadow:0 8px 18px -10px rgba(19,36,61,.6)}
+  .va-jg i{font-style:normal; font-size:10px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#6f60a2}
+  .va-jg b{font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; line-height:1.05; color:var(--encre)}
+  .va-1 .va-bg{display:block; position:absolute; top:12px; right:10px; z-index:1; padding:5px 10px; border-radius:99px;
+    background:#6f60a2; color:#fff; font-size:12px; font-weight:700}
+  .va-1 .va-hg{display:block; position:absolute; left:13px; bottom:10px; z-index:1; color:#fff;
+    font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800}
+  .va-1 .va-x{padding:10px 6px 2px}
+  .va-1 .va-b{font-family:'Plus Jakarta Sans',sans-serif; font-size:15.5px; font-weight:800; color:var(--encre)}
+}
 
 /* La visite, dans l'onglet Visites : le même violet adouci que partout. */
 .visite-a-venir{background:linear-gradient(152deg,#8475b4 0%,#6f60a2 100%); box-shadow:0 18px 34px -24px rgba(79,64,130,.8)}
@@ -8551,7 +8685,7 @@ button.auj-c:active{transform:scale(.96)}
     align-items:start; margin-top:20px}
   .acc-g{grid-column:1 / 3; min-width:0}
   .acc-d{min-width:0; display:flex; flex-direction:column; gap:var(--ecart)}
-  .acc-main > section:first-child, .acc-d > .vc{margin-top:0}
+  .acc-main > section:first-child, .acc-d > .va{margin-top:0}
   .acc-cartes{display:contents}
   .ac-pc .apercu-carte{margin-top:0}
   .acc-bl > .sep{margin:0 0 12px}
