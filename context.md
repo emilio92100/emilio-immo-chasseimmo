@@ -1515,6 +1515,20 @@ signataire et l'espace gardent leur marine.
 **À faire relire par l'avocat** avant le premier usage réel : toutes les mentions électroniques,
 les cases à cocher, la réponse du vendeur, le certificat.
 
+### V3.208 — 17 octobre 2026 · « Paris 12 » au mandat
+
+- Un client, à la signature du mandat de recherche (étape 2) : « quand je mets Paris 12, ça ne
+  s'affiche pas ; il y a tous les autres arrondissements ». La base des communes classe ses
+  réponses par population et n'en rend que sept : Paris, puis les 15e, 20e, 18e, 13e… le 12e
+  n'arrivait jamais. `ChampsLieu.tsx` : `arrondissementTape` reconnaît « Paris 12 », « paris
+  12e », « Lyon 3 », « Marseille 8 » sans la base et le propose en premier — « Paris 12e
+  arrondissement » pour le lieu de naissance, « Paris · 75012 » pour la ville de l'adresse
+  (75016 et 75116 pour le 16e). Hors ligne, il reste proposé.
+- La ville de l'adresse : une ville à plus de trois codes postaux (Paris, Lyon, Marseille…)
+  n'en montre plus trois au hasard (75001, 75002, 75003) : une ligne « Paris · Précisez le code
+  postal » (ou celui déjà tapé, s'il est de cette ville).
+- Le même champ sert au mandat, à « Faire une offre » et à la page du co-signataire.
+
 ### V3.207 — 17 octobre 2026 · Un quartier dans chaque ville, « Revente possible » = Propriétaire, le mail simple dans le Suivi
 
 - **Les secteurs** — Alexandre : « quand j'ajoute Clamart, je ne peux pas choisir de secteur ou
